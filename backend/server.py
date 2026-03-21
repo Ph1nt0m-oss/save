@@ -429,9 +429,9 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         }
         await db.chat_messages.insert_one(user_message_doc)
         
-        # Try Ollama first (local, free, unlimited)
+        # Try Ollama with DeepSeek Coder (better for code generation than Llama)
         ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-        ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.3')
+        ollama_model = os.environ.get('OLLAMA_MODEL', 'deepseek-coder:33b')  # DeepSeek by default
         
         ai_response_text = None
         

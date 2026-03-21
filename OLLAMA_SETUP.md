@@ -51,24 +51,24 @@ ollama serve
 
 ### 2. Télécharger un Modèle
 
-**Llama 3.3 (Recommandé - 8GB RAM)**
+**DeepSeek Coder (RECOMMANDÉ pour CodeForge - Meilleur pour le code)**
+```bash
+ollama pull deepseek-coder:33b
+```
+
+**Llama 3.3 (Bon pour le chat général)**
 ```bash
 ollama pull llama3.3
 ```
 
-**Mistral (Alternative - 8GB RAM)**
+**Mistral (Alternative)**
 ```bash
 ollama pull mistral
 ```
 
-**CodeLlama (Spécialisé code - 8GB RAM)**
+**CodeLlama (Spécialisé code mais moins bon que DeepSeek)**
 ```bash
 ollama pull codellama
-```
-
-**Llama 3.3 70B (Plus puissant - 32GB RAM)**
-```bash
-ollama pull llama3.3:70b
 ```
 
 ### 3. Tester

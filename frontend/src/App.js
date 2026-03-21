@@ -11,10 +11,21 @@ import Dashboard from './pages/Dashboard';
 import Create from './pages/Create';
 import Chat from './pages/Chat';
 
-// Protected Route wrapper
-const ProtectedRoute = ({ children }) => {
+// Protected Route wrapper with offline detection
+const ProtectedRoute = ({ children, allowOffline = false }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+
+  // If offline mode is allowed, check if we're in offline mode
+  if (allowOffline) {
+    const isOfflineMode = location.state?.mode === 'offline';
+    const isOnline = navigator.onLine;
+    
+    // If offline mode requested and no internet, allow access without auth
+    if (isOfflineMode && !isOnline) {
+      return children;
+    }
+  }
 
   // If user data was passed from AuthCallback, render immediately
   if (location.state?.user) {
@@ -63,7 +74,7 @@ function AppRouter() {
       <Route 
         path="/chat" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowOffline={true}>
             <Chat />
           </ProtectedRoute>
         } 
@@ -71,7 +82,7 @@ function AppRouter() {
       <Route 
         path="/create" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowOffline={true}>
             <Create />
           </ProtectedRoute>
         } 
