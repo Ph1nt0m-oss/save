@@ -139,6 +139,109 @@ async def get_current_user(request: Request) -> str:
     
     return session_doc["user_id"]
 
+class SMSAuthRequest(BaseModel):
+    phone_number: str
+    code: Optional[str] = None
+
+# ==================== AUTH ROUTES ====================
+
+@api_router.post("/auth/sms/send")
+async def send_sms_code(request: SMSAuthRequest):
+    """Send SMS verification code (for offline auth)"""
+    try:
+        # Generate 6-digit code
+        code = str(uuid.uuid4().int)[:6]
+        
+        # Store code in database (expires in 5 minutes)
+        await db.sms_codes.insert_one({
+            "phone_number": request.phone_number,
+            "code": code,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # In production, send actual SMS via Twilio/etc
+        # For now, return code in response (for testing)
+        logger.info(f"SMS Code for {request.phone_number}: {code}")
+        
+        return {
+            "message": "Code SMS envoyé",
+            "code": code  # REMOVE in production, only for testing
+        }
+    except Exception as e:
+        logger.error(f"Error sending SMS: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/auth/sms/verify")
+async def verify_sms_code(request: SMSAuthRequest, response: Response):
+    """Verify SMS code and create session"""
+    try:
+        # Find valid code
+        code_doc = await db.sms_codes.find_one({
+            "phone_number": request.phone_number,
+            "code": request.code
+        }, {"_id": 0})
+        
+        if not code_doc:
+            raise HTTPException(status_code=401, detail="Code invalide")
+        
+        # Check expiry
+        expires_at = datetime.fromisoformat(code_doc["expires_at"])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        
+        if expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="Code expiré")
+        
+        # Create or get user
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        existing_user = await db.users.find_one({"phone_number": request.phone_number}, {"_id": 0})
+        
+        if existing_user:
+            user_id = existing_user["user_id"]
+        else:
+            new_user = {
+                "user_id": user_id,
+                "phone_number": request.phone_number,
+                "name": f"User {request.phone_number[-4:]}",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.insert_one(new_user)
+        
+        # Create session
+        session_token = f"sms_session_{uuid.uuid4().hex}"
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        
+        session_doc = {
+            "session_token": session_token,
+            "user_id": user_id,
+            "auth_type": "sms",
+            "expires_at": expires_at.isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.user_sessions.insert_one(session_doc)
+        
+        # Set cookie
+        response.set_cookie(
+            key="session_token",
+            value=session_token,
+            httponly=True,
+            secure=True,
+            samesite="none",
+            max_age=7 * 24 * 60 * 60,
+            path="/"
+        )
+        
+        # Delete used code
+        await db.sms_codes.delete_one({"phone_number": request.phone_number, "code": request.code})
+        
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        return user
+    
+    except Exception as e:
+        logger.error(f"Error verifying SMS: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/session")
@@ -304,6 +407,22 @@ R\u00e9ponds UNIQUEMENT avec un JSON valide:
                             "updated_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db.projects.insert_one(project)
+
+                        # Create preview
+                        preview_id = f"preview_{uuid.uuid4().hex[:12]}"
+                        preview_doc = {
+                            "preview_id": preview_id,
+                            "project_id": project_id,
+                            "user_id": user_id,
+                            "files": generated.get("files", []),
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.previews.insert_one(preview_doc)
+                        
+                        # Get backend URL
+                        backend_url = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')
+                        preview_url = f"{backend_url}/api/preview/{preview_id}"
+
                         
                         return {
                             "code": generated,
@@ -1183,6 +1302,44 @@ Use NW.js or similar to package as standalone app
             "Content-Disposition": f"attachment; filename={project['name']}_windows.zip"
         }
     )
+
+@api_router.get("/preview/{preview_id}")
+async def get_preview(preview_id: str):
+    """Get preview HTML for generated content"""
+    preview = await db.previews.find_one({"preview_id": preview_id}, {"_id": 0})
+    
+    if not preview:
+        return HTMLResponse("<h1>Prévisualisation non trouvée</h1>", status_code=404)
+    
+    # Return HTML preview
+    html_content = preview.get("html_content", "")
+    
+    if not html_content:
+        # Generate preview from files
+        files = preview.get("files", [])
+        html_parts = ["<!DOCTYPE html><html><head><meta charset='utf-8'><title>Prévisualisation</title>"]
+        
+        # Add CSS
+        for file in files:
+            if file["path"].endswith(".css"):
+                html_parts.append(f"<style>{file['content']}</style>")
+        
+        html_parts.append("</head><body>")
+        
+        # Add HTML
+        for file in files:
+            if file["path"].endswith(".html"):
+                html_parts.append(file["content"])
+        
+        # Add JS
+        for file in files:
+            if file["path"].endswith(".js"):
+                html_parts.append(f"<script>{file['content']}</script>")
+        
+        html_parts.append("</body></html>")
+        html_content = "\n".join(html_parts)
+    
+    return HTMLResponse(content=html_content)
 
 # ==================== ROOT ROUTE ====================
 
