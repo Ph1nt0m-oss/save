@@ -183,7 +183,7 @@ async def verify_sms_code(request: SMSAuthRequest, response: Response):
         }, {"_id": 0})
         
         if not code_doc:
-            raise HTTPException(status_code=401, detail="Code invalide")
+            return JSONResponse(status_code=401, content={"detail": "Code invalide"})
         
         # Check expiry
         expires_at = datetime.fromisoformat(code_doc["expires_at"])
@@ -191,7 +191,7 @@ async def verify_sms_code(request: SMSAuthRequest, response: Response):
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         
         if expires_at < datetime.now(timezone.utc):
-            raise HTTPException(status_code=401, detail="Code expiré")
+            return JSONResponse(status_code=401, content={"detail": "Code expiré"})
         
         # Create or get user
         user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -657,7 +657,7 @@ async def get_chat_history(request: Request, project_id: Optional[str] = None, l
 
 # ==================== PROJECT ROUTES ====================
 
-@api_router.post("/projects", response_model=Project)
+@api_router.post("/projects", response_model=Project, status_code=201)
 async def create_project(request: Request, input: ProjectCreate):
     """Create a new project"""
     user_id = await get_current_user(request)
