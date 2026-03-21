@@ -255,18 +255,71 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         }
         await db.chat_messages.insert_one(user_message_doc)
         
-        # For now, simple response without using API keys
-        # This avoids budget issues
-        ai_response_text = f"""Je comprends votre demande: "{input.message}"
+        # Try Ollama first (local, free, unlimited)
+        ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+        ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.3')
+        
+        ai_response_text = None
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{ollama_url}/api/generate",
+                    json={
+                        "model": ollama_model,
+                        "prompt": f"Tu es un expert en développement logiciel. Réponds en français.\\n\\nQuestion: {input.message}",
+                        "stream": False
+                    }
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    ai_response_text = result.get('response', '')
+                    logger.info(f"✅ Ollama response successful")
+        except Exception as ollama_error:
+            logger.warning(f"Ollama not available: {ollama_error}")
+            
+            # Fallback to Groq (free API)
+            groq_api_key = os.environ.get('GROQ_API_KEY')
+            if groq_api_key:
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {groq_api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": "llama3-70b-8192",
+                                "messages": [
+                                    {"role": "system", "content": "Tu es un expert en développement logiciel. Réponds en français."},
+                                    {"role": "user", "content": input.message}
+                                ]
+                            }
+                        )
+                        if response.status_code == 200:
+                            result = response.json()
+                            ai_response_text = result['choices'][0]['message']['content']
+                            logger.info(f"✅ Groq response successful")
+                except Exception as groq_error:
+                    logger.warning(f"Groq API error: {groq_error}")
+        
+        # If both failed, use instructional response
+        if not ai_response_text:
+            ai_response_text = f"""Je comprends votre demande: "{input.message}"
 
-Pour créer une application complète, je vous recommande d'utiliser le Mode Création (bouton 'Créer' dans le menu) qui vous donnera accès à l'interface de codage complète.
+Pour une meilleure expérience avec IA gratuite et illimitée, installez **Ollama** :
 
-Vous pouvez également:
+📥 Installation rapide : https://ollama.com
+🚀 Commande : `ollama pull llama3.3`
+📖 Guide complet : Voir OLLAMA_SETUP.md
+
+Ou utilisez le **Mode Création IA** (bouton vert) pour développer avec une interface complète.
+
+Vous pouvez aussi :
 - Créer un nouveau projet via le bouton "+"
 - Utiliser la génération de code automatique
-- Exporter vers mobile (APK) ou desktop (EXE)
-
-✨ Mode Création disponible pour un développement sans limites !"""
+- Exporter vers mobile (APK) ou desktop (EXE)"""
         
         # Save AI response
         ai_message_doc = {
