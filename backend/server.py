@@ -235,6 +235,86 @@ async def logout(request: Request, response: Response):
     response.delete_cookie("session_token", path="/")
     return {"message": "Déconnexion réussie"}
 
+# ==================== AI CODE GENERATION ROUTES ====================
+
+@api_router.post("/ai/generate-code")
+async def ai_generate_code(request: Request, prompt_data: dict):
+    """Generate code using Ollama (local, free, unlimited)"""
+    user_id = await get_current_user(request)
+    
+    prompt = prompt_data.get('prompt', '')
+    existing_files = prompt_data.get('existing_files', [])
+    
+    try:
+        ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+        ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.3')
+        
+        # Build context from existing files
+        context = "Fichiers existants:\\n"
+        for f in existing_files:
+            context += f"\\n--- {f['path']} ---\\n{f['content'][:200]}...\\n"
+        
+        full_prompt = f"""Tu es un expert en développement. Génère du code professionnel et complet.
+
+{context}
+
+Demande de l'utilisateur: {prompt}
+
+Réponds UNIQUEMENT avec un JSON valide au format:
+{{
+  "files": [
+    {{"path": "nom_fichier.ext", "content": "contenu du code"}},
+    ...
+  ],
+  "explanation": "Explication en français de ce qui a été créé"
+}}
+
+Important: Code propre, commenté, et fonctionnel."""
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": ollama_model,
+                    "prompt": full_prompt,
+                    "stream": False
+                }
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                ai_text = result.get('response', '')
+                
+                # Try to extract JSON from response
+                try:
+                    # Find JSON in response
+                    start = ai_text.find('{')
+                    end = ai_text.rfind('}') + 1
+                    if start >= 0 and end > start:
+                        json_str = ai_text[start:end]
+                        generated = json.loads(json_str)
+                        return generated
+                    else:
+                        raise ValueError("No JSON found")
+                except:
+                    # If parsing fails, return raw response
+                    return {
+                        "files": [{
+                            "path": "output.txt",
+                            "content": ai_text
+                        }],
+                        "explanation": "Réponse de l'IA (format non-JSON détecté)"
+                    }
+            else:
+                raise HTTPException(status_code=500, detail="Ollama API error")
+                
+    except Exception as e:
+        logger.error(f"Error generating code: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Installez Ollama pour une IA gratuite. Voir OLLAMA_SETUP.md"
+        )
+
 # ==================== CHAT ROUTES ====================
 
 @api_router.post("/chat/message")
