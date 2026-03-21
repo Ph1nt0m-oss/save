@@ -131,13 +131,49 @@ class CodeForgeAPITester:
         }
         return self.run_test("Generate Code", "POST", "generate/code", 200, generation_data)
 
-    def test_export_prepare(self):
-        """Test export preparation"""
+    def test_export_download(self):
+        """Test export download (ZIP)"""
         if not self.project_id:
             print("❌ No project ID available for export")
             return False, {}
         
-        return self.run_test("Prepare Export", "POST", f"export/prepare?project_id={self.project_id}&export_type=web", 200)
+        export_data = {
+            "project_id": self.project_id,
+            "export_type": "source"
+        }
+        return self.run_test("Export Download", "POST", "export/download", 200, export_data)
+
+    def test_mobile_export_page(self):
+        """Test mobile export page"""
+        if not self.project_id:
+            print("❌ No project ID available for mobile export")
+            return False, {}
+        
+        return self.run_test("Mobile Export Page", "GET", f"export/mobile/{self.project_id}", 200)
+
+    def test_desktop_export_page(self):
+        """Test desktop export page"""
+        if not self.project_id:
+            print("❌ No project ID available for desktop export")
+            return False, {}
+        
+        return self.run_test("Desktop Export Page", "GET", f"export/desktop/{self.project_id}", 200)
+
+    def test_apk_download(self):
+        """Test APK download"""
+        if not self.project_id:
+            print("❌ No project ID available for APK download")
+            return False, {}
+        
+        return self.run_test("APK Download", "GET", f"export/download/apk/{self.project_id}", 200)
+
+    def test_exe_download(self):
+        """Test EXE download"""
+        if not self.project_id:
+            print("❌ No project ID available for EXE download")
+            return False, {}
+        
+        return self.run_test("EXE Download", "GET", f"export/download/exe/{self.project_id}", 200)
 
     def test_update_project(self):
         """Test project update"""
@@ -176,7 +212,11 @@ def main():
         ("Send Chat Message", tester.test_send_chat_message),
         ("Get Chat History", tester.test_get_chat_history),
         ("Generate Code", tester.test_generate_code),
-        ("Export Prepare", tester.test_export_prepare),
+        ("Export Download", tester.test_export_download),
+        ("Mobile Export Page", tester.test_mobile_export_page),
+        ("Desktop Export Page", tester.test_desktop_export_page),
+        ("APK Download", tester.test_apk_download),
+        ("EXE Download", tester.test_exe_download),
         ("Update Project", tester.test_update_project),
         ("Delete Project", tester.test_delete_project),
     ]

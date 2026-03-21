@@ -184,14 +184,44 @@ export default function Dashboard() {
       return;
     }
 
-    try {
-      const response = await axios.post(
-        `${API}/export/prepare?project_id=${selectedProject.project_id}&export_type=${exportType}`,
-        {},
-        { withCredentials: true }
-      );
+    if (!selectedProject.generated_code) {
+      toast.error('Générez d\'abord le code du projet');
+      return;
+    }
 
-      toast.success(response.data.message);
+    try {
+      if (exportType === 'source') {
+        // Download ZIP directly
+        const response = await axios.post(
+          `${API}/export/download`,
+          { project_id: selectedProject.project_id, export_type: 'source' },
+          { 
+            withCredentials: true,
+            responseType: 'blob'
+          }
+        );
+
+        // Create download link
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `${selectedProject.name}.zip`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        
+        toast.success('Code source téléchargé !');
+      } else if (exportType === 'apk') {
+        // Open mobile export page
+        const exportUrl = `${BACKEND_URL}/api/export/mobile/${selectedProject.project_id}`;
+        window.open(exportUrl, '_blank');
+        toast.success('Page d\'installation mobile ouverte !');
+      } else if (exportType === 'exe') {
+        // Open desktop export page
+        const exportUrl = `${BACKEND_URL}/api/export/desktop/${selectedProject.project_id}`;
+        window.open(exportUrl, '_blank');
+        toast.success('Page de téléchargement desktop ouverte !');
+      }
     } catch (error) {
       console.error('Export error:', error);
       toast.error('Erreur lors de l\'export');
@@ -316,15 +346,24 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Button
+              onClick={() => window.open('https://app.emergent.sh', '_blank')}
+              data-testid="create-mode-btn"
+              className="bg-[#00FF66] text-[#050505] hover:bg-[#00FF66]/90 font-['Chivo'] font-bold"
+            >
+              <Code2 className="w-4 h-4 mr-2" />
+              Mode Création
+            </Button>
+
             {selectedProject && (
               <>
                 <Button
                   onClick={generateCode}
                   disabled={isLoading}
                   data-testid="generate-code-btn"
-                  className="bg-[#00FF66] text-[#050505] hover:bg-[#00FF66]/90 font-['Chivo'] font-bold"
+                  className="bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 font-['Chivo'] font-bold"
                 >
-                  <Code2 className="w-4 h-4 mr-2" />
+                  <Sparkles className="w-4 h-4 mr-2" />
                   Générer Code
                 </Button>
 
@@ -335,6 +374,7 @@ export default function Dashboard() {
                     variant="outline"
                     data-testid="export-apk-btn"
                     className="border-white/20 hover:border-[#E4FF00] hover:text-[#E4FF00]"
+                    title="Export Mobile (APK)"
                   >
                     <Smartphone className="w-4 h-4" />
                   </Button>
@@ -344,17 +384,19 @@ export default function Dashboard() {
                     variant="outline"
                     data-testid="export-exe-btn"
                     className="border-white/20 hover:border-[#E4FF00] hover:text-[#E4FF00]"
+                    title="Export Desktop (EXE)"
                   >
                     <Monitor className="w-4 h-4" />
                   </Button>
                   <Button
-                    onClick={() => exportProject('web')}
+                    onClick={() => exportProject('source')}
                     size="sm"
                     variant="outline"
-                    data-testid="export-web-btn"
+                    data-testid="export-source-btn"
                     className="border-white/20 hover:border-[#E4FF00] hover:text-[#E4FF00]"
+                    title="Télécharger Code Source (ZIP)"
                   >
-                    <Globe className="w-4 h-4" />
+                    <Download className="w-4 h-4" />
                   </Button>
                 </div>
               </>
