@@ -301,12 +301,8 @@ export default function Dashboard() {
 
         <div className="p-4 border-t border-white/10 space-y-2">
           <div className="flex items-center gap-2 text-sm font-['IBM_Plex_Mono']">
-            <div className={`w-2 h-2 rounded-full animate-pulse-slow ${
-              aiStatus === 'online' ? 'bg-[#00FF66]' : 'bg-cyan-400'
-            }`}></div>
-            <span className="text-[#A1A1AA]">
-              {aiStatus === 'online' ? 'IA Locale Gratuite' : 'Mode hors ligne'}
-            </span>
+            <div className="w-2 h-2 rounded-full bg-[#00FF66] animate-pulse-slow"></div>
+            <span className="text-[#A1A1AA]">IA Disponible</span>
           </div>
           
           <button
@@ -320,11 +316,11 @@ export default function Dashboard() {
         </div>
       </motion.aside>
 
-      {/* Main Chat Area */}
+      {/* Main Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
+        {/* Header with exports */}
         <header className="bg-[#0F0F13] border-b border-white/10 px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {!isSidebarOpen && (
                 <button
@@ -335,45 +331,10 @@ export default function Dashboard() {
                 </button>
               )}
               <div>
-                <h1 className="font-['Chivo'] font-bold text-xl">
-                  {selectedProject ? selectedProject.name : 'CodeForge AI'}
-                </h1>
-                {selectedProject && (
-                  <p className="text-sm text-[#A1A1AA] font-['IBM_Plex_Sans']">
-                    {selectedProject.description}
-                  </p>
-                )}
+                <h1 className="font-['Chivo'] font-bold text-xl">CodeForge AI</h1>
+                <p className="text-sm text-[#A1A1AA]">Création Sans Limites</p>
               </div>
             </div>
-
-            <div className="flex items-center gap-2 border-l border-white/10 pl-3">
-              <User className="w-5 h-5 text-[#A1A1AA]" />
-              <span className="text-sm font-['IBM_Plex_Sans']">{user?.name}</span>
-            </div>
-          </div>
-
-          {/* Actions Bar - TOUJOURS VISIBLE */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              onClick={() => navigate('/create')}
-              data-testid="create-mode-btn"
-              className="bg-[#00FF66] text-[#050505] hover:bg-[#00FF66]/90 font-['Chivo'] font-bold"
-            >
-              <Zap className="w-4 h-4 mr-2" />
-              Créer avec IA
-            </Button>
-
-            <Button
-              onClick={generateCode}
-              disabled={isLoading || !selectedProject}
-              data-testid="generate-code-btn"
-              className="bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 font-['Chivo'] font-bold disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Générer Code
-            </Button>
-
-            <Separator orientation="vertical" className="h-8" />
 
             {/* EXPORTS - TOUJOURS VISIBLES */}
             <div className="flex items-center gap-2">
@@ -414,104 +375,139 @@ export default function Dashboard() {
                 <Download className="w-4 h-4 mr-1" />
                 ZIP
               </Button>
+
+              <div className="ml-3 flex items-center gap-2 border-l border-white/10 pl-3">
+                <User className="w-5 h-5 text-[#A1A1AA]" />
+                <span className="text-sm">{user?.name}</span>
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Messages */}
-        <ScrollArea className="flex-1 px-6 py-6">
-          <div className="max-w-4xl mx-auto space-y-6">
-            {messages.length === 0 && !selectedProject && (
-              <div className="text-center py-20">
-                <Sparkles className="w-16 h-16 text-[#E4FF00] mx-auto mb-6" />
-                <h2 className="text-2xl font-['Chivo'] font-bold mb-3">
-                  Bienvenue sur CodeForge AI
-                </h2>
-                <p className="text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-6">
-                  Créez un nouveau projet pour commencer à générer des applications
-                </p>
-                <Button
-                  onClick={createNewProject}
-                  className="bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 font-['Chivo'] font-bold"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Créer un Projet
-                </Button>
-              </div>
-            )}
-
-            <AnimatePresence>
-              {messages.map((msg, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[80%] p-4 rounded-sm ${
-                      msg.role === 'user'
-                        ? 'bg-[#0F0F13] border border-white/10 text-right'
-                        : 'bg-[#0F0F13] border-l-2 border-[#E4FF00]'
-                    }`}
-                    data-testid={`message-${msg.role}-${idx}`}
-                  >
-                    <div className="font-['IBM_Plex_Sans'] whitespace-pre-wrap">
-                      {msg.content}
-                    </div>
-                    <div className="text-xs text-[#A1A1AA] mt-2 font-['IBM_Plex_Mono']">
-                      {new Date(msg.timestamp).toLocaleTimeString('fr-FR')}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            {isLoading && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex justify-start"
-              >
-                <div className="bg-[#0F0F13] border-l-2 border-[#E4FF00] p-4 rounded-sm">
-                  <Loader2 className="w-5 h-5 animate-spin text-[#E4FF00]" />
-                </div>
-              </motion.div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
-
-        {/* Input */}
-        <div className="border-t border-white/10 bg-[#0F0F13] px-6 py-4">
-          <form onSubmit={sendMessage} className="max-w-4xl mx-auto">
-            <div className="flex gap-3">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Décrivez votre application ou posez une question..."
-                disabled={isLoading}
-                data-testid="chat-input"
-                className="flex-1 px-4 py-3 bg-[#050505] border border-white/20 rounded-sm text-white placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#E4FF00] font-['IBM_Plex_Sans'] disabled:opacity-50"
-              />
-              <Button
-                type="submit"
-                disabled={isLoading || !inputMessage.trim()}
-                data-testid="send-message-btn"
-                className="px-6 bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 disabled:opacity-50 font-['Chivo'] font-bold"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Send className="w-5 h-5" />
-                )}
-              </Button>
+        {/* 4 Main Buttons Center */}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-5xl w-full">
+            <div className="text-center mb-12">
+              <h2 className="text-4xl font-['Chivo'] font-black mb-4">
+                Que souhaitez-vous faire ?
+              </h2>
+              <p className="text-[#A1A1AA] text-lg">
+                Choisissez votre mode de travail
+              </p>
             </div>
-          </form>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Bouton 1: Interaction en ligne */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/chat', { state: { mode: 'online' } })}
+                className="group bg-[#0F0F13] border-2 border-[#E4FF00] rounded-lg p-8 hover:bg-[#E4FF00]/5 transition-all"
+              >
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-16 h-16 bg-[#E4FF00] rounded-full flex items-center justify-center">
+                    <Send className="w-8 h-8 text-[#050505]" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
+                      Interaction
+                    </h3>
+                    <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
+                      IA EN LIGNE
+                    </div>
+                    <p className="text-[#A1A1AA]">
+                      Discutez avec une IA puissante
+                    </p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* Bouton 2: Création en ligne */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/create', { state: { mode: 'online' } })}
+                className="group bg-[#0F0F13] border-2 border-[#00FF66] rounded-lg p-8 hover:bg-[#00FF66]/5 transition-all"
+              >
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-16 h-16 bg-[#00FF66] rounded-full flex items-center justify-center">
+                    <Code2 className="w-8 h-8 text-[#050505]" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
+                      Création
+                    </h3>
+                    <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
+                      EN LIGNE
+                    </div>
+                    <p className="text-[#A1A1AA]">
+                      Générez apps mobile, web, desktop
+                    </p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* Bouton 3: Interaction hors ligne */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/chat', { state: { mode: 'offline' } })}
+                className="group bg-[#0F0F13] border-2 border-cyan-400 rounded-lg p-8 hover:bg-cyan-400/5 transition-all"
+              >
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center">
+                    <Send className="w-8 h-8 text-[#050505]" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
+                      Interaction
+                    </h3>
+                    <div className="inline-block px-3 py-1 bg-cyan-400 text-[#050505] rounded-full text-xs font-bold mb-3">
+                      IA HORS LIGNE
+                    </div>
+                    <p className="text-[#A1A1AA]">
+                      IA locale (Ollama) sans connexion
+                    </p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* Bouton 4: Création hors ligne */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/create', { state: { mode: 'offline' } })}
+                className="group bg-[#0F0F13] border-2 border-purple-400 rounded-lg p-8 hover:bg-purple-400/5 transition-all"
+              >
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-16 h-16 bg-purple-400 rounded-full flex items-center justify-center">
+                    <Code2 className="w-8 h-8 text-[#050505]" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
+                      Création
+                    </h3>
+                    <div className="inline-block px-3 py-1 bg-purple-400 text-[#050505] rounded-full text-xs font-bold mb-3">
+                      HORS LIGNE
+                    </div>
+                    <p className="text-[#A1A1AA]">
+                      Générez apps avec IA locale (Ollama)
+                    </p>
+                  </div>
+                </div>
+              </motion.button>
+            </div>
+
+            {/* Info section */}
+            <div className="mt-12 text-center">
+              <p className="text-sm text-[#A1A1AA] mb-2">
+                💡 <strong className="text-white">Mode en ligne</strong> : IA puissante avec Ollama distant
+              </p>
+              <p className="text-sm text-[#A1A1AA]">
+                🔌 <strong className="text-white">Mode hors ligne</strong> : Nécessite Ollama installé localement
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

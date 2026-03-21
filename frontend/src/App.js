@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Create from './pages/Create';
+import Chat from './pages/Chat';
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -56,6 +57,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/chat" 
+        element={
+          <ProtectedRoute>
+            <Chat />
           </ProtectedRoute>
         } 
       />
