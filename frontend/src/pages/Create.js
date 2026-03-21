@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import { 
   Send, Sparkles, Loader2, ArrowLeft, Download, 
-  Smartphone, Monitor, Globe, Play, Code, Eye
+  Smartphone, Monitor, Globe, Play, Code, Eye,
+  FileText, FileType, Image, ExternalLink
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
@@ -17,6 +18,8 @@ const API = `${BACKEND_URL}/api`;
 export default function Create() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const mode = location.state?.mode || 'online';
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -24,6 +27,7 @@ export default function Create() {
   const [currentProject, setCurrentProject] = useState(null);
   const [generatedCode, setGeneratedCode] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -50,18 +54,26 @@ export default function Create() {
     try {
       const response = await axios.post(
         `${API}/ai/generate-complete-app`,
-        { description: userMessage },
+        { description: userMessage, mode },
         { withCredentials: true }
       );
 
       setGeneratedCode(response.data.code);
       setCurrentProject(response.data.project);
+      
+      // Set preview URL
+      if (response.data.preview_url) {
+        setPreviewUrl(response.data.preview_url);
+      } else if (response.data.project?.id) {
+        setPreviewUrl(`${API}/preview/project/${response.data.project.id}`);
+      }
 
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.data.explanation,
         timestamp: new Date(),
-        hasCode: true
+        hasCode: true,
+        previewUrl: response.data.preview_url || `${API}/preview/project/${response.data.project?.id}`
       }]);
 
       toast.success('Application générée !');
@@ -76,6 +88,21 @@ export default function Create() {
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // Ouvrir la prévisualisation dans un nouvel onglet
+  const openPreview = (type) => {
+    const previewTypes = {
+      web: `${API}/preview/demo/web`,
+      pdf: `${API}/preview/demo/pdf`,
+      docx: `${API}/preview/demo/docx`,
+      app: `${API}/preview/demo/app`,
+      image: `${API}/preview/demo/image`
+    };
+    
+    const url = previewUrl || previewTypes[type] || previewTypes.web;
+    window.open(url, '_blank');
+    toast.success(`Prévisualisation ${type.toUpperCase()} ouverte`);
   };
 
   const exportApp = async (type) => {
@@ -109,29 +136,78 @@ export default function Create() {
             <div className="flex items-center gap-2">
               <Sparkles className="w-6 h-6 text-[#E4FF00]" />
               <h1 className="font-['Chivo'] font-bold text-2xl">Création IA Sans Limites</h1>
+              <span className={`ml-2 px-2 py-1 text-xs rounded-full font-bold ${mode === 'online' ? 'bg-[#00FF66] text-[#050505]' : 'bg-purple-400 text-[#050505]'}`}>
+                {mode === 'online' ? 'EN LIGNE' : 'HORS LIGNE'}
+              </span>
             </div>
           </div>
 
-          {currentProject && (
-            <div className="flex items-center gap-2">
-              <Button onClick={() => setShowPreview(!showPreview)} size="sm" variant="outline">
-                <Eye className="w-4 h-4 mr-2" />
-                {showPreview ? 'Cacher' : 'Aperçu'}
-              </Button>
-              <Button onClick={() => exportApp('apk')} size="sm" className="bg-[#E4FF00] text-[#050505]">
-                <Smartphone className="w-4 h-4 mr-2" />
-                APK
-              </Button>
-              <Button onClick={() => exportApp('exe')} size="sm" className="bg-[#E4FF00] text-[#050505]">
-                <Monitor className="w-4 h-4 mr-2" />
-                EXE
-              </Button>
-              <Button onClick={() => exportApp('web')} size="sm" className="bg-[#00FF66] text-[#050505]">
-                <Globe className="w-4 h-4 mr-2" />
-                Web
-              </Button>
-            </div>
-          )}
+          {/* Boutons de Prévisualisation - TOUJOURS VISIBLES */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-2">PRÉVISUALISATION:</span>
+            
+            <Button
+              onClick={() => openPreview('web')}
+              size="sm"
+              variant="outline"
+              data-testid="preview-web-btn"
+              className="border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-[#050505]"
+              title="Prévisualiser Web"
+            >
+              <Globe className="w-4 h-4 mr-1" />
+              Web
+            </Button>
+            
+            <Button
+              onClick={() => openPreview('app')}
+              size="sm"
+              variant="outline"
+              data-testid="preview-app-btn"
+              className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505]"
+              title="Prévisualiser App"
+            >
+              <Smartphone className="w-4 h-4 mr-1" />
+              App
+            </Button>
+            
+            <Button
+              onClick={() => openPreview('pdf')}
+              size="sm"
+              variant="outline"
+              data-testid="preview-pdf-btn"
+              className="border-red-400 text-red-400 hover:bg-red-400 hover:text-[#050505]"
+              title="Prévisualiser PDF"
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              PDF
+            </Button>
+            
+            <Button
+              onClick={() => openPreview('docx')}
+              size="sm"
+              variant="outline"
+              data-testid="preview-docx-btn"
+              className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-[#050505]"
+              title="Prévisualiser DOCX"
+            >
+              <FileType className="w-4 h-4 mr-1" />
+              DOCX
+            </Button>
+
+            {currentProject && (
+              <>
+                <div className="w-px h-6 bg-white/10 mx-2" />
+                <Button onClick={() => exportApp('apk')} size="sm" className="bg-[#E4FF00] text-[#050505]">
+                  <Smartphone className="w-4 h-4 mr-1" />
+                  APK
+                </Button>
+                <Button onClick={() => exportApp('exe')} size="sm" className="bg-[#E4FF00] text-[#050505]">
+                  <Monitor className="w-4 h-4 mr-1" />
+                  EXE
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -173,11 +249,21 @@ export default function Create() {
                     }`}>
                       <p className="whitespace-pre-wrap">{msg.content}</p>
                       {msg.hasCode && (
-                        <div className="mt-3 pt-3 border-t border-white/10">
+                        <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
                           <p className="text-xs text-[#00FF66] flex items-center gap-2">
                             <Code className="w-4 h-4" />
                             Code généré et prêt à exporter
                           </p>
+                          {/* Bouton Prévisualisation inline */}
+                          <Button
+                            onClick={() => window.open(msg.previewUrl || `${API}/preview/demo/web`, '_blank')}
+                            size="sm"
+                            data-testid={`preview-inline-btn-${idx}`}
+                            className="bg-[#00FF66] text-[#050505] hover:bg-[#00FF66]/80"
+                          >
+                            <ExternalLink className="w-3 h-3 mr-1" />
+                            Prévisualiser
+                          </Button>
                         </div>
                       )}
                     </div>

@@ -55,7 +55,7 @@
 
 ### 1. Accéder à l'Application
 
-**URL actuelle:** https://code-gen-pro-2.preview.emergentagent.com
+**URL actuelle:** https://deepseek-forge.preview.emergentagent.com
 
 > ⚠️ **Important**: Cette URL est temporaire. Suivez le [Guide de Déploiement](/DEPLOYMENT_GUIDE.md) pour un hébergement permanent.
 

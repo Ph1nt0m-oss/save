@@ -6,6 +6,7 @@ import { Toaster } from './components/ui/sonner';
 
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import SMSLogin from './pages/SMSLogin';
 import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Create from './pages/Create';
@@ -63,6 +64,7 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/sms-login" element={<SMSLogin />} />
       <Route 
         path="/dashboard" 
         element={

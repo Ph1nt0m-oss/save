@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Chrome } from 'lucide-react';
+import { Chrome, Phone } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -51,9 +51,27 @@ export default function Login() {
               Continuer avec Google
             </button>
 
-            <div className="pt-6 border-t border-white/10">
-              <p className="text-sm text-[#A1A1AA] font-['IBM_Plex_Sans']">
-                Mode hors ligne avec SMS bientôt disponible
+            <div className="relative py-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10"></div>
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-[#0F0F13] px-4 text-sm text-[#A1A1AA]">ou</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => navigate('/sms-login')}
+              data-testid="sms-login-btn"
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-cyan-400 text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-1 hover:shadow-[0_6px_20px_rgba(0,255,255,0.3)] transition-all duration-200"
+            >
+              <Phone className="w-5 h-5" />
+              Connexion SMS (Hors Ligne)
+            </button>
+
+            <div className="pt-4">
+              <p className="text-xs text-[#A1A1AA] font-['IBM_Plex_Sans']">
+                💡 La connexion SMS permet d'utiliser l'app même sans internet
               </p>
             </div>
           </div>

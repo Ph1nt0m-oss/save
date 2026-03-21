@@ -10,7 +10,7 @@ import json
 from datetime import datetime
 
 class CodeForgeAPITester:
-    def __init__(self, base_url="https://code-gen-pro-2.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://deepseek-forge.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.session_token = "test_session_1774121712141"  # From MongoDB setup
         self.user_id = "test-user-1774121712141"

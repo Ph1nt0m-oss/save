@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Globe, FileText, FileType, Smartphone, ExternalLink } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -26,6 +26,19 @@ export default function Chat() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Ouvrir la prévisualisation dans un nouvel onglet
+  const openPreview = (type) => {
+    const previewTypes = {
+      web: `${API}/preview/demo/web`,
+      pdf: `${API}/preview/demo/pdf`,
+      docx: `${API}/preview/demo/docx`,
+      app: `${API}/preview/demo/app`
+    };
+    
+    window.open(previewTypes[type], '_blank');
+    toast.success(`Prévisualisation ${type.toUpperCase()} ouverte`);
   };
 
   const sendMessage = async (e) => {
@@ -88,6 +101,55 @@ export default function Chat() {
                 </span>
               </div>
             </div>
+          </div>
+          
+          {/* Boutons de Prévisualisation */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-2">PRÉVISUALISATION:</span>
+            
+            <Button
+              onClick={() => openPreview('web')}
+              size="sm"
+              variant="outline"
+              data-testid="chat-preview-web-btn"
+              className="border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-[#050505]"
+            >
+              <Globe className="w-4 h-4 mr-1" />
+              Web
+            </Button>
+            
+            <Button
+              onClick={() => openPreview('app')}
+              size="sm"
+              variant="outline"
+              data-testid="chat-preview-app-btn"
+              className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505]"
+            >
+              <Smartphone className="w-4 h-4 mr-1" />
+              App
+            </Button>
+            
+            <Button
+              onClick={() => openPreview('pdf')}
+              size="sm"
+              variant="outline"
+              data-testid="chat-preview-pdf-btn"
+              className="border-red-400 text-red-400 hover:bg-red-400 hover:text-[#050505]"
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              PDF
+            </Button>
+            
+            <Button
+              onClick={() => openPreview('docx')}
+              size="sm"
+              variant="outline"
+              data-testid="chat-preview-docx-btn"
+              className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-[#050505]"
+            >
+              <FileType className="w-4 h-4 mr-1" />
+              DOCX
+            </Button>
           </div>
         </div>
       </header>
