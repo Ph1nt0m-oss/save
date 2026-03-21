@@ -235,6 +235,100 @@ async def logout(request: Request, response: Response):
     response.delete_cookie("session_token", path="/")
     return {"message": "Déconnexion réussie"}
 
+@api_router.post("/ai/generate-complete-app")
+async def ai_generate_complete_app(request: Request, data: dict):
+    """Generate complete application automatically with Ollama"""
+    user_id = await get_current_user(request)
+    
+    description = data.get('description', '')
+    
+    try:
+        ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+        ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.3')
+        
+        prompt = f"""Tu es un expert en d\u00e9veloppement. G\u00e9n\u00e8re une application COMPL\u00c8TE et FONCTIONNELLE.
+
+Description: {description}
+
+G\u00e9n\u00e8re une application professionnelle avec:
+- Structure compl\u00e8te de fichiers
+- Frontend (HTML/CSS/JS ou React)
+- Backend si n\u00e9cessaire (API)
+- Base de donn\u00e9es si n\u00e9cessaire
+- Tout le code fonctionnel
+
+R\u00e9ponds UNIQUEMENT avec un JSON valide:
+{{
+  \"files\": [
+    {{\"path\": \"index.html\", \"content\": \"...\"}},
+    {{\"path\": \"style.css\", \"content\": \"...\"}},
+    {{\"path\": \"app.js\", \"content\": \"...\"}}
+  ],
+  \"explanation\": \"Explication en fran\u00e7ais de ce qui a \u00e9t\u00e9 cr\u00e9\u00e9\",
+  \"instructions\": \"Instructions d'installation et d'utilisation\"
+}}"""
+
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            response = await client.post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": ollama_model,
+                    "prompt": prompt,
+                    "stream": False
+                }
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                ai_text = result.get('response', '')
+                
+                # Extract JSON
+                try:
+                    start = ai_text.find('{')
+                    end = ai_text.rfind('}') + 1
+                    if start >= 0 and end > start:
+                        json_str = ai_text[start:end]
+                        generated = json.loads(json_str)
+                        
+                        # Create project
+                        project_id = f"proj_{uuid.uuid4().hex[:12]}"
+                        project = {
+                            "project_id": project_id,
+                            "user_id": user_id,
+                            "name": description[:50],
+                            "description": description,
+                            "project_type": "web",
+                            "generated_code": generated,
+                            "status": "completed",
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.projects.insert_one(project)
+                        
+                        return {
+                            "code": generated,
+                            "explanation": generated.get('explanation', 'Application g\u00e9n\u00e9r\u00e9e avec succ\u00e8s'),
+                            "project": {"id": project_id, "name": description[:50]}
+                        }
+                    else:
+                        raise ValueError("No JSON found")
+                except Exception as e:
+                    logger.error(f"JSON parsing error: {e}")
+                    return {
+                        "code": {"files": [], "explanation": ai_text},
+                        "explanation": ai_text[:500],
+                        "project": None
+                    }
+            else:
+                raise HTTPException(status_code=500, detail="Ollama API error")
+                
+    except Exception as e:
+        logger.error(f"Error generating app: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Installez Ollama pour une g\u00e9n\u00e9ration illimit\u00e9e. Voir OLLAMA_SETUP.md"
+        )
+
 # ==================== AI CODE GENERATION ROUTES ====================
 
 @api_router.post("/ai/generate-code")

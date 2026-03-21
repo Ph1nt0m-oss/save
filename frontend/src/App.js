@@ -8,7 +8,7 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
-import CodeEditor from './pages/CodeEditor';
+import Create from './pages/Create';
 
 // Protected Route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -60,10 +60,10 @@ function AppRouter() {
         } 
       />
       <Route 
-        path="/editor" 
+        path="/create" 
         element={
           <ProtectedRoute>
-            <CodeEditor />
+            <Create />
           </ProtectedRoute>
         } 
       />

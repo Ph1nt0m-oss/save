@@ -355,12 +355,12 @@ export default function Dashboard() {
           {/* Actions Bar - TOUJOURS VISIBLE */}
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              onClick={() => selectedProject ? navigate('/editor', { state: { project: selectedProject } }) : navigate('/editor')}
+              onClick={() => navigate('/create')}
               data-testid="create-mode-btn"
               className="bg-[#00FF66] text-[#050505] hover:bg-[#00FF66]/90 font-['Chivo'] font-bold"
             >
               <Zap className="w-4 h-4 mr-2" />
-              Éditeur de Code
+              Créer avec IA
             </Button>
 
             <Button
