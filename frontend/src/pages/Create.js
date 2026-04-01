@@ -79,12 +79,13 @@ export default function Create() {
       toast.success('Application générée !');
     } catch (error) {
       console.error('Generation error:', error);
+      const errorMsg = error.response?.data?.detail || 'Erreur de génération';
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Erreur: Installez Ollama pour une génération illimitée. Voir OLLAMA_SETUP.md',
+        content: `Erreur: ${errorMsg}. Le mode en ligne utilise l'IA cloud, le mode hors ligne nécessite Ollama installé localement.`,
         timestamp: new Date()
       }]);
-      toast.error('Erreur de génération');
+      toast.error(errorMsg);
     } finally {
       setIsGenerating(false);
     }

@@ -381,18 +381,15 @@ async def logout(request: Request, response: Response):
 
 @api_router.post("/ai/generate-complete-app")
 async def ai_generate_complete_app(request: Request, data: dict):
-    """Generate complete application automatically with Ollama"""
+    """Generate complete application - tries Ollama first, then falls back to cloud AI"""
     user_id = await get_current_user(request)
     
     description = data.get('description', '')
+    mode = data.get('mode', 'online')  # 'online' or 'offline'
     wizard_config = data.get('wizard_config', {})
     
-    try:
-        ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-        ollama_model = os.environ.get('OLLAMA_MODEL', 'deepseek-coder:6.7b')
-        
-        # Prompt amélioré pour DeepSeek Coder
-        prompt = f"""Tu es un expert développeur senior. Tu dois générer une application COMPLÈTE, PROFESSIONNELLE et FONCTIONNELLE.
+    # Prompt amélioré
+    prompt = f"""Tu es un expert développeur senior. Tu dois générer une application COMPLÈTE, PROFESSIONNELLE et FONCTIONNELLE.
 
 === DESCRIPTION DU PROJET ===
 {description}
@@ -436,87 +433,382 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant ou après:
 
 IMPORTANT: Le code doit être complet et fonctionnel immédiatement sans modifications."""
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{ollama_url}/api/generate",
-                json={
-                    "model": ollama_model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.3,
-                        "top_p": 0.9,
-                        "num_predict": 4096
+    ai_text = None
+    ai_source = None
+    
+    # Try Ollama first (for offline mode or if requested)
+    if mode == 'offline':
+        try:
+            ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+            ollama_model = os.environ.get('OLLAMA_MODEL', 'deepseek-coder:6.7b')
+            
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{ollama_url}/api/generate",
+                    json={
+                        "model": ollama_model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {
+                            "temperature": 0.3,
+                            "top_p": 0.9,
+                            "num_predict": 4096
+                        }
                     }
-                }
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if 'error' not in result:
+                        ai_text = result.get('response', '')
+                        ai_source = 'ollama'
+                        logger.info("Generation via Ollama successful")
+                    else:
+                        logger.warning(f"Ollama error: {result.get('error')}")
+        except Exception as e:
+            logger.warning(f"Ollama not available: {e}")
+    
+    # Fallback to Emergent/OpenAI for online mode or if Ollama failed
+    if ai_text is None:
+        try:
+            from emergentintegrations.llm.chat import chat, LlmModel
+            
+            response = await chat(
+                model=LlmModel.GPT_4O,
+                system_prompt="Tu es un expert développeur qui génère du code complet et fonctionnel. Réponds toujours en JSON valide.",
+                user_prompt=prompt
             )
             
-            if response.status_code == 200:
-                result = response.json()
-                ai_text = result.get('response', '')
-                
-                # Extract JSON
-                try:
-                    start = ai_text.find('{')
-                    end = ai_text.rfind('}') + 1
-                    if start >= 0 and end > start:
-                        json_str = ai_text[start:end]
-                        generated = json.loads(json_str)
-                        
-                        # Create project
-                        project_id = f"proj_{uuid.uuid4().hex[:12]}"
-                        project = {
-                            "project_id": project_id,
-                            "user_id": user_id,
-                            "name": description[:50],
-                            "description": description,
-                            "project_type": "web",
-                            "generated_code": generated,
-                            "status": "completed",
-                            "created_at": datetime.now(timezone.utc).isoformat(),
-                            "updated_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        await db.projects.insert_one(project)
+            ai_text = response
+            ai_source = 'emergent'
+            logger.info("Generation via Emergent AI successful")
+        except Exception as e:
+            logger.error(f"Emergent AI error: {e}")
+            
+            # Last resort: generate a basic template
+            ai_text = generate_basic_template(description)
+            ai_source = 'template'
+            logger.info("Using basic template as fallback")
+    
+    # Process AI response
+    try:
+        # Extract JSON from response
+        start = ai_text.find('{')
+        end = ai_text.rfind('}') + 1
+        
+        if start >= 0 and end > start:
+            json_str = ai_text[start:end]
+            generated = json.loads(json_str)
+        else:
+            # If no JSON found, use template
+            generated = json.loads(generate_basic_template(description))
+        
+        # Create project
+        project_id = f"proj_{uuid.uuid4().hex[:12]}"
+        project = {
+            "project_id": project_id,
+            "user_id": user_id,
+            "name": description[:50],
+            "description": description,
+            "project_type": "web",
+            "generated_code": generated,
+            "ai_source": ai_source,
+            "status": "completed",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.projects.insert_one(project)
 
-                        # Create preview
-                        preview_id = f"preview_{uuid.uuid4().hex[:12]}"
-                        preview_doc = {
-                            "preview_id": preview_id,
-                            "project_id": project_id,
-                            "user_id": user_id,
-                            "files": generated.get("files", []),
-                            "created_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        await db.previews.insert_one(preview_doc)
-                        
-                        # Get backend URL
-                        backend_url = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')
-                        preview_url = f"{backend_url}/api/preview/{preview_id}"
+        # Create preview
+        preview_id = f"preview_{uuid.uuid4().hex[:12]}"
+        preview_doc = {
+            "preview_id": preview_id,
+            "project_id": project_id,
+            "user_id": user_id,
+            "files": generated.get("files", []),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.previews.insert_one(preview_doc)
+        
+        # Get backend URL
+        backend_url = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')
+        preview_url = f"{backend_url}/api/preview/{preview_id}"
 
-                        
-                        return {
-                            "code": generated,
-                            "explanation": generated.get('explanation', 'Application g\u00e9n\u00e9r\u00e9e avec succ\u00e8s'),
-                            "project": {"id": project_id, "name": description[:50]}
-                        }
-                    else:
-                        raise ValueError("No JSON found")
-                except Exception as e:
-                    logger.error(f"JSON parsing error: {e}")
-                    return {
-                        "code": {"files": [], "explanation": ai_text},
-                        "explanation": ai_text[:500],
-                        "project": None
-                    }
-            else:
-                raise HTTPException(status_code=500, detail="Ollama API error")
-                
+        return {
+            "code": generated,
+            "explanation": generated.get('explanation', 'Application générée avec succès'),
+            "project": {"id": project_id, "name": description[:50]},
+            "preview_url": preview_url,
+            "ai_source": ai_source
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}")
+        raise HTTPException(status_code=500, detail="Erreur de parsing de la réponse IA")
     except Exception as e:
         logger.error(f"Error generating app: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Installez Ollama pour une g\u00e9n\u00e9ration illimit\u00e9e. Voir OLLAMA_SETUP.md"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+def generate_basic_template(description: str) -> str:
+    """Generate a basic HTML/CSS/JS template as fallback"""
+    app_name = description[:30] if description else "Mon Application"
+    
+    return json.dumps({
+        "files": [
+            {
+                "path": "index.html",
+                "content": f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{app_name}</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>{app_name}</h1>
+            <p class="subtitle">Généré par CodeForge AI</p>
+        </header>
+        <main>
+            <section class="hero">
+                <h2>Bienvenue</h2>
+                <p>{description}</p>
+                <button id="startBtn" class="btn-primary">Commencer</button>
+            </section>
+            <section class="features">
+                <div class="feature-card">
+                    <span class="icon">⚡</span>
+                    <h3>Rapide</h3>
+                    <p>Performance optimisée</p>
+                </div>
+                <div class="feature-card">
+                    <span class="icon">🎨</span>
+                    <h3>Moderne</h3>
+                    <p>Design élégant</p>
+                </div>
+                <div class="feature-card">
+                    <span class="icon">📱</span>
+                    <h3>Responsive</h3>
+                    <p>Tous les appareils</p>
+                </div>
+            </section>
+        </main>
+        <footer>
+            <p>Créé avec CodeForge AI</p>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>"""
+            },
+            {
+                "path": "style.css",
+                "content": """* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #050505;
+    --bg-secondary: #0F0F13;
+    --accent-primary: #E4FF00;
+    --accent-secondary: #00FF66;
+    --text-primary: #FFFFFF;
+    --text-secondary: #A1A1AA;
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+}
+
+.app-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+header {
+    text-align: center;
+    padding: 4rem 0;
+}
+
+header h1 {
+    font-size: 3rem;
+    color: var(--accent-primary);
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+}
+
+.hero {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: var(--bg-secondary);
+    border-radius: 1rem;
+    margin-bottom: 3rem;
+}
+
+.hero h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.hero p {
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    border: none;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    font-weight: bold;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(228, 255, 0, 0.3);
+}
+
+.features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+}
+
+.feature-card {
+    background: var(--bg-secondary);
+    padding: 2rem;
+    border-radius: 0.5rem;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: border-color 0.2s;
+}
+
+.feature-card:hover {
+    border-color: var(--accent-primary);
+}
+
+.feature-card .icon {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.feature-card h3 {
+    color: var(--accent-secondary);
+    margin-bottom: 0.5rem;
+}
+
+footer {
+    text-align: center;
+    padding: 3rem 0;
+    color: var(--text-secondary);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin-top: 4rem;
+}
+
+@media (max-width: 768px) {
+    header h1 {
+        font-size: 2rem;
+    }
+    .hero h2 {
+        font-size: 1.5rem;
+    }
+}"""
+            },
+            {
+                "path": "app.js",
+                "content": """// Application JavaScript
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('Application chargée avec succès!');
+    
+    // Bouton démarrer
+    const startBtn = document.getElementById('startBtn');
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            alert('Bienvenue dans votre application!');
+        });
+    }
+    
+    // Animation des cartes au scroll
+    const cards = document.querySelectorAll('.feature-card');
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    });
+    
+    cards.forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'opacity 0.5s, transform 0.5s';
+        observer.observe(card);
+    });
+});"""
+            },
+            {
+                "path": "manifest.json",
+                "content": """{
+    "name": \"""" + app_name + """\",
+    "short_name": "App",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#050505",
+    "theme_color": "#E4FF00",
+    "icons": []
+}"""
+            },
+            {
+                "path": "README.md",
+                "content": f"""# {app_name}
+
+Application générée par CodeForge AI.
+
+## Description
+{description}
+
+## Installation
+1. Téléchargez les fichiers
+2. Ouvrez `index.html` dans votre navigateur
+
+## Technologies
+- HTML5
+- CSS3 (Variables CSS, Flexbox, Grid)
+- JavaScript ES6+
+
+## Fonctionnalités
+- Design responsive
+- Animations fluides
+- Mode sombre
+
+---
+Créé avec ❤️ par CodeForge AI"""
+            }
+        ],
+        "explanation": f"Application '{app_name}' générée avec un template moderne et responsive.",
+        "instructions": "Ouvrez index.html dans votre navigateur pour voir l'application.",
+        "features": ["Design responsive", "Mode sombre", "Animations", "PWA ready"]
+    })
 
 # ==================== AI CODE GENERATION ROUTES ====================
 
