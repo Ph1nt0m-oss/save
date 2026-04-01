@@ -468,20 +468,29 @@ IMPORTANT: Le code doit être complet et fonctionnel immédiatement sans modific
         except Exception as e:
             logger.warning(f"Ollama not available: {e}")
     
-    # Fallback to Emergent/OpenAI for online mode or if Ollama failed
+    # Fallback to Emergent AI (GPT) for online mode or if Ollama failed
     if ai_text is None:
         try:
-            from emergentintegrations.llm.chat import chat, LlmModel
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
             
-            response = await chat(
-                model=LlmModel.GPT_4O,
-                system_prompt="Tu es un expert développeur qui génère du code complet et fonctionnel. Réponds toujours en JSON valide.",
-                user_prompt=prompt
-            )
+            emergent_key = os.environ.get('EMERGENT_LLM_KEY')
+            if not emergent_key:
+                raise ValueError("EMERGENT_LLM_KEY not configured")
+            
+            # Initialize chat with GPT-4o
+            chat = LlmChat(
+                api_key=emergent_key,
+                session_id=f"codeforge_{uuid.uuid4().hex[:8]}",
+                system_message="Tu es un expert développeur senior. Tu génères du code complet, fonctionnel et professionnel. Réponds TOUJOURS en JSON valide."
+            ).with_model("openai", "gpt-4o")
+            
+            # Send generation request
+            user_message = UserMessage(text=prompt)
+            response = await chat.send_message(user_message)
             
             ai_text = response
-            ai_source = 'emergent'
-            logger.info("Generation via Emergent AI successful")
+            ai_source = 'emergent_gpt4o'
+            logger.info("Generation via Emergent GPT-4o successful")
         except Exception as e:
             logger.error(f"Emergent AI error: {e}")
             
