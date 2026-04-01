@@ -296,10 +296,18 @@ async def create_session(request: SessionDataRequest, response: Response):
                 headers={"X-Session-ID": request.session_id}
             )
             
+            logger.info(f"Emergent Auth response: {auth_response.status_code}")
+            
+            if auth_response.status_code == 404:
+                logger.error("Session ID not found or expired")
+                raise HTTPException(status_code=401, detail="Session expirée ou invalide. Veuillez vous reconnecter.")
+            
             if auth_response.status_code != 200:
+                logger.error(f"Emergent Auth error: {auth_response.text}")
                 raise HTTPException(status_code=401, detail="Session ID invalide")
             
             user_data = auth_response.json()
+            logger.info(f"User authenticated: {user_data.get('email')}")
         
         # Create or update user
         user_id = f"user_{uuid.uuid4().hex[:12]}"
