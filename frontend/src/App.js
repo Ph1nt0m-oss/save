@@ -2,6 +2,8 @@ import React from 'react';
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LanguageProvider } from './contexts/LanguageContext';
+import { CacheProvider } from './contexts/CacheContext';
 import { Toaster } from './components/ui/sonner';
 
 import Landing from './pages/Landing';
@@ -11,6 +13,7 @@ import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Create from './pages/Create';
 import Chat from './pages/Chat';
+import GuidedWizard from './pages/GuidedWizard';
 
 // Protected Route wrapper with offline detection
 const ProtectedRoute = ({ children, allowOffline = false }) => {
@@ -89,6 +92,14 @@ function AppRouter() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/wizard" 
+        element={
+          <ProtectedRoute allowOffline={true}>
+            <GuidedWizard />
+          </ProtectedRoute>
+        } 
+      />
     </Routes>
   );
 }
@@ -97,20 +108,24 @@ function App() {
   return (
     <div className="App dark">
       <BrowserRouter>
-        <AuthProvider>
-          <AppRouter />
-          <Toaster 
-            position="top-right"
-            theme="dark"
-            toastOptions={{
-              style: {
-                background: '#0F0F13',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                color: '#ffffff',
-              },
-            }}
-          />
-        </AuthProvider>
+        <LanguageProvider>
+          <CacheProvider>
+            <AuthProvider>
+              <AppRouter />
+              <Toaster 
+                position="top-right"
+                theme="dark"
+                toastOptions={{
+                  style: {
+                    background: '#0F0F13',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: '#ffffff',
+                  },
+                }}
+              />
+            </AuthProvider>
+          </CacheProvider>
+        </LanguageProvider>
       </BrowserRouter>
     </div>
   );

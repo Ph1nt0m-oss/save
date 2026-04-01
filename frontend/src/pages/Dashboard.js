@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import { useCache } from '../contexts/CacheContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { 
   Send, Plus, LogOut, User, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
-  Download, Loader2, Menu, X, ChevronRight, Zap
+  Download, Loader2, Menu, X, ChevronRight, Zap,
+  Wand2, Languages, Wifi, WifiOff
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -18,6 +21,8 @@ const API = `${BACKEND_URL}/api`;
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const { language, toggleLanguage, t } = useLanguage();
+  const { isOnline, cacheProjects, getCachedProjects } = useCache();
   const navigate = useNavigate();
   
   const [projects, setProjects] = useState([]);
@@ -55,8 +60,19 @@ export default function Dashboard() {
         withCredentials: true
       });
       setProjects(response.data);
+      // Cache pour mode hors ligne
+      cacheProjects(response.data);
     } catch (error) {
       console.error('Error loading projects:', error);
+      // Utiliser le cache en mode hors ligne
+      if (!isOnline) {
+        const cached = getCachedProjects();
+        if (cached.length > 0) {
+          setProjects(cached);
+          toast.info('Projets chargés depuis le cache');
+          return;
+        }
+      }
       toast.error('Erreur lors du chargement des projets');
     }
   };
@@ -387,14 +403,52 @@ export default function Dashboard() {
         {/* 4 Main Buttons Center */}
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-5xl w-full">
-            <div className="text-center mb-12">
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-center gap-4 mb-4">
+                {/* Indicateur de connexion */}
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${isOnline ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'bg-orange-400/20 text-orange-400'}`}>
+                  {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                  {isOnline ? 'En ligne' : 'Hors ligne'}
+                </div>
+                
+                {/* Sélecteur de langue */}
+                <button
+                  onClick={toggleLanguage}
+                  className="flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  <Languages className="w-3 h-3" />
+                  {language === 'fr' ? 'FR' : 'EN'}
+                </button>
+              </div>
+              
               <h2 className="text-4xl font-['Chivo'] font-black mb-4">
-                Que souhaitez-vous faire ?
+                {language === 'fr' ? 'Que souhaitez-vous faire ?' : 'What would you like to do?'}
               </h2>
               <p className="text-[#A1A1AA] text-lg">
-                Choisissez votre mode de travail
+                {language === 'fr' ? 'Choisissez votre mode de travail' : 'Choose your work mode'}
               </p>
             </div>
+
+            {/* Assistant Guidé - Nouveau bouton principal */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate('/wizard')}
+              data-testid="wizard-btn"
+              className="w-full mb-6 bg-gradient-to-r from-[#E4FF00] to-[#00FF66] text-[#050505] rounded-lg p-6 hover:opacity-90 transition-all"
+            >
+              <div className="flex items-center justify-center gap-4">
+                <Wand2 className="w-8 h-8" />
+                <div className="text-left">
+                  <h3 className="text-2xl font-['Chivo'] font-bold">
+                    {language === 'fr' ? 'Assistant Guidé' : 'Guided Wizard'}
+                  </h3>
+                  <p className="text-[#050505]/70">
+                    {language === 'fr' ? 'Créez votre app étape par étape avec des questions simples' : 'Create your app step by step with simple questions'}
+                  </p>
+                </div>
+              </div>
+            </motion.button>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Bouton 1: Interaction en ligne */}
@@ -402,6 +456,7 @@ export default function Dashboard() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/chat', { state: { mode: 'online' } })}
+                data-testid="online-chat-btn"
                 className="group bg-[#0F0F13] border-2 border-[#E4FF00] rounded-lg p-8 hover:bg-[#E4FF00]/5 transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
@@ -410,13 +465,13 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      Interaction
+                      {language === 'fr' ? 'Interaction' : 'Chat'}
                     </h3>
                     <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
-                      IA EN LIGNE
+                      {language === 'fr' ? 'IA EN LIGNE' : 'ONLINE AI'}
                     </div>
                     <p className="text-[#A1A1AA]">
-                      Discutez avec une IA puissante
+                      {language === 'fr' ? 'Discutez avec une IA puissante' : 'Chat with a powerful AI'}
                     </p>
                   </div>
                 </div>
@@ -427,6 +482,7 @@ export default function Dashboard() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/create', { state: { mode: 'online' } })}
+                data-testid="online-create-btn"
                 className="group bg-[#0F0F13] border-2 border-[#00FF66] rounded-lg p-8 hover:bg-[#00FF66]/5 transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
@@ -435,13 +491,13 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      Création
+                      {language === 'fr' ? 'Création' : 'Create'}
                     </h3>
                     <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
-                      EN LIGNE
+                      {language === 'fr' ? 'EN LIGNE' : 'ONLINE'}
                     </div>
                     <p className="text-[#A1A1AA]">
-                      Générez apps mobile, web, desktop
+                      {language === 'fr' ? 'Générez apps mobile, web, desktop' : 'Generate mobile, web, desktop apps'}
                     </p>
                   </div>
                 </div>
@@ -452,6 +508,7 @@ export default function Dashboard() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/chat', { state: { mode: 'offline' } })}
+                data-testid="offline-chat-btn"
                 className="group bg-[#0F0F13] border-2 border-cyan-400 rounded-lg p-8 hover:bg-cyan-400/5 transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
@@ -460,13 +517,13 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      Interaction
+                      {language === 'fr' ? 'Interaction' : 'Chat'}
                     </h3>
                     <div className="inline-block px-3 py-1 bg-cyan-400 text-[#050505] rounded-full text-xs font-bold mb-3">
-                      IA HORS LIGNE
+                      {language === 'fr' ? 'IA HORS LIGNE' : 'OFFLINE AI'}
                     </div>
                     <p className="text-[#A1A1AA]">
-                      IA locale (Ollama) sans connexion
+                      {language === 'fr' ? 'IA locale (Ollama) sans connexion' : 'Local AI (Ollama) without internet'}
                     </p>
                   </div>
                 </div>
@@ -477,6 +534,7 @@ export default function Dashboard() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/create', { state: { mode: 'offline' } })}
+                data-testid="offline-create-btn"
                 className="group bg-[#0F0F13] border-2 border-purple-400 rounded-lg p-8 hover:bg-purple-400/5 transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
@@ -485,13 +543,13 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      Création
+                      {language === 'fr' ? 'Création' : 'Create'}
                     </h3>
                     <div className="inline-block px-3 py-1 bg-purple-400 text-[#050505] rounded-full text-xs font-bold mb-3">
-                      HORS LIGNE
+                      {language === 'fr' ? 'HORS LIGNE' : 'OFFLINE'}
                     </div>
                     <p className="text-[#A1A1AA]">
-                      Générez apps avec IA locale (Ollama)
+                      {language === 'fr' ? 'Générez apps avec IA locale (Ollama)' : 'Generate apps with local AI (Ollama)'}
                     </p>
                   </div>
                 </div>
@@ -501,10 +559,14 @@ export default function Dashboard() {
             {/* Info section */}
             <div className="mt-12 text-center">
               <p className="text-sm text-[#A1A1AA] mb-2">
-                💡 <strong className="text-white">Mode en ligne</strong> : IA puissante avec Ollama distant
+                {language === 'fr' 
+                  ? '💡 Mode en ligne : IA puissante avec Ollama distant'
+                  : '💡 Online mode: Powerful AI with remote Ollama'}
               </p>
               <p className="text-sm text-[#A1A1AA]">
-                🔌 <strong className="text-white">Mode hors ligne</strong> : Nécessite Ollama installé localement
+                {language === 'fr'
+                  ? '🔌 Mode hors ligne : Nécessite Ollama installé localement'
+                  : '🔌 Offline mode: Requires Ollama installed locally'}
               </p>
             </div>
           </div>

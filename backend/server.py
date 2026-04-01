@@ -145,6 +145,39 @@ class SMSAuthRequest(BaseModel):
 
 # ==================== AUTH ROUTES ====================
 
+async def send_sms_via_twilio(phone_number: str, message: str) -> bool:
+    """Send SMS via Twilio if configured, otherwise return False"""
+    twilio_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+    twilio_token = os.environ.get('TWILIO_AUTH_TOKEN')
+    twilio_phone = os.environ.get('TWILIO_PHONE_NUMBER')
+    
+    if not all([twilio_sid, twilio_token, twilio_phone]):
+        logger.warning("Twilio not configured - SMS will be simulated")
+        return False
+    
+    try:
+        # Twilio API call
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json",
+                auth=(twilio_sid, twilio_token),
+                data={
+                    "From": twilio_phone,
+                    "To": phone_number,
+                    "Body": message
+                }
+            )
+            
+            if response.status_code in [200, 201]:
+                logger.info(f"SMS sent successfully to {phone_number}")
+                return True
+            else:
+                logger.error(f"Twilio error: {response.text}")
+                return False
+    except Exception as e:
+        logger.error(f"Twilio exception: {e}")
+        return False
+
 @api_router.post("/auth/sms/send")
 async def send_sms_code(request: SMSAuthRequest):
     """Send SMS verification code (for offline auth)"""
@@ -160,14 +193,22 @@ async def send_sms_code(request: SMSAuthRequest):
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
-        # In production, send actual SMS via Twilio/etc
-        # For now, return code in response (for testing)
-        logger.info(f"SMS Code for {request.phone_number}: {code}")
+        # Try to send via Twilio
+        message = f"Votre code CodeForge AI: {code}. Valide 5 minutes."
+        sms_sent = await send_sms_via_twilio(request.phone_number, message)
         
-        return {
-            "message": "Code SMS envoyé",
-            "code": code  # REMOVE in production, only for testing
+        logger.info(f"SMS Code for {request.phone_number}: {code} (Twilio: {sms_sent})")
+        
+        response_data = {
+            "message": "Code SMS envoyé" if sms_sent else "Code généré (mode démo)",
+            "sms_sent": sms_sent
         }
+        
+        # Return code in response only if Twilio is not configured (for testing)
+        if not sms_sent:
+            response_data["code"] = code  # DEMO MODE - remove when Twilio is configured
+        
+        return response_data
     except Exception as e:
         logger.error(f"Error sending SMS: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -344,40 +385,69 @@ async def ai_generate_complete_app(request: Request, data: dict):
     user_id = await get_current_user(request)
     
     description = data.get('description', '')
+    wizard_config = data.get('wizard_config', {})
     
     try:
         ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-        ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.3')
+        ollama_model = os.environ.get('OLLAMA_MODEL', 'deepseek-coder:6.7b')
         
-        prompt = f"""Tu es un expert en d\u00e9veloppement. G\u00e9n\u00e8re une application COMPL\u00c8TE et FONCTIONNELLE.
+        # Prompt amélioré pour DeepSeek Coder
+        prompt = f"""Tu es un expert développeur senior. Tu dois générer une application COMPLÈTE, PROFESSIONNELLE et FONCTIONNELLE.
 
-Description: {description}
+=== DESCRIPTION DU PROJET ===
+{description}
 
-G\u00e9n\u00e8re une application professionnelle avec:
-- Structure compl\u00e8te de fichiers
-- Frontend (HTML/CSS/JS ou React)
-- Backend si n\u00e9cessaire (API)
-- Base de donn\u00e9es si n\u00e9cessaire
-- Tout le code fonctionnel
+=== EXIGENCES TECHNIQUES ===
+1. Code propre, bien structuré et commenté
+2. Design moderne et responsive (mobile-first)
+3. Gestion des erreurs appropriée
+4. Pas de placeholders - tout le code doit être fonctionnel
+5. Utilise les meilleures pratiques actuelles
 
-R\u00e9ponds UNIQUEMENT avec un JSON valide:
+=== STRUCTURE ATTENDUE ===
+Génère une application avec au minimum:
+- index.html : Page principale avec structure sémantique HTML5
+- style.css : Styles CSS modernes (flexbox/grid, variables CSS, animations)
+- app.js : JavaScript fonctionnel (ES6+, gestion d'événements, stockage local si nécessaire)
+- manifest.json : Pour PWA si applicable
+- README.md : Documentation d'utilisation
+
+=== PALETTE DE COULEURS SUGGÉRÉE ===
+- Fond principal: #050505 (noir profond)
+- Accent primaire: #E4FF00 (jaune cyber)
+- Accent secondaire: #00FF66 (vert)
+- Texte: #FFFFFF
+- Texte secondaire: #A1A1AA
+
+=== FORMAT DE RÉPONSE (JSON STRICT) ===
+Réponds UNIQUEMENT avec ce JSON, sans texte avant ou après:
 {{
-  \"files\": [
-    {{\"path\": \"index.html\", \"content\": \"...\"}},
-    {{\"path\": \"style.css\", \"content\": \"...\"}},
-    {{\"path\": \"app.js\", \"content\": \"...\"}}
+  "files": [
+    {{"path": "index.html", "content": "<!DOCTYPE html>..."}},
+    {{"path": "style.css", "content": "/* styles */..."}},
+    {{"path": "app.js", "content": "// JavaScript..."}},
+    {{"path": "manifest.json", "content": "{{...}}"}},
+    {{"path": "README.md", "content": "# Documentation..."}}
   ],
-  \"explanation\": \"Explication en fran\u00e7ais de ce qui a \u00e9t\u00e9 cr\u00e9\u00e9\",
-  \"instructions\": \"Instructions d'installation et d'utilisation\"
-}}"""
+  "explanation": "Description détaillée de ce qui a été créé",
+  "instructions": "Comment installer et utiliser l'application",
+  "features": ["Liste", "des", "fonctionnalités"]
+}}
 
-        async with httpx.AsyncClient(timeout=90.0) as client:
+IMPORTANT: Le code doit être complet et fonctionnel immédiatement sans modifications."""
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 f"{ollama_url}/api/generate",
                 json={
                     "model": ollama_model,
                     "prompt": prompt,
-                    "stream": False
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.3,
+                        "top_p": 0.9,
+                        "num_predict": 4096
+                    }
                 }
             )
             
