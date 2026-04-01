@@ -77,4 +77,13 @@ agenthub/agents/youtube/db
 .cache/
 
 # Mobile development
-android-sdk/ 
+android-sdk/ -e 
+# Environment files
+*.env
+*.env.*
+builds/desktop/proj_8eea2ce5f1ee/dist/win-unpacked/Une
+application
+de
+liste
+co.exe
+builds/desktop/proj_8eea2ce5f1ee/node_modules/electron/dist/electron

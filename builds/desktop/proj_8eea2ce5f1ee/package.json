@@ -1,0 +1,34 @@
+{
+  "name": "uneapplicationdelist",
+  "version": "1.0.0",
+  "description": "Une application de liste de co - Desktop",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.codeforge.uneapplicationdelist",
+    "productName": "Une application de liste de co",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "uneapplicationdelist.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}

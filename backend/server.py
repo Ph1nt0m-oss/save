@@ -32,6 +32,7 @@ api_router = APIRouter(prefix="/api")
 
 # Import and include PWA routes
 from routes.pwa_routes import export_router as pwa_router
+from routes.desktop_routes import desktop_router
 
 # Configure logging
 logging.basicConfig(
@@ -1517,198 +1518,10 @@ Généré par CodeForge AI 🎨
     )
 
 @api_router.get("/export/desktop/{project_id}")
-async def get_desktop_export(project_id: str):
-    """Download EXE-ready package for the project (Electron)"""
-    project = await db.projects.find_one({"project_id": project_id}, {"_id": 0})
-    
-    if not project:
-        raise HTTPException(status_code=404, detail="Projet non trouvé")
-    
-    generated_code = project.get("generated_code", {})
-    files = generated_code.get("files", [])
-    
-    import io
-    import zipfile
-    
-    zip_buffer = io.BytesIO()
-    app_name = project.get('name', 'App')[:30]
-    safe_name = ''.join(c if c.isalnum() else '' for c in app_name.lower())
-    
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Add all generated files
-        for file in files:
-            zip_file.writestr(f"src/{file['path']}", file['content'])
-        
-        # Add Electron main.js
-        main_js = f'''const {{ app, BrowserWindow }} = require('electron');
-const path = require('path');
-
-function createWindow() {{
-    const win = new BrowserWindow({{
-        width: 1200,
-        height: 800,
-        webPreferences: {{
-            nodeIntegration: false,
-            contextIsolation: true
-        }},
-        icon: path.join(__dirname, 'icon.png'),
-        title: '{app_name}',
-        backgroundColor: '#050505'
-    }});
-    
-    win.loadFile('src/index.html');
-    
-    // Menu minimal
-    win.setMenuBarVisibility(false);
-}}
-
-app.whenReady().then(createWindow);
-
-app.on('window-all-closed', () => {{
-    if (process.platform !== 'darwin') app.quit();
-}});
-
-app.on('activate', () => {{
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-}});
-'''
-        zip_file.writestr("main.js", main_js)
-        
-        # Add package.json for Electron
-        package_json = f'''{{
-  "name": "{safe_name}",
-  "version": "1.0.0",
-  "description": "{app_name} - Application Desktop",
-  "main": "main.js",
-  "scripts": {{
-    "start": "electron .",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux"
-  }},
-  "build": {{
-    "appId": "com.codeforge.{safe_name}",
-    "productName": "{app_name}",
-    "directories": {{
-      "output": "dist"
-    }},
-    "win": {{
-      "target": "nsis",
-      "icon": "icon.ico"
-    }},
-    "mac": {{
-      "target": "dmg",
-      "icon": "icon.icns"
-    }},
-    "linux": {{
-      "target": "AppImage",
-      "icon": "icon.png"
-    }}
-  }},
-  "devDependencies": {{
-    "electron": "^28.0.0",
-    "electron-builder": "^24.0.0"
-  }}
-}}'''
-        zip_file.writestr("package.json", package_json)
-        
-        # Build script Windows
-        build_bat = f'''@echo off
-echo ========================================
-echo   Building {app_name} for Windows
-echo ========================================
-echo.
-echo Installing dependencies...
-call npm install
-echo.
-echo Building EXE...
-call npm run build:win
-echo.
-echo ✅ Done! EXE is in: dist\\{app_name} Setup.exe
-pause
-'''
-        zip_file.writestr("build-exe.bat", build_bat)
-        
-        # Build script Linux/Mac
-        build_sh = f'''#!/bin/bash
-echo "========================================"
-echo "  Building {app_name} for Desktop"
-echo "========================================"
-echo
-echo "Installing dependencies..."
-npm install
-echo
-echo "Building..."
-npm run build:linux  # Change to build:mac for macOS
-echo
-echo "✅ Done! App is in: dist/"
-'''
-        zip_file.writestr("build-exe.sh", build_sh)
-        
-        # README
-        readme = f'''# {app_name} - Application Desktop
-
-## 🚀 Installation rapide
-
-### Windows
-1. Double-cliquez sur `build-exe.bat`
-2. L'installateur sera créé dans `dist/`
-
-### Linux/Mac
-```bash
-chmod +x build-exe.sh
-./build-exe.sh
-```
-
-## 📋 Prérequis
-- Node.js 18+ (https://nodejs.org)
-- npm (inclus avec Node.js)
-
-## 🔧 Commandes manuelles
-
-```bash
-# Installer les dépendances
-npm install
-
-# Lancer en mode développement
-npm start
-
-# Créer l'EXE Windows
-npm run build:win
-
-# Créer le DMG Mac
-npm run build:mac
-
-# Créer l'AppImage Linux
-npm run build:linux
-```
-
-## 📁 Structure
-- `src/` - Code source de l'application
-- `main.js` - Point d'entrée Electron
-- `package.json` - Configuration du projet
-- `dist/` - Fichiers générés (après build)
-
-## 💡 Notes
-- Le build Windows crée un installateur NSIS
-- Le build Mac crée un fichier DMG
-- Le build Linux crée une AppImage portable
-
-Généré par CodeForge AI 🎨
-'''
-        zip_file.writestr("README.md", readme)
-    
-    zip_buffer.seek(0)
-    
-    filename = f"{app_name.replace(' ', '_')}_desktop.zip"
-    
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"'
-        }
-    )
+async def redirect_to_desktop_install(project_id: str):
+    """Redirect to Desktop installation page"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/api/desktop/install/{project_id}")
 
 @api_router.get("/export/download/apk/{project_id}")
 async def download_apk(project_id: str):
@@ -2374,6 +2187,9 @@ app.include_router(api_router)
 
 # Include PWA routes under /api/pwa
 app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])
+
+# Include Desktop routes under /api/desktop
+app.include_router(desktop_router, prefix="/api/desktop", tags=["Desktop"])
 
 app.add_middleware(
     CORSMiddleware,
