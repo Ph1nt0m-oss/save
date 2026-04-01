@@ -30,6 +30,9 @@ app = FastAPI()
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+# Import and include PWA routes
+from routes.pwa_routes import export_router as pwa_router
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -1375,9 +1378,10 @@ async def download_export(request: Request, export_req: ExportRequest):
     )
 
 @api_router.get("/export/mobile/{project_id}")
-async def get_mobile_export(project_id: str):
-    """Download APK-ready package for the project"""
-    project = await db.projects.find_one({"project_id": project_id}, {"_id": 0})
+async def redirect_to_pwa_install(project_id: str):
+    """Redirect to PWA installation page"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/api/pwa/install/{project_id}")
     
     if not project:
         raise HTTPException(status_code=404, detail="Projet non trouvé")
@@ -2367,6 +2371,9 @@ async def health_check():
 
 # Include the router in the main app
 app.include_router(api_router)
+
+# Include PWA routes under /api/pwa
+app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])
 
 app.add_middleware(
     CORSMiddleware,
