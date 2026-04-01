@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Cookie, Response, Request
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -389,57 +390,95 @@ async def logout(request: Request, response: Response):
 
 @api_router.post("/ai/generate-complete-app")
 async def ai_generate_complete_app(request: Request, data: dict):
-    """Generate complete application - tries Ollama first, then falls back to cloud AI"""
+    """Generate complete application like Emergent - React + Backend"""
     user_id = await get_current_user(request)
     
     description = data.get('description', '')
-    mode = data.get('mode', 'online')  # 'online' or 'offline'
+    mode = data.get('mode', 'online')
     wizard_config = data.get('wizard_config', {})
+    app_type = wizard_config.get('appType', 'web')
     
-    # Prompt amélioré
-    prompt = f"""Tu es un expert développeur senior. Tu dois générer une application COMPLÈTE, PROFESSIONNELLE et FONCTIONNELLE.
+    # Prompt ULTRA DÉTAILLÉ comme Emergent
+    prompt = f"""Tu es un développeur expert comme Emergent AI. Tu génères des applications COMPLÈTES, PROFESSIONNELLES et PRÊTES À L'EMPLOI.
 
-=== DESCRIPTION DU PROJET ===
+=== PROJET À CRÉER ===
 {description}
 
-=== EXIGENCES TECHNIQUES ===
-1. Code propre, bien structuré et commenté
-2. Design moderne et responsive (mobile-first)
-3. Gestion des erreurs appropriée
-4. Pas de placeholders - tout le code doit être fonctionnel
-5. Utilise les meilleures pratiques actuelles
+=== EXIGENCES STRICTES ===
+1. Application React moderne avec composants fonctionnels et hooks
+2. Design professionnel avec TailwindCSS
+3. Code 100% fonctionnel - AUCUN placeholder, AUCUN commentaire "à implémenter"
+4. Responsive et mobile-first
+5. Animations fluides avec transitions CSS
+6. Gestion d'état avec useState/useEffect
+7. LocalStorage pour la persistance des données
 
-=== STRUCTURE ATTENDUE ===
-Génère une application avec au minimum:
-- index.html : Page principale avec structure sémantique HTML5
-- style.css : Styles CSS modernes (flexbox/grid, variables CSS, animations)
-- app.js : JavaScript fonctionnel (ES6+, gestion d'événements, stockage local si nécessaire)
-- manifest.json : Pour PWA si applicable
-- README.md : Documentation d'utilisation
+=== STRUCTURE REACT COMPLÈTE ===
+Génère ces fichiers:
 
-=== PALETTE DE COULEURS SUGGÉRÉE ===
-- Fond principal: #050505 (noir profond)
-- Accent primaire: #E4FF00 (jaune cyber)
-- Accent secondaire: #00FF66 (vert)
-- Texte: #FFFFFF
-- Texte secondaire: #A1A1AA
+1. **index.html** - Point d'entrée avec CDN React, ReactDOM, Babel, TailwindCSS
+2. **App.jsx** - Composant principal avec toute la logique
+3. **styles.css** - Styles additionnels et animations
+4. **manifest.json** - Pour PWA (installable sur mobile)
+5. **sw.js** - Service Worker pour mode offline
+6. **README.md** - Documentation complète
 
-=== FORMAT DE RÉPONSE (JSON STRICT) ===
-Réponds UNIQUEMENT avec ce JSON, sans texte avant ou après:
+=== TEMPLATE INDEX.HTML OBLIGATOIRE ===
+```html
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#050505">
+    <link rel="manifest" href="manifest.json">
+    <title>APP_NAME</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-[#050505] text-white min-h-screen">
+    <div id="root"></div>
+    <script type="text/babel" src="App.jsx"></script>
+    <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
+</body>
+</html>
+```
+
+=== DESIGN SYSTEM (COMME EMERGENT) ===
+- Background: #050505 (noir), #0F0F13 (cartes)
+- Primary: #E4FF00 (jaune cyber)
+- Secondary: #00FF66 (vert)
+- Accent: #00D4FF (cyan)
+- Text: #FFFFFF, #A1A1AA (secondaire)
+- Borders: rgba(255,255,255,0.1)
+- Radius: rounded-lg, rounded-xl
+- Shadows: shadow-lg, shadow-[0_0_30px_rgba(228,255,0,0.3)]
+
+=== FORMAT JSON STRICT ===
 {{
   "files": [
-    {{"path": "index.html", "content": "<!DOCTYPE html>..."}},
-    {{"path": "style.css", "content": "/* styles */..."}},
-    {{"path": "app.js", "content": "// JavaScript..."}},
-    {{"path": "manifest.json", "content": "{{...}}"}},
-    {{"path": "README.md", "content": "# Documentation..."}}
+    {{"path": "index.html", "content": "CONTENU COMPLET"}},
+    {{"path": "App.jsx", "content": "COMPOSANT REACT COMPLET"}},
+    {{"path": "styles.css", "content": "STYLES CSS"}},
+    {{"path": "manifest.json", "content": "MANIFEST PWA"}},
+    {{"path": "sw.js", "content": "SERVICE WORKER"}},
+    {{"path": "README.md", "content": "DOCUMENTATION"}}
   ],
-  "explanation": "Description détaillée de ce qui a été créé",
-  "instructions": "Comment installer et utiliser l'application",
-  "features": ["Liste", "des", "fonctionnalités"]
+  "explanation": "Description détaillée",
+  "instructions": "Guide d'utilisation",
+  "features": ["feature1", "feature2"],
+  "pwa_ready": true
 }}
 
-IMPORTANT: Le code doit être complet et fonctionnel immédiatement sans modifications."""
+IMPORTANT: 
+- Le code doit fonctionner IMMÉDIATEMENT en ouvrant index.html
+- L'app doit être installable comme PWA sur mobile
+- Design IDENTIQUE à Emergent (sombre, moderne, animations)"""
 
     ai_text = None
     ai_source = None
@@ -1336,220 +1375,336 @@ async def download_export(request: Request, export_req: ExportRequest):
     )
 
 @api_router.get("/export/mobile/{project_id}")
-async def get_mobile_export_page(project_id: str):
-    """Get mobile export page (App Store privé style)"""
+async def get_mobile_export(project_id: str):
+    """Download APK-ready package for the project"""
     project = await db.projects.find_one({"project_id": project_id}, {"_id": 0})
     
     if not project:
-        return HTMLResponse("<h1>Projet non trouvé</h1>", status_code=404)
+        raise HTTPException(status_code=404, detail="Projet non trouvé")
     
-    html_content = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Installer {project['name']}</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #050505 0%, #0F0F13 100%);
-            color: #ffffff;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-        }}
-        .store-container {{
-            max-width: 600px;
-            width: 100%;
-            background: #0F0F13;
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 1rem;
-            padding: 3rem;
-            text-align: center;
-        }}
-        .app-icon {{
-            width: 120px;
-            height: 120px;
-            background: #E4FF00;
-            border-radius: 24px;
-            margin: 0 auto 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 3rem;
-            font-weight: bold;
-            color: #050505;
-        }}
-        h1 {{
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            color: #E4FF00;
-        }}
-        .description {{
-            color: #A1A1AA;
-            margin-bottom: 2rem;
-            line-height: 1.6;
-        }}
-        .install-btn {{
-            background: #E4FF00;
-            color: #050505;
-            border: none;
-            padding: 1rem 3rem;
-            font-size: 1.2rem;
-            font-weight: bold;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: transform 0.2s;
-            text-decoration: none;
-            display: inline-block;
-        }}
-        .install-btn:hover {{
-            transform: translateY(-2px);
-        }}
-        .info {{
-            margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            color: #A1A1AA;
-            font-size: 0.9rem;
-        }}
-        .qr-code {{
-            margin: 2rem 0;
-            padding: 1rem;
-            background: white;
-            display: inline-block;
-            border-radius: 0.5rem;
-        }}
-    </style>
-</head>
-<body>
-    <div class="store-container">
-        <div class="app-icon">📱</div>
-        <h1>{project['name']}</h1>
-        <p class="description">{project['description']}</p>
-        
-        <a href="/api/export/download/apk/{project_id}" class="install-btn" download>
-            📥 Installer sur Android
-        </a>
-        
-        <div class="info">
-            <p><strong>Type:</strong> {project['project_type'].upper()}</p>
-            <p><strong>Version:</strong> 1.0.0</p>
-            <p style="margin-top: 1rem;">⚠️ Activez "Sources inconnues" dans les paramètres Android</p>
-        </div>
-    </div>
-</body>
-</html>"""
+    generated_code = project.get("generated_code", {})
+    files = generated_code.get("files", [])
     
-    return HTMLResponse(content=html_content)
+    # Create APK-ready package with all necessary files
+    import io
+    import zipfile
+    
+    zip_buffer = io.BytesIO()
+    app_name = project.get('name', 'App')[:30]
+    safe_name = ''.join(c if c.isalnum() else '' for c in app_name.lower())
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Add all generated files to www folder
+        for file in files:
+            zip_file.writestr(f"www/{file['path']}", file['content'])
+        
+        # Add Capacitor config for APK build
+        capacitor_config = f'''{{
+  "appId": "com.codeforge.{safe_name}",
+  "appName": "{app_name}",
+  "webDir": "www",
+  "server": {{
+    "androidScheme": "https"
+  }},
+  "plugins": {{
+    "SplashScreen": {{
+      "launchShowDuration": 2000,
+      "backgroundColor": "#050505"
+    }}
+  }}
+}}'''
+        zip_file.writestr("capacitor.config.json", capacitor_config)
+        
+        # Add package.json for Capacitor
+        package_json = f'''{{
+  "name": "{safe_name}",
+  "version": "1.0.0",
+  "description": "Application générée par CodeForge AI",
+  "main": "www/index.html",
+  "scripts": {{
+    "build:android": "npx cap add android && npx cap sync && cd android && ./gradlew assembleDebug"
+  }},
+  "dependencies": {{
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/core": "^5.0.0",
+    "@capacitor/cli": "^5.0.0"
+  }}
+}}'''
+        zip_file.writestr("package.json", package_json)
+        
+        # Add build script for easy APK generation
+        build_script = '''#!/bin/bash
+echo "🚀 Building APK for Android..."
+npm install
+npx cap add android
+npx cap sync
+cd android && ./gradlew assembleDebug
+echo "✅ APK généré dans: android/app/build/outputs/apk/debug/app-debug.apk"
+'''
+        zip_file.writestr("build-apk.sh", build_script)
+        
+        # Windows batch file
+        build_bat = '''@echo off
+echo Building APK for Android...
+call npm install
+call npx cap add android
+call npx cap sync
+cd android && gradlew assembleDebug
+echo APK genere dans: android\\app\\build\\outputs\\apk\\debug\\app-debug.apk
+pause
+'''
+        zip_file.writestr("build-apk.bat", build_bat)
+        
+        # Add comprehensive README
+        readme = f'''# {app_name} - Package Android
+
+## 🚀 Méthode 1: PWABuilder (Le plus simple)
+1. Hébergez les fichiers du dossier `www/` sur un serveur web
+2. Allez sur https://www.pwabuilder.com/
+3. Entrez l'URL de votre site
+4. Cliquez "Package for stores" → "Android"
+5. Téléchargez votre APK !
+
+## 📱 Méthode 2: Installation PWA directe
+1. Hébergez les fichiers `www/` sur un serveur HTTPS
+2. Ouvrez le site dans Chrome sur Android
+3. Menu ⋮ → "Ajouter à l'écran d'accueil"
+4. L'app s'installe comme une vraie application !
+
+## 🔧 Méthode 3: Capacitor (Développeurs)
+Prérequis: Node.js, Android Studio, JDK 17+
+
+```bash
+# Linux/Mac
+chmod +x build-apk.sh
+./build-apk.sh
+
+# Windows
+build-apk.bat
+```
+
+L'APK sera dans: `android/app/build/outputs/apk/debug/app-debug.apk`
+
+## 📁 Contenu du package
+- `www/` - Code source de l'application
+- `capacitor.config.json` - Configuration Capacitor
+- `package.json` - Dépendances Node.js
+- `build-apk.sh` - Script de build Linux/Mac
+- `build-apk.bat` - Script de build Windows
+
+## 💡 Conseils
+- Pour publier sur le Play Store, utilisez `./gradlew assembleRelease`
+- Signez l'APK avec votre clé de développeur
+
+Généré par CodeForge AI 🎨
+'''
+        zip_file.writestr("README.md", readme)
+    
+    zip_buffer.seek(0)
+    
+    filename = f"{app_name.replace(' ', '_')}_android.zip"
+    
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
 
 @api_router.get("/export/desktop/{project_id}")
-async def get_desktop_export_page(project_id: str):
-    """Get desktop export page"""
+async def get_desktop_export(project_id: str):
+    """Download EXE-ready package for the project (Electron)"""
     project = await db.projects.find_one({"project_id": project_id}, {"_id": 0})
     
     if not project:
-        return HTMLResponse("<h1>Projet non trouvé</h1>", status_code=404)
+        raise HTTPException(status_code=404, detail="Projet non trouvé")
     
-    html_content = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Télécharger {project['name']}</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #050505 0%, #0F0F13 100%);
-            color: #ffffff;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-        }}
-        .download-container {{
-            max-width: 600px;
-            width: 100%;
-            background: #0F0F13;
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 1rem;
-            padding: 3rem;
-            text-align: center;
-        }}
-        .app-icon {{
-            width: 120px;
-            height: 120px;
-            background: #E4FF00;
-            border-radius: 24px;
-            margin: 0 auto 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 3rem;
-            font-weight: bold;
-            color: #050505;
-        }}
-        h1 {{
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            color: #E4FF00;
-        }}
-        .description {{
-            color: #A1A1AA;
-            margin-bottom: 2rem;
-            line-height: 1.6;
-        }}
-        .download-btn {{
-            background: #E4FF00;
-            color: #050505;
-            border: none;
-            padding: 1rem 3rem;
-            font-size: 1.2rem;
-            font-weight: bold;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: transform 0.2s;
-            text-decoration: none;
-            display: inline-block;
-            margin: 0.5rem;
-        }}
-        .download-btn:hover {{
-            transform: translateY(-2px);
-        }}
-        .info {{
-            margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            color: #A1A1AA;
-            font-size: 0.9rem;
-        }}
-    </style>
-</head>
-<body>
-    <div class="download-container">
-        <div class="app-icon">💻</div>
-        <h1>{project['name']}</h1>
-        <p class="description">{project['description']}</p>
-        
-        <a href="/api/export/download/exe/{project_id}" class="download-btn" download>
-            💾 Télécharger pour Windows
-        </a>
-        
-        <div class="info">
-            <p><strong>Type:</strong> Application Desktop</p>
-            <p><strong>Version:</strong> 1.0.0</p>
-            <p><strong>Compatibilité:</strong> Windows 10/11</p>
-        </div>
-    </div>
-</body>
-</html>"""
+    generated_code = project.get("generated_code", {})
+    files = generated_code.get("files", [])
     
-    return HTMLResponse(content=html_content)
+    import io
+    import zipfile
+    
+    zip_buffer = io.BytesIO()
+    app_name = project.get('name', 'App')[:30]
+    safe_name = ''.join(c if c.isalnum() else '' for c in app_name.lower())
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Add all generated files
+        for file in files:
+            zip_file.writestr(f"src/{file['path']}", file['content'])
+        
+        # Add Electron main.js
+        main_js = f'''const {{ app, BrowserWindow }} = require('electron');
+const path = require('path');
+
+function createWindow() {{
+    const win = new BrowserWindow({{
+        width: 1200,
+        height: 800,
+        webPreferences: {{
+            nodeIntegration: false,
+            contextIsolation: true
+        }},
+        icon: path.join(__dirname, 'icon.png'),
+        title: '{app_name}',
+        backgroundColor: '#050505'
+    }});
+    
+    win.loadFile('src/index.html');
+    
+    // Menu minimal
+    win.setMenuBarVisibility(false);
+}}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {{
+    if (process.platform !== 'darwin') app.quit();
+}});
+
+app.on('activate', () => {{
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+}});
+'''
+        zip_file.writestr("main.js", main_js)
+        
+        # Add package.json for Electron
+        package_json = f'''{{
+  "name": "{safe_name}",
+  "version": "1.0.0",
+  "description": "{app_name} - Application Desktop",
+  "main": "main.js",
+  "scripts": {{
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  }},
+  "build": {{
+    "appId": "com.codeforge.{safe_name}",
+    "productName": "{app_name}",
+    "directories": {{
+      "output": "dist"
+    }},
+    "win": {{
+      "target": "nsis",
+      "icon": "icon.ico"
+    }},
+    "mac": {{
+      "target": "dmg",
+      "icon": "icon.icns"
+    }},
+    "linux": {{
+      "target": "AppImage",
+      "icon": "icon.png"
+    }}
+  }},
+  "devDependencies": {{
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  }}
+}}'''
+        zip_file.writestr("package.json", package_json)
+        
+        # Build script Windows
+        build_bat = f'''@echo off
+echo ========================================
+echo   Building {app_name} for Windows
+echo ========================================
+echo.
+echo Installing dependencies...
+call npm install
+echo.
+echo Building EXE...
+call npm run build:win
+echo.
+echo ✅ Done! EXE is in: dist\\{app_name} Setup.exe
+pause
+'''
+        zip_file.writestr("build-exe.bat", build_bat)
+        
+        # Build script Linux/Mac
+        build_sh = f'''#!/bin/bash
+echo "========================================"
+echo "  Building {app_name} for Desktop"
+echo "========================================"
+echo
+echo "Installing dependencies..."
+npm install
+echo
+echo "Building..."
+npm run build:linux  # Change to build:mac for macOS
+echo
+echo "✅ Done! App is in: dist/"
+'''
+        zip_file.writestr("build-exe.sh", build_sh)
+        
+        # README
+        readme = f'''# {app_name} - Application Desktop
+
+## 🚀 Installation rapide
+
+### Windows
+1. Double-cliquez sur `build-exe.bat`
+2. L'installateur sera créé dans `dist/`
+
+### Linux/Mac
+```bash
+chmod +x build-exe.sh
+./build-exe.sh
+```
+
+## 📋 Prérequis
+- Node.js 18+ (https://nodejs.org)
+- npm (inclus avec Node.js)
+
+## 🔧 Commandes manuelles
+
+```bash
+# Installer les dépendances
+npm install
+
+# Lancer en mode développement
+npm start
+
+# Créer l'EXE Windows
+npm run build:win
+
+# Créer le DMG Mac
+npm run build:mac
+
+# Créer l'AppImage Linux
+npm run build:linux
+```
+
+## 📁 Structure
+- `src/` - Code source de l'application
+- `main.js` - Point d'entrée Electron
+- `package.json` - Configuration du projet
+- `dist/` - Fichiers générés (après build)
+
+## 💡 Notes
+- Le build Windows crée un installateur NSIS
+- Le build Mac crée un fichier DMG
+- Le build Linux crée une AppImage portable
+
+Généré par CodeForge AI 🎨
+'''
+        zip_file.writestr("README.md", readme)
+    
+    zip_buffer.seek(0)
+    
+    filename = f"{app_name.replace(' ', '_')}_desktop.zip"
+    
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
 
 @api_router.get("/export/download/apk/{project_id}")
 async def download_apk(project_id: str):
