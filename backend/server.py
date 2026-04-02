@@ -313,3 +313,140 @@ allow_credentials=True,
 allow_methods=["*"],
 allow_headers=["*"],
 )
+
+# ==================== GOOGLE AUTH ====================
+
+from fastapi.responses import RedirectResponse
+from urllib.parse import urlencode
+import secrets
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = "https://no-code-builder-25.preview.emergentagent.com/api/auth/callback"
+
+# STEP 1 → REDIRECT GOOGLE
+
+@api.get("/auth/google")
+async def google_login():
+
+```
+params = {
+    "client_id": GOOGLE_CLIENT_ID,
+    "redirect_uri": GOOGLE_REDIRECT_URI,
+    "response_type": "code",
+    "scope": "openid email profile",
+    "access_type": "offline",
+    "prompt": "consent"
+}
+
+url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+return RedirectResponse(url)
+```
+
+# STEP 2 → CALLBACK GOOGLE
+
+@api.get("/auth/callback")
+async def google_callback(request: Request):
+
+```
+code = request.query_params.get("code")
+if not code:
+    raise HTTPException(400, "Missing code")
+
+# EXCHANGE CODE → TOKEN
+async with httpx.AsyncClient() as client:
+    token_res = await client.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code"
+        }
+    )
+
+token_json = token_res.json()
+access_token = token_json.get("access_token")
+
+# GET USER INFO
+async with httpx.AsyncClient() as client:
+    user_res = await client.get(
+        "https://www.googleapis.com/oauth2/v2/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+user_info = user_res.json()
+email = user_info["email"]
+
+# CREATE / FIND USER
+user = await db.users.find_one({"email": email})
+
+if not user:
+    user = {
+        "user_id": str(uuid.uuid4()),
+        "email": email,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user)
+
+# CREATE SESSION
+session_token = secrets.token_hex(32)
+
+await db.user_sessions.insert_one({
+    "session_token": session_token,
+    "user_id": user["user_id"],
+    "created_at": datetime.now(timezone.utc).isoformat()
+})
+
+# SET COOKIE
+response = RedirectResponse(
+    url="https://no-code-builder-25.preview.emergentagent.com/"
+)
+
+response.set_cookie(
+    key="session_token",
+    value=session_token,
+    httponly=True,
+    secure=True,
+    samesite="None"
+)
+
+return response
+```
+
+# STEP 3 → LOGOUT
+
+@api.post("/auth/logout")
+async def logout(request: Request):
+
+```
+token = request.cookies.get("session_token")
+
+if token:
+    await db.user_sessions.delete_one({"session_token": token})
+
+response = {"status": "logged out"}
+
+return response
+```
+
+# STEP 4 → CURRENT USER
+
+@api.get("/auth/me")
+async def me(request: Request):
+
+```
+token = request.cookies.get("session_token")
+
+if not token:
+    return {"user": None}
+
+session = await db.user_sessions.find_one({"session_token": token})
+if not session:
+    return {"user": None}
+
+user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+
+return {"user": user}
+```
