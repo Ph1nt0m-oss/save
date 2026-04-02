@@ -353,7 +353,7 @@ code = request.query_params.get("code")
 if not code:
     raise HTTPException(400, "Missing code")
 
-# EXCHANGE CODE → TOKEN
+# TOKEN
 async with httpx.AsyncClient() as client:
     token_res = await client.post(
         "https://oauth2.googleapis.com/token",
@@ -366,10 +366,9 @@ async with httpx.AsyncClient() as client:
         }
     )
 
-token_json = token_res.json()
-access_token = token_json.get("access_token")
+access_token = token_res.json().get("access_token")
 
-# GET USER INFO
+# USER INFO
 async with httpx.AsyncClient() as client:
     user_res = await client.get(
         "https://www.googleapis.com/oauth2/v2/userinfo",
@@ -379,40 +378,35 @@ async with httpx.AsyncClient() as client:
 user_info = user_res.json()
 email = user_info["email"]
 
-# CREATE / FIND USER
+# USER
 user = await db.users.find_one({"email": email})
 
 if not user:
     user = {
         "user_id": str(uuid.uuid4()),
-        "email": email,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "email": email
     }
     await db.users.insert_one(user)
 
-# CREATE SESSION
+# SESSION
 session_token = secrets.token_hex(32)
 
 await db.user_sessions.insert_one({
     "session_token": session_token,
-    "user_id": user["user_id"],
-    "created_at": datetime.now(timezone.utc).isoformat()
+    "user_id": user["user_id"]
 })
 
-# SET COOKIE
-response = RedirectResponse(
-    url="https://no-code-builder-25.preview.emergentagent.com/"
-)
+# ⚠️ FIX CRITIQUE : HTML RESPONSE (PAS REDIRECT DIRECT)
+html = f"""
+<html>
+<script>
+    document.cookie = "session_token={session_token}; path=/; domain=.preview.emergentagent.com; Secure; SameSite=None";
+    window.location.href = "/";
+</script>
+</html>
+"""
 
-response.set_cookie(
-    key="session_token",
-    value=session_token,
-    httponly=True,
-    secure=True,
-    samesite="None"
-)
-
-return response
+return HTMLResponse(content=html)
 ```
 
 # STEP 3 → LOGOUT
