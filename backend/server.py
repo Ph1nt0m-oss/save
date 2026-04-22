@@ -1,33 +1,126 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Cookie, Response, Request
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
+
 from pydantic import BaseModel, Field, ConfigDict
+
+from pathlib import Path
 from typing import List, Optional, Dict, Any
-import uuid
+
 from datetime import datetime, timezone, timedelta
+
+import os
+import uuid
 import httpx
 import json
 import zipfile
 import io
+import base64
+import logging
+import asyncio
 
+# ==================== LOAD ENV ====================
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+# ==================== LOGGING ====================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
+
+# ==================== GITHUB CONFIG ====================
+GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")  # PAT TOKEN recommandé
+GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
+GITHUB_REPO_NAME = os.environ.get("GITHUB_REPO_NAME")
+
+GITHUB_ENABLED = all([
+    GITHUB_CLIENT_SECRET,
+    GITHUB_OWNER,
+    GITHUB_REPO_NAME
+])
+
+if GITHUB_ENABLED:
+    logger.info(f"✅ GitHub activé: {GITHUB_OWNER}/{GITHUB_REPO_NAME}")
+else:
+    logger.warning("⚠️ GitHub désactivé (config .env incomplète)")
+
+# ==================== GITHUB ENGINE ====================
+async def push_to_github(file_path: str, content: str, branch: str = "main", retries: int = 3):
+    """
+    Push auto vers GitHub (robuste + retry + safe update)
+    """
+
+    if not GITHUB_ENABLED:
+        logger.error("❌ GitHub non configuré")
+        return False
+
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_NAME}/contents/{file_path}"
+
+    headers = {
+        "Authorization": f"Bearer {GITHUB_CLIENT_SECRET}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "CodeForge-AI"
+    }
+
+    encoded_content = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+
+        for attempt in range(retries):
+
+            try:
+                sha = None
+
+                # check existing file
+                get_resp = await client.get(url, headers=headers)
+                if get_resp.status_code == 200:
+                    sha = get_resp.json().get("sha")
+
+                payload = {
+                    "message": f"Auto-sync {file_path}",
+                    "content": encoded_content,
+                    "branch": branch
+                }
+
+                if sha:
+                    payload["sha"] = sha
+
+                put_resp = await client.put(url, json=payload, headers=headers)
+
+                if put_resp.status_code in [200, 201]:
+                    logger.info(f"✅ GitHub sync OK: {file_path}")
+                    return True
+
+                logger.warning(f"GitHub fail {attempt+1}: {put_resp.text}")
+
+            except Exception as e:
+                logger.error(f"GitHub error {attempt+1}: {e}")
+
+            await asyncio.sleep(1.5 * (attempt + 1))
+
+    logger.error(f"❌ GitHub FINAL FAIL: {file_path}")
+    return False
+
+# ==================== MONGODB ====================
+mongo_url = os.environ.get("MONGO_URL")
+db_name = os.environ.get("DB_NAME")
+
+if not mongo_url or not db_name:
+    logger.error("❌ MongoDB configuration manquante (.env)")
+    raise Exception("Missing MongoDB config")
+
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[db_name]
 
-# Create the main app without a prefix
+# ==================== FASTAPI APP ====================
 app = FastAPI()
-
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,71 +132,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
-
-# Import and include PWA routes
-from routes.pwa_routes import export_router as pwa_router
-from routes.desktop_routes import desktop_router
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# ==================== MODELS ====================
-
-class User(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    user_id: str
-    email: str
-    name: str
-    picture: Optional[str] = None
-    created_at: datetime
-
-class UserSession(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    session_token: str
-    user_id: str
-    expires_at: datetime
-    created_at: datetime
-
-class SessionDataRequest(BaseModel):
-    session_id: str
-
-class ChatMessageInput(BaseModel):
-    message: str
-    project_id: Optional[str] = None
-    mode: str = "chat"  # "chat" or "create"
-
-class ChatMessage(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    message_id: str = Field(default_factory=lambda: f"msg_{uuid.uuid4().hex[:16]}")
-    user_id: str
-    project_id: Optional[str] = None
-    role: str  # 'user' or 'assistant'
-    content: str
-    mode: str = "chat"
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class Project(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    project_id: str = Field(default_factory=lambda: f"proj_{uuid.uuid4().hex[:12]}")
-    user_id: str
-    name: str
-    description: str
-    project_type: str  # 'web', 'mobile', 'desktop'
-    generated_code: Optional[Dict[str, Any]] = None
-    status: str = "draft"  # 'draft', 'generating', 'completed', 'error'
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class ProjectCreate(BaseModel):
-    name: str
-    description: str
-    project_type: str
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
