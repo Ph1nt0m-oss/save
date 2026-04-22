@@ -122,16 +122,6 @@ db = client[db_name]
 # ==================== FASTAPI APP ====================
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://no-code-builder-25.preview.emergentagent.com"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 api_router = APIRouter(prefix="/api")
 
 class ProjectUpdate(BaseModel):
