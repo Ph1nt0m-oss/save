@@ -2234,8 +2234,10 @@ app.include_router(desktop_router, prefix="/api/desktop", tags=["Desktop"])
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "https://no-code-builder-25.preview.emergentagent.com"
+    ],
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
