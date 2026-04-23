@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Cookie, Response, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
@@ -21,6 +21,10 @@ import io
 import base64
 import logging
 import asyncio
+
+# Import sub-routers (PWA + Desktop)
+from routes.pwa_routes import export_router as pwa_router
+from routes.desktop_routes import desktop_router
 
 # ==================== LOAD ENV ====================
 ROOT_DIR = Path(__file__).parent
@@ -122,7 +126,43 @@ db = client[db_name]
 # ==================== FASTAPI APP ====================
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https://.*\.preview(\.static)?\.emergentagent\.com",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 api_router = APIRouter(prefix="/api")
+
+# ==================== PYDANTIC MODELS ====================
+
+class SessionDataRequest(BaseModel):
+    session_id: str
+
+class ChatMessageInput(BaseModel):
+    message: str
+    project_id: Optional[str] = None
+    mode: Optional[str] = "online"
+
+class Project(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    project_id: str = Field(default_factory=lambda: f"proj_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    name: str
+    description: Optional[str] = ""
+    project_type: str = "web"
+    status: str = "created"
+    generated_code: Optional[Dict[str, Any]] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    project_type: str = "web"
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
@@ -344,6 +384,10 @@ async def create_session(request: SessionDataRequest, response: Response):
             
             user_data = auth_response.json()
             logger.info(f"User authenticated: {user_data.get('email')}")
+
+            if not user_data.get("session_token"):
+                logger.error("session_token missing from Emergent Auth response")
+                raise HTTPException(status_code=500, detail="session_token absent de la réponse Emergent")
         
         # Create or update user
         user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -2224,10 +2268,8 @@ app.include_router(desktop_router, prefix="/api/desktop", tags=["Desktop"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://no-code-builder-25.preview.emergentagent.com"
-    ],
     allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
