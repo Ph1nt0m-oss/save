@@ -437,10 +437,15 @@ async def create_session(request: SessionDataRequest, response: Response):
             path="/"
         )
         
-        # Return user data
+        # Return user data + session_token (fallback if cookies are blocked
+        # by privacy browsers/VPN on cross-site .static. preview domain)
         user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if user is not None:
+            user["session_token"] = session_token
         return user
-    
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating session: {e}")
         raise HTTPException(status_code=500, detail=str(e))

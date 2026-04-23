@@ -45,7 +45,15 @@ export default function AuthCallback() {
         );
 
         console.log('AuthCallback: Session created, user:', response.data?.name || response.data?.email);
-        
+
+        // Save session_token to localStorage as fallback when cross-site cookies
+        // are blocked by the browser (Brave shields, VPN, Safari ITP, etc.)
+        if (response.data?.session_token) {
+          try {
+            localStorage.setItem('session_token', response.data.session_token);
+          } catch (_) {}
+        }
+
         setUser(response.data);
         toast.success('Connexion réussie !');
         
