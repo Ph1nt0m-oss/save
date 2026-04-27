@@ -2255,12 +2255,58 @@ async def root():
 
 @api_router.get("/health")
 async def health_check():
+    """Health check + deployed version info (helps debug auto-deploy)."""
+    import subprocess
+    commit = "unknown"
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(ROOT_DIR.parent), timeout=2
+        ).decode().strip()
+    except Exception:
+        pass
     return {
         "status": "healthy",
+        "commit": commit,
         "chat_ai": "GPT (disponible)",
         "create_ai": "Emergent (disponible)",
         "exports": "mobile + desktop"
     }
+
+
+@api_router.post("/admin/redeploy")
+async def redeploy(request: Request):
+    """Auto-deploy webhook called by GitHub Actions on push to main.
+    Pulls latest code from origin/main and restarts the backend supervisor.
+    Protected by DEPLOY_SECRET env var (HMAC-style shared secret).
+    """
+    import subprocess
+    secret = os.environ.get("DEPLOY_SECRET")
+    provided = request.headers.get("X-Deploy-Secret")
+
+    if not secret:
+        raise HTTPException(status_code=503, detail="DEPLOY_SECRET not configured")
+    if not provided or provided != secret:
+        raise HTTPException(status_code=401, detail="Invalid deploy secret")
+
+    try:
+        repo_dir = str(ROOT_DIR.parent)
+        pull = subprocess.check_output(
+            ["git", "pull", "origin", "main"],
+            cwd=repo_dir, stderr=subprocess.STDOUT, timeout=30
+        ).decode()
+
+        # Restart in background so this request can return cleanly
+        subprocess.Popen(
+            ["sh", "-c", "sleep 1 && sudo supervisorctl restart backend"],
+            cwd=repo_dir
+        )
+        return {"status": "deploying", "git_pull": pull}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Deploy failed: {e.output.decode() if e.output else str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Include the router in the main app
 app.include_router(api_router)
@@ -2270,14 +2316,6 @@ app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])
 
 # Include Desktop routes under /api/desktop
 app.include_router(desktop_router, prefix="/api/desktop", tags=["Desktop"])
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
