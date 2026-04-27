@@ -38,10 +38,13 @@ export default function AuthCallback() {
         console.log('AuthCallback: Found session_id:', sessionId.substring(0, 10) + '...');
 
         // Exchange session_id for user data
+        // NOTE: We do NOT use withCredentials here because Cloudflare/ingress
+        // injects "Access-Control-Allow-Origin: *" which is incompatible with
+        // credentialed requests. Auth is carried via session_token in the
+        // response body + localStorage + Bearer header (set by axios interceptor).
         const response = await axios.post(
           `${API}/auth/session`,
-          { session_id: sessionId },
-          { withCredentials: true }
+          { session_id: sessionId }
         );
 
         console.log('AuthCallback: Session created, user:', response.data?.name || response.data?.email);

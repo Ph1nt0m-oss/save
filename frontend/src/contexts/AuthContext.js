@@ -35,9 +35,10 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const response = await axios.get(`${API}/auth/me`, {
-        withCredentials: true
-      });
+      // No withCredentials: Cloudflare injects ACAO:* which conflicts with
+      // credentialed requests. We rely on the Bearer header set by the axios
+      // interceptor from localStorage instead.
+      const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
     } catch (error) {
       setUser(null);
@@ -53,7 +54,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
+      await axios.post(`${API}/auth/logout`, {});
       setUser(null);
       try { localStorage.removeItem('session_token'); } catch (_) {}
     } catch (error) {
