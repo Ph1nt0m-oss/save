@@ -461,6 +461,34 @@ async def get_me(request: Request):
     
     return user
 
+@api_router.get("/user/stats")
+async def get_user_stats(request: Request):
+    """Stats summary shown in the Dashboard avatar dropdown."""
+    user_id = await get_current_user(request)
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+
+    project_count = await db.projects.count_documents({"user_id": user_id})
+
+    # Most recent session (excluding the current one) = "dernier login"
+    sessions_cursor = db.user_sessions.find(
+        {"user_id": user_id}, {"_id": 0, "created_at": 1}
+    ).sort("created_at", -1).limit(2)
+    sessions = await sessions_cursor.to_list(length=2)
+    last_login = None
+    if len(sessions) >= 2:
+        last_login = sessions[1].get("created_at")
+    elif len(sessions) == 1:
+        last_login = sessions[0].get("created_at")
+
+    return {
+        "project_count": project_count,
+        "member_since": user.get("created_at"),
+        "last_login": last_login,
+        "plan": "Gratuit illimité",
+    }
+
 @api_router.post("/auth/logout")
 async def logout(request: Request, response: Response):
     """Logout user and clear session"""

@@ -1,0 +1,37 @@
+{
+  "summary": "Phase 4 (UI/UX polish) testing. Backend: all 4 Phase-4 tests pass (health, /user/stats 401 unauth, /user/stats 200 with SMS session returning project_count/member_since/last_login/plan, /admin/redeploy 401 without secret) + the 3 webhook auth tests still pass (2 happy-path correctly skipped). Frontend build clean: 8 chunks incl. lazy Dashboard/Create/Chat/Wizard. AuthCallback retry flow works perfectly (auth-error + auth-retry-btn → /login). SMS login → dashboard works, EmptyProjectsState renders with both CTAs, the 4 mode cards correctly hidden when projects.length===0, user-menu-trigger renders top-right with avatar + name. TWO ISSUES: (1) Login.js error toast for ?error=access_denied does NOT appear in DOM (Sonner Toaster IS mounted and works elsewhere — SMSLogin verify-error toast displays correctly — so bug is in Login.js useEffect or sonner state). (2) Onboarding joyride overlay (#react-joyride-portal) intercepts pointer events on first-visit dashboard, so user-menu-trigger click is blocked until the tour is dismissed via 'Suivant'/close — this means the dropdown content/stats/logout flow could not be exercised end-to-end without dismissing the tour first. Likely just needs joyride to use disableOverlayClose=false or pointer-events:none on the overlay outside the spotlight, OR for the user menu to render above the joyride z-index when tour is active.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Login.js", "issue": "toast.error(ERROR_MESSAGES[err]) called from useEffect on ?error=access_denied never appears in the DOM (no <li data-sonner-toast> created). Sonner is functional elsewhere — likely an issue with the toast firing before Sonner Toaster is fully mounted in App.js (Toaster sits inside several context providers), or React StrictMode double-invocation racing with sonner state. Try wrapping in setTimeout(()=>toast.error(...),0) or moving the toast call into a queueMicrotask, or invoking from a useLayoutEffect after Toaster has mounted.", "selector": "[data-testid=google-login-btn]", "priority": "MEDIUM"},
+      {"component": "Onboarding (react-joyride)", "issue": "Joyride overlay <div id='react-joyride-portal'><svg><path fill='#00000080' .../></svg></div> covers the entire viewport (1920x1080) and intercepts pointer events for the user-menu-trigger and other top-right buttons during the welcome tour. Real users can dismiss with Suivant/close button so this is workable, but anything outside the spotlight is unclickable until tour ends. Consider pointer-events:none on the overlay path (only spotlight cutout should block) or running the tour with disableOverlay so the rest of the app stays interactive.", "selector": "[data-testid=user-menu-trigger]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase4_user_stats.py",
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/test_reports/pytest/pytest_results_iter10.xml",
+    "/app/test_reports/pytest/pytest_phase4_iter10.xml"
+  ],
+  "action_items": [
+    "Fix Login.js error toast: ensure toast.error fires AFTER Sonner Toaster mounts (e.g., setTimeout 0 or useLayoutEffect, or call from a top-level effect once router is ready).",
+    "Make react-joyride overlay non-blocking outside the spotlight target (pointer-events:none) so users can still click the user menu / nav while the tour is active.",
+    "Optional: keep `Redirection vers Google...` spinner visible for ~250ms before window.location.href so users (and tests) can perceive the loading state before the actual redirect tears down the page."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/components/UserMenu.jsx line 46: axios.get('/user/stats', { withCredentials: true }) — works because session_token cookie is set with samesite=none/secure, validated end-to-end by test_user_stats_with_sms_session.",
+    "/app/backend/server.py /api/user/stats: response shape matches Dashboard expectations exactly (project_count int, plan 'Gratuit illimité'). last_login uses sessions[1] when ≥2 sessions (current + previous) — clean implementation.",
+    "Toaster wrapper /app/frontend/src/components/ui/sonner.jsx uses next-themes useTheme; if next-themes provider is absent useTheme returns {theme:'system'} default — non-blocking but worth confirming.",
+    "Pre-existing eslint warnings in Dashboard.js (missing useEffect deps) carried over from iteration 9 — unrelated to Phase 4."
+  ],
+  "updated_files": ["/app/backend/tests/test_phase4_user_stats.py"],
+  "success_rate": {"backend": "100% (7/7 tests)", "frontend": "~80% — Login spinner + error-toast unverifiable, dashboard menu blocked by joyride overlay; everything else PASS"},
+  "test_credentials": "/app/memory/test_credentials.md OK — SMS demo mode confirmed (code returned in /api/auth/sms/send response under demo). DEPLOY_SECRET 401 case verified, happy path NOT triggered.",
+  "seed_data_creation": "Created several SMS demo users (+33612991xxx, +3361234xxxx) via send/verify flow. Each generates one row in db.users + db.user_sessions. Safe to leave or purge.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 4 mostly green. Two known UI issues above. SMS auth flow: phone (any), POST /api/auth/sms/send returns demo code in body (and UI shows it as 'Mode démo - Code: XXXXXX'), POST /api/auth/sms/verify with that code logs the user in via session_token cookie. After login the joyride welcome tour fires on first dashboard visit and its overlay blocks clicks outside the spotlight — to test the user-menu dropdown, dismiss the tour first (click 'Suivant' or close 'X'). The user-menu-trigger button has data-testid='user-menu-trigger' and lives at top-right replacing the old plain user name + logout button.",
+  "rca of the issue": "Login.js error toast: most likely cause — toast.error is called inside the very first useEffect render of Login, but the Sonner Toaster (in App.js, deeper in the tree) may mount AFTER Login's useEffect runs because of the lazy/Suspense routing. Sonner's toast() call before its Toaster mounts gets queued by sonner, but in some React 18 StrictMode + Suspense scenarios the dispatch is dropped. Fix: setTimeout(()=>toast.error(...), 0) or move the dispatch into a useEffect that depends on a 'mounted' flag set in a parent. Joyride overlay: react-joyride v3 default overlay is a fullscreen <svg> with a spotlight cutout. Outside the cutout it absorbs pointer events. Fix: pass `disableOverlay={true}` or `styles={{ overlay: { pointerEvents: 'none' } }}` while still keeping the spotlight visual, or scope the overlay to the spotlight rect only."
+}

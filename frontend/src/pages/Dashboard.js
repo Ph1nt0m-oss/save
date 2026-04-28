@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { 
-  Send, Plus, LogOut, User, Sparkles, 
+  Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, Menu, X, ChevronRight, Zap,
   Wand2, Languages, Wifi, WifiOff
@@ -16,6 +16,8 @@ import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
 import { toast } from 'sonner';
 import Onboarding from '../components/Onboarding';
+import UserMenu from '../components/UserMenu';
+import EmptyProjectsState from '../components/EmptyProjectsState';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -395,8 +397,7 @@ export default function Dashboard() {
               </Button>
 
               <div className="ml-3 flex items-center gap-2 border-l border-white/10 pl-3">
-                <User className="w-5 h-5 text-[#A1A1AA]" />
-                <span className="text-sm">{user?.name}</span>
+                <UserMenu user={user} onLogout={handleLogout} />
               </div>
             </div>
           </div>
@@ -405,6 +406,13 @@ export default function Dashboard() {
         {/* 4 Main Buttons Center */}
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-5xl w-full">
+            {projects.length === 0 ? (
+              <EmptyProjectsState
+                onWizard={() => navigate('/wizard')}
+                onCreate={() => navigate('/create', { state: { mode: 'online' } })}
+              />
+            ) : (
+            <>
             <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-4 mb-4">
                 {/* Indicateur de connexion */}
@@ -433,11 +441,11 @@ export default function Dashboard() {
 
             {/* Assistant Guidé - Nouveau bouton principal */}
             <motion.button
-              whileHover={{ scale: 1.02 }}
+              whileHover={{ y: -2, scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => navigate('/wizard')}
               data-testid="wizard-btn"
-              className="w-full mb-6 bg-gradient-to-r from-[#E4FF00] to-[#00FF66] text-[#050505] rounded-lg p-6 hover:opacity-90 transition-all"
+              className="w-full mb-6 bg-gradient-to-r from-[#E4FF00] to-[#00FF66] text-[#050505] rounded-lg p-6 hover:opacity-95 hover:shadow-[0_8px_30px_rgba(228,255,0,0.35)] transition-all"
             >
               <div className="flex items-center justify-center gap-4">
                 <Wand2 className="w-8 h-8" />
@@ -455,11 +463,11 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Bouton 1: Interaction en ligne */}
               <motion.button
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/chat', { state: { mode: 'online' } })}
                 data-testid="online-chat-btn"
-                className="group bg-[#0F0F13] border-2 border-[#E4FF00] rounded-lg p-8 hover:bg-[#E4FF00]/5 transition-all"
+                className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-8 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
                   <div className="w-16 h-16 bg-[#E4FF00] rounded-full flex items-center justify-center">
@@ -481,11 +489,11 @@ export default function Dashboard() {
 
               {/* Bouton 2: Création en ligne */}
               <motion.button
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/create', { state: { mode: 'online' } })}
                 data-testid="online-create-btn"
-                className="group bg-[#0F0F13] border-2 border-[#00FF66] rounded-lg p-8 hover:bg-[#00FF66]/5 transition-all"
+                className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-8 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
                   <div className="w-16 h-16 bg-[#00FF66] rounded-full flex items-center justify-center">
@@ -507,11 +515,11 @@ export default function Dashboard() {
 
               {/* Bouton 3: Interaction hors ligne */}
               <motion.button
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/chat', { state: { mode: 'offline' } })}
                 data-testid="offline-chat-btn"
-                className="group bg-[#0F0F13] border-2 border-cyan-400 rounded-lg p-8 hover:bg-cyan-400/5 transition-all"
+                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
                   <div className="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center">
@@ -533,11 +541,11 @@ export default function Dashboard() {
 
               {/* Bouton 4: Création hors ligne */}
               <motion.button
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/create', { state: { mode: 'offline' } })}
                 data-testid="offline-create-btn"
-                className="group bg-[#0F0F13] border-2 border-purple-400 rounded-lg p-8 hover:bg-purple-400/5 transition-all"
+                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">
                   <div className="w-16 h-16 bg-purple-400 rounded-full flex items-center justify-center">
@@ -571,6 +579,8 @@ export default function Dashboard() {
                   : '🔌 Offline mode: Requires Ollama installed locally'}
               </p>
             </div>
+            </>
+            )}
           </div>
         </div>
       </div>
