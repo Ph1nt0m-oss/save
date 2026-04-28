@@ -1,0 +1,29 @@
+{
+  "summary": "Phase 5 backlog completion fully green. Backend pytest (test_auth_routes.py + test_redeploy_webhook.py): 11 passed, 2 skipped (RUN_REDEPLOY_HAPPY_PATH gated as expected). Metrics instrumentation verified: counters incremented after wrong SMS code + invalid OAuth session (auth_errors_24h 10->12, sms_invalid_code 3->4, oauth_session_not_found 7->8). /api/health returns commit 8751e48 + healthy. /sw.js served HTTP 200 with CACHE_VERSION constant. Frontend build clean (13.64s, 190.63kB main.js gzip). FeatureHint tooltips functional with correct content + stopPropagation prevents parent card navigation. All regressions (Login error toast, AuthCallback retry, user menu, empty state, onboarding localStorage flag) intact. No Sentry console errors when DSN unset.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_routes.py",
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/test_reports/pytest/pytest_results_iter18.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Dashboard.js is 605 lines — getting close to the 700-line guideline. Consider splitting EmptyProjectsState branch and the modes grid (lines 410-555) into a separate component to keep Dashboard a thin orchestrator.",
+    "FeatureHint hardcodes the French/English copy at the call site in Dashboard.js (line 441-444 and 452). Consider centralizing tooltip strings into i18n resource so future translations don't require touching Dashboard.",
+    "log_auth_error helper is fire-and-forget with try/except swallow — good. But there's no TTL index on auth_errors collection in Mongo; the 24h window is computed at query time. For long-running production, add a TTL index (expireAfterSeconds=86400) to auto-purge.",
+    "Service worker is registered only in production build (per serviceWorker.js gate); /sw.js is served correctly but won't auto-register in this preview (CRA dev server). Confirm prod deployment validates SW activation."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "SMS demo mode — any +33 phone number; verification code returned in /auth/sms/send response body and printed to UI",
+  "seed_data_creation": "Created TEST_phase5_fh project (proj_6f3aee54413c) under user user_785a463b4c99 to expose FeatureHints (modes/wizard) which only render when projects.length > 0. Multiple TEST_ phone users created during pytest fixtures.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 5 is stable end-to-end. Backend tests live in /app/backend/tests/test_auth_routes.py (8) + test_redeploy_webhook.py (3 active + 2 skipped). NEVER set RUN_REDEPLOY_HAPPY_PATH=1 unless local==origin/main — it triggers git reset --hard. FeatureHints render only when projects.length>0; create a project first via POST /api/projects (cookie auth) before asserting on [data-testid=feature-hint-*]. Tooltip content language follows i18n toggle in Dashboard header (FR/EN) — assert on either French ('Mode en ligne') or English ('Online: powerful AI') depending on toggle state. Service worker /sw.js is served but registers only in production build (NODE_ENV==='production').",
+  "rca of the issue": "N/A — no bugs found. Initial test miss on FeatureHints was due to renderiing condition (projects.length>0); resolved by seeding a project via API."
+}
