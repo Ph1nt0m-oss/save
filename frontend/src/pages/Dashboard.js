@@ -17,7 +17,6 @@ import { Separator } from '../components/ui/separator';
 import { toast } from 'sonner';
 import Onboarding from '../components/Onboarding';
 import UserMenu from '../components/UserMenu';
-import EmptyProjectsState from '../components/EmptyProjectsState';
 import FeatureHint from '../components/FeatureHint';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -406,13 +405,6 @@ export default function Dashboard() {
         {/* 4 Main Buttons Center */}
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-5xl w-full">
-            {projects.length === 0 ? (
-              <EmptyProjectsState
-                onWizard={() => navigate('/wizard')}
-                onCreate={() => navigate('/create', { state: { mode: 'online' } })}
-              />
-            ) : (
-            <>
             <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-4 mb-4">
                 {/* Indicateur de connexion */}
@@ -442,6 +434,11 @@ export default function Dashboard() {
                     : "Online: powerful AI. Offline: requires Ollama. Chat = converse, Create = generate full app."}
                 </FeatureHint>
               </p>
+              {projects.length === 0 && (
+                <p data-testid="empty-projects-hint" className="text-xs text-[#E4FF00]/80 mt-3 font-['IBM_Plex_Sans']">
+                  ✨ Aucun projet pour l'instant — choisis un mode ci-dessous pour commencer (tout est gratuit et sans limites).
+                </p>
+              )}
             </div>
 
             {/* Assistant Guidé - Nouveau bouton principal */}
@@ -593,8 +590,6 @@ export default function Dashboard() {
                   : '🔌 Offline mode: Requires Ollama installed locally'}
               </p>
             </div>
-            </>
-            )}
           </div>
         </div>
       </div>
