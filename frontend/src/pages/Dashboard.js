@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import Onboarding from '../components/Onboarding';
 import UserMenu from '../components/UserMenu';
 import EmptyProjectsState from '../components/EmptyProjectsState';
+import FeatureHint from '../components/FeatureHint';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -434,13 +435,24 @@ export default function Dashboard() {
               <h2 className="text-4xl font-['Chivo'] font-black mb-4">
                 {language === 'fr' ? 'Que souhaitez-vous faire ?' : 'What would you like to do?'}
               </h2>
-              <p className="text-[#A1A1AA] text-lg">
+              <p className="text-[#A1A1AA] text-lg flex items-center justify-center gap-2">
                 {language === 'fr' ? 'Choisissez votre mode de travail' : 'Choose your work mode'}
+                <FeatureHint id="modes" side="bottom">
+                  {language === 'fr'
+                    ? "Mode en ligne : IA puissante (GPT-4o). Mode hors ligne : nécessite Ollama installé. Chat = converser, Création = générer une app complète."
+                    : "Online: powerful AI. Offline: requires Ollama. Chat = converse, Create = generate full app."}
+                </FeatureHint>
               </p>
             </div>
 
             {/* Assistant Guidé - Nouveau bouton principal */}
-            <motion.button
+            <div className="relative">
+              <div className="absolute top-3 right-3 z-10">
+                <FeatureHint id="wizard">
+                  35+ templates prêts à personnaliser : CRM, e-commerce, blog, jeu, IA. Idéal si tu n'as pas d'idée précise — réponds à 4-5 questions, l'IA fait le reste.
+                </FeatureHint>
+              </div>
+              <motion.button
               whileHover={{ y: -2, scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => navigate('/wizard')}
@@ -460,6 +472,7 @@ export default function Dashboard() {
                 </div>
               </div>
             </motion.button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Bouton 1: Interaction en ligne */}

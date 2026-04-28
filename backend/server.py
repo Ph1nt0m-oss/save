@@ -300,6 +300,7 @@ async def verify_sms_code(request: SMSAuthRequest, response: Response):
         }, {"_id": 0})
         
         if not code_doc:
+            await log_auth_error("sms_invalid_code", f"phone={request.phone_number}", request=None)
             return JSONResponse(status_code=401, content={"detail": "Code invalide"})
         
         # Check expiry
@@ -308,6 +309,7 @@ async def verify_sms_code(request: SMSAuthRequest, response: Response):
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         
         if expires_at < datetime.now(timezone.utc):
+            await log_auth_error("sms_code_expired", f"phone={request.phone_number}", request=None)
             return JSONResponse(status_code=401, content={"detail": "Code expiré"})
         
         # Create or get user
@@ -376,6 +378,7 @@ async def create_session(request: SessionDataRequest, response: Response):
             
             if auth_response.status_code == 404:
                 logger.error("Session ID not found or expired")
+                await log_auth_error("oauth_session_not_found", "emergent 404", request=None)
                 raise HTTPException(status_code=401, detail="Session expirée ou invalide. Veuillez vous reconnecter.")
             
             if auth_response.status_code != 200:
@@ -499,6 +502,48 @@ async def logout(request: Request, response: Response):
     
     response.delete_cookie("session_token", path="/")
     return {"message": "Déconnexion réussie"}
+
+
+# ==================== METRICS ====================
+
+async def log_auth_error(kind: str, detail: str, request: Request | None = None):
+    """Append a single auth-error event to MongoDB (used by /api/metrics)."""
+    try:
+        doc = {
+            "kind": kind,  # e.g. 'sms_invalid_code', 'session_invalid', 'oauth_failed'
+            "detail": detail[:500],
+            "ip": (request.client.host if request and request.client else None),
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.auth_errors.insert_one(doc)
+    except Exception as e:
+        logger.warning(f"log_auth_error failed: {e}")
+
+
+@api_router.get("/metrics")
+async def metrics():
+    """Public health/metrics summary used by uptime checks and debug overlays."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    auth_errors_24h = await db.auth_errors.count_documents({"ts": {"$gte": cutoff}})
+    by_kind_cursor = db.auth_errors.aggregate([
+        {"$match": {"ts": {"$gte": cutoff}}},
+        {"$group": {"_id": "$kind", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ])
+    by_kind = {doc["_id"]: doc["count"] async for doc in by_kind_cursor}
+
+    total_users = await db.users.count_documents({})
+    total_projects = await db.projects.count_documents({})
+    active_sessions = await db.user_sessions.count_documents({})
+
+    return {
+        "auth_errors_24h": auth_errors_24h,
+        "auth_errors_by_kind_24h": by_kind,
+        "total_users": total_users,
+        "total_projects": total_projects,
+        "active_sessions": active_sessions,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
 
 @api_router.post("/ai/generate-complete-app")
 async def ai_generate_complete_app(request: Request, data: dict):
