@@ -1,0 +1,45 @@
+{
+  "summary": "Phase 4 retest after iter_12 hideOverlay fix. PRIMARY BUG (Joyride overlay) IS FIXED — moving hideOverlay:true onto each STEP entry works as expected in react-joyride v3.0.2. The dimming overlay path (#00000080) and .react-joyride__overlay div are both gone from #react-joyride-portal; the only remaining path is the spotlight cutout (fill=#000000). [data-testid=user-menu-trigger] is now clickable WITHOUT force=True. user-menu-content displays project_count='0', plan='Gratuit illimité', last_login='28 avr. 2026'. Logout redirects to /login. Empty state, Login toast, AuthCallback retry, all backend tests are GREEN. NEW FINDING: onboarding tour cannot advance past step 1 for fresh SMS users with 0 projects — see frontend_issues below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Onboarding.jsx + Dashboard empty state interaction",
+        "issue": "Tour step 2 target `[data-testid=wizard-btn]` does NOT exist on the dashboard for fresh SMS users (0 projects). The 4 mode cards (which contain wizard-btn / online-create-btn / create-project-btn) are hidden by EmptyProjectsState rendering. Clicking 'Suivant' on step 1 triggers Joyride to look for the target; with the target missing, the tooltip vanishes briefly then re-renders the welcome step (or stays in flux). The user CANNOT complete or skip the tour from step 2 onwards: localStorage 'codeforge_onboarded_v1' is never set, so the tour reappears on every page refresh. Verified by: page.evaluate document.querySelector('[data-testid=wizard-btn]') === null on /dashboard for 0-project user; clicking the joyride 'Suivant' button (data-action=primary, data-testid=button-primary) yields tooltip_text=null and portal_paths=[] for ~1.5s. After ~3s reload, tooltip re-appears showing step 1 again.",
+        "selector": "[data-testid=wizard-btn]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/backend/tests/test_phase4_user_stats.py",
+    "/app/test_reports/pytest/pytest_results_iter13.xml"
+  ],
+  "action_items": [
+    "Fix Onboarding.jsx step 2-4 targets for empty-state users. Recommended options (pick one): (a) In Dashboard.js, when 0 projects, set localStorage codeforge_onboarded_v1='1' immediately after step 1 completes (skip remaining steps that target hidden mode cards); (b) Change steps 2-4 targets to empty-state CTAs when projects.length === 0 — e.g. step 2 -> [data-testid=empty-state-wizard-cta], step 3 -> [data-testid=empty-state-create-cta]; (c) Filter the STEPS array in Onboarding.jsx based on which target elements exist in the DOM at run time (document.querySelector check). Option (b) gives the best UX since the tour still teaches the user where the actions live in the empty state.",
+    "After fix, verify: fresh SMS user → /dashboard → click 'Suivant' on step 1 advances to step 2 with spotlight on a visible target, click 'Passer' closes tour, localStorage codeforge_onboarded_v1='1', page refresh keeps tour closed."
+  ],
+  "critical_code_review_comments": [
+    "Onboarding.jsx STEPS array now correctly uses per-step hideOverlay:true (react-joyride v3 requirement). Confirmed working — top-level wrapper props for option fields are still present (spotlightClicks at line 77) but that one happens to function via prop spread; main bug fix is solid.",
+    "EmptyProjectsState.jsx vs mode cards: the conditional rendering of the 4 mode cards (only visible when user has >=1 project) creates a circular UX problem — the onboarding tour is supposed to introduce mode cards, but a brand-new user (the exact target audience of the tour) never sees them until they've created their first project. Either redesign the empty-state to keep mode cards visible (greyed/disabled) so the tour can still spotlight them, or rewrite tour targets to point to empty-state CTAs.",
+    "Onboarding.jsx line 50-57: useEffect runs once, sets a 600ms delay before starting the tour. This is fine, but since the tour can't complete for empty-state users, those users will see the welcome popup on every dashboard visit — a bad first impression. Adding a fallback (set localStorage flag when tour fails to find a target after N seconds) would make this resilient.",
+    "Backend code review: /api/user/stats correctly returns project_count, member_since, last_login, plan with proper auth gating. /api/admin/redeploy correctly returns 401 on missing/wrong secret. No issues found."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (7 passed, 2 skipped as expected)",
+    "frontend": "~88% — Joyride overlay FIXED (primary bug); user-menu, stats, logout, empty state, login toast, authcallback retry all GREEN. Onboarding tour step 2-4 broken for empty-state users (new edge case discovered)."
+  },
+  "test_credentials": "/app/memory/test_credentials.md unchanged; SMS demo: any phone, code in /api/auth/sms/send response and printed in UI.",
+  "seed_data_creation": "Created 3 fresh SMS users this run: +33612888777 (User 8777), +33612999111 (User 9111), +33612999222 (User 9222), +33612999333 (User 9333). Each generates one row in db.users + db.user_sessions. Safe to leave or purge. Happy-path /api/admin/redeploy NOT triggered (verified via test_redeploy_webhook 2 skipped).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Joyride overlay bug is now FULLY FIXED (per-step hideOverlay works in v3.0.2). Verify with page.evaluate('!!document.querySelector(\\'#react-joyride-portal path[fill=\"#00000080\"]\\')') === false. NEW BUG to track: onboarding tour breaks on step 2 for users with 0 projects because target [data-testid=wizard-btn] is hidden by EmptyProjectsState. Reproduction: fresh SMS login → /dashboard → click 'Suivant' on welcome → tour fails to advance → localStorage codeforge_onboarded_v1 never set → tour reappears on refresh. Fix in Dashboard or Onboarding (see action_items). All other Phase 4 features (Login toast, AuthCallback retry, stats, logout, empty-state, /api/health, /api/user/stats, /api/admin/redeploy 401) remain GREEN.",
+  "rca of the issue": "RCA — onboarding tour step 2-4 target unavailability: Dashboard.js conditionally renders the 4 mode cards (each with data-testid=wizard-btn / online-create-btn / etc.) ONLY when projects.length >= 1, and renders <EmptyProjectsState> otherwise. The Onboarding STEPS array (lines 22, 30, 38 in Onboarding.jsx) hardcodes targets [data-testid=wizard-btn], [data-testid=online-create-btn], [data-testid=create-project-btn] — none of which exist in the empty-state DOM. When react-joyride's CHANGE event fires after Suivant on step 1, getElementByTarget returns null, the tooltip un-mounts (hence portal_paths=[] briefly), then the next render attempt re-mounts step 1's tooltip (since lifecycle never reaches the FINISHED/SKIPPED status). localStorage flag is set ONLY in handleCallback when status is FINISHED or SKIPPED (line 61) — neither fires when the tour stalls on a missing target. Mitigation: see action_items. The hideOverlay bug RCA from iter_12 was correct (per-step is the correct location in v3); that fix is solid."
+}

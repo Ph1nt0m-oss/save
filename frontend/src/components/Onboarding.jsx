@@ -16,6 +16,7 @@ const STEPS = [
     content:
       "Crée des applications complètes en quelques mots, sans une ligne de code. Voici un tour rapide (15 secondes).",
     disableBeacon: true,
+    hideOverlay: true,
   },
   {
     target: '[data-testid="wizard-btn"]',
@@ -23,6 +24,7 @@ const STEPS = [
     content:
       "Pas d'idée ? Choisis parmi 35+ templates (CRM, e-commerce, jeu, IA…). Tu n'as qu'à personnaliser et générer.",
     disableBeacon: true,
+    hideOverlay: true,
   },
   {
     target: '[data-testid="online-create-btn"]',
@@ -30,6 +32,7 @@ const STEPS = [
     content:
       "Décris ton appli en langage naturel. L'IA construit le code, l'interface, et même les explications.",
     disableBeacon: true,
+    hideOverlay: true,
   },
   {
     target: '[data-testid="create-project-btn"]',
@@ -37,6 +40,7 @@ const STEPS = [
     content:
       "Tous tes projets s'affichent ici. Clic-droit sur un projet pour le renommer ou le supprimer.",
     disableBeacon: true,
+    hideOverlay: true,
   },
 ];
 
@@ -70,7 +74,6 @@ export default function Onboarding() {
         continuous
         showProgress
         showSkipButton
-        hideOverlay
         spotlightClicks
         spotlightPadding={6}
         callback={handleCallback}
