@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Chrome, Phone, Loader2 } from 'lucide-react';
+import { Chrome, Phone, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
@@ -95,12 +95,44 @@ export default function Login() {
               <p className="text-[#A1A1AA] font-['IBM_Plex_Sans']">Connectez-vous pour commencer</p>
             </motion.div>
 
+            {/* Heads-up: Emergent Auth platform issue (issue raised with support).
+                Surfacing it transparently so the user picks SMS without confusion. */}
+            <motion.div
+              variants={item}
+              data-testid="google-auth-notice"
+              className="flex items-start gap-3 p-3 bg-orange-400/10 border border-orange-400/30 rounded-sm text-left"
+            >
+              <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs font-['IBM_Plex_Sans'] text-orange-200/90 leading-relaxed">
+                <span className="font-bold text-orange-300">Connexion Google temporairement indisponible</span> côté plateforme Emergent. Utilise la connexion SMS ci-dessous (instantanée, fonctionne hors-ligne).
+              </div>
+            </motion.div>
+
+            <motion.button
+              variants={item}
+              onClick={() => navigate('/sms-login')}
+              data-testid="sms-login-btn"
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-cyan-400 text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(34,211,238,0.3)] transition-all duration-200"
+            >
+              <Phone className="w-5 h-5" />
+              Connexion SMS (recommandée)
+            </motion.button>
+
+            <motion.div variants={item} className="relative py-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10"></div>
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-[#0F0F13] px-4 text-sm text-[#A1A1AA]">ou (en attendant le fix)</span>
+              </div>
+            </motion.div>
+
             <motion.button
               variants={item}
               onClick={handleGoogleLogin}
               disabled={isGoogleLoading}
               data-testid="google-login-btn"
-              className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(255,255,255,0.25)] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white/80 text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(255,255,255,0.25)] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isGoogleLoading ? (
                 <>
@@ -113,25 +145,6 @@ export default function Login() {
                   Continuer avec Google
                 </>
               )}
-            </motion.button>
-
-            <motion.div variants={item} className="relative py-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/10"></div>
-              </div>
-              <div className="relative flex justify-center">
-                <span className="bg-[#0F0F13] px-4 text-sm text-[#A1A1AA]">ou</span>
-              </div>
-            </motion.div>
-
-            <motion.button
-              variants={item}
-              onClick={() => navigate('/sms-login')}
-              data-testid="sms-login-btn"
-              className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-cyan-400 text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(34,211,238,0.3)] transition-all duration-200"
-            >
-              <Phone className="w-5 h-5" />
-              Connexion SMS (Hors Ligne)
             </motion.button>
 
             <motion.div variants={item} className="pt-4">

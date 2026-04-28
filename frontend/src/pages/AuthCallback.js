@@ -166,22 +166,36 @@ export default function AuthCallback() {
                 <AlertTriangle className="w-8 h-8 text-red-400" />
               </div>
               <h2 className="mt-6 text-xl font-['Chivo'] font-bold text-white">
-                Connexion échouée
+                Connexion Google indisponible
               </h2>
               <p className="mt-2 text-red-400 font-['IBM_Plex_Sans'] text-sm">
                 {error}
               </p>
-              <p className="mt-4 text-[#A1A1AA] font-['IBM_Plex_Sans'] text-sm">
-                Pas de panique, ça arrive. Tu peux retenter.
-              </p>
-              <button
-                onClick={handleRetry}
-                data-testid="auth-retry-btn"
-                className="mt-6 inline-flex items-center gap-2 px-6 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(228,255,0,0.3)] transition-all"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Réessayer
-              </button>
+              <div className="mt-5 p-4 bg-orange-400/10 border border-orange-400/30 rounded-sm text-left">
+                <p className="text-xs font-['IBM_Plex_Sans'] text-orange-200/90 leading-relaxed">
+                  <span className="font-bold text-orange-300">⚠️ Problème côté plateforme Emergent</span> — leur service Auth retourne <code className="text-[10px] bg-black/30 px-1 rounded">user_data_not_found</code> pour toutes les sessions Google. Pas un bug dans CodeForge.
+                </p>
+                <p className="mt-2 text-xs font-['IBM_Plex_Sans'] text-white/70">
+                  En attendant, utilise la <span className="text-cyan-400 font-bold">connexion SMS</span> — instantanée et qui fonctionne hors-ligne.
+                </p>
+              </div>
+              <div className="mt-5 flex flex-col sm:flex-row gap-2 justify-center">
+                <button
+                  onClick={() => navigate('/sms-login', { replace: true })}
+                  data-testid="auth-error-sms-btn"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-cyan-400 text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(34,211,238,0.3)] transition-all"
+                >
+                  Connexion SMS
+                </button>
+                <button
+                  onClick={handleRetry}
+                  data-testid="auth-retry-btn"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-transparent border border-white/20 text-white font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] hover:-translate-y-0.5 transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Retenter Google
+                </button>
+              </div>
             </motion.div>
           )}
         </div>
