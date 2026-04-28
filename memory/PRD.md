@@ -1,26 +1,70 @@
 # CodeForge AI - PRD
 
-## Statut : PHASE 3 COMPLÈTE (Avril 2026)
+## Statut : PHASE 4 COMPLÈTE (Avril 2026)
 
 ### Phases livrées
 - **Phase 1** — Auth Google fixée (callback dédié, upsert session, axios interceptor) ✅
 - **Phase 2** — Auto-deploy GitHub Actions → webhook `/api/admin/redeploy` ✅
 - **Phase 3** — Durcissement sécurité + perf + UX onboarding ✅
+- **Phase 4** — Polish UI/UX (Login, AuthCallback, Dashboard, glassmorphism) ✅
 
-### Phase 3 — détails
-1. **Webhook robuste** : `/api/admin/redeploy` utilise `git fetch + reset --hard origin/main` au lieu de `git pull` (résout les divergences). Backup/restore automatique de `backend/.env` et `frontend/.env` autour du reset (les `.env` sont trackés par GitHub). Réponse JSON enrichie : `commit`, `git_fetch`, `git_reset`, `env_preserved`.
-2. **Hot-reload via touch** : `touch backend/server.py` au lieu de `sudo supervisorctl restart` en background → évite une race condition avec uvicorn watchfiles qui laissait supervisor en STOPPED.
-3. **GitHub désactivé proprement** : `GITHUB_CLIENT_SECRET` vidé dans `.env` (était un OAuth secret invalide pour push_to_github qui requiert un PAT).
-4. **Sudoers vérifié** : `sudo -n supervisorctl restart backend` fonctionne sans password.
-5. **Lazy-load des routes protégées** : `React.lazy()` + `Suspense` pour Dashboard/Create/Chat/GuidedWizard. 4 chunks séparés en build prod (157 kB main + 4 chunks 2-26 kB).
-6. **Onboarding interactif** : `react-joyride@3.0.2` avec tour 4 étapes au premier login (storage flag `codeforge_onboarded_v1`). Composant `/app/frontend/src/components/Onboarding.jsx`.
-7. **Tests Pytest régression** : `/app/backend/tests/test_redeploy_webhook.py` (3 passés / 2 skipped intentionnellement, le happy-path est gated par `RUN_REDEPLOY_HAPPY_PATH=1` car il déclenche un reset destructeur).
+### Phase 4 — détails (iter_17 ALL GREEN)
+
+**9. Login.js**
+- Spinner Loader2 + texte "Redirection vers Google..." sur le bouton Google pendant la redirection
+- Toast d'erreur affiché si query param `?error=xxx` (messages français pour `access_denied`, `invalid_request`, `server_error`, défaut)
+- Animations Framer Motion stagger sur l'apparition du formulaire (logo, titre, boutons)
+- Fix StrictMode subtil : `setTimeout` non-cleanup pour éviter que le double-invoke de useEffect ne tue le timer
+
+**10. AuthCallback.js**
+- 3 phases distinctes : `processing` (spinner + "Bienvenue, Marie..."), `success` (check vert + confetti 1s), `error` (icône warning + bouton "Réessayer")
+- Confetti `canvas-confetti` aux couleurs de la marque (#E4FF00 + #00FF66 + blanc)
+- Bouton "Réessayer" sur erreur → renvoie vers `/login` (au lieu de l'auto-redirect frustrant)
+- Récupération du nom user via `response.data.name` ou fallback email
+
+**11. Dashboard.js**
+- Composant `UserMenu` (avatar Shadcn + dropdown) avec stats temps réel via `/api/user/stats` :
+  - Projets créés (count MongoDB)
+  - Plan actuel ("Gratuit illimité")
+  - Dernier login (avant-dernière session)
+  - Membre depuis (created_at user)
+- Bouton de déconnexion dans le dropdown
+- Composant `EmptyProjectsState` désigné si 0 projet :
+  - SVG illustration animée (cercles concentriques rotatifs + carré jaune pulsant)
+  - 2 CTAs : "Lancer l'assistant guidé" + "Créer librement"
+  - Glow background gradient
+
+**12. Glassmorphism + hover states**
+- 4 cards mode (chat/create × online/offline) : `bg-white/[0.03] border-white/10 backdrop-blur-xl`
+- Hover : `-translate-y-0.5` + `shadow-[0_8px_30px_rgba(228,255,0,0.2)]` (variantes par couleur de carte)
+- Bouton wizard gradient : ajout du même hover-shadow
+- Police Chivo (titres) + IBM Plex Sans (body) conservées
+
+### Onboarding (Phase 3 + corrections Phase 4)
+- `react-joyride@3.0.2` : 4 steps en français, déclenché 1× via flag `localStorage.codeforge_onboarded_v1`
+- Selectors robustes via `data-tour="wizard"|"create"` (fonctionnent avec et sans projets)
+- Persistance sur 3 chemins : Terminer, Passer (skip), X close
+- API v3 correcte : `buttons: ['back','skip','primary','close']` per-step + `onEvent` au lieu de `callback`
+- `hideOverlay` per-step → l'utilisateur peut continuer à interagir avec le reste de l'app
+
+### Architecture
+```
+Backend: FastAPI + MongoDB + Emergent GPT-4o
+Frontend: React + CRA + TailwindCSS + Shadcn UI + Framer Motion + react-joyride + canvas-confetti
+Auth: Google OAuth + SMS (démo Twilio)
+Desktop: Electron + electron-builder + wine
+Mobile: PWA
+GitHub: PyGithub (désactivé tant que PAT absent)
+CI/CD: GitHub Actions → webhook → git fetch+reset+touch
+```
 
 ### Fonctionnalités complètes
 | Fonctionnalité | Statut |
 |----------------|--------|
 | Landing | ✅ |
-| Dashboard + Stats + onboarding | ✅ |
+| Login (toast erreur + spinner Google + animations) | ✅ |
+| AuthCallback (confetti + nom user + retry) | ✅ |
+| Dashboard (avatar + stats + empty state + glassmorphism) | ✅ |
 | Wizard (35+ templates) | ✅ |
 | Create (12 suggestions) | ✅ |
 | Auth Google | ✅ |
@@ -33,19 +77,14 @@
 | Menu contextuel (clic droit) | ✅ |
 | Auto-deploy GitHub Actions | ✅ |
 | Lazy-loading routes | ✅ |
-| Onboarding tour | ✅ |
+| Onboarding tour (4 steps + persistance robuste) | ✅ |
 | Tests régression backend | ✅ |
 
-### Architecture
-```
-Backend: FastAPI + MongoDB + Emergent GPT-4o
-Frontend: React + Vite/CRA + TailwindCSS + Shadcn UI + Framer Motion + react-joyride
-Auth: Google OAuth + SMS (démo Twilio)
-Desktop: Electron + electron-builder + wine
-Mobile: PWA
-GitHub: PyGithub (désactivé tant que PAT absent)
-CI/CD: GitHub Actions → webhook → git fetch+reset+touch
-```
+### Backlog (à valider avec utilisateur)
+- 🔵 P0 — Phase 5 : QA finale (test integration toutes phases) + mission finale (annoncée)
+- 🟡 P1 — User va fournir un PAT GitHub avec scope `repo` → activer push_to_github + retirer .env du tracking git
+- 🟢 P2 — Sentry/LogRocket pour tracking erreurs frontend
+- 🟢 P2 — i18n complet (anglais en plus du français)
 
 ### Configuration .env
 ```
@@ -56,14 +95,5 @@ TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID  # vide → dem
 GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET (PAT)                      # vide → push_to_github désactivé
 ```
 
-### Backlog (Phase 4 et au-delà — à valider avec l'utilisateur)
-- 🔵 P0 — User va fournir un PAT GitHub avec scope `repo` → activer push_to_github + permettre `git rm --cached backend/.env` pour ne plus tracker les secrets
-- 🟡 P1 — Tests E2E Playwright dans `.github/workflows/` (Google Login, SMS demo, génération app)
-- 🟢 P2 — Sentry/LogRocket pour tracking erreurs frontend
-- 🟢 P2 — i18n complet (anglais en plus du français)
-
-### Phase finale (annoncée par utilisateur)
-Phase 4 (en attente du brief utilisateur) puis Phase 5 (vérification finale + tests intégrés sur toutes les phases).
-
 ---
-**Dernière mise à jour : 28 avril 2026 — Phase 3 livrée et testée**
+**Dernière mise à jour : 28 avril 2026 — Phase 4 livrée et 100% testée (iter_17 ALL GREEN)**
