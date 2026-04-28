@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Chrome, Phone, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,17 +15,21 @@ const ERROR_MESSAGES = {
 
 export default function Login() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const toastedRef = useRef(false);
 
-  // Toast on ?error=... query param (instead of silent redirect)
+  // Toast on ?error=... query param (instead of silent redirect).
+  // Fires once per mount. Reads window.location.search directly so this
+  // does not depend on react-router's hook timing.
   useEffect(() => {
-    const err = searchParams.get('error');
-    if (err) {
-      const msg = ERROR_MESSAGES[err] || ERROR_MESSAGES.default;
-      toast.error(msg);
-    }
-  }, [searchParams]);
+    if (toastedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('error');
+    if (!err) return;
+    toastedRef.current = true;
+    const msg = ERROR_MESSAGES[err] || ERROR_MESSAGES.default;
+    toast.error(msg, { duration: 6000 });
+  }, []);
 
   const handleGoogleLogin = () => {
     setIsGoogleLoading(true);

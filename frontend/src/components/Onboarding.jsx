@@ -70,7 +70,8 @@ export default function Onboarding() {
         continuous
         showProgress
         showSkipButton
-        disableOverlayClose
+        disableOverlay
+        spotlightClicks
         spotlightPadding={6}
         callback={handleCallback}
         locale={{
