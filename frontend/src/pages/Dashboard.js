@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCache } from '../contexts/CacheContext';
@@ -40,25 +40,11 @@ export default function Dashboard() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  useEffect(() => {
-    if (selectedProject) {
-      loadChatHistory(selectedProject.project_id);
-    }
-  }, [selectedProject]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/projects`, {
         withCredentials: true
@@ -67,7 +53,6 @@ export default function Dashboard() {
       // Cache pour mode hors ligne
       cacheProjects(response.data);
     } catch (error) {
-      console.error('Error loading projects:', error);
       // Utiliser le cache en mode hors ligne
       if (!isOnline) {
         const cached = getCachedProjects();
@@ -79,18 +64,32 @@ export default function Dashboard() {
       }
       toast.error('Erreur lors du chargement des projets');
     }
-  };
+  }, [cacheProjects, getCachedProjects, isOnline]);
 
-  const loadChatHistory = async (projectId) => {
+  const loadChatHistory = useCallback(async (projectId) => {
     try {
       const response = await axios.get(`${API}/chat/history?project_id=${projectId}`, {
         withCredentials: true
       });
       setMessages(response.data);
     } catch (error) {
-      console.error('Error loading chat history:', error);
+      // Silent fail — chat history is non-critical
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  useEffect(() => {
+    if (selectedProject) {
+      loadChatHistory(selectedProject.project_id);
+    }
+  }, [selectedProject, loadChatHistory]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const createNewProject = async () => {
     const projectName = prompt('Nom du projet:');

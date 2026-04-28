@@ -155,13 +155,11 @@ export function CacheProvider({ children }) {
     
     if (queue.length === 0) return;
 
-    console.log(`Processing ${queue.length} offline actions...`);
-    
     for (const action of queue) {
       try {
         // Exécuter l'action (à implémenter selon le type)
-        console.log('Processing:', action);
-        // await executeAction(action);
+        // (logged previously — kept silent now to avoid prod noise)
+        void action;
       } catch (error) {
         console.error('Failed to process offline action:', error);
       }

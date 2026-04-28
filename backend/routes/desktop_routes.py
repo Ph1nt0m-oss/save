@@ -24,23 +24,44 @@ OUTPUT_DIR = "/app/builds/output"
 
 
 async def build_electron_app(project_id: str, app_name: str, files: list):
-    """Build Electron app in background"""
+    """Build Electron app in background.
+
+    Security:
+    - Each generated file path is resolved against build_path/src and rejected
+      if it escapes the sandbox (path-traversal hardening).
+    - app_name is JSON-escaped before being interpolated into Electron's main.js
+      to neutralize quote/backslash injection that could lead to RCE during build.
+    """
     build_path = f"{BUILD_DIR}/{project_id}"
-    
+    src_root = os.path.realpath(f"{build_path}/src")
+
     try:
         # Clean previous build
         if os.path.exists(build_path):
             shutil.rmtree(build_path)
-        
+
         os.makedirs(build_path, exist_ok=True)
-        os.makedirs(f"{build_path}/src", exist_ok=True)
-        
-        # Write source files
+        os.makedirs(src_root, exist_ok=True)
+
+        # Write source files (path-traversal safe)
         for file in files:
-            file_path = f"{build_path}/src/{file['path']}"
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(file['content'])
+            raw_rel = (file.get('path') or '').strip().lstrip('/')
+            if not raw_rel:
+                continue
+            # Reject absolute paths or any traversal hint up-front
+            if '..' in raw_rel.replace('\\', '/').split('/') or os.path.isabs(raw_rel):
+                raise HTTPException(status_code=400, detail=f"Refused unsafe file path: {raw_rel!r}")
+            target_path = os.path.realpath(os.path.join(src_root, raw_rel))
+            # Final check: target must stay inside src_root
+            if not (target_path == src_root or target_path.startswith(src_root + os.sep)):
+                raise HTTPException(status_code=400, detail=f"Refused path escape: {raw_rel!r}")
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write(file.get('content') or '')
+
+        # JSON-escape app_name for safe interpolation into Electron source.
+        # json.dumps adds wrapping quotes + escapes special characters.
+        safe_title_js = json.dumps(app_name)
         
         # Create main.js for Electron
         main_js = f'''const {{ app, BrowserWindow, Menu }} = require('electron');
@@ -58,7 +79,7 @@ function createWindow() {{
             nodeIntegration: false,
             contextIsolation: true
         }},
-        title: '{app_name}',
+        title: {safe_title_js},
         backgroundColor: '#050505',
         show: false,
         autoHideMenuBar: true

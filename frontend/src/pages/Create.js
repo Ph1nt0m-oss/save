@@ -238,7 +238,7 @@ export default function Create() {
               <div className="space-y-4">
                 {messages.map((msg, idx) => (
                   <motion.div
-                    key={idx}
+                    key={msg.message_id || msg.id || `msg-${msg.timestamp || idx}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -336,7 +336,7 @@ export default function Create() {
                   {showPreview && generatedCode && (
                     <div className="space-y-4">
                       {generatedCode.files?.map((file, idx) => (
-                        <div key={idx} className="bg-[#050505] border border-white/10 rounded p-4">
+                        <div key={file.path || `file-${idx}`} className="bg-[#050505] border border-white/10 rounded p-4">
                           <div className="flex items-center gap-2 mb-2">
                             <Code className="w-4 h-4 text-[#E4FF00]" />
                             <span className="font-['IBM_Plex_Mono'] text-sm">{file.path}</span>

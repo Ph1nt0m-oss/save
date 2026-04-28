@@ -173,7 +173,7 @@ export default function Chat() {
           <div className="space-y-4">
             {messages.map((msg, idx) => (
               <motion.div
-                key={idx}
+                key={msg.message_id || msg.id || `msg-${msg.timestamp || idx}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
