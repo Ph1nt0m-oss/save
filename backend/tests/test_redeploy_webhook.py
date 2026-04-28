@@ -1,9 +1,12 @@
 """
 Auto-deploy webhook regression tests.
-Validates the /api/admin/redeploy endpoint behavior:
-- Auth gating (401 without secret, 401 with wrong secret)
-- 200 with correct secret + .env preservation
-- /api/health remains healthy after redeploy
+
+Validates auth gating on /api/admin/redeploy (401 without/with-wrong secret).
+
+The "happy path" test is gated behind an explicit env var
+(RUN_REDEPLOY_HAPPY_PATH=1) because triggering the webhook performs a
+`git fetch + reset --hard origin/main` that overwrites any uncommitted
+local changes. Only run it when local == origin/main.
 """
 import os
 import time
@@ -19,15 +22,13 @@ HEALTH_URL = f"{BASE_URL}/api/health"
 
 
 def _read_deploy_secret():
-    """Read DEPLOY_SECRET from backend/.env (skip test if absent)."""
     env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
     if not os.path.exists(env_path):
         return None
     with open(env_path) as f:
         for line in f:
             if line.startswith("DEPLOY_SECRET="):
-                value = line.split("=", 1)[1].strip().strip('"').strip("'")
-                return value or None
+                return line.split("=", 1)[1].strip().strip('"').strip("'") or None
     return None
 
 
@@ -45,12 +46,25 @@ class TestRedeployAuth:
         assert r.status_code == 401, r.text
 
 
+class TestHealth:
+    def test_health_endpoint(self):
+        r = requests.get(HEALTH_URL, timeout=15)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "healthy"
+        assert "commit" in data
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_REDEPLOY_HAPPY_PATH") != "1",
+    reason="Happy path triggers `git reset --hard` and overwrites uncommitted local changes. "
+           "Set RUN_REDEPLOY_HAPPY_PATH=1 only when local == origin/main.",
+)
 class TestRedeployHappyPath:
     def test_redeploy_succeeds_and_preserves_env(self):
         secret = _read_deploy_secret()
         if not secret:
-            pytest.skip("DEPLOY_SECRET not configured in backend/.env")
-
+            pytest.skip("DEPLOY_SECRET not configured")
         r = requests.post(
             DEPLOY_URL,
             headers={"X-Deploy-Secret": secret},
@@ -59,17 +73,12 @@ class TestRedeployHappyPath:
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["status"] == "deploying"
-        # New robust webhook returns these fields:
         assert "commit" in body
         assert "env_preserved" in body
-        # backend/.env must be in the preserved list
         assert any("backend/.env" in p for p in body["env_preserved"])
 
     def test_health_still_healthy_after_redeploy(self):
-        # give hot-reload a moment to settle
         time.sleep(6)
         r = requests.get(HEALTH_URL, timeout=15)
         assert r.status_code == 200
-        data = r.json()
-        assert data["status"] == "healthy"
-        assert "commit" in data
+        assert r.json()["status"] == "healthy"

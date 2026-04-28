@@ -2291,17 +2291,55 @@ async def redeploy(request: Request):
 
     try:
         repo_dir = str(ROOT_DIR.parent)
-        pull = subprocess.check_output(
-            ["git", "pull", "origin", "main"],
+
+        # Back up .env files BEFORE git operations, because they are tracked
+        # in this repo and would be overwritten by git pull / reset --hard
+        # with the (incomplete) GitHub-side version.
+        env_files = ["backend/.env", "frontend/.env"]
+        env_backups = {}
+        for env_path in env_files:
+            full = os.path.join(repo_dir, env_path)
+            if os.path.exists(full):
+                with open(full, "rb") as f:
+                    env_backups[env_path] = f.read()
+
+        # Robust sync: fetch + hard reset on origin/main.
+        # Avoids "divergent branches" errors that plain `git pull` hits when
+        # local has auto-commits or the same file was edited via GitHub UI.
+        fetch_out = subprocess.check_output(
+            ["git", "fetch", "origin", "main"],
+            cwd=repo_dir, stderr=subprocess.STDOUT, timeout=30
+        ).decode()
+        reset_out = subprocess.check_output(
+            ["git", "reset", "--hard", "origin/main"],
             cwd=repo_dir, stderr=subprocess.STDOUT, timeout=30
         ).decode()
 
-        # Restart in background so this request can return cleanly
+        # Restore .env files (preserve runtime secrets)
+        for env_path, content in env_backups.items():
+            full = os.path.join(repo_dir, env_path)
+            with open(full, "wb") as f:
+                f.write(content)
+
+        new_commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=repo_dir, stderr=subprocess.STDOUT, timeout=10
+        ).decode().strip()
+
+        # Trigger uvicorn hot-reload by touching server.py
+        # (more reliable than supervisorctl restart in background which races
+        # with watchfiles and can leave supervisor in STOPPED state).
         subprocess.Popen(
-            ["sh", "-c", "sleep 1 && sudo supervisorctl restart backend"],
+            ["sh", "-c", "sleep 1 && touch backend/server.py"],
             cwd=repo_dir
         )
-        return {"status": "deploying", "git_pull": pull}
+        return {
+            "status": "deploying",
+            "commit": new_commit,
+            "git_fetch": fetch_out.strip(),
+            "git_reset": reset_out.strip(),
+            "env_preserved": list(env_backups.keys()),
+        }
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=f"Deploy failed: {e.output.decode() if e.output else str(e)}")
     except Exception as e:

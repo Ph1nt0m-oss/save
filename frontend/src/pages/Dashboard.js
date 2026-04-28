@@ -15,6 +15,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
 import { toast } from 'sonner';
+import Onboarding from '../components/Onboarding';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -251,6 +252,7 @@ export default function Dashboard() {
 
   return (
     <div className="h-screen bg-[#050505] text-white flex overflow-hidden">
+      <Onboarding />
       {/* Sidebar - Projects */}
       <motion.aside
         initial={false}
