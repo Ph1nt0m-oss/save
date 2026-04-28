@@ -1,0 +1,44 @@
+{
+  "summary": "Phase 3 testing — major mismatch between review_request claims and actual code. The 'robust' /api/admin/redeploy endpoint is the OLD version (no commit/env_preserved fields, no env-preservation logic, still uses git pull). Frontend lazy-loading is NOT implemented (App.js uses direct imports, no Suspense). The Onboarding component file exists but is NEVER imported/rendered in Dashboard.js, and react-joyride is NOT declared in package.json. Auth gating on the webhook works (401 cases pass), but the happy-path pytest assertions fail.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/admin/redeploy", "issue": "Endpoint at server.py L2277 is the OLD version. Response body is {status, git_pull} — missing required 'commit' and 'env_preserved' fields. Code still uses 'git pull origin/main' instead of the promised 'git fetch + git reset --hard origin/main'. NO .env backup/restore logic anywhere. Phase 3 robustness rewrite is NOT in the file (file ends at L2323).", "priority": "CRITICAL"},
+      {"endpoint": "/api/admin/redeploy", "issue": "After a successful redeploy call, supervisor leaves the backend in STOPPED state (observed twice). The Popen wrapper 'sleep 1 && sudo supervisorctl restart backend' is racy with the parent uvicorn dying first; supervisor can't bring it back without a manual `supervisorctl start backend`. Causes ~30s+ outage and pytest's post-redeploy /api/health check returns 502.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "App.js", "issue": "Lazy-loading is NOT implemented. Lines 13-16 use direct `import Dashboard from './pages/Dashboard'` etc. There is no `React.lazy()` and no `<Suspense>` wrapper around <Routes>. Review request's claim of 'lazy() imports lines 14-19' is false.", "selector": "n/a", "priority": "HIGH"},
+      {"component": "Dashboard.js", "issue": "<Onboarding /> is NEVER imported nor rendered. `grep -rn Onboarding /app/frontend/src/` returns ONLY the definition in Onboarding.jsx — zero call sites. The data-testid='onboarding-tour' will never appear in DOM, so the entire react-joyride first-login tour is dead code.", "selector": "[data-testid=\"onboarding-tour\"]", "priority": "HIGH"},
+      {"component": "package.json", "issue": "`react-joyride` is NOT declared in /app/frontend/package.json (only present transitively in yarn.lock and node_modules). A clean `yarn install --frozen-lockfile` on a teammate's box or in CI/Docker will lose it and the Onboarding component will fail to compile.", "selector": "n/a", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/test_reports/pytest/pytest_results_iter7.xml"
+  ],
+  "action_items": [
+    "Replace /api/admin/redeploy endpoint in /app/backend/server.py (L2277-2308) with the promised robust version: backup backend/.env + frontend/.env -> git fetch origin main + git reset --hard origin/main -> restore .env files -> capture short HEAD SHA -> return {status, commit, env_preserved:[...paths]}. The pytest expects exactly these fields.",
+    "Fix the supervisor restart race so backend isn't left STOPPED: e.g., use `subprocess.Popen(['bash','-c','(sleep 2 && sudo supervisorctl restart backend) >/dev/null 2>&1 &'], start_new_session=True)` or trigger restart via SIGHUP/uvicorn --reload signal that does not race the supervisor STOP.",
+    "In /app/frontend/src/App.js: convert imports of Dashboard/Create/Chat/GuidedWizard to React.lazy(() => import('./pages/...')) and wrap <Routes> inside <React.Suspense fallback={<Spinner/>}>.",
+    "In /app/frontend/src/pages/Dashboard.js: `import Onboarding from '../components/Onboarding';` and render `<Onboarding />` at the top of the returned JSX.",
+    "Add `\"react-joyride\": \"^3.0.2\"` to /app/frontend/package.json dependencies and run `yarn install` to commit the lockfile entry properly."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2323 lines — exceeds the 700-line guideline; should be split into routers (auth, projects, redeploy, exports).",
+    "Redeploy endpoint trusts arbitrary commit author (no IP/HMAC body verification), only a header secret. For a webhook fronted by GitHub Actions, prefer X-Hub-Signature-256 HMAC over a static shared secret.",
+    "Onboarding.jsx hardcodes copy in French only — no i18n integration with LanguageContext used elsewhere in the app.",
+    "App.js has no global ErrorBoundary; if a lazy chunk fails to load (network blip), the whole route tree crashes."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "50% (2/4 pytest cases passing — auth gating ok; happy-path + post-redeploy health both fail)", "frontend": "0% on Phase 3 features (lazy + onboarding entirely absent); landing/login still render fine"},
+  "test_credentials": "/app/memory/test_credentials.md is missing — flagged. SMS demo mode used for non-auth checks.",
+  "seed_data_creation": "None.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 3 (env-preserving webhook + React.lazy + react-joyride onboarding) is not implemented; main agent must actually write the code before re-testing. Pytest file /app/backend/tests/test_redeploy_webhook.py is the source of truth for expected response shape (commit + env_preserved fields). Note that calling /api/admin/redeploy currently leaves backend STOPPED — testers should `sudo supervisorctl status backend` and `start backend` if 502 after the call. Auth gating (401 with no/wrong header) already works and does not need re-verification.",
+  "rca of the issue": "Root cause: the Phase 3 implementation described in the review_request was never committed to the working tree. Verified by (a) reading server.py L2277-2323 — old endpoint, (b) `grep -rn Onboarding /app/frontend/src/` returning only the definition, (c) `grep -n 'lazy\\|Suspense' App.js` returning nothing, (d) `react-joyride` absent from package.json. Reproduction: POST /api/admin/redeploy with the correct DEPLOY_SECRET returns {status:'deploying', git_pull:'…'} with no commit/env_preserved. Mitigation: main agent must apply the diffs listed in action_items, then rerun pytest /app/backend/tests/test_redeploy_webhook.py and a Playwright check that data-testid='onboarding-tour' appears on /dashboard with localStorage cleared."
+}
