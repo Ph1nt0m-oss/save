@@ -13,6 +13,10 @@ import { Joyride, EVENTS } from 'react-joyride';
  */
 const STORAGE_KEY = 'codeforge_onboarded_v1';
 
+// Buttons shown in every step's tooltip (react-joyride v3 replaced the old
+// `showSkipButton` / `showBackButton` booleans with this array).
+const STEP_BUTTONS = ['back', 'skip', 'primary', 'close'];
+
 const STEPS = [
   {
     target: 'body',
@@ -22,7 +26,7 @@ const STEPS = [
       "Crée des applications complètes en quelques mots, sans une ligne de code. Voici un tour rapide (15 secondes).",
     disableBeacon: true,
     hideOverlay: true,
-    showSkipButton: true,
+    buttons: STEP_BUTTONS,
   },
   {
     target: '[data-tour="wizard"]',
@@ -31,7 +35,7 @@ const STEPS = [
       "Pas d'idée ? Choisis parmi 35+ templates (CRM, e-commerce, jeu, IA…). Tu n'as qu'à personnaliser et générer.",
     disableBeacon: true,
     hideOverlay: true,
-    showSkipButton: true,
+    buttons: STEP_BUTTONS,
   },
   {
     target: '[data-tour="create"]',
@@ -40,7 +44,7 @@ const STEPS = [
       "Décris ton appli en langage naturel. L'IA construit le code, l'interface, et même les explications.",
     disableBeacon: true,
     hideOverlay: true,
-    showSkipButton: true,
+    buttons: STEP_BUTTONS,
   },
   {
     target: '[data-testid="create-project-btn"]',
@@ -49,7 +53,7 @@ const STEPS = [
       "Tous tes projets s'affichent ici. Clic-droit sur un projet pour le renommer ou le supprimer.",
     disableBeacon: true,
     hideOverlay: true,
-    showSkipButton: true,
+    buttons: STEP_BUTTONS,
   },
 ];
 
@@ -94,7 +98,6 @@ export default function Onboarding() {
         run={run}
         continuous
         showProgress
-        showSkipButton
         spotlightClicks
         spotlightPadding={6}
         onEvent={handleEvent}
