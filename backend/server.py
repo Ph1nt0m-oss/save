@@ -367,18 +367,33 @@ async def verify_sms_code(request: SMSAuthRequest, response: Response):
 async def create_session(request: SessionDataRequest, response: Response):
     """Exchange session_id for user data and create persistent session"""
     try:
+        # Sanitize session_id: strip whitespace and any trailing slash that
+        # some proxies/CDNs append. Emergent Auth accepts only the raw token.
+        raw_sid = (request.session_id or "").strip().rstrip("/").strip()
+        if not raw_sid:
+            await log_auth_error("oauth_empty_session_id", "frontend sent empty/blank session_id", request=None)
+            raise HTTPException(status_code=400, detail="session_id manquant")
+
+        # Diagnostic: log first/last 6 chars + length so we can spot truncation
+        # without leaking the full token.
+        sid_preview = f"{raw_sid[:6]}...{raw_sid[-6:]}" if len(raw_sid) >= 12 else f"len={len(raw_sid)}"
+        logger.info(f"/auth/session called with session_id preview={sid_preview} (len={len(raw_sid)})")
+
         # Call Emergent Auth API
-        async with httpx.AsyncClient() as http_client:
+        async with httpx.AsyncClient(timeout=20.0) as http_client:
             auth_response = await http_client.get(
                 "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                headers={"X-Session-ID": request.session_id}
+                headers={"X-Session-ID": raw_sid}
             )
-            
+
             logger.info(f"Emergent Auth response: {auth_response.status_code}")
-            
+
             if auth_response.status_code == 404:
-                logger.error("Session ID not found or expired")
-                await log_auth_error("oauth_session_not_found", "emergent 404", request=None)
+                # Capture body so we can distinguish 'expired' vs 'unknown'
+                logger.error(f"Emergent Auth 404 body: {auth_response.text[:300]}")
+                await log_auth_error("oauth_session_not_found",
+                                     f"sid={sid_preview} len={len(raw_sid)} body={auth_response.text[:200]}",
+                                     request=None)
                 raise HTTPException(status_code=401, detail="Session expirée ou invalide. Veuillez vous reconnecter.")
             
             if auth_response.status_code != 200:

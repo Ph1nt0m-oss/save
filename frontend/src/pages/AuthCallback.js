@@ -53,16 +53,20 @@ export default function AuthCallback() {
 
     const processSession = async () => {
       try {
-        const hash = location.hash;
-        const sessionIdMatch = hash.match(/session_id=([^&]+)/);
+        // Parse session_id from URL fragment robustly:
+        // 1. Strip leading "#"
+        // 2. Use URLSearchParams (handles multiple params, URL-decodes properly)
+        // 3. Trim whitespace + any trailing slash that some proxies append
+        const fragment = (location.hash || '').replace(/^#/, '');
+        const params = new URLSearchParams(fragment);
+        const rawSid = params.get('session_id');
+        const sessionId = rawSid ? rawSid.trim().replace(/\/+$/, '') : '';
 
-        if (!sessionIdMatch) {
+        if (!sessionId) {
           setError("Aucun session_id trouvé dans l'URL");
           setPhase('error');
           return;
         }
-
-        const sessionId = sessionIdMatch[1];
 
         // NOTE: We do NOT use withCredentials here because Cloudflare/ingress
         // injects "Access-Control-Allow-Origin: *" which is incompatible with
