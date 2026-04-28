@@ -1,0 +1,44 @@
+{
+  "summary": "Phase 4 final smoke test of iter_15's two MEDIUM polish fixes. RESULT: 1/2 polish fixes verified GREEN, 1/2 STILL BROKEN. ✅ X-close persistence FIXED — fresh SMS user → /dashboard → tour appears (step1 portal shows [primary=Suivant, close=X]) → click X (data-action=close) → localStorage 'codeforge_onboarded_v1'=='1' → reload → tour does NOT reappear (verified). ❌ 'Passer' (skip) button STILL NOT RENDERED — even after iter_15 added `showSkipButton: true` per-step in STEPS[]. Direct DOM inspection of #react-joyride-portal on step 1 shows only 2 buttons: [{action:'primary',text:'Suivant'}, {action:'close',text:''}]. No data-action='skip' element exists in the DOM. Root cause confirmed via web search: react-joyride v3 REPLACED the v2 `showSkipButton` boolean prop with a `buttons: ['back','close','primary','skip']` array — see react-joyride.com/docs/new-in-v3. Setting `showSkipButton:true` (top-level OR per-step) is a no-op in v3. Backend regression: pytest test_redeploy_webhook → 3 passed, 2 skipped (as expected). /api/health → healthy. Terminer regression path was NOT re-executed but the code path in handleEvent (EVENTS.TOUR_END branch) is unchanged from iter_15 verified-working state.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Onboarding.jsx",
+        "issue": "react-joyride v3.0.2 still does NOT render the 'Passer' (skip) button despite iter_15 adding `showSkipButton: true` to every entry in STEPS[]. Verified by `document.getElementById('react-joyride-portal').querySelectorAll('button')` on step 1 → only 2 buttons returned: data-action='primary' (Suivant) and data-action='close' (X). The v2 prop `showSkipButton` was REPLACED in v3 by a `buttons: ['back','close','primary','skip']` array. Top-level OR per-step `showSkipButton:true` is a no-op. Fix: replace with `buttons: ['back','close','primary','skip']` (or per-step `buttons` arrays) per https://react-joyride.com/docs/new-in-v3. This is the SAME finding from iter_15 — iter_15's attempted patch did not address the actual API change.",
+        "selector": "#react-joyride-portal button[data-action='skip']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/test_reports/pytest/pytest_results_iter16.xml"
+  ],
+  "action_items": [
+    "Fix Passer button in /app/frontend/src/components/Onboarding.jsx: react-joyride v3 dropped the boolean `showSkipButton` prop. Replace with the new v3 `buttons` array. Two options: (a) top-level prop `buttons={['back','close','primary','skip']}` on <Joyride>, OR (b) per-step `buttons: ['back','close','primary','skip']` on each STEPS[] entry. Reference: https://react-joyride.com/docs/new-in-v3. After fix, re-verify portal contains a `button[data-action='skip']` and that clicking it sets localStorage 'codeforge_onboarded_v1'='1' (handleEvent already supports action==='skip').",
+    "(Optional) Once Passer renders, the existing handleEvent code already handles `action==='skip'` correctly — no JS change needed there."
+  ],
+  "critical_code_review_comments": [
+    "iter_15 X-close fix (handleEvent extended to `data.type === EVENTS.TOUR_END || action === 'close' || action === 'skip'`) is GREEN — verified end-to-end with fresh SMS user.",
+    "iter_15 Passer fix (per-step `showSkipButton: true`) is INEFFECTIVE — wrong API; v3 uses a `buttons` array, not the boolean. handleEvent's `action === 'skip'` branch is dead code until the button is actually rendered.",
+    "Backend Phase 4 endpoints all stable (health, redeploy auth-gate). No regressions.",
+    "Recommend updating the JSDoc at top of Onboarding.jsx to reflect the v3 buttons-array API once fixed, to prevent the same misdiagnosis in future iterations."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (test_redeploy_webhook 3 passed / 2 skipped expected)",
+    "frontend": "50% on this iteration's polish scope — X-close fix ✅, Passer fix ❌ (1/2). Overall onboarding persistence is functionally complete via Terminer + X-close paths; Passer is the remaining gap."
+  },
+  "test_credentials": "/app/memory/test_credentials.md unchanged. SMS demo phones used this run: +33612621123 (Passer test, FAIL — no skip button), +33612747412 (X-close test, PASS).",
+  "seed_data_creation": "2 fresh SMS users created (db.users + db.user_sessions). /api/admin/redeploy happy-path NOT triggered (verified via 2 skipped tests).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent applies the v3 `buttons: ['back','close','primary','skip']` fix in Onboarding.jsx, re-run the Test 1 flow: SMS-login fresh user → /dashboard → wait 2.5s → query #react-joyride-portal for button[data-action='skip'] → click it → assert localStorage flag === '1' → reload → assert no portal content. The X-close path (Test 2) is GREEN and does not need retest unless the file is heavily refactored. Backend pytest /app/backend/tests/test_redeploy_webhook.py is the regression suite — keep it green.",
+  "rca of the issue": "RCA — Passer button still missing: react-joyride bumped from v2 → v3 changed the button-control API. v2 used individual boolean props (`showSkipButton`, `hideBackButton`, `hideCloseButton`); v3 consolidated these into a single `buttons: string[]` configuration accepting any subset of ['back','close','primary','skip'] — see https://react-joyride.com/docs/new-in-v3. iter_15 added `showSkipButton: true` to each Step in STEPS[], but in v3 this property is silently ignored on both the <Joyride> top-level props and per-Step options — hence the rendered tooltip only contains [primary, close] buttons. Fix is a 1-line config change: add `buttons: ['back','close','primary','skip']` either at the top-level <Joyride buttons={...}> or per Step. The handleEvent listener already correctly handles `action==='skip'` (added in iter_15 along with `action==='close'`), so once the button renders, the persistence flow will work without further JS changes."
+}

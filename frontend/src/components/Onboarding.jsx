@@ -22,6 +22,7 @@ const STEPS = [
       "Crée des applications complètes en quelques mots, sans une ligne de code. Voici un tour rapide (15 secondes).",
     disableBeacon: true,
     hideOverlay: true,
+    showSkipButton: true,
   },
   {
     target: '[data-tour="wizard"]',
@@ -30,6 +31,7 @@ const STEPS = [
       "Pas d'idée ? Choisis parmi 35+ templates (CRM, e-commerce, jeu, IA…). Tu n'as qu'à personnaliser et générer.",
     disableBeacon: true,
     hideOverlay: true,
+    showSkipButton: true,
   },
   {
     target: '[data-tour="create"]',
@@ -38,6 +40,7 @@ const STEPS = [
       "Décris ton appli en langage naturel. L'IA construit le code, l'interface, et même les explications.",
     disableBeacon: true,
     hideOverlay: true,
+    showSkipButton: true,
   },
   {
     target: '[data-testid="create-project-btn"]',
@@ -46,6 +49,7 @@ const STEPS = [
       "Tous tes projets s'affichent ici. Clic-droit sur un projet pour le renommer ou le supprimer.",
     disableBeacon: true,
     hideOverlay: true,
+    showSkipButton: true,
   },
 ];
 
@@ -66,12 +70,16 @@ export default function Onboarding() {
     }
   }, []);
 
-  // react-joyride v3: use onEvent (not callback). TOUR_END fires when the
-  // user clicks Terminer (last step) or Passer (skip), or when the tour
-  // closes for any other reason.
+  // react-joyride v3: use onEvent (not callback). Persist the "seen" flag
+  // when the tour ends in any way: completing on the last step (TOUR_END
+  // with action 'next'), skipping (TOUR_END with action 'skip'), or the
+  // user clicking the X close button (action 'close'). Joyride does not
+  // always emit TOUR_END after an explicit close, so we also short-circuit
+  // on the 'close' action.
   const handleEvent = (data) => {
     if (!data) return;
-    if (data.type === EVENTS.TOUR_END) {
+    const action = data.action;
+    if (data.type === EVENTS.TOUR_END || action === 'close' || action === 'skip') {
       markCompleted();
       setRun(false);
     }
