@@ -1,0 +1,45 @@
+{
+  "summary": "Phase 4 ULTIMATE retest after iter_13 fix that switched STEPS targets to [data-tour=\"wizard\"] and [data-tour=\"create\"]. Visual tour navigation IS now fixed — all 4 steps render correctly for fresh SMS user with 0 projects (Bienvenue → Assistant Guidé → Création libre → Tes projets), with steps 2 and 3 attaching to empty-state-wizard-cta and empty-state-create-cta. Spotlight + tooltips display correctly. BUT a NEW (unrelated to iter_13 fix) CRITICAL bug surfaced: localStorage flag 'codeforge_onboarded_v1' is NEVER set after Terminer/Skip, so the tour REAPPEARS on every page reload. Root cause: react-joyride v3.0.2 has removed the `callback` prop entirely (verified — string `callback` appears 0 times in node_modules/react-joyride/dist/index.mjs). The handleCallback function in Onboarding.jsx is silently never invoked. Backend pytest 7 passed, 2 skipped — all green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Onboarding.jsx",
+        "issue": "react-joyride v3.0.2 has REMOVED the `callback` prop. Verified by `grep -c 'callback' node_modules/react-joyride/dist/index.mjs` → 0. So the `handleCallback` function passed via <Joyride callback={handleCallback}/> never fires. As a result, localStorage 'codeforge_onboarded_v1' is NEVER written when the user completes (Terminer) or skips (Passer) the tour. Reproduced: fresh SMS user → /dashboard → click Suivant 4× → tooltip disappears (visually OK) → flag still null → page reload → tour reappears from step 1 again. The visual tour navigation iter_13 fix (data-tour selectors) IS working — the new bug is purely about persistence.",
+        "selector": "[data-testid=onboarding-tour]",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/backend/tests/test_phase4_user_stats.py",
+    "/app/test_reports/pytest/pytest_results_iter14.xml"
+  ],
+  "action_items": [
+    "Fix Onboarding.jsx to use react-joyride v3 API. Two options: (a) Replace <Joyride .../> usage with the `useJoyride` hook + `on(EVENTS.TOUR_END, handler)` and `on(EVENTS.SKIP, handler)` to write localStorage flag — see /app/frontend/node_modules/react-joyride/dist/index.mjs line 2580 (useJoyride export) and lines 1324/1333 (FINISHED status emission) and line 1341 (EVENTS.TOUR_END emission). (b) Simpler: downgrade react-joyride to v2.x in package.json and `yarn install` — v2 still has the callback prop. Pick (a) for staying current, (b) for fastest fix. Either way, after fix verify: fresh SMS user → /dashboard → run through tour → reload → tour does NOT reappear → localStorage codeforge_onboarded_v1 === '1'.",
+    "Quick mitigation if neither (a) nor (b) is possible immediately: write localStorage flag the moment the tour starts (in the useEffect after setRun(true)), which guarantees it never re-triggers but means user only ever sees it once even if they don't complete it. Acceptable UX trade-off for v1.",
+    "Verify iter_13 fix is preserved — data-tour='wizard'/'create' attributes on EmptyProjectsState and Dashboard mode buttons are correct and tour visually navigates all 4 steps."
+  ],
+  "critical_code_review_comments": [
+    "react-joyride v3.0.2 is a major breaking change vs v2 — `callback` prop removed, new event-emitter API. Onboarding.jsx was migrated only superficially (kept the v2 callback signature). Search for all uses of `<Joyride` in /app/frontend/src — only the one in Onboarding.jsx exists, so refactor scope is small.",
+    "The iter_13 logic fix using [data-tour] attributes is solid and works correctly for both 0-project users (resolves to empty-state CTAs) and users with projects (resolves to wizard-btn / online-create-btn). Tour visually navigates all 4 steps as designed.",
+    "Potential resilience improvement: regardless of which approach is picked, also run `localStorage.setItem(STORAGE_KEY, '1')` via a `setTimeout(..., 60000)` fallback — if the user closes the tab without finishing/skipping, they shouldn't see the tour forever next time."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (7 passed, 2 skipped as expected — test_redeploy_webhook + test_phase4_user_stats)",
+    "frontend": "~85% — visual tour navigation FIXED (iter_13 fix solid), all 4 steps spotlight correctly. Joyride overlay removal still working. user-menu, stats, logout, empty-state, login toast, authcallback retry remain GREEN. NEW bug: localStorage flag never set due to v3 API breaking change → tour reappears on every reload."
+  },
+  "test_credentials": "/app/memory/test_credentials.md unchanged. SMS demo: any phone, code in /api/auth/sms/send response and toast. Used: +33612886488, +33612889752 this run.",
+  "seed_data_creation": "Created 2 fresh SMS users this iteration: +33612886488, +33612889752. Each generates one row in db.users + db.user_sessions. /api/admin/redeploy happy-path NOT triggered (verified via 2 skipped tests).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The iter_13 fix (data-tour='wizard'/'create' selectors) IS solid and verified. Don't touch. The NEW bug is in Onboarding.jsx callback handling: react-joyride v3.0.2 removed the `callback` prop. Confirmed by `grep -c 'callback' /app/frontend/node_modules/react-joyride/dist/index.mjs` returning 0, AND by direct test (localStorage codeforge_onboarded_v1 stays null even after clicking Terminer on step 4). When testing the fix, run: fresh SMS login → /dashboard → click Suivant 4× until tour ends → page.evaluate(\"localStorage.getItem('codeforge_onboarded_v1')\") MUST equal '1' → reload → tour MUST NOT reappear. Backend Phase 4 (test_redeploy_webhook + test_phase4_user_stats) remains 100% green — no need to retest.",
+  "rca of the issue": "RCA — Tour reappears on every reload despite full completion: react-joyride v3.0.2 (the version installed in /app/frontend/node_modules/react-joyride) has dropped the legacy v2 `callback` prop in favor of an event-emitter API exposed via the `useJoyride` hook (`on(eventType, handler)`). Onboarding.jsx was written for the v2 API: it passes `callback={handleCallback}` to <Joyride/>. In v3 this prop is silently ignored — the engine never invokes handleCallback for any status (FINISHED, SKIPPED, RUNNING, READY, etc.). Therefore the body of handleCallback (which writes localStorage 'codeforge_onboarded_v1' = '1' when status is FINISHED or SKIPPED) is unreachable. localStorage stays null, useEffect on next page load reads null, sets run=true, tour runs again. Reproduction: fresh SMS user (any phone, demo code from toast) → /dashboard → tooltip with 'Bienvenue sur CodeForge AI' visible → Suivant → 'Assistant Guidé' (correctly spotlights empty-state-wizard-cta) → Suivant → 'Création libre' (correctly spotlights empty-state-create-cta) → Suivant → 'Tes projets' (spotlights create-project-btn) → click Terminer → tooltip removed visually → page.evaluate(\"localStorage.getItem('codeforge_onboarded_v1')\") returns null → reload → step 1 tooltip reappears. Mitigation: refactor Onboarding.jsx to use the v3 `useJoyride` hook + `on(EVENTS.TOUR_END, ...)` + `on(EVENTS.SKIP, ...)`, or downgrade react-joyride to v2.x. Fastest hack: setItem when run becomes true (loses 'completed' semantics but unblocks)."
+}

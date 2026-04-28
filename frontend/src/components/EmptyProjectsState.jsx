@@ -54,6 +54,7 @@ export default function EmptyProjectsState({ onWizard, onCreate }) {
           <button
             onClick={onWizard}
             data-testid="empty-state-wizard-cta"
+            data-tour="wizard"
             className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(228,255,0,0.3)] transition-all"
           >
             <Wand2 className="w-5 h-5" />
@@ -62,6 +63,7 @@ export default function EmptyProjectsState({ onWizard, onCreate }) {
           <button
             onClick={onCreate}
             data-testid="empty-state-create-cta"
+            data-tour="create"
             className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-transparent border border-white/20 text-white font-['Chivo'] font-bold rounded-sm hover:border-[#00FF66] hover:text-[#00FF66] hover:-translate-y-0.5 transition-all"
           >
             <Plus className="w-5 h-5" />

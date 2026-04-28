@@ -445,6 +445,7 @@ export default function Dashboard() {
               whileTap={{ scale: 0.98 }}
               onClick={() => navigate('/wizard')}
               data-testid="wizard-btn"
+              data-tour="wizard"
               className="w-full mb-6 bg-gradient-to-r from-[#E4FF00] to-[#00FF66] text-[#050505] rounded-lg p-6 hover:opacity-95 hover:shadow-[0_8px_30px_rgba(228,255,0,0.35)] transition-all"
             >
               <div className="flex items-center justify-center gap-4">
@@ -493,6 +494,7 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => navigate('/create', { state: { mode: 'online' } })}
                 data-testid="online-create-btn"
+                data-tour="create"
                 className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-8 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-4">

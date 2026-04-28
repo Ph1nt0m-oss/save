@@ -19,7 +19,7 @@ const STEPS = [
     hideOverlay: true,
   },
   {
-    target: '[data-testid="wizard-btn"]',
+    target: '[data-tour="wizard"]',
     title: 'Assistant Guidé',
     content:
       "Pas d'idée ? Choisis parmi 35+ templates (CRM, e-commerce, jeu, IA…). Tu n'as qu'à personnaliser et générer.",
@@ -27,7 +27,7 @@ const STEPS = [
     hideOverlay: true,
   },
   {
-    target: '[data-testid="online-create-btn"]',
+    target: '[data-tour="create"]',
     title: 'Création libre',
     content:
       "Décris ton appli en langage naturel. L'IA construit le code, l'interface, et même les explications.",
