@@ -1,62 +1,48 @@
 # CodeForge AI - PRD
 
-## Statut : PHASE 4 COMPLÈTE (Avril 2026)
+## Statut : PHASES 1 → 5 LIVRÉES (Avril 2026)
 
 ### Phases livrées
 - **Phase 1** — Auth Google fixée (callback dédié, upsert session, axios interceptor) ✅
 - **Phase 2** — Auto-deploy GitHub Actions → webhook `/api/admin/redeploy` ✅
 - **Phase 3** — Durcissement sécurité + perf + UX onboarding ✅
 - **Phase 4** — Polish UI/UX (Login, AuthCallback, Dashboard, glassmorphism) ✅
+- **Phase 5** — Tests automatisés + monitoring + service worker + tooltips ✅
 
-### Phase 4 — détails (iter_17 ALL GREEN)
+### Phase 5 — détails (iter_18 ALL GREEN)
 
-**9. Login.js**
-- Spinner Loader2 + texte "Redirection vers Google..." sur le bouton Google pendant la redirection
-- Toast d'erreur affiché si query param `?error=xxx` (messages français pour `access_denied`, `invalid_request`, `server_error`, défaut)
-- Animations Framer Motion stagger sur l'apparition du formulaire (logo, titre, boutons)
-- Fix StrictMode subtil : `setTimeout` non-cleanup pour éviter que le double-invoke de useEffect ne tue le timer
+**13. Tests automatisés**
+- 8 tests pytest auth routes (`/app/backend/tests/test_auth_routes.py`) :
+  - `TestSMSAuth` (3) : send code en demo mode, verify wrong code 401, verify success crée session
+  - `TestAuthMe` (2) : 401 unauth, 200 + user authed
+  - `TestLogout` (1) : déconnexion clears session
+  - `TestSessionOAuth` (1) : invalid session_id 401
+  - `TestMetrics` (1) : `/api/metrics` retourne tous les champs attendus
+- Smoke E2E Playwright (`test_e2e_login.py`) : landing, login render, error toast, auth retry
+- **Workflow CI `.github/workflows/ci.yml`** : pytest + playwright → deploy webhook (gates broken commits, remplace l'ancien `auto-deploy.yml`)
 
-**10. AuthCallback.js**
-- 3 phases distinctes : `processing` (spinner + "Bienvenue, Marie..."), `success` (check vert + confetti 1s), `error` (icône warning + bouton "Réessayer")
-- Confetti `canvas-confetti` aux couleurs de la marque (#E4FF00 + #00FF66 + blanc)
-- Bouton "Réessayer" sur erreur → renvoie vers `/login` (au lieu de l'auto-redirect frustrant)
-- Récupération du nom user via `response.data.name` ou fallback email
+**14. Monitoring**
+- Endpoint **`GET /api/metrics`** : `auth_errors_24h`, `auth_errors_by_kind_24h`, `total_users`, `total_projects`, `active_sessions`, `ts`
+- Collection MongoDB `auth_errors` alimentée par helper `log_auth_error(kind, detail)` :
+  - `sms_invalid_code` (SMS verify avec mauvais code)
+  - `sms_code_expired` (code expiré)
+  - `oauth_session_not_found` (OAuth fail)
+- **Sentry React** intégré env-gated (`/app/frontend/src/lib/sentry.js`) : no-op si `REACT_APP_SENTRY_DSN` absent. Active automatiquement quand le DSN est fourni.
 
-**11. Dashboard.js**
-- Composant `UserMenu` (avatar Shadcn + dropdown) avec stats temps réel via `/api/user/stats` :
-  - Projets créés (count MongoDB)
-  - Plan actuel ("Gratuit illimité")
-  - Dernier login (avant-dernière session)
-  - Membre depuis (created_at user)
-- Bouton de déconnexion dans le dropdown
-- Composant `EmptyProjectsState` désigné si 0 projet :
-  - SVG illustration animée (cercles concentriques rotatifs + carré jaune pulsant)
-  - 2 CTAs : "Lancer l'assistant guidé" + "Créer librement"
-  - Glow background gradient
+**15. Performance**
+- Lazy-load déjà fait en Phase 3 (Dashboard, Create, Chat, Wizard via React.lazy)
+- **Service Worker activé** (`/app/frontend/public/sw.js` + `/app/frontend/src/lib/serviceWorker.js`) :
+  - Cache-first pour assets statiques
+  - Network-first pour `/api/*`
+  - Bypass complet pour `/api/auth/*` (jamais cacher)
+  - Auto-cleanup des anciens caches au activate
+  - Production-only (no-op en dev)
 
-**12. Glassmorphism + hover states**
-- 4 cards mode (chat/create × online/offline) : `bg-white/[0.03] border-white/10 backdrop-blur-xl`
-- Hover : `-translate-y-0.5` + `shadow-[0_8px_30px_rgba(228,255,0,0.2)]` (variantes par couleur de carte)
-- Bouton wizard gradient : ajout du même hover-shadow
-- Police Chivo (titres) + IBM Plex Sans (body) conservées
-
-### Onboarding (Phase 3 + corrections Phase 4)
-- `react-joyride@3.0.2` : 4 steps en français, déclenché 1× via flag `localStorage.codeforge_onboarded_v1`
-- Selectors robustes via `data-tour="wizard"|"create"` (fonctionnent avec et sans projets)
-- Persistance sur 3 chemins : Terminer, Passer (skip), X close
-- API v3 correcte : `buttons: ['back','skip','primary','close']` per-step + `onEvent` au lieu de `callback`
-- `hideOverlay` per-step → l'utilisateur peut continuer à interagir avec le reste de l'app
-
-### Architecture
-```
-Backend: FastAPI + MongoDB + Emergent GPT-4o
-Frontend: React + CRA + TailwindCSS + Shadcn UI + Framer Motion + react-joyride + canvas-confetti
-Auth: Google OAuth + SMS (démo Twilio)
-Desktop: Electron + electron-builder + wine
-Mobile: PWA
-GitHub: PyGithub (désactivé tant que PAT absent)
-CI/CD: GitHub Actions → webhook → git fetch+reset+touch
-```
+**16. Tooltips ?**
+- Composant **`FeatureHint`** (`/app/frontend/src/components/FeatureHint.jsx`) basé sur Shadcn Tooltip
+- Style : icône `?` bg-white/5 hover:bg-[#E4FF00]/20, tooltip dark glassmorphism
+- `stopPropagation` pour ne pas déclencher le click parent
+- Intégré sur Dashboard : modes section + bouton wizard
 
 ### Fonctionnalités complètes
 | Fonctionnalité | Statut |
@@ -64,36 +50,60 @@ CI/CD: GitHub Actions → webhook → git fetch+reset+touch
 | Landing | ✅ |
 | Login (toast erreur + spinner Google + animations) | ✅ |
 | AuthCallback (confetti + nom user + retry) | ✅ |
-| Dashboard (avatar + stats + empty state + glassmorphism) | ✅ |
+| Dashboard (avatar + stats + empty state + glassmorphism + tooltips) | ✅ |
 | Wizard (35+ templates) | ✅ |
 | Create (12 suggestions) | ✅ |
 | Auth Google | ✅ |
-| Auth SMS (démo Twilio) | ✅ |
+| Auth SMS (démo) | ✅ |
 | Génération IA (GPT-4o via Emergent) | ✅ |
 | Export Mobile (PWA) | ✅ |
 | Export Desktop (EXE via electron-builder + wine) | ✅ |
-| Export Customizer (8 palettes + GitHub push) | ⚠️ GitHub désactivé (PAT requis) |
+| Export Customizer (8 palettes + GitHub push) | ✅ (PAT configuré) |
 | Historique chat projet | ✅ |
 | Menu contextuel (clic droit) | ✅ |
-| Auto-deploy GitHub Actions | ✅ |
+| Auto-deploy GitHub Actions + tests gating | ✅ |
 | Lazy-loading routes | ✅ |
-| Onboarding tour (4 steps + persistance robuste) | ✅ |
-| Tests régression backend | ✅ |
+| Onboarding tour (4 steps) | ✅ |
+| Tests régression backend (11 passés) | ✅ |
+| Monitoring (`/api/metrics`) | ✅ |
+| Sentry frontend (env-gated) | ✅ |
+| Service Worker offline cache | ✅ |
+| Tooltips contextuels (FeatureHint) | ✅ |
 
-### Backlog (à valider avec utilisateur)
-- 🔵 P0 — Phase 5 : QA finale (test integration toutes phases) + mission finale (annoncée)
-- 🟡 P1 — User va fournir un PAT GitHub avec scope `repo` → activer push_to_github + retirer .env du tracking git
-- 🟢 P2 — Sentry/LogRocket pour tracking erreurs frontend
-- 🟢 P2 — i18n complet (anglais en plus du français)
+### Architecture
+```
+Backend: FastAPI + MongoDB + Emergent GPT-4o
+Frontend: React + CRA + TailwindCSS + Shadcn UI + Framer Motion
+         + react-joyride + canvas-confetti + @sentry/react
+Auth: Google OAuth + SMS (démo)
+Desktop: Electron + electron-builder + wine
+Mobile: PWA + Service Worker
+GitHub: PyGithub + PAT (push apps + CI)
+CI/CD: GitHub Actions → pytest → playwright → webhook redeploy
+```
 
 ### Configuration .env
 ```
 # obligatoires
 MONGO_URL, DB_NAME, EMERGENT_LLM_KEY, DEPLOY_SECRET
 # optionnelles
-TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID  # vide → demo mode
-GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET (PAT)                      # vide → push_to_github désactivé
+TWILIO_*                                # vide → demo mode
+GITHUB_CLIENT_SECRET (PAT)              # configuré → push_to_github actif
+REACT_APP_SENTRY_DSN                    # vide → Sentry inactif
 ```
 
+### GitHub Actions secrets requis
+```
+DEPLOY_URL = https://no-code-builder-25.preview.emergentagent.com
+DEPLOY_SECRET = 748ca32d60fa5367d3ba872e11d07fb8367296b9556ad0400c8cdd9a0e52314f
+```
+
+### Backlog futur (à confirmer avec utilisateur)
+- 🔵 P0 — Mission finale annoncée par utilisateur (en attente brief)
+- 🟡 P1 — Free Mobile SMS si user obtient credentials Free Mobile (compte famille)
+- 🟢 P2 — i18n complet (anglais en plus du français)
+- 🟢 P2 — Sentry DSN configuré côté frontend prod (REACT_APP_SENTRY_DSN)
+- 🟢 P3 — Push token GitHub utilisateur stocké pour push_to_github multi-user
+
 ---
-**Dernière mise à jour : 28 avril 2026 — Phase 4 livrée et 100% testée (iter_17 ALL GREEN)**
+**Dernière mise à jour : 28 avril 2026 — Phases 1-5 livrées et 100% testées**
