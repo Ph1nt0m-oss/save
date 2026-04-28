@@ -1,0 +1,32 @@
+{
+  "summary": "Phase 4 final retest. BACKEND: 100% green — 7 passed + 2 skipped (test_redeploy_webhook 3 passed/2 skipped + test_phase4_user_stats 4 passed; happy-path NOT triggered). FRONTEND: Bug 1 (Login toast) is FIXED — all 4 variants verified, toast 'Connexion refusée' visible. Bug 2 (Joyride overlay) is STILL PRESENT — `hideOverlay` prop passed to <Joyride> at top-level does NOT take effect in react-joyride v3.0.2. Confirmed by reading lib source: hideOverlay is in optionFieldNames and only merged via `props.options` or per-step config — NOT via direct top-level Joyride prop. The black 1920x1080 path still renders inside #react-joyride-portal and intercepts clicks on user-menu-trigger.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Onboarding.jsx (react-joyride 3.0.2)", "issue": "hideOverlay prop at the top level of <Joyride hideOverlay ...> is IGNORED by react-joyride v3.0.2. The fullscreen <path fill='#00000080' d='M0 0H1920V1080H0Z'> still renders inside #react-joyride-portal and intercepts pointer events — playwright click on [data-testid=user-menu-trigger] times out (overlay path catches pointer events). The user-menu-content never opens. RCA confirmed by reading node_modules/react-joyride/dist/index.mjs: function getMergedStep(props, currentStep) does `mergedOptions = deepMerge(defaultOptions, props.options ?? {}, pick(currentStep, ...optionFieldNames))`. `hideOverlay` is in optionFieldNames (line 636), but it's only picked from `props.options` (i.e. <Joyride options={{...}}/> ) OR from the individual step config — NOT from top-level Joyride wrapper props. Top-level `hideOverlay` is dropped on the floor.", "selector": "[data-testid=user-menu-trigger]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/backend/tests/test_phase4_user_stats.py",
+    "/app/test_reports/pytest/pytest_results_iter12.xml"
+  ],
+  "action_items": [
+    "FIX BUG 2 — change Onboarding.jsx Joyride props from `<Joyride hideOverlay spotlightClicks ...>` to either:  (a) <Joyride styles={{...}} options={{ hideOverlay: true, spotlightClicks: true }} ...>  OR  (b) add `hideOverlay: true, spotlightClicks: true` to EACH step in the STEPS array (since optionFieldNames includes hideOverlay it would propagate via getMergedStep's per-step pick).  Recommended: option (a) — wrap them in `options` prop. Verification: after fix, document.querySelector('#react-joyride-portal path[fill=\"#00000080\"]') must return null, and [data-testid=user-menu-trigger] click must succeed without timeout.",
+    "After bug 2 is fixed, re-run SMS-login → /dashboard → click user-menu-trigger and verify [data-testid=user-menu-content] opens with stats (project_count, plan, last_login, member_since)."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/components/Onboarding.jsx lines 73-74: `hideOverlay spotlightClicks` are passed as bare top-level boolean props on <Joyride>. In react-joyride v3.0.2 these are per-step / options-level fields (see optionFieldNames in node_modules/react-joyride/dist/index.mjs:625-652). Top-level wrapper drops them. Use the `options` prop or set them on each step.",
+    "Login.js fix is solid — removing the cleanup return on the setTimeout neutralizes StrictMode's double-invocation purge of the timer. The toastedRef guard prevents double-firing in production. Confirmed: toast appears top-right within ~600ms with correct French message for all 4 cases."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (7 passed, 2 skipped as expected)", "frontend": "~83% — Bug 1 (Login toast) FIXED across all 4 variants + Google spinner + AuthCallback retry + Empty Projects State all green. Bug 2 (Joyride overlay) still blocks user-menu interaction."},
+  "test_credentials": "/app/memory/test_credentials.md current. SMS demo confirmed (verification code in /api/auth/sms/send response body). DEPLOY_SECRET 401 case verified via test_redeploy_webhook; happy path NOT triggered.",
+  "seed_data_creation": "Created one fresh SMS demo user this run: +33612777889 (user_0f7188710004 / 'User 7889'). Generates one row in db.users + db.user_sessions. Safe to leave or purge.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 4 nearly complete. Backend 100% green. Frontend Login.js toast (Bug 1) is FIXED in all 4 variants — confirmed via screenshot and DOM query [data-sonner-toast] containing 'Connexion refusée. Réessaie quand tu veux.', 'Requête invalide...', 'Erreur serveur...'. Bug 2 (Joyride overlay) requires moving `hideOverlay` and `spotlightClicks` from top-level <Joyride> props into the `options` prop (or onto each step). After main agent applies fix, verify with: page.evaluate('!!document.querySelector(\\'#react-joyride-portal path[fill=\"#00000080\"]\\')') must return false, AND clicking [data-testid=user-menu-trigger] without force=True must succeed and open [data-testid=user-menu-content]. AuthCallback retry, Google spinner, Empty Projects State all verified green this run.",
+  "rca of the issue": "BUG 2 (joyride overlay) RCA — root cause located in node_modules/react-joyride/dist/index.mjs line 654-657 (getMergedStep): `const mergedOptions = deepMerge(defaultOptions, props.options ?? {}, pick(currentStep, ...optionFieldNames))`. The function picks options-tier fields ONLY from `props.options` (top-level options object) and from `currentStep` (per-step config). It does NOT pick them from the top-level Joyride props themselves. Therefore `<Joyride hideOverlay ...>` evaluates as a no-op for option fields. Mitigation: wrap `hideOverlay: true, spotlightClicks: true` in an `options` prop OR add them to each STEP entry. Both bugs in iter_11 share the pattern of 'looks correct in v2 docs but v3 changed the prop API'. Verified hideOverlay IS recognized at the lib level (grep on dist) — it's just merged from a different location."
+}

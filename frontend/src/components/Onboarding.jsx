@@ -70,7 +70,7 @@ export default function Onboarding() {
         continuous
         showProgress
         showSkipButton
-        disableOverlay
+        hideOverlay
         spotlightClicks
         spotlightPadding={6}
         callback={handleCallback}

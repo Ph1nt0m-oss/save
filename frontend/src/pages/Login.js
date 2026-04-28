@@ -21,6 +21,12 @@ export default function Login() {
   // Toast on ?error=... query param (instead of silent redirect).
   // Fires once per mount. Reads window.location.search directly so this
   // does not depend on react-router's hook timing.
+  // The <Toaster /> in App.js mounts as a sibling and only subscribes to
+  // Sonner's toast store *after* its useEffect runs. Toasts dispatched
+  // before subscription are lost. We defer dispatch with a setTimeout.
+  // We deliberately DO NOT clear the timer in cleanup — in React 18
+  // StrictMode the dev double-invocation would kill the timer permanently
+  // (effect setup → cleanup → setup, state+refs preserved → guard hits → no retry).
   useEffect(() => {
     if (toastedRef.current) return;
     const params = new URLSearchParams(window.location.search);
@@ -28,7 +34,9 @@ export default function Login() {
     if (!err) return;
     toastedRef.current = true;
     const msg = ERROR_MESSAGES[err] || ERROR_MESSAGES.default;
-    toast.error(msg, { duration: 6000 });
+    setTimeout(() => {
+      toast.error(msg, { duration: 6000 });
+    }, 600);
   }, []);
 
   const handleGoogleLogin = () => {
