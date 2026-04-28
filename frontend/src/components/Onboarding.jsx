@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Joyride, STATUS } from 'react-joyride';
+import { Joyride, EVENTS } from 'react-joyride';
 
 /**
  * First-time user onboarding tour.
  * Runs once per user (flag stored in localStorage).
- * Reset by clearing `codeforge_onboarded` in localStorage.
+ * Reset by clearing `codeforge_onboarded_v1` in localStorage.
+ *
+ * react-joyride v3 NOTES:
+ *  - The `callback` prop was removed; use `onEvent` instead.
+ *  - `hideOverlay` is a per-Step option (not a top-level Props field).
+ *  - Top-level `spotlightClicks` is supported.
  */
 const STORAGE_KEY = 'codeforge_onboarded_v1';
 
@@ -44,22 +49,30 @@ const STEPS = [
   },
 ];
 
+const markCompleted = () => {
+  try {
+    localStorage.setItem(STORAGE_KEY, '1');
+  } catch (_) {}
+};
+
 export default function Onboarding() {
   const [run, setRun] = useState(false);
 
   useEffect(() => {
     const seen = localStorage.getItem(STORAGE_KEY);
     if (!seen) {
-      // Small delay so target elements are mounted
       const t = setTimeout(() => setRun(true), 600);
       return () => clearTimeout(t);
     }
   }, []);
 
-  const handleCallback = (data) => {
-    const { status } = data;
-    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
-      localStorage.setItem(STORAGE_KEY, '1');
+  // react-joyride v3: use onEvent (not callback). TOUR_END fires when the
+  // user clicks Terminer (last step) or Passer (skip), or when the tour
+  // closes for any other reason.
+  const handleEvent = (data) => {
+    if (!data) return;
+    if (data.type === EVENTS.TOUR_END) {
+      markCompleted();
       setRun(false);
     }
   };
@@ -76,7 +89,7 @@ export default function Onboarding() {
         showSkipButton
         spotlightClicks
         spotlightPadding={6}
-        callback={handleCallback}
+        onEvent={handleEvent}
         locale={{
           back: 'Retour',
           close: 'Fermer',

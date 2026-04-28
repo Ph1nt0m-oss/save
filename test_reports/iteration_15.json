@@ -1,0 +1,51 @@
+{
+  "summary": "Phase 4 final retest after iter_14 fix (react-joyride v3 onEvent + EVENTS.TOUR_END for localStorage persistence). PRIMARY ONBOARDING PERSISTENCE BUG IS FIXED — fresh SMS user → /dashboard → tour appears at step 1 (Bienvenue) → click Suivant 3x → click Terminer on step 4 → localStorage 'codeforge_onboarded_v1' === '1' → page reload → tour does NOT reappear (verified twice with two fresh users). Backend pytest: test_redeploy_webhook 3 passed, 2 skipped (as expected); test_phase4_user_stats 4 passed. Two minor non-blocking findings on Passer/Skip alternative (see frontend_issues).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Onboarding.jsx",
+        "issue": "react-joyride v3.0.2 does NOT render the 'Passer' (Skip) button even when `showSkipButton` prop is set true at top level. Verified by inspecting #react-joyride-portal on step 2: portal contains only [Retour, Suivant, X-close] buttons — no data-action='skip' element. Thus the spec's 'ALTERNATIVE: click Passer on any step' path is unavailable to users. Workaround: pass `showSkipButton: true` per step, OR rely on Terminer completion / X-close. This is a NEW finding, NOT a regression — pre-existed iter_14 work — and the primary persistence path (Terminer) is working correctly.",
+        "selector": "#react-joyride-portal button[data-action='skip']",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Onboarding.jsx handleEvent",
+        "issue": "When user clicks the X close icon (data-action='close'), localStorage flag is NOT written. The handleEvent only listens for EVENTS.TOUR_END, but X close emits EVENTS.STEP_AFTER with action 'close' before TOUR_END fires (in some flows TOUR_END never fires after explicit close). Reproduced: fresh user → step 1 → Suivant → step 2 → click X → flag stays null → reload → tour reappears. Suggested fix: also handle `data.action === 'close'` or listen for EVENTS.STEP_AFTER + lifecycle 'complete' / 'reset', e.g. `if (data.type === EVENTS.TOUR_END || data.action === 'close') markCompleted()`.",
+        "selector": "#react-joyride-portal button[data-action='close']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_redeploy_webhook.py",
+    "/app/backend/tests/test_phase4_user_stats.py",
+    "/app/test_reports/pytest/pytest_results_iter15.xml"
+  ],
+  "action_items": [
+    "(Optional, minor) Make the X-close button also persist the localStorage flag in Onboarding.jsx handleEvent: extend the condition to `data.type === EVENTS.TOUR_END || data.action === 'close'`. This prevents tour reappearance when users dismiss via X.",
+    "(Optional, minor) To make 'Passer' button visible (for the alternative skip path), add `showSkipButton: true` per step in the STEPS array entries (or research if v3 requires `disableSkip` inversion). Currently only Terminer completion triggers persistence."
+  ],
+  "critical_code_review_comments": [
+    "iter_14 fix is solid: Onboarding.jsx now uses react-joyride v3 `onEvent` (replaces removed `callback` prop) + EVENTS.TOUR_END to persist localStorage flag. Verified across 2 fresh SMS users — flag correctly set to '1' after Terminer, no tour reappearance after reload.",
+    "Per-step `hideOverlay: true` (iter_12) and data-tour attribute targets (iter_13/14) all preserved and working — full 4-step tour spotlight rendering correctly for users with 0 projects.",
+    "Recommended hardening: combine `EVENTS.TOUR_END || action === 'close'` to handle all dismissal paths uniformly; current implementation leaves an edge case where X-close doesn't persist completion.",
+    "Backend code quality: /api/user/stats correctly returns 401 unauth, valid stats with auth (project_count, member_since, last_login, plan). /api/admin/redeploy correctly returns 401 on missing/wrong secret. /api/health returns healthy. All Phase 4 backend endpoints clean."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (test_redeploy_webhook 3 passed/2 skipped + test_phase4_user_stats 4 passed)",
+    "frontend": "~95% — Onboarding persistence (Terminer path) FIXED, no regression on iter_12/13 fixes, joyride overlay still removed, user-menu/stats/logout/empty-state/Login toast/AuthCallback retry all GREEN. Two minor edge cases remain: Passer button not rendered, X-close doesn't persist flag."
+  },
+  "test_credentials": "/app/memory/test_credentials.md unchanged. SMS demo: any phone, code in /api/auth/sms/send response and printed in toast/UI. Used: +33612887445 (Terminer path), +33612889614, +33612885453, +33612888542, +33612888XXX (close X) this run.",
+  "seed_data_creation": "Created ~5 fresh SMS users this iteration. Each generates one row in db.users + db.user_sessions. /api/admin/redeploy happy-path NOT triggered (verified via 2 skipped tests). Safe to leave or purge.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 4 PRIMARY onboarding persistence bug (iter_14 callback→onEvent migration) IS FIXED — verified by direct test: flag '1' set after Terminer → reload → no tour. The two reported issues (Passer not rendering, X-close not persisting) are pre-existing minor edge cases in the v3 migration scope — not blockers. Backend regression tests all green. If main agent wants to ship, current state is acceptable; the X-close persistence fix is a 1-line patch in Onboarding.jsx if desired.",
+  "rca of the issue": "RCA — iter_14 fix verification: Onboarding.jsx was updated to use react-joyride v3 API (`onEvent` prop + EVENTS.TOUR_END handler instead of removed v2 `callback` prop). On TOUR_END (fired when user clicks Terminer at the last step), the handler calls markCompleted() which writes localStorage 'codeforge_onboarded_v1' = '1' and setRun(false). Verified working — fresh user → Suivant×3 → Terminer → flag is '1' → reload → useEffect reads '1' → setRun stays false → tour doesn't render. Edge cases discovered: (1) react-joyride v3 ignores top-level `showSkipButton` prop so 'Passer' button never appears in DOM (workaround: per-step config); (2) X-close fires action='close' which does not always trigger TOUR_END in v3 lifecycle, leaving flag null (workaround: extend handler to `data.type === EVENTS.TOUR_END || data.action === 'close'`). Neither edge case is a regression of iter_14 work and both are easy to patch if needed."
+}
