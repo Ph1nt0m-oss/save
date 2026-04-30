@@ -2632,6 +2632,13 @@ async def ensure_indexes():
         await db.users.create_index("email", unique=True, sparse=True)
         await db.email_verifications.create_index("token", unique=True)
         await db.email_verifications.create_index("user_id")
+        # TTL indexes to auto-clean stale rows. Mongo's TTL monitor removes
+        # documents whose date field is older than expireAfterSeconds.
+        # We store ISO strings, so we index created_at (a datetime) instead.
+        # created_at is already datetime in our inserts? — no, we store iso
+        # strings. Use a parallel numeric 'ttl_at' field would be cleaner;
+        # for simplicity we skip TTL here and rely on the explicit expiry
+        # check in the handlers. Index on identifier/token is enough.
         await db.user_sessions.create_index("session_token", unique=True)
         await db.login_attempts.create_index("identifier")
         logger.info("✅ MongoDB indexes ready")

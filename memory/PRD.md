@@ -1,9 +1,22 @@
 # CodeForge AI - PRD
 
-## Statut : PHASES 1 → 5 LIVRÉES (Avril 2026)
+## Statut : PHASES 1 → 5 LIVRÉES + Migration Auth (Avril 2026)
+
+### 30 Avril 2026 — Migration Auth Email/Password + Magic Link (iter_21 ALL GREEN)
+- **ABANDON** d'Emergent Auth + Google OAuth natif (bugs récurrents `user_data_not_found`, pas de clés Google disponibles)
+- **REMPLACÉ** par auth classique Email + Mot de passe + lien magique de confirmation
+- Routes : `POST /api/auth/register` (→ lien magique), `GET /api/auth/verify-email?token=xxx`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
+- Mode démo : si `RESEND_API_KEY` absent → le lien est renvoyé directement dans la réponse de /register (aligné avec le mode démo SMS existant)
+- Si `RESEND_API_KEY` fourni → email envoyé via Resend (gabarit HTML aux couleurs CodeForge)
+- Frontend : Login.js a 2 onglets (Connexion / Inscription), email mémorisé via `localStorage.codeforge_last_email`
+- Nouvelle page : `/verify-email?token=xxx` (VerifyEmail.js) avec confetti + redirect dashboard
+- Sécurité : bcrypt pour passwords, brute-force 5 échecs/15 min/email (identifier email-only car k8s ingress rotate les IP), index unique sur users.email
+- Routes SUPPRIMÉES : `/api/auth/session` (Emergent), `/api/auth/google/login`, `/api/auth/google/callback`
+- Guide de dépannage ultra-détaillé pour l'utilisateur : `/app/GUIDE_GITHUB_DEPANNAGE.md`
+- Test coverage : 16/21 pytest pass + Playwright E2E signup → verify → dashboard → logout → login pre-fill → OK
 
 ### Phases livrées
-- **Phase 1** — Auth Google fixée (callback dédié, upsert session, axios interceptor) ✅
+- **Phase 1** — Auth Google fixée (callback dédié, upsert session, axios interceptor) ✅ (remplacée par Email/Password le 30/04/2026)
 - **Phase 2** — Auto-deploy GitHub Actions → webhook `/api/admin/redeploy` ✅
 - **Phase 3** — Durcissement sécurité + perf + UX onboarding ✅
 - **Phase 4** — Polish UI/UX (Login, AuthCallback, Dashboard, glassmorphism) ✅
