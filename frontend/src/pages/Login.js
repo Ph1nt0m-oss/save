@@ -252,6 +252,37 @@ export default function Login() {
     }
   };
 
+  const handleMagicLink = async () => {
+    const target = (email || '').trim().toLowerCase();
+    if (!target) {
+      toast.error("Renseigne d'abord ton email.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/magic-link`, {
+        email: target,
+        frontend_url: window.location.origin,
+      });
+      try { localStorage.setItem(LAST_EMAIL_KEY, target); } catch (_) {}
+      if (data.email_sent) {
+        toast.success("Lien de connexion envoyé par email !");
+      } else if (data.verification_link) {
+        setDemoLink(data.verification_link);
+        toast.info("Mode démo — clique sur le lien ci-dessous.");
+      } else {
+        toast.info(data.message);
+      }
+      if (data.verification_token) {
+        startWaiting(data.verification_token, target, data.expires_in_seconds);
+      }
+    } catch (err) {
+      toast.error(formatDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const container = {
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { staggerChildren: 0.06, delayChildren: 0.08 } },
@@ -475,14 +506,26 @@ export default function Login() {
                 </button>
 
                 {mode === 'login' && (
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    data-testid="forgot-password-btn"
-                    className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
-                  >
-                    Mot de passe oublié ?
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleMagicLink}
+                      disabled={submitting}
+                      data-testid="magic-link-btn"
+                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-white/[0.04] border border-white/10 text-white text-sm font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all mt-2 disabled:opacity-60"
+                    >
+                      <Mail className="w-4 h-4" />
+                      Connexion par lien magique (sans mot de passe)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      data-testid="forgot-password-btn"
+                      className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
+                    >
+                      Mot de passe oublié ?
+                    </button>
+                  </>
                 )}
               </motion.form>
             )}
@@ -558,6 +601,25 @@ export default function Login() {
           >
             ← Retour à l'accueil
           </button>
+          <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-[#A1A1AA]/60">
+            <button
+              type="button"
+              onClick={() => navigate('/how-it-works')}
+              data-testid="link-how-it-works"
+              className="hover:text-[#E4FF00] transition-colors"
+            >
+              Comment ça marche
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => navigate('/legal')}
+              data-testid="link-legal"
+              className="hover:text-[#E4FF00] transition-colors"
+            >
+              CGU & Confidentialité
+            </button>
+          </div>
         </motion.div>
       </motion.div>
     </div>

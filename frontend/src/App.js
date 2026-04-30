@@ -10,15 +10,18 @@ import { Toaster } from './components/ui/sonner';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import SMSLogin from './pages/SMSLogin';
-import AuthCallback from './pages/AuthCallback';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
+import HowItWorks from './pages/HowItWorks';
+import Legal from './pages/Legal';
+import FeedbackButton from './components/FeedbackButton';
 
 // Authenticated/heavy routes — lazy-loaded to shrink initial bundle
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Create = lazy(() => import('./pages/Create'));
 const Chat = lazy(() => import('./pages/Chat'));
 const GuidedWizard = lazy(() => import('./pages/GuidedWizard'));
+const Profile = lazy(() => import('./pages/Profile'));
 
 // Suspense fallback while a chunk is downloading
 const RouteFallback = () => (
@@ -69,13 +72,14 @@ const ProtectedRoute = ({ children, allowOffline = false }) => {
   return children;
 };
 
-// Router component to handle session_id detection
+// Router component
 function AppRouter() {
-  const location = useLocation();
-  
-  // Check URL fragment (not query params) for session_id
-  if (location.hash?.includes('session_id=')) {
-    return <AuthCallback />;
+  // Legacy Google/Emergent OAuth callback (#session_id=...) is no longer
+  // supported. If we ever see one (old bookmark / cached link), strip the
+  // hash and continue rendering the normal app — the user lands on /login
+  // and can sign in with email/password.
+  if (typeof window !== 'undefined' && window.location.hash?.includes('session_id=')) {
+    try { window.history.replaceState(null, '', window.location.pathname); } catch (_) {}
   }
 
   return (
@@ -86,6 +90,8 @@ function AppRouter() {
         <Route path="/sms-login" element={<SMSLogin />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/legal" element={<Legal />} />
         <Route 
           path="/dashboard" 
           element={
@@ -118,6 +124,14 @@ function AppRouter() {
             </ProtectedRoute>
           } 
         />
+        <Route 
+          path="/profile" 
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          } 
+        />
       </Routes>
     </Suspense>
   );
@@ -131,6 +145,7 @@ function App() {
           <CacheProvider>
             <AuthProvider>
               <AppRouter />
+              <FeedbackButton />
               <Toaster 
                 position="top-right"
                 theme="dark"

@@ -616,6 +616,75 @@ class ResendRequest(BaseModel):
     frontend_url: Optional[str] = None
 
 
+class MagicLinkLoginRequest(BaseModel):
+    email: str
+    frontend_url: Optional[str] = None
+
+
+@api_router.post("/auth/magic-link")
+async def magic_link_login(payload: MagicLinkLoginRequest, request: Request):
+    """Send a one-shot login link to a verified user.
+
+    Same UX as register: the original tab polls /verification-status while
+    the user clicks the link in their inbox. Always returns the same
+    neutral message to prevent email enumeration. Rate-limited 3/10 min.
+    """
+    email = normalize_email(payload.email)
+    if not email or not EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    neutral = {
+        "message": "Si un compte existe pour cet email, un lien de connexion t'a été envoyé.",
+    }
+
+    if not user or not user.get("verified"):
+        return neutral
+
+    # Rate limit: 3 magic links / 10 min / verified email
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    recent = await db.resend_attempts.count_documents({"email": email, "ts": {"$gte": cutoff}, "purpose": "magic_login"})
+    if recent >= 3:
+        raise HTTPException(status_code=429, detail="Trop de demandes. Patiente 10 minutes.")
+
+    now = datetime.now(timezone.utc)
+    token = secrets.token_urlsafe(32)
+    await db.email_verifications.delete_many({"user_id": user["user_id"], "purpose": "magic_login"})
+    await db.email_verifications.insert_one({
+        "token": token,
+        "user_id": user["user_id"],
+        "email": email,
+        "purpose": "magic_login",
+        "consumed_at": None,
+        "pending_session_token": None,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=5)).isoformat(),
+    })
+    await db.resend_attempts.insert_one({
+        "email": email,
+        "ts": now.isoformat(),
+        "purpose": "magic_login",
+    })
+
+    frontend_base = (
+        _clean_origin(payload.frontend_url)
+        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
+        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
+    )
+    login_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
+
+    sent = await send_verification_email(email, login_url)
+    response = {
+        **neutral,
+        "email_sent": sent,
+        "verification_token": token,  # for polling cross-tab
+        "expires_in_seconds": 5 * 60,
+    }
+    if not sent:
+        response["verification_link"] = login_url
+    return response
+
+
 @api_router.post("/auth/resend-verification")
 async def resend_verification(payload: ResendRequest, request: Request):
     """Generate a fresh magic link for an unverified account.
@@ -724,6 +793,34 @@ async def verify_email(token: str):
 
     user_id = doc["user_id"]
     now = datetime.now(timezone.utc)
+
+    # Email change flow: apply the pending email change instead of marking
+    # the account as verified (it already is).
+    if doc.get("purpose") == "email_change" and doc.get("pending_email"):
+        new_email = doc["pending_email"]
+        # Race-check: another account may have grabbed this email since
+        # the request was issued.
+        existing = await db.users.find_one({"email": new_email}, {"_id": 0})
+        if existing and existing.get("user_id") != user_id:
+            await db.email_verifications.delete_one({"token": token})
+            raise HTTPException(
+                status_code=409,
+                detail="Cet email a été pris par un autre compte entre-temps.",
+            )
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"email": new_email, "last_login": now.isoformat()}},
+        )
+        await db.email_verifications.update_one(
+            {"token": token},
+            {"$set": {"consumed_at": now.isoformat()}},
+        )
+        return {
+            "message": "Adresse email mise à jour. Tu peux fermer cette page.",
+            "already_verified": True,
+            "email_changed": True,
+        }
+
     await db.users.update_one(
         {"user_id": user_id},
         {"$set": {"verified": True, "last_login": now.isoformat()}},
@@ -869,6 +966,154 @@ async def login(payload: LoginRequest, response: Response, request: Request):
 
     safe_user = {k: v for k, v in user.items() if k != "password_hash"}
     return {**safe_user, "session_token": session_token}
+
+
+# ==================== PROFILE / SETTINGS ====================
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ChangeEmailRequest(BaseModel):
+    new_email: str
+    current_password: str
+    frontend_url: Optional[str] = None
+
+
+class DeleteAccountRequest(BaseModel):
+    current_password: str
+
+
+@api_router.post("/auth/change-password")
+async def change_password(payload: ChangePasswordRequest, request: Request):
+    """Change password while logged in. Requires current password."""
+    user_id = await get_current_user(request)
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit faire au moins 6 caractères")
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if not verify_password(payload.current_password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Mot de passe actuel incorrect")
+
+    new_hash = hash_password(payload.new_password)
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "password_hash": new_hash,
+            "last_password_change": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    # Invalidate other sessions, keep the current one
+    current_token = request.cookies.get("session_token") or (
+        request.headers.get("Authorization", "").replace("Bearer ", "") or None
+    )
+    if current_token:
+        await db.user_sessions.delete_many({
+            "user_id": user_id,
+            "session_token": {"$ne": current_token},
+        })
+    return {"message": "Mot de passe mis à jour."}
+
+
+@api_router.post("/auth/change-email")
+async def change_email(payload: ChangeEmailRequest, request: Request):
+    """Request a change of email. Sends a verification link to the NEW
+    email; the change is only applied once the user clicks the link.
+    """
+    user_id = await get_current_user(request)
+    new_email = normalize_email(payload.new_email)
+    if not new_email or not EMAIL_RE.match(new_email):
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if not verify_password(payload.current_password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+    if new_email == user.get("email"):
+        raise HTTPException(status_code=400, detail="Cet email est déjà ton email actuel")
+    other = await db.users.find_one({"email": new_email}, {"_id": 0})
+    if other:
+        raise HTTPException(status_code=409, detail="Cet email est déjà utilisé par un autre compte")
+
+    # Reuse email_verifications collection with a 'pending_email' marker
+    now = datetime.now(timezone.utc)
+    token = secrets.token_urlsafe(32)
+    await db.email_verifications.delete_many({"user_id": user_id, "purpose": "email_change"})
+    await db.email_verifications.insert_one({
+        "token": token,
+        "user_id": user_id,
+        "email": user.get("email"),
+        "pending_email": new_email,
+        "purpose": "email_change",
+        "consumed_at": None,
+        "pending_session_token": None,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+    })
+
+    frontend_base = (
+        _clean_origin(payload.frontend_url)
+        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
+        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
+    )
+    confirm_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
+    sent = await send_verification_email(new_email, confirm_url)
+    resp = {
+        "message": f"Email de confirmation envoyé à {new_email}." if sent
+        else "Confirmation requise (mode démo — clique le lien ci-dessous).",
+        "email_sent": sent,
+    }
+    if not sent:
+        resp["verification_link"] = confirm_url
+    return resp
+
+
+@api_router.delete("/auth/me")
+async def delete_account(payload: DeleteAccountRequest, request: Request, response: Response):
+    """Delete own account + all related data (RGPD compliant)."""
+    user_id = await get_current_user(request)
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if not verify_password(payload.current_password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+
+    # Cascade delete
+    await db.users.delete_one({"user_id": user_id})
+    await db.user_sessions.delete_many({"user_id": user_id})
+    await db.email_verifications.delete_many({"user_id": user_id})
+    await db.password_reset_tokens.delete_many({"user_id": user_id})
+    await db.projects.delete_many({"user_id": user_id})
+    await db.previews.delete_many({"user_id": user_id})
+    await db.chat_messages.delete_many({"user_id": user_id})
+
+    response.delete_cookie("session_token", path="/")
+    return {"message": "Compte supprimé avec succès. À bientôt."}
+
+
+@api_router.get("/auth/export")
+async def export_my_data(request: Request):
+    """RGPD: download a JSON of all data we hold about the user."""
+    user_id = await get_current_user(request)
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    projects = await db.projects.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
+    sessions = await db.user_sessions.find({"user_id": user_id}, {"_id": 0}).to_list(100)
+    chats = await db.chat_messages.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
+    payload = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "user": user,
+        "projects": projects,
+        "sessions": sessions,
+        "chat_messages": chats,
+    }
+    return JSONResponse(
+        content=payload,
+        headers={"Content-Disposition": "attachment; filename=codeforge-mes-donnees.json"},
+    )
 
 
 # ==================== PASSWORD RESET (FORGOT PASSWORD) ====================
@@ -1044,6 +1289,75 @@ async def reset_password(payload: ResetPasswordRequest):
     await db.login_attempts.delete_many({"identifier": doc["email"]})
 
     return {"message": "Mot de passe mis à jour. Tu peux te reconnecter."}
+
+
+# ==================== USER FEEDBACK ====================
+
+class FeedbackRequest(BaseModel):
+    type: str  # 'bug' | 'suggestion' | 'other'
+    message: str
+    email: Optional[str] = None
+    page: Optional[str] = None  # current page url for context
+
+
+@api_router.post("/feedback")
+async def submit_feedback(payload: FeedbackRequest, request: Request):
+    """Store user feedback in MongoDB + send email to admin."""
+    if not payload.message or len(payload.message.strip()) < 5:
+        raise HTTPException(status_code=400, detail="Le message doit contenir au moins 5 caractères")
+    if len(payload.message) > 5000:
+        raise HTTPException(status_code=400, detail="Message trop long (max 5000 caractères)")
+
+    feedback_type = payload.type if payload.type in ("bug", "suggestion", "other") else "other"
+    user_email = payload.email or "anonyme"
+    # Try to attach the logged-in user if any (best-effort, no error if not)
+    try:
+        user_id = await get_current_user(request)
+        u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if u and u.get("email"):
+            user_email = u["email"]
+    except Exception:
+        pass
+
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "feedback_id": f"fb_{uuid.uuid4().hex[:12]}",
+        "type": feedback_type,
+        "message": payload.message.strip(),
+        "user_email": user_email,
+        "page": payload.page,
+        "created_at": now,
+    }
+    await db.feedbacks.insert_one(doc)
+
+    # Email to admin (best-effort, never block the response)
+    resend_key = os.environ.get("RESEND_API_KEY")
+    admin = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
+    if resend_key:
+        try:
+            sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                    json={
+                        "from": sender,
+                        "to": [admin],
+                        "subject": f"[CodeForge AI] Nouveau {feedback_type}",
+                        "html": (
+                            f"<div style='font-family:system-ui,sans-serif'>"
+                            f"<p><b>Type :</b> {feedback_type}</p>"
+                            f"<p><b>Email :</b> {user_email}</p>"
+                            f"<p><b>Page :</b> {payload.page or '—'}</p>"
+                            f"<p><b>Message :</b></p><pre style='white-space:pre-wrap;background:#f4f4f5;padding:12px;border-radius:6px'>{(payload.message or '').replace('<','&lt;')}</pre>"
+                            f"<hr><p style='color:#888;font-size:11px'>ID : {doc['feedback_id']} · {now}</p></div>"
+                        ),
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"Feedback admin email failed: {e}")
+
+    return {"message": "Merci ! Ton retour a bien été enregistré.", "feedback_id": doc["feedback_id"]}
 
 
 # ==================== METRICS ====================

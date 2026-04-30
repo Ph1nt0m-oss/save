@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 25 — Exhaustive testing of P1+P2 Session 25 pack (change-password, change-email, magic-link, feedback, RGPD export, delete-account, /how-it-works, /legal, AuthCallback ghost cleanup). 28 NEW pytest cases all PASS. Full backend regression: 100 passed, 3 skipped (DEPLOY_SECRET-gated, intentional). Frontend Playwright on /login, /how-it-works, /legal, /legal?tab=privacy, /#session_id=fake — all features work. FOUND 1 CRITICAL UI BUG: floating feedback button (z-40, bottom-5 right-5) is fully covered by the Emergent badge (id #emergent-badge, z-9999) at the EXACT same coordinates → real users cannot click it. The modal + submit + admin email pipeline itself works perfectly (verified by JS-click bypass and toast 'Merci !').",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "FeedbackButton.jsx",
+        "issue": "Floating feedback button (fixed bottom-5 right-5 z-40, 48x48 px at coords (1852,1012)) is completely overlapped by the Emergent preview badge (#emergent-badge, z-index 9999) which sits at the same bottom-right corner. document.elementsFromPoint at the button center returns the badge as the topmost interactive element, so a real user click never reaches the feedback button. Detected via Playwright (force=True click did not open the modal; only a JS .click() bypass worked). The modal itself, the form, the message validation toast, the submit, the success toast and the backend POST /api/feedback all work end-to-end.",
+        "selector": "[data-testid=\"feedback-open-btn\"]",
+        "priority": "HIGH",
+        "fix_suggestion": "Move the button further inboard (e.g. className 'fixed bottom-20 right-5 z-40' OR 'bottom-5 right-24 z-40'), OR raise z-index to 10000 (but it would then sit on top of the badge — uglier). Recommended: bottom-20 right-5 (badge stays clear, button still in thumb-zone)."
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter25_session.py",
+    "/app/test_reports/pytest/pytest_iter25.xml",
+    "/app/test_reports/pytest/pytest_iter25_full.xml"
+  ],
+  "action_items": [
+    "FIX (HIGH): Reposition FeedbackButton to clear the Emergent badge — change className to 'fixed bottom-20 right-5 z-40 ...' (one-line edit in /app/frontend/src/components/FeedbackButton.jsx line 49). All other functionality is correct, only the click target is masked."
+  ],
+  "critical_code_review_comments": [
+    "server.py:988-1018 change-password — clean. current pwd verified, ≥6 char enforced, last_password_change stamped, OTHER sessions invalidated while keeping the current one (verified by pytest test_success_old_refused_new_accepted_session_kept).",
+    "server.py:1021-1072 change-email — solid: validates email format, checks current password, prevents self-equal & duplicate-take, stores pending_email + purpose='email_change' in email_verifications. Race-condition check at verify time (server.py:803-809) returns 409 if another user grabbed the email between request and click. Verified.",
+    "server.py:1075-1095 delete-account — RGPD compliant cascade across users/sessions/email_verifications/password_reset_tokens/projects/previews/chat_messages. Cookie cleared. Note: feedbacks collection (new) is NOT cascaded — leaves the feedback rows attached to a user_email that no longer exists. Acceptable for admin retention but document.",
+    "server.py:1098-1116 /auth/export — returns user (without password_hash), projects, sessions, chat_messages. JSON has Content-Disposition for download. Good.",
+    "server.py:624-685 magic-link — neutral message on unknown/unverified, rate-limit 3/10 min via resend_attempts (purpose='magic_login'), 5-min TTL token, cross-tab polling via /verification-status — verified by pytest.",
+    "server.py:1303-1360 /api/feedback — 5..5000 char validation, type fallback to 'other', anonymous + authenticated paths both work, best-effort admin email via Resend (failures swallowed). MongoDB-backed. Solid.",
+    "App.js:81-83 — strips legacy #session_id= hash on mount: window.history.replaceState. Verified: navigating to /#session_id=fake renders Landing normally and clears hash. AuthCallback page truly DELETED (no /auth-callback route).",
+    "FeedbackButton.jsx:49 — z-index 40 against Emergent badge z-index 9999 = the user-facing button is functionally invisible to clicks. See action_items.",
+    "Login.js:514,523 — magic-link-btn + forgot-password-btn both wired with proper data-testid. Footer has link-how-it-works + link-legal. /how-it-works has how-cta-btn. /legal has 3 tabs and reads ?tab= query param to set initial state (verified privacy default).",
+    "server.py is now ~3000 lines. STILL recommend extracting routes/auth_email.py and routes/profile.py — carried over from earlier iterations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter25_session.py (new, 28 cases — change-password 4, change-email 5, delete 3, export 2, magic-link 5, feedback 5, regression 4)"
+  ],
+  "success_rate": {
+    "backend": "100% (28/28 new + 100/100 full active suite, 3 skipped DEPLOY_SECRET-gated)",
+    "frontend": "92% (12/13 verified flows; only the feedback-btn click-target is masked by Emergent badge — modal+submit+toast all OK once reached)"
+  },
+  "test_credentials": "Throwaway TEST_iter25_*, TEST_cp[1-3]_*, TEST_ce[1-4]_*, TEST_del[1-2]_*, TEST_exp1_*, TEST_ml[1-3]_*, TEST_fb1_*, TEST_unknown_*, TEST_unverif_ml_*, TEST_changed_* on @gmail.com / Pass1234. Bulk delete: db.users.delete_many({email: {$regex: '^test_iter25|^test_cp|^test_ce|^test_del|^test_exp|^test_ml|^test_fb|^test_unknown|^test_unverif_ml|^test_changed'}}).",
+  "seed_data_creation": "~25 throwaway verified users (each register+verify flow). Real Resend mode is active so each register triggers ONE real email; total real emails sent during this run: ~25-30. Still well under the 3000/month free quota (per iter24 baseline ~3 emails sent).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend baseline now: 100 passed, 3 skipped. test_iter25_session.py covers the new endpoints. The single open issue is purely positional CSS on FeedbackButton — one-line className change. Resend mode active (RESEND_API_KEY set), so change-email tests skip the apply-link assertion when verification_link is absent in body (real email) — that path is exercised by the demo-mode test_success_link_then_apply pytest which still works because frontend_url is supplied. AuthCallback.js is correctly DELETED — do not recreate.",
+  "rca of the issue": "BUG: FeedbackButton z-40 vs Emergent badge z-9999 stacked at identical coords (bottom-right). Reproduction: navigate to any page → look at bottom-right corner → only 'Made with Emergent' badge is visible; the yellow feedback circle is hidden behind it. document.elementsFromPoint(window.innerWidth-30, window.innerHeight-30) returns [P, A#emergent-badge (z=9999), BUTTON.feedback-btn (z=40), ...] — badge is the click target. Mitigation: change FeedbackButton.jsx line 49 className from 'fixed bottom-5 right-5 z-40 ...' to 'fixed bottom-20 right-5 z-40 ...' (lifts button 60px above badge) OR 'fixed bottom-5 right-24 z-40 ...' (slides button 76px left of badge). Modal/submit/toast/backend pipeline are all correct — only the trigger position is wrong."
+}

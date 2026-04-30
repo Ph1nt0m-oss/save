@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { LogOut, User, FolderKanban, Sparkles, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { LogOut, User, FolderKanban, Sparkles, Calendar, Settings } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +39,7 @@ function initials(name) {
 }
 
 export default function UserMenu({ user, onLogout }) {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
@@ -135,6 +137,15 @@ export default function UserMenu({ user, onLogout }) {
         </div>
 
         <DropdownMenuSeparator className="bg-white/10" />
+
+        <DropdownMenuItem
+          onClick={() => navigate('/profile')}
+          data-testid="user-menu-profile"
+          className="px-3 py-2 cursor-pointer text-white hover:!bg-white/5 focus:bg-white/5"
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Mon profil & paramètres
+        </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={onLogout}
