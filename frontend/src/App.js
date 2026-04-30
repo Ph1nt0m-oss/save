@@ -11,6 +11,7 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import SMSLogin from './pages/SMSLogin';
 import AuthCallback from './pages/AuthCallback';
+import VerifyEmail from './pages/VerifyEmail';
 
 // Authenticated/heavy routes — lazy-loaded to shrink initial bundle
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -82,6 +83,7 @@ function AppRouter() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/sms-login" element={<SMSLogin />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route 
           path="/dashboard" 
           element={

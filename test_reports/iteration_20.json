@@ -1,0 +1,42 @@
+{
+  "summary": "Tested email/password + magic-link migration. Backend pytest: 20/21 PASSED on /app/backend/tests/test_email_auth.py. All register/verify/login/me/logout/SMS/deprecated-routes flows green; brute-force lockout failed because the LB rotates IPs across pods. Frontend Playwright: signup tab → register → demo link displayed → verify-success → /dashboard → /auth/me returns user without password_hash → logout → /login pre-fills email from localStorage → wrong password shows red toast 'Email ou mot de passe incorrect' → correct login redirects to /dashboard. CRITICAL BUG FOUND: /api/auth/register builds verification_link from request.headers['origin' | 'referer'] which the kubernetes ingress rewrites to the INTERNAL cluster hostname (https://no-code-builder-25.cluster-5.preview.emergentcf.cloud) — that domain returns 403 Forbidden externally, so users clicking the demo link in production get a blank '403 Forbidden' page. Verified the underlying token flow works when manually rewritten to the public preview URL.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/auth/register", "issue": "verification_link points to internal cluster domain (cluster-5.preview.emergentcf.cloud) which returns 403 externally. Origin/Referer headers reaching FastAPI are rewritten by the ingress. Must use a configured FRONTEND_URL env var (or REACT_APP_BACKEND_URL) instead of trusting Origin header.", "priority": "CRITICAL"},
+      {"endpoint": "/api/auth/login", "issue": "Brute-force lockout uses request.client.host which differs across LB pods (observed 10.208.133.74 AND 10.208.139.2 within the same test). Counter never reaches 5. Use email-only identifier OR parse X-Forwarded-For.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Signup → click demo verification link", "issue": "Anchor href points to internal cluster domain → '403 Forbidden' page. Root cause is backend (above). Frontend itself is correct: VerifyEmail.js consumes ?token=xxx and renders verify-success when navigated to the public domain.", "affected_selectors": ["[data-testid=demo-verification-link-anchor]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_email_auth.py",
+    "/app/test_reports/pytest/pytest_results_iter20.xml"
+  ],
+  "action_items": [
+    "FIX: backend /api/auth/register must build verify_url from a trusted env var, not from request Origin/Referer. Suggest: frontend_base = os.environ.get('FRONTEND_URL') or os.environ.get('REACT_APP_BACKEND_URL') or origin. Add FRONTEND_URL=https://no-code-builder-25.preview.emergentagent.com to /app/backend/.env.",
+    "FIX: brute-force lockout identifier should drop request.client.host (or use it only if X-Forwarded-For is unavailable). Behind the kube ingress the source IP varies per pod, defeating the 5/15min lockout. Tested: 6 wrong logins → 6th still returns 401 instead of 429.",
+    "OPTIONAL: add TTL index on email_verifications.expires_at and login_attempts.ts to auto-clean stale rows."
+  ],
+  "critical_code_review_comments": [
+    "server.py:558 — Trusting Origin/Referer for building outbound URLs is a known anti-pattern; ingress proxies frequently rewrite these. Always derive public URL from configured env var.",
+    "server.py:644 — request.client.host is the upstream proxy IP, not the real client. Use X-Forwarded-For (first hop) when present, or rely solely on the email part of the identifier.",
+    "server.py is now 2500+ lines — splitting auth into routes/auth_email.py, routes/auth_sms.py is overdue (already flagged in iter_18/19).",
+    "No TTL indexes on email_verifications or login_attempts → these collections grow unbounded."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_email_auth.py (new — 21 tests)"
+  ],
+  "success_rate": {"backend": "95% (20/21)", "frontend": "100% with public-URL workaround / 0% on the demo-link click path due to backend bug"},
+  "test_credentials": "Created on the fly: test_<random>@gmail.com / SecurePass123 (or similar). All test users have email_verifications + login_attempts entries that should be cleaned up periodically.",
+  "seed_data_creation": "~15 throwaway users created during the run via /api/auth/register. They use the prefix test_ / e2e_ / curl_test_ / r_test_ — safe to bulk-delete via db.users.delete_many({email: /^(test_|e2e_|curl_test_|r_test_)/}).",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "After main agent adds FRONTEND_URL to backend/.env and refactors register() to use it, retest by: (1) curl POST /api/auth/register and assert verification_link starts with https://no-code-builder-25.preview.emergentagent.com; (2) re-run pytest backend/tests/test_email_auth.py — the brute-force test should also be revisited (the fix is to switch identifier to email-only or X-Forwarded-For). Frontend Playwright test in iter_20 confirms the FE itself is fully functional once the link domain is correct.",
+  "rca of the issue": "ROOT CAUSE — the backend builds verify_url from request.headers.get('origin') or request.headers.get('referer'). Behind the Emergent kubernetes ingress, these headers are rewritten to the internal cluster hostname (no-code-builder-25.cluster-5.preview.emergentcf.cloud) which is not externally reachable and returns 403. REPRODUCTION: curl -X POST $PUBLIC_URL/api/auth/register -H 'Origin: $PUBLIC_URL' -d '{...}' → response.verification_link still uses cluster-5.preview.emergentcf.cloud. MITIGATION: derive frontend_base from os.environ.get('FRONTEND_URL') (configurable, set in .env) before falling back to request headers. Same approach is already used elsewhere in the codebase (REACT_APP_BACKEND_URL is read by server.py:935)."
+}

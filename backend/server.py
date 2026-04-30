@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Cookie, Response, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
 import os
+import re
 import uuid
 import httpx
 import json
@@ -21,6 +22,8 @@ import io
 import base64
 import logging
 import asyncio
+import secrets
+import bcrypt
 
 # Import sub-routers (PWA + Desktop)
 from routes.pwa_routes import export_router as pwa_router
@@ -44,15 +47,12 @@ GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")  # PAT TOKEN recom
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
 GITHUB_REPO_NAME = os.environ.get("GITHUB_REPO_NAME")
 
-# ==================== GOOGLE OAUTH (DIRECT — bypasses Emergent Auth) ====================
-# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
-if GOOGLE_OAUTH_ENABLED:
-    logger.info("✅ Google OAuth (direct) activé")
+# ==================== EMAIL AUTH CONFIG ====================
+RESEND_ENABLED = bool(os.environ.get("RESEND_API_KEY"))
+if RESEND_ENABLED:
+    logger.info("✅ Resend email provider activé (RESEND_API_KEY présent)")
 else:
-    logger.warning("⚠️ Google OAuth (direct) désactivé — GOOGLE_CLIENT_ID/SECRET manquants")
+    logger.warning("⚠️ RESEND_API_KEY manquant — mode démo (lien de vérification retourné dans la réponse)")
 
 GITHUB_ENABLED = all([
     GITHUB_CLIENT_SECRET,
@@ -147,9 +147,6 @@ app.add_middleware(
 api_router = APIRouter(prefix="/api")
 
 # ==================== PYDANTIC MODELS ====================
-
-class SessionDataRequest(BaseModel):
-    session_id: str
 
 class ChatMessageInput(BaseModel):
     message: str
@@ -373,116 +370,11 @@ async def verify_sms_code(request: SMSAuthRequest, response: Response):
 
 # ==================== AUTH ROUTES ====================
 
-@api_router.post("/auth/session")
-async def create_session(request: SessionDataRequest, response: Response):
-    """Exchange session_id for user data and create persistent session"""
-    try:
-        # Sanitize session_id: strip whitespace and any trailing slash that
-        # some proxies/CDNs append. Emergent Auth accepts only the raw token.
-        raw_sid = (request.session_id or "").strip().rstrip("/").strip()
-        if not raw_sid:
-            await log_auth_error("oauth_empty_session_id", "frontend sent empty/blank session_id", request=None)
-            raise HTTPException(status_code=400, detail="session_id manquant")
-
-        # Diagnostic: log first/last 6 chars + length so we can spot truncation
-        # without leaking the full token.
-        sid_preview = f"{raw_sid[:6]}...{raw_sid[-6:]}" if len(raw_sid) >= 12 else f"len={len(raw_sid)}"
-        logger.info(f"/auth/session called with session_id preview={sid_preview} (len={len(raw_sid)})")
-
-        # Call Emergent Auth API
-        async with httpx.AsyncClient(timeout=20.0) as http_client:
-            auth_response = await http_client.get(
-                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                headers={"X-Session-ID": raw_sid}
-            )
-
-            logger.info(f"Emergent Auth response: {auth_response.status_code}")
-
-            if auth_response.status_code == 404:
-                # Capture body so we can distinguish 'expired' vs 'unknown'
-                logger.error(f"Emergent Auth 404 body: {auth_response.text[:300]}")
-                await log_auth_error("oauth_session_not_found",
-                                     f"sid={sid_preview} len={len(raw_sid)} body={auth_response.text[:200]}",
-                                     request=None)
-                raise HTTPException(status_code=401, detail="Session expirée ou invalide. Veuillez vous reconnecter.")
-            
-            if auth_response.status_code != 200:
-                logger.error(f"Emergent Auth error: {auth_response.text}")
-                raise HTTPException(status_code=401, detail="Session ID invalide")
-            
-            user_data = auth_response.json()
-            logger.info(f"User authenticated: {user_data.get('email')}")
-
-            if not user_data.get("session_token"):
-                logger.error("session_token missing from Emergent Auth response")
-                raise HTTPException(status_code=500, detail="session_token absent de la réponse Emergent")
-        
-        # Create or update user
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        existing_user = await db.users.find_one({"email": user_data["email"]}, {"_id": 0})
-        
-        if existing_user:
-            user_id = existing_user["user_id"]
-            # Update user info
-            await db.users.update_one(
-                {"user_id": user_id},
-                {"$set": {
-                    "name": user_data["name"],
-                    "picture": user_data.get("picture")
-                }}
-            )
-        else:
-            # Create new user
-            new_user = {
-                "user_id": user_id,
-                "email": user_data["email"],
-                "name": user_data["name"],
-                "picture": user_data.get("picture"),
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db.users.insert_one(new_user)
-        
-        # Create session
-        session_token = user_data["session_token"]
-        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-        
-        session_doc = {
-            "session_token": session_token,
-            "user_id": user_id,
-            "expires_at": expires_at.isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.user_sessions.insert_one(session_doc)
-        
-        # Set httpOnly cookie
-        response.set_cookie(
-            key="session_token",
-            value=session_token,
-            httponly=True,
-            secure=True,
-            samesite="none",
-            max_age=7 * 24 * 60 * 60,
-            path="/"
-        )
-        
-        # Return user data + session_token (fallback if cookies are blocked
-        # by privacy browsers/VPN on cross-site .static. preview domain)
-        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-        if user is not None:
-            user["session_token"] = session_token
-        return user
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating session: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @api_router.get("/auth/me")
 async def get_me(request: Request):
     """Get current user from session"""
     user_id = await get_current_user(request)
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
     
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
@@ -529,183 +421,275 @@ async def logout(request: Request, response: Response):
     return {"message": "Déconnexion réussie"}
 
 
-# ==================== GOOGLE OAUTH (DIRECT) ====================
-# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-# Direct Google OAuth 2.0 — bypasses Emergent Auth service which returns
-# user_data_not_found for this workspace. The frontend builds redirect_uri
-# from window.location.origin (never hardcoded).
+# ==================== EMAIL + PASSWORD + MAGIC LINK AUTH ====================
+# Classic email/password auth with magic-link email verification.
+# No Google OAuth, no Emergent Auth. Works fully offline in "demo mode"
+# (verification link returned in the response body when no email provider
+# is configured).
 
-GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
-
-# Short-lived CSRF state tokens (5 min TTL). Stored in Mongo so we survive
-# multiple backend workers / restarts.
-async def _create_oauth_state(redirect_uri: str) -> str:
-    state = secrets.token_urlsafe(32)
-    await db.oauth_states.insert_one({
-        "state": state,
-        "redirect_uri": redirect_uri,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
-    })
-    return state
+# ----- bcrypt helpers -----
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-async def _consume_oauth_state(state: str) -> dict | None:
-    doc = await db.oauth_states.find_one_and_delete({"state": state}, projection={"_id": 0})
-    if not doc:
-        return None
-    expires_at = datetime.fromisoformat(doc["expires_at"])
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        return None
-    return doc
-
-
-@api_router.get("/auth/google/login")
-async def google_login(redirect_uri: str):
-    """Redirect the user to Google's consent screen.
-
-    Frontend passes ?redirect_uri=<window.location.origin>/auth/google so we
-    can return to the exact origin the user started from (works across
-    preview URL, custom domains, etc. without hardcoding).
-    """
-    if not GOOGLE_OAUTH_ENABLED:
-        raise HTTPException(status_code=503, detail="Google OAuth non configuré (clés manquantes)")
-    if not redirect_uri or not redirect_uri.startswith("http"):
-        raise HTTPException(status_code=400, detail="redirect_uri invalide")
-
-    state = await _create_oauth_state(redirect_uri)
-    params = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": redirect_uri,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "access_type": "online",
-        "prompt": "select_account",
-        "state": state,
-    }
-    from urllib.parse import urlencode
-    auth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
-    return RedirectResponse(url=auth_url, status_code=302)
-
-
-class GoogleCallbackRequest(BaseModel):
-    code: str
-    state: str
-    redirect_uri: str  # must match the one used in /auth/google/login
-
-
-@api_router.post("/auth/google/callback")
-async def google_callback(payload: GoogleCallbackRequest, response: Response):
-    """Exchange Google authorization code for id_token, fetch userinfo,
-    create local session + cookie + token.
-    """
-    if not GOOGLE_OAUTH_ENABLED:
-        raise HTTPException(status_code=503, detail="Google OAuth non configuré")
-
-    # CSRF check
-    state_doc = await _consume_oauth_state(payload.state)
-    if not state_doc:
-        await log_auth_error("google_oauth_invalid_state", f"state={payload.state[:8]}...", request=None)
-        raise HTTPException(status_code=400, detail="État OAuth invalide ou expiré. Veuillez recommencer.")
-    if state_doc.get("redirect_uri") != payload.redirect_uri:
-        await log_auth_error("google_oauth_redirect_mismatch", "", request=None)
-        raise HTTPException(status_code=400, detail="redirect_uri ne correspond pas à l'état initial")
-
-    # Step 1: exchange code for tokens
+def verify_password(plain: str, hashed: str) -> bool:
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            token_resp = await client.post(
-                GOOGLE_TOKEN_URL,
-                data={
-                    "code": payload.code,
-                    "client_id": GOOGLE_CLIENT_ID,
-                    "client_secret": GOOGLE_CLIENT_SECRET,
-                    "redirect_uri": payload.redirect_uri,
-                    "grant_type": "authorization_code",
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+async def send_verification_email(to_email: str, verify_url: str) -> bool:
+    """Send magic-link via Resend if RESEND_API_KEY is set, else return False.
+
+    We intentionally keep this minimal: one provider (Resend) because the
+    user is frustrated with API keys. When the key is absent we fall back
+    to "demo mode" and return the link directly in the /register response.
+    """
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if not resend_key:
+        return False
+    sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_key}",
+                    "Content-Type": "application/json",
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                json={
+                    "from": sender,
+                    "to": [to_email],
+                    "subject": "Confirme ton compte CodeForge AI",
+                    "html": (
+                        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px'>"
+                        f"<h1 style='color:#E4FF00'>CodeForge AI</h1>"
+                        f"<p>Clique sur le lien ci-dessous pour confirmer ton compte&nbsp;:</p>"
+                        f"<p><a href='{verify_url}' style='background:#E4FF00;color:#050505;"
+                        f"padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold'>"
+                        f"Confirmer mon compte</a></p>"
+                        f"<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 30 minutes.</p>"
+                        f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>"
+                        f"</div>"
+                    ),
+                },
             )
-            if token_resp.status_code != 200:
-                await log_auth_error("google_oauth_token_exchange_failed",
-                                     f"status={token_resp.status_code} body={token_resp.text[:200]}",
-                                     request=None)
-                raise HTTPException(status_code=401, detail="Échec de l'échange du code Google")
-            tokens = token_resp.json()
-            access_token = tokens.get("access_token")
-            if not access_token:
-                raise HTTPException(status_code=401, detail="Token Google manquant dans la réponse")
+            if resp.status_code in (200, 202):
+                logger.info(f"✅ Verification email sent to {to_email}")
+                return True
+            logger.error(f"Resend API error {resp.status_code}: {resp.text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"Resend exception: {e}")
+        return False
 
-            # Step 2: fetch user info
-            userinfo_resp = await client.get(
-                GOOGLE_USERINFO_URL,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            if userinfo_resp.status_code != 200:
-                await log_auth_error("google_oauth_userinfo_failed",
-                                     f"status={userinfo_resp.status_code}",
-                                     request=None)
-                raise HTTPException(status_code=401, detail="Impossible de récupérer le profil Google")
-            userinfo = userinfo_resp.json()
-    except httpx.HTTPError as e:
-        logger.error(f"Google OAuth network error: {e}")
-        await log_auth_error("google_oauth_network_error", str(e)[:200], request=None)
-        raise HTTPException(status_code=503, detail="Google temporairement injoignable")
 
-    email = userinfo.get("email")
-    if not email:
-        raise HTTPException(status_code=401, detail="Email manquant dans la réponse Google")
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
 
-    # Step 3: upsert user
-    now = datetime.now(timezone.utc).isoformat()
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@api_router.post("/auth/register")
+async def register(payload: RegisterRequest, request: Request):
+    """Create an unverified account and send (or return) a magic link."""
+    email = normalize_email(payload.email)
+    if not email or not EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    if len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 6 caractères")
+
     existing = await db.users.find_one({"email": email}, {"_id": 0})
-    if existing:
+    if existing and existing.get("verified"):
+        raise HTTPException(status_code=409, detail="Un compte existe déjà avec cet email. Connecte-toi.")
+
+    now = datetime.now(timezone.utc)
+    password_hash = hash_password(payload.password)
+
+    if existing and not existing.get("verified"):
+        # Re-register on an unverified account: refresh password + resend link
         user_id = existing["user_id"]
         await db.users.update_one(
             {"user_id": user_id},
             {"$set": {
-                "name": userinfo.get("name") or existing.get("name"),
-                "picture": userinfo.get("picture") or existing.get("picture"),
-                "last_login": now,
+                "password_hash": password_hash,
+                "name": payload.name or existing.get("name") or email.split("@")[0],
+                "updated_at": now.isoformat(),
             }},
         )
     else:
-        user_id = str(uuid.uuid4())
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({
             "user_id": user_id,
             "email": email,
-            "name": userinfo.get("name", ""),
-            "picture": userinfo.get("picture", ""),
-            "auth_type": "google",
-            "created_at": now,
-            "last_login": now,
+            "password_hash": password_hash,
+            "name": payload.name or email.split("@")[0],
+            "verified": False,
+            "auth_type": "email",
+            "created_at": now.isoformat(),
         })
 
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    # Create verification token (single-use, 30 min)
+    token = secrets.token_urlsafe(32)
+    await db.email_verifications.delete_many({"user_id": user_id})
+    await db.email_verifications.insert_one({
+        "token": token,
+        "user_id": user_id,
+        "email": email,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+    })
 
-    # Step 4: create session (same shape as SMS verify)
+    # Build verification URL pointing at the FRONTEND /verify-email page
+    # (never hardcoded — derived from the Origin or Referer header).
+    origin = request.headers.get("origin") or request.headers.get("referer") or ""
+    origin = origin.rstrip("/")
+    if origin and origin.endswith("/verify-email"):
+        origin = origin[: -len("/verify-email")]
+    # Strip any path component from referer
+    if origin:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(origin)
+            origin = f"{p.scheme}://{p.netloc}"
+        except Exception:
+            pass
+    frontend_base = origin or os.environ.get("FRONTEND_URL", "")
+    verify_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
+
+    sent = await send_verification_email(email, verify_url)
+
+    response = {
+        "message": "Compte créé ! Vérifie ton email pour confirmer." if sent
+        else "Compte créé ! Clique sur le lien ci-dessous pour confirmer (mode démo — aucun email envoyé).",
+        "email": email,
+        "email_sent": sent,
+    }
+    if not sent:
+        # Demo mode: expose the link so the user can click it without
+        # configuring an email provider. Aligned with the existing SMS demo.
+        response["verification_link"] = verify_url
+    return response
+
+
+@api_router.get("/auth/verify-email")
+async def verify_email(token: str, response: Response):
+    """Consume magic link, mark user as verified, create session, set cookie."""
+    if not token:
+        raise HTTPException(status_code=400, detail="Token manquant")
+
+    doc = await db.email_verifications.find_one_and_delete({"token": token}, projection={"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=400, detail="Lien invalide ou déjà utilisé")
+
+    expires_at = datetime.fromisoformat(doc["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Lien expiré. Recrée ton compte pour recevoir un nouveau lien.")
+
+    user_id = doc["user_id"]
+    now = datetime.now(timezone.utc)
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"verified": True, "last_login": now.isoformat()}},
+    )
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
     session_token = secrets.token_urlsafe(32)
     await db.user_sessions.insert_one({
         "session_token": session_token,
         "user_id": user_id,
-        "created_at": now,
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "auth_type": "email",
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=7)).isoformat(),
     })
 
     response.set_cookie(
         key="session_token",
         value=session_token,
-        max_age=7 * 24 * 3600,
         httponly=True,
         secure=True,
         samesite="none",
+        max_age=7 * 24 * 3600,
+        path="/",
+    )
+    return {**user, "session_token": session_token}
+
+
+@api_router.post("/auth/login")
+async def login(payload: LoginRequest, response: Response, request: Request):
+    """Verify credentials and create a session (cookie + token in body)."""
+    email = normalize_email(payload.email)
+    if not email or not payload.password:
+        raise HTTPException(status_code=400, detail="Email et mot de passe requis")
+
+    # Simple brute-force guard: 5 fails / 15 min per email.
+    ip = request.client.host if request.client else "?"
+    identifier = f"{ip}:{email}"
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+    fails = await db.login_attempts.count_documents({"identifier": identifier, "ts": {"$gte": cutoff}})
+    if fails >= 5:
+        raise HTTPException(status_code=429, detail="Trop de tentatives. Réessaie dans 15 minutes.")
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user or not verify_password(payload.password, user.get("password_hash", "")):
+        await db.login_attempts.insert_one({
+            "identifier": identifier,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
+        await log_auth_error("login_invalid_credentials", f"email={email}", request=request)
+        raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
+
+    if not user.get("verified"):
+        raise HTTPException(
+            status_code=403,
+            detail="Email non confirmé. Clique sur le lien reçu par email ou recrée ton compte.",
+        )
+
+    # Success: clear failed attempts
+    await db.login_attempts.delete_many({"identifier": identifier})
+
+    now = datetime.now(timezone.utc)
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
+
+    session_token = secrets.token_urlsafe(32)
+    await db.user_sessions.insert_one({
+        "session_token": session_token,
+        "user_id": user["user_id"],
+        "auth_type": "email",
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=7)).isoformat(),
+    })
+
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=7 * 24 * 3600,
         path="/",
     )
 
-    return {**user, "session_token": session_token}
+    safe_user = {k: v for k, v in user.items() if k != "password_hash"}
+    return {**safe_user, "session_token": session_token}
 
 
 # ==================== METRICS ====================
@@ -1738,7 +1722,6 @@ async def download_export(request: Request, export_req: ExportRequest):
 @api_router.get("/export/mobile/{project_id}")
 async def redirect_to_pwa_install(project_id: str):
     """Redirect to PWA installation page"""
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url=f"/api/pwa/install/{project_id}")
     
     if not project:
@@ -1877,7 +1860,6 @@ Généré par CodeForge AI 🎨
 @api_router.get("/export/desktop/{project_id}")
 async def redirect_to_desktop_install(project_id: str):
     """Redirect to Desktop installation page"""
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url=f"/api/desktop/install/{project_id}")
 
 @api_router.get("/export/download/apk/{project_id}")
@@ -2631,6 +2613,21 @@ app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])
 
 # Include Desktop routes under /api/desktop
 app.include_router(desktop_router, prefix="/api/desktop", tags=["Desktop"])
+
+
+@app.on_event("startup")
+async def ensure_indexes():
+    """Create MongoDB indexes used by the email/password auth flow."""
+    try:
+        await db.users.create_index("email", unique=True, sparse=True)
+        await db.email_verifications.create_index("token", unique=True)
+        await db.email_verifications.create_index("user_id")
+        await db.user_sessions.create_index("session_token", unique=True)
+        await db.login_attempts.create_index("identifier")
+        logger.info("✅ MongoDB indexes ready")
+    except Exception as e:
+        logger.warning(f"Index creation warning: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
