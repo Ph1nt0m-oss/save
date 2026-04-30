@@ -47,6 +47,7 @@ export default function Login() {
   const [waitingFor, setWaitingFor] = useState(null); // { token, email } | null
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [resending, setResending] = useState(false);
+  const [resendCooldownUntil, setResendCooldownUntil] = useState(0); // epoch ms
   const pollRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -196,6 +197,11 @@ export default function Login() {
         toast.info(data.message || "Demande de renvoi traitée.");
       }
     } catch (err) {
+      const status = err.response?.status;
+      if (status === 429) {
+        // Backend rate limit is 10 min; disable button until then
+        setResendCooldownUntil(Date.now() + 10 * 60 * 1000);
+      }
       toast.error(formatDetail(err.response?.data?.detail) || err.message);
     } finally {
       setResending(false);
@@ -270,12 +276,14 @@ export default function Login() {
                     <button
                       type="button"
                       onClick={handleResend}
-                      disabled={resending}
+                      disabled={resending || Date.now() < resendCooldownUntil}
                       data-testid="resend-link-btn"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E4FF00]/20 hover:bg-[#E4FF00]/30 text-[#E4FF00] text-xs font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E4FF00]/20 hover:bg-[#E4FF00]/30 text-[#E4FF00] text-xs font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {resending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                      {resending ? 'Envoi…' : 'Renvoyer le lien'}
+                      {resending
+                        ? 'Envoi…'
+                        : (Date.now() < resendCooldownUntil ? 'Patiente 10 min' : 'Renvoyer le lien')}
                     </button>
                     <button
                       type="button"

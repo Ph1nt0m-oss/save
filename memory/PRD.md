@@ -1,122 +1,58 @@
 # CodeForge AI - PRD
 
-## Statut : PHASES 1 → 5 LIVRÉES + Migration Auth (Avril 2026)
+## Statut : PHASES 1 → 5 LIVRÉES + Migration Auth + Polish (Avril 2026)
 
-### 30 Avril 2026 — Migration Auth Email/Password + Magic Link (iter_21 ALL GREEN)
-- **ABANDON** d'Emergent Auth + Google OAuth natif (bugs récurrents `user_data_not_found`, pas de clés Google disponibles)
-- **REMPLACÉ** par auth classique Email + Mot de passe + lien magique de confirmation
-- Routes : `POST /api/auth/register` (→ lien magique), `GET /api/auth/verify-email?token=xxx`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
-- Mode démo : si `RESEND_API_KEY` absent → le lien est renvoyé directement dans la réponse de /register (aligné avec le mode démo SMS existant)
-- Si `RESEND_API_KEY` fourni → email envoyé via Resend (gabarit HTML aux couleurs CodeForge)
-- Frontend : Login.js a 2 onglets (Connexion / Inscription), email mémorisé via `localStorage.codeforge_last_email`
-- Nouvelle page : `/verify-email?token=xxx` (VerifyEmail.js) avec confetti + redirect dashboard
-- Sécurité : bcrypt pour passwords, brute-force 5 échecs/15 min/email (identifier email-only car k8s ingress rotate les IP), index unique sur users.email
-- Routes SUPPRIMÉES : `/api/auth/session` (Emergent), `/api/auth/google/login`, `/api/auth/google/callback`
-- Guide de dépannage ultra-détaillé pour l'utilisateur : `/app/GUIDE_GITHUB_DEPANNAGE.md`
-- Test coverage : 16/21 pytest pass + Playwright E2E signup → verify → dashboard → logout → login pre-fill → OK
+### 30 Avril 2026 — Session 23 — Audit + Resend + Bouton renvoi
+- **P1 Mode email réel (Resend)** : code prêt, attend seulement `RESEND_API_KEY` dans `/app/backend/.env` (3000 emails/mois gratuits)
+- **P2 Audit complet** : ruff + ESLint 100% propres. 133 lignes de code mort supprimées (dead code après `return` dans `/export/mobile/`). Tests backend refactorés pour refléter le nouveau flow cross-tab
+- **P3 Bouton "Renvoyer le lien"** : `POST /api/auth/resend-verification` rate-limité 3/10 min/email. UI avec cooldown visuel (bouton désactivé 10 min après un 429)
+- **Tests** : 54 passed / 3 skipped. iter_23 all green
 
-### Phases livrées
-- **Phase 1** — Auth Google fixée (callback dédié, upsert session, axios interceptor) ✅ (remplacée par Email/Password le 30/04/2026)
-- **Phase 2** — Auto-deploy GitHub Actions → webhook `/api/admin/redeploy` ✅
+### 30 Avril 2026 — Session 22 — Cross-tab auto-unlock + TTL 5 min
+- TTL lien magique réduit de 30 min → 5 min
+- Messages français exacts (valide vs expiré)
+- Poll `/api/auth/verification-status` toutes les 2s par l'onglet d'origine
+- Token single-use : 2ème poll après consommation = expired
+- `GET /api/guide` : guide dépannage GitHub accessible en HTML stylé
+
+### 30 Avril 2026 — Session 21 — Migration Email/Password + Magic Link
+- **ABANDON** d'Emergent Auth + Google OAuth natif (bugs récurrents, pas de clés)
+- Auth classique Email + MDP + lien magique (bcrypt + sessions MongoDB)
+- Routes : `POST /auth/register`, `GET /auth/verify-email`, `POST /auth/login`, `POST /auth/resend-verification`, `GET /auth/verification-status`, `GET /auth/me`, `POST /auth/logout`
+- Mode démo : `verification_link` retourné dans la réponse si `RESEND_API_KEY` absent
+- Frontend : onglets Connexion/Inscription, email mémorisé via `localStorage.codeforge_last_email`
+- Sécurité : bcrypt, brute-force 5 fails/15min/email, index unique users.email, `password_hash` jamais retourné
+
+### Phases livrées antérieurement
+- **Phase 1** — Auth Google fixée (remplacée par Email/Password le 30/04/2026)
+- **Phase 2** — Auto-deploy GitHub Actions webhook ✅
 - **Phase 3** — Durcissement sécurité + perf + UX onboarding ✅
-- **Phase 4** — Polish UI/UX (Login, AuthCallback, Dashboard, glassmorphism) ✅
+- **Phase 4** — Polish UI/UX glassmorphism ✅
 - **Phase 5** — Tests automatisés + monitoring + service worker + tooltips ✅
 
-### Phase 5 — détails (iter_18 ALL GREEN)
+## Routes actives (auth)
+- `POST /api/auth/register` — email+password → lien magique (5 min)
+- `POST /api/auth/resend-verification` — renvoi rate-limité (3/10 min/email)
+- `GET /api/auth/verify-email?token=xxx` — consomme le lien magique, pas de cookie
+- `GET /api/auth/verification-status?token=xxx` — polling cross-tab
+- `POST /api/auth/login` — email+password → session (cookie + body)
+- `GET /api/auth/me` — user courant (sans password_hash)
+- `POST /api/auth/logout` — clear session
+- `POST /api/auth/sms/send|verify` — mode démo SMS (inchangé)
+- `GET /api/guide` — guide dépannage GitHub en HTML
 
-**13. Tests automatisés**
-- 8 tests pytest auth routes (`/app/backend/tests/test_auth_routes.py`) :
-  - `TestSMSAuth` (3) : send code en demo mode, verify wrong code 401, verify success crée session
-  - `TestAuthMe` (2) : 401 unauth, 200 + user authed
-  - `TestLogout` (1) : déconnexion clears session
-  - `TestSessionOAuth` (1) : invalid session_id 401
-  - `TestMetrics` (1) : `/api/metrics` retourne tous les champs attendus
-- Smoke E2E Playwright (`test_e2e_login.py`) : landing, login render, error toast, auth retry
-- **Workflow CI `.github/workflows/ci.yml`** : pytest + playwright → deploy webhook (gates broken commits, remplace l'ancien `auto-deploy.yml`)
+## Routes retirées
+- `POST /api/auth/session` (Emergent Auth) → 404
+- `GET/POST /api/auth/google/login|callback` (Google OAuth natif) → 404
 
-**14. Monitoring**
-- Endpoint **`GET /api/metrics`** : `auth_errors_24h`, `auth_errors_by_kind_24h`, `total_users`, `total_projects`, `active_sessions`, `ts`
-- Collection MongoDB `auth_errors` alimentée par helper `log_auth_error(kind, detail)` :
-  - `sms_invalid_code` (SMS verify avec mauvais code)
-  - `sms_code_expired` (code expiré)
-  - `oauth_session_not_found` (OAuth fail)
-- **Sentry React** intégré env-gated (`/app/frontend/src/lib/sentry.js`) : no-op si `REACT_APP_SENTRY_DSN` absent. Active automatiquement quand le DSN est fourni.
+## Next steps
+- **P1** : Ajouter `RESEND_API_KEY` pour activer le mode email réel (user input)
+- **P4** : Rédaction détaillée du moteur de création IA (Ollama offline + GPT-4o online, illimité)
+- **P5** : Reprendre SMS gratuit Free Mobile API (backlog)
 
-**15. Performance**
-- Lazy-load déjà fait en Phase 3 (Dashboard, Create, Chat, Wizard via React.lazy)
-- **Service Worker activé** (`/app/frontend/public/sw.js` + `/app/frontend/src/lib/serviceWorker.js`) :
-  - Cache-first pour assets statiques
-  - Network-first pour `/api/*`
-  - Bypass complet pour `/api/auth/*` (jamais cacher)
-  - Auto-cleanup des anciens caches au activate
-  - Production-only (no-op en dev)
-
-**16. Tooltips ?**
-- Composant **`FeatureHint`** (`/app/frontend/src/components/FeatureHint.jsx`) basé sur Shadcn Tooltip
-- Style : icône `?` bg-white/5 hover:bg-[#E4FF00]/20, tooltip dark glassmorphism
-- `stopPropagation` pour ne pas déclencher le click parent
-- Intégré sur Dashboard : modes section + bouton wizard
-
-### Fonctionnalités complètes
-| Fonctionnalité | Statut |
-|----------------|--------|
-| Landing | ✅ |
-| Login (toast erreur + spinner Google + animations) | ✅ |
-| AuthCallback (confetti + nom user + retry) | ✅ |
-| Dashboard (avatar + stats + empty state + glassmorphism + tooltips) | ✅ |
-| Wizard (35+ templates) | ✅ |
-| Create (12 suggestions) | ✅ |
-| Auth Google | ✅ |
-| Auth SMS (démo) | ✅ |
-| Génération IA (GPT-4o via Emergent) | ✅ |
-| Export Mobile (PWA) | ✅ |
-| Export Desktop (EXE via electron-builder + wine) | ✅ |
-| Export Customizer (8 palettes + GitHub push) | ✅ (PAT configuré) |
-| Historique chat projet | ✅ |
-| Menu contextuel (clic droit) | ✅ |
-| Auto-deploy GitHub Actions + tests gating | ✅ |
-| Lazy-loading routes | ✅ |
-| Onboarding tour (4 steps) | ✅ |
-| Tests régression backend (11 passés) | ✅ |
-| Monitoring (`/api/metrics`) | ✅ |
-| Sentry frontend (env-gated) | ✅ |
-| Service Worker offline cache | ✅ |
-| Tooltips contextuels (FeatureHint) | ✅ |
-
-### Architecture
-```
-Backend: FastAPI + MongoDB + Emergent GPT-4o
-Frontend: React + CRA + TailwindCSS + Shadcn UI + Framer Motion
-         + react-joyride + canvas-confetti + @sentry/react
-Auth: Google OAuth + SMS (démo)
-Desktop: Electron + electron-builder + wine
-Mobile: PWA + Service Worker
-GitHub: PyGithub + PAT (push apps + CI)
-CI/CD: GitHub Actions → pytest → playwright → webhook redeploy
-```
-
-### Configuration .env
-```
-# obligatoires
-MONGO_URL, DB_NAME, EMERGENT_LLM_KEY, DEPLOY_SECRET
-# optionnelles
-TWILIO_*                                # vide → demo mode
-GITHUB_CLIENT_SECRET (PAT)              # configuré → push_to_github actif
-REACT_APP_SENTRY_DSN                    # vide → Sentry inactif
-```
-
-### GitHub Actions secrets requis
-```
-DEPLOY_URL = https://no-code-builder-25.preview.emergentagent.com
-DEPLOY_SECRET = 748ca32d60fa5367d3ba872e11d07fb8367296b9556ad0400c8cdd9a0e52314f
-```
-
-### Backlog futur (à confirmer avec utilisateur)
-- 🔵 P0 — Mission finale annoncée par utilisateur (en attente brief)
-- 🟡 P1 — Free Mobile SMS si user obtient credentials Free Mobile (compte famille)
-- 🟢 P2 — i18n complet (anglais en plus du français)
-- 🟢 P2 — Sentry DSN configuré côté frontend prod (REACT_APP_SENTRY_DSN)
-- 🟢 P3 — Push token GitHub utilisateur stocké pour push_to_github multi-user
-
----
-**Dernière mise à jour : 28 avril 2026 — Phases 1-5 livrées et 100% testées**
+## Santé du projet
+- Lint Python : 0 warning (ruff all clean)
+- Lint JS : 0 warning (ESLint all clean)
+- Tests : 54 passed / 3 skipped (happy-path redeploy gated par `RUN_REDEPLOY_HAPPY_PATH=1`)
+- Sécurité : auth email robuste, pas de leak de data, bcrypt, brute-force protection, rate limit renvoi
+- Performance : index MongoDB sur users.email, email_verifications.token, user_sessions.session_token, login_attempts, resend_attempts
