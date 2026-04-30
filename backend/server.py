@@ -871,6 +871,179 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     return {**safe_user, "session_token": session_token}
 
 
+# ==================== PASSWORD RESET (FORGOT PASSWORD) ====================
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    frontend_url: Optional[str] = None
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+async def send_reset_email(to_email: str, reset_url: str) -> bool:
+    """Send password reset link via Resend (same provider as verification)."""
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if not resend_key:
+        return False
+    sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+    reply_to = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": sender,
+                    "to": [to_email],
+                    "reply_to": reply_to,
+                    "subject": "Réinitialise ton mot de passe CodeForge AI",
+                    "html": (
+                        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
+                        f"<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
+                        f"<p style='color:#E4E4E7'>Quelqu'un (probablement toi) a demandé à réinitialiser le mot de passe de ce compte.</p>"
+                        f"<p style='margin:24px 0'><a href='{reset_url}' style='background:#E4FF00;color:#050505;"
+                        f"padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>"
+                        f"Choisir un nouveau mot de passe</a></p>"
+                        f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur&nbsp;:<br>"
+                        f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{reset_url}</span></p>"
+                        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 30 minutes.</p>"
+                        f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email — ton mot de passe actuel reste inchangé.</p>"
+                        f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
+                        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
+                        f"</div>"
+                    ),
+                },
+            )
+            if resp.status_code in (200, 202):
+                logger.info(f"✅ Password reset email sent to {to_email}")
+                return True
+            logger.error(f"Resend reset error {resp.status_code}: {resp.text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"Resend reset exception: {e}")
+        return False
+
+
+def _clean_origin(u: str) -> str:
+    """Extract scheme://netloc from a URL, empty string if invalid."""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(u or "")
+        if p.scheme in ("http", "https") and p.netloc:
+            return f"{p.scheme}://{p.netloc}"
+    except Exception:
+        pass
+    return ""
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordRequest, request: Request):
+    """Send a password-reset link to the given email.
+
+    Always returns the same neutral message to prevent email enumeration.
+    Rate-limited: 3 requests / 10 min / email.
+    """
+    email = normalize_email(payload.email)
+    if not email or not EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    recent = await db.password_resets.count_documents({"email": email, "ts": {"$gte": cutoff}})
+    if recent >= 3:
+        raise HTTPException(status_code=429, detail="Trop de demandes. Patiente 10 minutes.")
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    neutral = {
+        "message": "Si un compte existe pour cet email, un lien de réinitialisation t'a été envoyé.",
+    }
+
+    # Always log an attempt for rate-limit purposes (even if user doesn't exist)
+    await db.password_resets.insert_one({
+        "email": email,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    })
+
+    if not user or not user.get("verified"):
+        # Neutral response — no enumeration. Don't generate a token.
+        return neutral
+
+    # Generate single-use token (30 min)
+    now = datetime.now(timezone.utc)
+    token = secrets.token_urlsafe(32)
+    await db.password_reset_tokens.delete_many({"user_id": user["user_id"]})
+    await db.password_reset_tokens.insert_one({
+        "token": token,
+        "user_id": user["user_id"],
+        "email": email,
+        "consumed_at": None,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+    })
+
+    frontend_base = (
+        _clean_origin(payload.frontend_url)
+        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
+        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
+    )
+    reset_url = f"{frontend_base}/reset-password?token={token}" if frontend_base else f"/reset-password?token={token}"
+
+    sent = await send_reset_email(email, reset_url)
+    response = {**neutral, "email_sent": sent}
+    if not sent:
+        # Demo mode (no Resend key): expose the link directly so the
+        # flow is testable without an email provider.
+        response["reset_link"] = reset_url
+    return response
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordRequest):
+    """Consume reset token and set a new password."""
+    if not payload.token:
+        raise HTTPException(status_code=400, detail="Token manquant")
+    if len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 6 caractères")
+
+    doc = await db.password_reset_tokens.find_one({"token": payload.token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=400, detail="Lien invalide ou déjà utilisé")
+    if doc.get("consumed_at"):
+        raise HTTPException(status_code=400, detail="Ce lien a déjà été utilisé")
+
+    expires_at = datetime.fromisoformat(doc["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        await db.password_reset_tokens.delete_one({"token": payload.token})
+        raise HTTPException(
+            status_code=400,
+            detail="La durée de validation de ce lien a expiré. Refais une demande de réinitialisation.",
+        )
+
+    new_hash = hash_password(payload.password)
+    await db.users.update_one(
+        {"user_id": doc["user_id"]},
+        {"$set": {"password_hash": new_hash, "last_password_change": datetime.now(timezone.utc).isoformat()}},
+    )
+    await db.password_reset_tokens.update_one(
+        {"token": payload.token},
+        {"$set": {"consumed_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    # Invalidate all existing sessions for this user (defense in depth:
+    # if an attacker had a stale session, the reset kicks them out).
+    await db.user_sessions.delete_many({"user_id": doc["user_id"]})
+    # Clear failed-login counters
+    await db.login_attempts.delete_many({"identifier": doc["email"]})
+
+    return {"message": "Mot de passe mis à jour. Tu peux te reconnecter."}
+
+
 # ==================== METRICS ====================
 
 async def log_auth_error(kind: str, detail: str, request: Request | None = None):
@@ -2696,12 +2869,41 @@ async def health_check():
         ).decode().strip()
     except Exception:
         pass
+
+    # MongoDB ping
+    db_ok = False
+    try:
+        await db.command("ping")
+        db_ok = True
+    except Exception as e:
+        logger.warning(f"Health: Mongo ping failed: {e}")
+
+    # Resend availability
+    resend_ok = bool(os.environ.get("RESEND_API_KEY"))
+
+    # Ollama best-effort (don't block — short timeout)
+    ollama_ok = False
+    try:
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"{ollama_url}/api/tags")
+            ollama_ok = r.status_code == 200
+    except Exception:
+        pass
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_ok else "degraded",
         "commit": commit,
+        "checks": {
+            "mongo": db_ok,
+            "resend": resend_ok,
+            "ollama": ollama_ok,
+            "github": GITHUB_ENABLED,
+        },
         "chat_ai": "GPT (disponible)",
         "create_ai": "Emergent (disponible)",
-        "exports": "mobile + desktop"
+        "exports": "mobile + desktop",
+        "ts": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -2797,11 +2999,54 @@ async def ensure_indexes():
         await db.user_sessions.create_index("session_token", unique=True)
         await db.login_attempts.create_index("identifier")
         await db.resend_attempts.create_index("email")
+        await db.password_resets.create_index("email")
+        await db.password_reset_tokens.create_index("token", unique=True)
+        await db.password_reset_tokens.create_index("user_id")
         logger.info("✅ MongoDB indexes ready")
     except Exception as e:
         logger.warning(f"Index creation warning: {e}")
 
 
+# Background task: every 10 minutes, drop expired/stale auth rows so the
+# DB doesn't grow unboundedly. Documents store ISO strings (not Mongo
+# Date) so we can't use a TTL index — we sweep manually.
+_cleanup_task: asyncio.Task | None = None
+
+
+async def _periodic_auth_cleanup():
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            now_iso = now.isoformat()
+            # Verifications older than expires_at (and not consumed for >1h)
+            await db.email_verifications.delete_many({"expires_at": {"$lt": now_iso}})
+            # User sessions past expiry
+            await db.user_sessions.delete_many({"expires_at": {"$lt": now_iso}})
+            # Password reset tokens past expiry
+            await db.password_reset_tokens.delete_many({"expires_at": {"$lt": now_iso}})
+            # Login + resend + reset attempts older than 24h (rate-limit data)
+            day_ago = (now - timedelta(hours=24)).isoformat()
+            await db.login_attempts.delete_many({"ts": {"$lt": day_ago}})
+            await db.resend_attempts.delete_many({"ts": {"$lt": day_ago}})
+            await db.password_resets.delete_many({"ts": {"$lt": day_ago}})
+            # Auth-error logs older than 7d (kept for /metrics 24h window with margin)
+            week_ago = (now - timedelta(days=7)).isoformat()
+            await db.auth_errors.delete_many({"ts": {"$lt": week_ago}})
+        except Exception as e:
+            logger.warning(f"Cleanup task error: {e}")
+        await asyncio.sleep(10 * 60)  # 10 minutes
+
+
+@app.on_event("startup")
+async def start_cleanup_task():
+    global _cleanup_task
+    _cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
+    logger.info("✅ Auth cleanup background task started (every 10 min)")
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    global _cleanup_task
+    if _cleanup_task:
+        _cleanup_task.cancel()
     client.close()

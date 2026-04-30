@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 24 — Exhaustive testing of forgot/reset-password flow + /health enrichi + idle banner + session-expired toast + non-regression on existing auth flows. 18 NEW pytest cases ALL passing. Full backend suite: 72 passed, 3 skipped (DEPLOY_SECRET-gated, intentional). FOUND & FIXED 1 critical frontend bug: AuthContext 401 interceptor was redirecting users away from /reset-password (and other public pages) because /api/auth/me legitimately 401s for guests on initial mount and /auth/me wasn't in the exemption list. Patched AuthContext.js to also exempt /api/auth/me + add a public-page guard (/, /login, /sms-login, /verify-email, /reset-password). After fix, all frontend Playwright assertions PASS: forgot-password empty-email toast, forgot-password with email toast, /reset-password?token=xxx → form, /reset-password (no token) → reset-error, password mismatch toast, /login?reason=session_expired → toast, /login?reason=idle → orange banner + close button works, forgot-password-btn hidden in signup mode.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/forgot-password", "issue": "Rate-limit row inserted BEFORE the user lookup, so 3 calls on an unknown email still consume the quota for that email. Not a security issue (neutral response stays neutral), but a malicious actor could DOS-block password resets for a specific (known) email. Recommend insert AFTER the user check, or accept current behaviour as anti-enumeration timing equalisation."},
+      {"endpoint": "DB hygiene", "issue": "No TTL index on db.password_resets.ts (rows accumulate). Same recommendation as iter23 for resend_attempts. Add createIndex('ts', expireAfterSeconds=86400). Also add same on db.password_reset_tokens.expires_at (auto-cleanup expired tokens) — backend cleanup task partially covers this but a Mongo TTL is more robust."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_password_reset_iter24.py",
+    "/app/test_reports/pytest/pytest_iter24.xml",
+    "/app/test_reports/pytest/pytest_iter24_full.xml"
+  ],
+  "action_items": [
+    "(Already FIXED by testing agent) AuthContext.js — exempt /api/auth/me from 401 redirect + skip redirect on public pages. Verified working.",
+    "(Optional, low priority) Move db.password_resets.insert_one AFTER the user lookup to avoid wasting rate-limit quota on enumeration probes against unknown emails.",
+    "(Optional) Add Mongo TTL indexes on password_resets.ts (24h) and password_reset_tokens.expires_at to keep collections bounded."
+  ],
+  "critical_code_review_comments": [
+    "server.py:945-1002 forgot_password — clean: email regex validated, neutral response on unknown/unverified, single-use token (30min TTL), prior tokens deleted before insert. Demo-mode reset_link gated on RESEND_API_KEY absence — currently absent in body since RESEND_API_KEY is set. Verified.",
+    "server.py:1005-1044 reset_password — clean: validates token+min-6-char, single-use enforced via consumed_at, ALL existing user_sessions deleted (defense-in-depth verified by pytest), login_attempts cleared. Token deleted from DB on expiry. Solid.",
+    "AuthContext.js:35-79 — 401 interceptor was over-aggressive (would redirect /reset-password visitors to /login?reason=session_expired). FIXED by adding /api/auth/me to isAuthEndpoint AND a public-page guard. Tested.",
+    "Login.js handleForgotPassword — opens reset_link in new tab in demo mode but in real mode (RESEND_API_KEY set) only shows toast and no link → correct, no enumeration leak. Verified no password_hash leaked anywhere (test_password_hash_not_leaked_on_login).",
+    "ResetPassword.js — error path correctly transitions phase='error' only when the message contains 'expir'; other 4xx errors keep the form visible and surface a toast. Good UX.",
+    "server.py is still 2798+ lines. Recommend extracting routes/auth_email.py (forgot/reset/verify/resend) into a sub-module — carried over from prior iterations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_password_reset_iter24.py (new — 18 test cases)",
+    "/app/frontend/src/contexts/AuthContext.js (fix — exempt /auth/me + public-page guard for 401 interceptor)"
+  ],
+  "success_rate": {
+    "backend": "100% (72/72 active pytest, 3 skipped DEPLOY_SECRET-gated)",
+    "frontend": "100% on all 8 Playwright scenarios after the AuthContext fix"
+  },
+  "test_credentials": "Throwaway users prefixed TEST_ (TEST_unverif_*, TEST_verif_*, TEST_reset1_*, TEST_short_*, TEST_exp_*, TEST_single_*, TEST_sessinv_*, TEST_e2e_*, TEST_leak_*, TEST_rate_*) — all on @gmail.com, password=Pass1234 (or NewPass9999 after reset). Bulk delete: db.users.delete_many({email: {$regex: '^TEST_'}}).",
+  "seed_data_creation": "~10 throwaway verified+unverified users + matching email_verifications + password_reset_tokens + password_resets rows. No production data touched. forgot-password test with REAL Resend key may have triggered ONE real email to test_verif_*@gmail.com (test was minimal). Test_full_email_auth_flow likewise. Total real emails sent: ~3 (kept under quota).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pytest baseline now: 72 passed, 3 skipped. Frontend AuthContext interceptor patched. /reset-password and /verify-email pages now correctly survive guest /auth/me 401 without redirect. RESEND_API_KEY is configured — forgot-password real verified email returns email_sent:true, no reset_link in body. Test data rule: when querying password_reset_tokens or password_resets in DB, ALWAYS use email.lower() (backend normalises). conftest.py auto-loads .env files. Cleanup task background asyncio task confirmed running in supervisor backend logs.",
+  "rca of the issue": "FIXED BUG: AuthContext.js axios response interceptor checked isAuthEndpoint for /login, /register, /verify-email, /verification-status, /forgot-password, /reset-password, /sms/* — but NOT /auth/me. On /reset-password page mount, AuthContext calls /auth/me to bootstrap user state. For an unauthenticated visitor (the common case for password reset), this returns 401 → interceptor falsely treats it as 'session expired' → redirects to /login?reason=session_expired. User never sees the reset form. Fix: add /api/auth/me to isAuthEndpoint AND add a public-page guard so any 401 occurring on /, /login, /sms-login, /verify-email, /reset-password is silently ignored (no redirect)."
+}

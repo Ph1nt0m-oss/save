@@ -69,6 +69,12 @@ export default function Login() {
     } else if (params.get('reason') === 'idle') {
       setIdleNotice(true);
       window.history.replaceState(null, '', window.location.pathname);
+    } else if (params.get('reason') === 'session_expired') {
+      setTimeout(() => toast.info(
+        'Ta session a expiré côté serveur. Reconnecte-toi.',
+        { duration: 6000 }
+      ), 400);
+      window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
 
@@ -218,6 +224,31 @@ export default function Login() {
       toast.error(formatDetail(err.response?.data?.detail) || err.message);
     } finally {
       setResending(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const target = (email || '').trim().toLowerCase();
+    if (!target) {
+      toast.error("Renseigne d'abord ton email pour recevoir le lien.");
+      return;
+    }
+    try {
+      const { data } = await axios.post(`${API}/auth/forgot-password`, {
+        email: target,
+        frontend_url: window.location.origin,
+      });
+      if (data.email_sent) {
+        toast.success("Email de réinitialisation envoyé ! Vérifie ta boîte.");
+      } else if (data.reset_link) {
+        // Demo mode: open the link directly
+        toast.info("Mode démo — lien de réinitialisation ouvert.");
+        window.open(data.reset_link, '_blank', 'noopener,noreferrer');
+      } else {
+        toast.info(data.message || "Demande traitée.");
+      }
+    } catch (err) {
+      toast.error(formatDetail(err.response?.data?.detail) || err.message);
     }
   };
 
@@ -442,6 +473,17 @@ export default function Login() {
                     </>
                   )}
                 </button>
+
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    data-testid="forgot-password-btn"
+                    className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                )}
               </motion.form>
             )}
 

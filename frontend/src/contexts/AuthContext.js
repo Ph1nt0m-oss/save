@@ -27,6 +27,50 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor: if any authenticated API call returns 401
+// (server-side session expired/revoked), clean up local state so the
+// user is redirected to /login instead of seeing a broken UI.
+// We skip this handling for the auth endpoints themselves (login/register
+// returning 401 is part of the normal flow there).
+axios.interceptors.response.use(
+  (resp) => resp,
+  (error) => {
+    try {
+      const status = error?.response?.status;
+      const url = error?.config?.url || '';
+      const isAuthEndpoint = (
+        url.includes('/api/auth/login') ||
+        url.includes('/api/auth/register') ||
+        url.includes('/api/auth/verify-email') ||
+        url.includes('/api/auth/verification-status') ||
+        url.includes('/api/auth/forgot-password') ||
+        url.includes('/api/auth/reset-password') ||
+        url.includes('/api/auth/me') ||
+        url.includes('/api/auth/sms/')
+      );
+      // Also exempt public pages where being a guest is normal — no
+      // "session expired" redirect should ever happen here.
+      const path = window.location.pathname || '';
+      const onPublicPage = (
+        path === '/' ||
+        path.startsWith('/login') ||
+        path.startsWith('/sms-login') ||
+        path.startsWith('/verify-email') ||
+        path.startsWith('/reset-password')
+      );
+      if (status === 401 && !isAuthEndpoint && !onPublicPage && url.includes('/api/')) {
+        try { localStorage.removeItem('session_token'); } catch (_) {}
+        // Avoid redirect loops: only navigate if we're not already on /login
+        const onLogin = window.location.pathname.startsWith('/login');
+        if (!onLogin) {
+          window.location.assign('/login?reason=session_expired');
+        }
+      }
+    } catch (_) {}
+    return Promise.reject(error);
+  }
+);
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
