@@ -44,6 +44,16 @@ GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")  # PAT TOKEN recom
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
 GITHUB_REPO_NAME = os.environ.get("GITHUB_REPO_NAME")
 
+# ==================== GOOGLE OAUTH (DIRECT — bypasses Emergent Auth) ====================
+# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+if GOOGLE_OAUTH_ENABLED:
+    logger.info("✅ Google OAuth (direct) activé")
+else:
+    logger.warning("⚠️ Google OAuth (direct) désactivé — GOOGLE_CLIENT_ID/SECRET manquants")
+
 GITHUB_ENABLED = all([
     GITHUB_CLIENT_SECRET,
     GITHUB_OWNER,
@@ -517,6 +527,185 @@ async def logout(request: Request, response: Response):
     
     response.delete_cookie("session_token", path="/")
     return {"message": "Déconnexion réussie"}
+
+
+# ==================== GOOGLE OAUTH (DIRECT) ====================
+# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+# Direct Google OAuth 2.0 — bypasses Emergent Auth service which returns
+# user_data_not_found for this workspace. The frontend builds redirect_uri
+# from window.location.origin (never hardcoded).
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+# Short-lived CSRF state tokens (5 min TTL). Stored in Mongo so we survive
+# multiple backend workers / restarts.
+async def _create_oauth_state(redirect_uri: str) -> str:
+    state = secrets.token_urlsafe(32)
+    await db.oauth_states.insert_one({
+        "state": state,
+        "redirect_uri": redirect_uri,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+    })
+    return state
+
+
+async def _consume_oauth_state(state: str) -> dict | None:
+    doc = await db.oauth_states.find_one_and_delete({"state": state}, projection={"_id": 0})
+    if not doc:
+        return None
+    expires_at = datetime.fromisoformat(doc["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        return None
+    return doc
+
+
+@api_router.get("/auth/google/login")
+async def google_login(redirect_uri: str):
+    """Redirect the user to Google's consent screen.
+
+    Frontend passes ?redirect_uri=<window.location.origin>/auth/google so we
+    can return to the exact origin the user started from (works across
+    preview URL, custom domains, etc. without hardcoding).
+    """
+    if not GOOGLE_OAUTH_ENABLED:
+        raise HTTPException(status_code=503, detail="Google OAuth non configuré (clés manquantes)")
+    if not redirect_uri or not redirect_uri.startswith("http"):
+        raise HTTPException(status_code=400, detail="redirect_uri invalide")
+
+    state = await _create_oauth_state(redirect_uri)
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
+        "state": state,
+    }
+    from urllib.parse import urlencode
+    auth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
+class GoogleCallbackRequest(BaseModel):
+    code: str
+    state: str
+    redirect_uri: str  # must match the one used in /auth/google/login
+
+
+@api_router.post("/auth/google/callback")
+async def google_callback(payload: GoogleCallbackRequest, response: Response):
+    """Exchange Google authorization code for id_token, fetch userinfo,
+    create local session + cookie + token.
+    """
+    if not GOOGLE_OAUTH_ENABLED:
+        raise HTTPException(status_code=503, detail="Google OAuth non configuré")
+
+    # CSRF check
+    state_doc = await _consume_oauth_state(payload.state)
+    if not state_doc:
+        await log_auth_error("google_oauth_invalid_state", f"state={payload.state[:8]}...", request=None)
+        raise HTTPException(status_code=400, detail="État OAuth invalide ou expiré. Veuillez recommencer.")
+    if state_doc.get("redirect_uri") != payload.redirect_uri:
+        await log_auth_error("google_oauth_redirect_mismatch", "", request=None)
+        raise HTTPException(status_code=400, detail="redirect_uri ne correspond pas à l'état initial")
+
+    # Step 1: exchange code for tokens
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            token_resp = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": payload.code,
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": payload.redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if token_resp.status_code != 200:
+                await log_auth_error("google_oauth_token_exchange_failed",
+                                     f"status={token_resp.status_code} body={token_resp.text[:200]}",
+                                     request=None)
+                raise HTTPException(status_code=401, detail="Échec de l'échange du code Google")
+            tokens = token_resp.json()
+            access_token = tokens.get("access_token")
+            if not access_token:
+                raise HTTPException(status_code=401, detail="Token Google manquant dans la réponse")
+
+            # Step 2: fetch user info
+            userinfo_resp = await client.get(
+                GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if userinfo_resp.status_code != 200:
+                await log_auth_error("google_oauth_userinfo_failed",
+                                     f"status={userinfo_resp.status_code}",
+                                     request=None)
+                raise HTTPException(status_code=401, detail="Impossible de récupérer le profil Google")
+            userinfo = userinfo_resp.json()
+    except httpx.HTTPError as e:
+        logger.error(f"Google OAuth network error: {e}")
+        await log_auth_error("google_oauth_network_error", str(e)[:200], request=None)
+        raise HTTPException(status_code=503, detail="Google temporairement injoignable")
+
+    email = userinfo.get("email")
+    if not email:
+        raise HTTPException(status_code=401, detail="Email manquant dans la réponse Google")
+
+    # Step 3: upsert user
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "name": userinfo.get("name") or existing.get("name"),
+                "picture": userinfo.get("picture") or existing.get("picture"),
+                "last_login": now,
+            }},
+        )
+    else:
+        user_id = str(uuid.uuid4())
+        await db.users.insert_one({
+            "user_id": user_id,
+            "email": email,
+            "name": userinfo.get("name", ""),
+            "picture": userinfo.get("picture", ""),
+            "auth_type": "google",
+            "created_at": now,
+            "last_login": now,
+        })
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+
+    # Step 4: create session (same shape as SMS verify)
+    session_token = secrets.token_urlsafe(32)
+    await db.user_sessions.insert_one({
+        "session_token": session_token,
+        "user_id": user_id,
+        "created_at": now,
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+    })
+
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        max_age=7 * 24 * 3600,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+    )
+
+    return {**user, "session_token": session_token}
 
 
 # ==================== METRICS ====================
