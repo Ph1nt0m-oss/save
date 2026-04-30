@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import confetti from 'canvas-confetti';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw } from 'lucide-react';
+import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -41,6 +41,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [demoLink, setDemoLink] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [idleNotice, setIdleNotice] = useState(false);
 
   // Verification polling state (active between /register and the user
   // clicking the magic link in their email / the demo link).
@@ -66,10 +67,7 @@ export default function Login() {
       setTimeout(() => toast.success('Email confirmé ! Connecte-toi maintenant.', { duration: 5000 }), 400);
       window.history.replaceState(null, '', window.location.pathname);
     } else if (params.get('reason') === 'idle') {
-      setTimeout(() => toast.info(
-        "Déconnexion automatique après 1h d'inactivité. Reconnecte-toi pour continuer.",
-        { duration: 8000 }
-      ), 400);
+      setIdleNotice(true);
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
@@ -267,6 +265,30 @@ export default function Login() {
                   : (mode === 'login' ? 'Connecte-toi pour continuer' : 'Crée ton compte gratuit')}
               </p>
             </motion.div>
+
+            {/* Idle auto-logout banner — dismissible */}
+            {idleNotice && !waitingFor && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                data-testid="idle-logout-banner"
+                className="flex items-start gap-3 p-3 bg-orange-400/10 border border-orange-400/30 rounded-sm text-left"
+              >
+                <Clock className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
+                <p className="flex-1 text-xs font-['IBM_Plex_Sans'] text-orange-200/90 leading-relaxed">
+                  Vous avez été déconnecté après 1h ou plus d'inactivité. Vous pouvez fermer ce message et vous reconnecter.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIdleNotice(false)}
+                  data-testid="idle-logout-banner-close"
+                  aria-label="Fermer"
+                  className="text-orange-300 hover:text-orange-200 transition-colors flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </motion.div>
+            )}
 
             {/* Waiting banner — shown while polling */}
             {waitingFor && (

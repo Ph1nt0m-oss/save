@@ -457,6 +457,11 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
     if not resend_key:
         return False
     sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+    # Replies to the magic-link email are silently forwarded to a
+    # catch-all inbox. The recipient sees the From as CodeForge AI, but
+    # if they hit "Reply" their mail client uses Reply-To. They never see
+    # the redirection. The owner of the catch-all simply ignores those.
+    reply_to = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
@@ -468,16 +473,21 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
                 json={
                     "from": sender,
                     "to": [to_email],
+                    "reply_to": reply_to,
                     "subject": "Confirme ton compte CodeForge AI",
                     "html": (
-                        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px'>"
-                        f"<h1 style='color:#E4FF00'>CodeForge AI</h1>"
-                        f"<p>Clique sur le lien ci-dessous pour confirmer ton compte&nbsp;:</p>"
-                        f"<p><a href='{verify_url}' style='background:#E4FF00;color:#050505;"
-                        f"padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold'>"
+                        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
+                        f"<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
+                        f"<p style='color:#E4E4E7'>Clique sur le bouton ci-dessous pour confirmer ton compte&nbsp;:</p>"
+                        f"<p style='margin:24px 0'><a href='{verify_url}' style='background:#E4FF00;color:#050505;"
+                        f"padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>"
                         f"Confirmer mon compte</a></p>"
-                        f"<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 5 minutes.</p>"
+                        f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur&nbsp;:<br>"
+                        f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{verify_url}</span></p>"
+                        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 5 minutes.</p>"
                         f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>"
+                        f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
+                        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
                         f"</div>"
                     ),
                 },
