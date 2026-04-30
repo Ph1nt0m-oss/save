@@ -1,0 +1,36 @@
+{
+  "summary": "Retest of the 2 critical fixes from iter_20. Both VERIFIED. (1) /api/auth/register now reads payload.frontend_url (server.py:572-580) — response.verification_link correctly resolves to https://no-code-builder-25.preview.emergentagent.com/verify-email?token=xxx even when the inbound Origin header is spoofed/internal. Confirmed via curl + via the full React signup flow (anchor href points to the public preview domain). (2) Brute-force lockout identifier is now email-only (server.py:655) — 6th wrong login returns 429 consistently; a successful login clears the counter; post-clear the 6/15 threshold is re-armed. Re-ran /app/backend/tests/test_email_auth.py: 16 passed / 5 skipped (same skip set as iter_20 — those tests are gated by pre-existing state / manual TTL checks). E2E Playwright smoke: signup → click demo link → /verify-email auto-redirects to /dashboard → logout → /login pre-fills email from localStorage. No regressions observed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/register", "issue": "When the client does NOT send frontend_url and neither FRONTEND_URL nor REACT_APP_BACKEND_URL is set on the backend, verification_link falls back to a relative path (/verify-email?token=xxx) which would break an email-based flow. Not a blocker today because the React app always sends frontend_url=window.location.origin and email delivery is still in demo mode. Defense-in-depth: add FRONTEND_URL=https://no-code-builder-25.preview.emergentagent.com to /app/backend/.env so the fallback is absolute."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_email_auth.py",
+    "/app/test_reports/pytest/pytest_results_iter21.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (defense-in-depth): add FRONTEND_URL=https://no-code-builder-25.preview.emergentagent.com to /app/backend/.env so /auth/register still builds an absolute link if a future non-browser client forgets to include frontend_url in the body.",
+    "Pre-existing (carried from iter_20): add TTL indexes on email_verifications.expires_at and login_attempts.ts to auto-clean stale rows.",
+    "Pre-existing: split server.py (>2600 lines) into routes/auth_email.py, routes/auth_sms.py modules."
+  ],
+  "critical_code_review_comments": [
+    "server.py:572-580 — fix is clean: explicit payload.frontend_url > FRONTEND_URL env > REACT_APP_BACKEND_URL env > relative. Uses urlparse to strip any path/query from the passed origin (good — avoids token smuggling).",
+    "server.py:655 — identifier switched to email-only. Simple and correct behind the LB. Side-effect: an attacker from any IP can lock out a legitimate user for 15 min by sending 5 wrong passwords for their email. Standard trade-off; acceptable for now but consider adding CAPTCHA or progressive delay on the 3rd+ failure in a later iteration.",
+    "No rate-limit on /api/auth/register itself — an attacker could spam-create unverified accounts to fill the collection. Not in scope for this retest."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% on targeted fixes (curl + 16/16 pytest executed)", "frontend": "100% on E2E smoke (register → demo link → verify → dashboard → logout → login email-prefill)"},
+  "test_credentials": "Created on the fly during this run: retest_1777557515@gmail.com / retest2_1777557516@gmail.com / bruteforce_1777557525@gmail.com / bfclear_<ts>@gmail.com / e2e_1777557629@gmail.com — all with password SecurePass123 or CorrectPass123. Safe to bulk-delete via db.users.delete_many({email: /^(retest_|bruteforce_|bfclear_|e2e_)/}).",
+  "seed_data_creation": "~6 throwaway users + corresponding email_verifications / login_attempts docs. No production data touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both iter_20 critical bugs are now fully fixed and verified at the HTTP, pytest, and UI layers. The only remaining items are optional hardenings (FRONTEND_URL env fallback, TTL indexes, server.py refactor). No retest required for this migration unless the auth code is touched again.",
+  "rca of the issue": "N/A — retest confirmed main agent's fixes. Prior RCAs (Origin-header trust, per-pod IP rotation) are both resolved: register now derives the frontend origin from a trusted caller-supplied value that matches REACT_APP_BACKEND_URL, and login lockout identifier is email-only so LB pod-IP rotation no longer defeats it."
+}

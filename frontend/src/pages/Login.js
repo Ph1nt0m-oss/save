@@ -63,6 +63,7 @@ export default function Login() {
           email: email.trim(),
           password,
           name: name.trim() || undefined,
+          frontend_url: window.location.origin,
         });
         try { localStorage.setItem(LAST_EMAIL_KEY, email.trim().toLowerCase()); } catch (_) {}
         if (data.email_sent) {

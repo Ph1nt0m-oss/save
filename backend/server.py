@@ -496,6 +496,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     name: Optional[str] = None
+    frontend_url: Optional[str] = None  # origin from which the user will click the link
 
 
 class LoginRequest(BaseModel):
@@ -553,21 +554,29 @@ async def register(payload: RegisterRequest, request: Request):
         "expires_at": (now + timedelta(minutes=30)).isoformat(),
     })
 
-    # Build verification URL pointing at the FRONTEND /verify-email page
-    # (never hardcoded — derived from the Origin or Referer header).
-    origin = request.headers.get("origin") or request.headers.get("referer") or ""
-    origin = origin.rstrip("/")
-    if origin and origin.endswith("/verify-email"):
-        origin = origin[: -len("/verify-email")]
-    # Strip any path component from referer
-    if origin:
+    # Build verification URL.
+    # Priority: explicit frontend_url in body (sent by the React app as
+    # window.location.origin) > FRONTEND_URL env > REACT_APP_BACKEND_URL env.
+    # Request Origin/Referer are NOT used — the k8s ingress rewrites them
+    # to the internal cluster hostname which is 403 externally.
+    def _clean_origin(u: str) -> str:
         try:
             from urllib.parse import urlparse
-            p = urlparse(origin)
-            origin = f"{p.scheme}://{p.netloc}"
+            p = urlparse(u)
+            if p.scheme in ("http", "https") and p.netloc:
+                return f"{p.scheme}://{p.netloc}"
         except Exception:
             pass
-    frontend_base = origin or os.environ.get("FRONTEND_URL", "")
+        return ""
+
+    frontend_base = ""
+    if payload.frontend_url:
+        frontend_base = _clean_origin(payload.frontend_url)
+    if not frontend_base:
+        frontend_base = _clean_origin(os.environ.get("FRONTEND_URL", ""))
+    if not frontend_base:
+        frontend_base = _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
+
     verify_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
 
     sent = await send_verification_email(email, verify_url)
@@ -641,8 +650,9 @@ async def login(payload: LoginRequest, response: Response, request: Request):
         raise HTTPException(status_code=400, detail="Email et mot de passe requis")
 
     # Simple brute-force guard: 5 fails / 15 min per email.
-    ip = request.client.host if request.client else "?"
-    identifier = f"{ip}:{email}"
+    # NOTE: identifier is email-only because the k8s ingress rotates IPs
+    # across pods, which would defeat an IP-based lockout.
+    identifier = email
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
     fails = await db.login_attempts.count_documents({"identifier": identifier, "ts": {"$gte": cutoff}})
     if fails >= 5:
