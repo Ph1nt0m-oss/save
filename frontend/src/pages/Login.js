@@ -59,6 +59,21 @@ export default function Login() {
     } catch (_) {}
   }, []);
 
+  // Surface ?verified=1 (post email confirm) or ?reason=idle (auto logout)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === '1') {
+      setTimeout(() => toast.success('Email confirmé ! Connecte-toi maintenant.', { duration: 5000 }), 400);
+      window.history.replaceState(null, '', window.location.pathname);
+    } else if (params.get('reason') === 'idle') {
+      setTimeout(() => toast.info(
+        "Déconnexion automatique après 1h d'inactivité. Reconnecte-toi pour continuer.",
+        { duration: 8000 }
+      ), 400);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
+
   // Stop all timers/pollers when unmounting
   useEffect(() => () => {
     if (pollRef.current) clearInterval(pollRef.current);
