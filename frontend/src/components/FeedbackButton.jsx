@@ -46,7 +46,7 @@ export default function FeedbackButton() {
         onClick={() => setOpen(true)}
         data-testid="feedback-open-btn"
         aria-label="Donner un avis"
-        className="fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-[#E4FF00] text-[#050505] shadow-[0_8px_30px_rgba(228,255,0,0.4)] hover:scale-105 active:scale-95 transition-transform flex items-center justify-center"
+        className="fixed bottom-20 right-5 z-40 w-12 h-12 rounded-full bg-[#E4FF00] text-[#050505] shadow-[0_8px_30px_rgba(228,255,0,0.4)] hover:scale-105 active:scale-95 transition-transform flex items-center justify-center"
       >
         <MessageCircle className="w-5 h-5" />
       </button>

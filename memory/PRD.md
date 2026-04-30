@@ -1,78 +1,82 @@
 # CodeForge AI - PRD
 
-## Statut : VERSION ULTIME — STABLE & PRODUCTION-READY (Avril 2026)
+## Statut : VERSION ULTIME PHASE 6 — STABLE & PRODUCTION-READY (Avril 2026)
 
-### 30 Avril 2026 — Session 24 — VERSION FINALE
-- **Mot de passe oublié** : `/auth/forgot-password` + `/auth/reset-password` (TTL 30 min, rate-limit 3/10 min, single-use, invalide toutes les sessions)
-- **Page `/reset-password`** frontend (form + validation + écran d'erreur si lien expiré)
-- **Auto-logout 401** : intercepteur axios global, redirige vers `/login?reason=session_expired`. Exempte les endpoints d'auth + pages publiques (anti-loop)
-- **Cleanup task** asyncio (toutes les 10 min) : purge tokens expirés, sessions périmées, rate-limit >24h, auth_errors >7j
-- **Health check enrichi** : `/api/health` → `{checks: {mongo, resend, ollama, github}}`
-- **Idle timeout 1h** + bannière dismissible dans `/login`
-- **Bug fix critique** trouvé par testing agent : AuthContext 401 interceptor redirigeait depuis pages publiques → patch (exempt /, /login, /sms-login, /verify-email, /reset-password + /api/auth/me)
-- **Tests** : 72 passed / 3 skipped (DEPLOY_SECRET-gated)
+### 30 Avril 2026 — Session 25 — Pack P1+P2 (VERSION FINALE)
+- **Page Profil/Paramètres** (`/profile`) avec 4 onglets :
+  - Info : nom, email, dates, type d'auth, **export RGPD JSON**
+  - Mot de passe : changement avec MDP actuel + invalidation des autres sessions
+  - Email : changement avec lien de confirmation envoyé au nouvel email
+  - Zone dangereuse : suppression compte avec confirmation "SUPPRIMER" (cascade delete RGPD)
+- **Magic Link Login** : bouton "Connexion par lien magique (sans mot de passe)" sur Login → `POST /api/auth/magic-link` rate-limited 3/10min, polling cross-tab existant
+- **Page `/how-it-works`** : doc moteur IA en 7 sections (gratuit illimité, online GPT-4o, offline Ollama, wizard, exports, sécurité, technique)
+- **Page `/legal`** : CGU + RGPD + Cookies (3 onglets, query param `?tab=`)
+- **Bouton Feedback flottant global** : icône MessageCircle en bas-droite (au-dessus du badge Emergent), modal avec types bug/suggestion/other, stocké en MongoDB + email admin via Resend
+- **Cleanup**: suppression définitive de `AuthCallback.js` (résidu Google Auth), strip silencieux de `#session_id=` dans App.js
+- **`verify-email`** étendu pour gérer `purpose=email_change` (race-check si email pris entre-temps)
+- **Tests** : **100 passed / 3 skipped** (DEPLOY_SECRET-gated)
 
 ### Sessions précédentes
-- **Session 23** : Bouton "Renvoyer le lien" + audit (133 lignes code mort supprimées)
-- **Session 22** : Cross-tab auto-unlock + TTL 5 min + messages français exacts + `/api/guide` HTML
+- **Session 24** : Forgot/Reset password + cleanup task background + health check enrichi + idle timeout 1h
+- **Session 23** : Bouton "Renvoyer le lien" + audit (133 lignes code mort)
+- **Session 22** : Cross-tab auto-unlock + TTL 5 min + `/api/guide` HTML
 - **Session 21** : Migration Email/Password + Magic Link (abandon Emergent Auth + Google OAuth)
-- **Phase 5** : Tests automatisés + monitoring + service worker
+- **Phase 5** : Tests + monitoring + service worker
 - **Phase 4** : Polish UI/UX glassmorphism
 - **Phase 3** : Sécurité + perf + UX
 - **Phase 2** : Auto-deploy GitHub Actions
-- **Phase 1** : Auth (remplacée par Email/Password)
+- **Phase 1** : Auth (remplacée)
 
-## Routes actives
+## Routes actives FINALES
 ### Auth
-- `POST /api/auth/register` (TTL 5 min, brute-force 5/15 min)
-- `POST /api/auth/resend-verification` (3/10 min/email)
-- `GET /api/auth/verify-email?token=xxx`
-- `GET /api/auth/verification-status?token=xxx` (polling cross-tab)
+- `POST /api/auth/register`
+- `POST /api/auth/resend-verification`
+- `GET /api/auth/verify-email` (gère verify + email_change + magic_login)
+- `GET /api/auth/verification-status` (polling cross-tab)
 - `POST /api/auth/login`
-- `POST /api/auth/forgot-password` (NEW)
-- `POST /api/auth/reset-password` (NEW)
+- `POST /api/auth/magic-link` ✨ NEW
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `POST /api/auth/change-password` ✨ NEW
+- `POST /api/auth/change-email` ✨ NEW
 - `GET /api/auth/me`
+- `DELETE /api/auth/me` ✨ NEW (cascade RGPD)
+- `GET /api/auth/export` ✨ NEW (export RGPD JSON)
 - `POST /api/auth/logout`
 - `POST /api/auth/sms/send|verify` (mode démo)
 
 ### Système
 - `GET /api/health` (checks détaillés)
-- `GET /api/metrics` (auth_errors_24h, total_users, etc.)
-- `GET /api/guide` (guide dépannage HTML)
-- `POST /api/admin/redeploy` (webhook auto-deploy GitHub)
+- `GET /api/metrics`
+- `GET /api/guide` (HTML)
+- `POST /api/feedback` ✨ NEW
+- `POST /api/admin/redeploy`
 
 ### Routes RETIRÉES (404)
 - `POST /api/auth/session` (Emergent Auth)
 - `GET/POST /api/auth/google/login|callback`
 
-## Environnement
-- `RESEND_API_KEY` ✅ — mode email RÉEL
-- `EMAIL_FROM` : `CodeForge AI <onboarding@resend.dev>`
-- `EMAIL_REPLY_TO` : `commandes.et.publicites@gmail.com` (silencieux)
-- `FRONTEND_URL` configurée
-- `MONGO_URL`, `DB_NAME`, `EMERGENT_LLM_KEY` configurés
+## Routes frontend
+- `/` Landing
+- `/login` (avec magic-link, forgot-password, footer how-it-works/legal)
+- `/sms-login`
+- `/verify-email?token=xxx`
+- `/reset-password?token=xxx`
+- `/dashboard` (protected)
+- `/create`, `/wizard`, `/chat` (protected)
+- `/profile` ✨ NEW (protected, 4 tabs)
+- `/how-it-works` ✨ NEW (public)
+- `/legal` ✨ NEW (public, ?tab=cgu|privacy|cookies)
 
 ## Santé du projet
-- **Lint Python** : 0 warning
-- **Lint JS** : 0 warning
-- **Tests** : 72 passed / 3 skipped
-- **Sécurité** :
-  - bcrypt pour passwords
-  - Brute-force 5/15 min/email
-  - Rate-limit forgot-password 3/10 min
-  - Rate-limit resend-verification 3/10 min
-  - Tokens single-use (verify-email, reset-password)
-  - Reset password invalide toutes sessions du user
-  - Pas d'enumeration d'email (réponse neutre)
-  - `password_hash` jamais retourné dans les réponses
-  - Index unique sur users.email
-  - 401 auto-clear côté frontend
-- **Performance** : indexes MongoDB sur tous les lookups critiques + cleanup task background
-- **Reliability** : health check avec checks détaillés, cleanup auto, intercepteur axios robuste
+- **Lint Python** : 0 warning ✅
+- **Lint JS** : 0 warning ✅
+- **Tests** : **100 passed / 3 skipped** ✅
+- **Sécurité** : bcrypt + brute-force + rate-limits + tokens single-use + cascade delete + auto-clear 401 + idle 1h
+- **Performance** : 8 indexes MongoDB + cleanup task background 10 min
+- **RGPD** : export JSON + suppression cascade + page Confidentialité
 
 ## Backlog futur
-- **P1** : Documentation détaillée moteur de création IA (Ollama offline + GPT-4o online, illimité)
-- **P2** : SMS gratuit Free Mobile API
-- **P3** : Domaine custom DNS pour Resend (gratuit avec Cloudflare Registrar)
-- **P4** : Refactoring server.py (>2700 lignes) en routes/ modules
-- **P5** : Page Profil/Paramètres user (changement email, suppression compte RGPD)
+- **P3** : Domaine custom DNS pour Resend
+- **P4** : SMS gratuit Free Mobile API
+- **P5** : Refactoring server.py en routes/ modules
