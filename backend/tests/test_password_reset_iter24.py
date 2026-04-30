@@ -106,13 +106,17 @@ class TestForgotPassword:
         assert r.status_code == 400
 
     def test_rate_limit_4th_call_429(self, db):
+        # Rate-limit only counts successful resets (verified user). Probing
+        # unknown emails is intentionally not counted (anti-enumeration).
         email = f"TEST_rate_{uuid.uuid4().hex[:8]}@gmail.com"
+        _register_and_verify(email)
         for i in range(3):
-            r = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=10)
+            r = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=15)
             assert r.status_code == 200, f"call {i+1}: {r.text}"
-        r4 = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=10)
+        r4 = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=15)
         assert r4.status_code == 429
         db.password_resets.delete_many({"email": _norm(email)})
+        db.users.delete_many({"email": _norm(email)})
 
 
 # ==================== Reset password ====================

@@ -963,15 +963,17 @@ async def forgot_password(payload: ForgotPasswordRequest, request: Request):
         "message": "Si un compte existe pour cet email, un lien de réinitialisation t'a été envoyé.",
     }
 
-    # Always log an attempt for rate-limit purposes (even if user doesn't exist)
+    if not user or not user.get("verified"):
+        # Neutral response — no enumeration. Don't generate a token,
+        # don't even count toward rate limit (probing unknown emails
+        # shouldn't lock the system out for a legitimate user later).
+        return neutral
+
+    # Log the attempt only once we know the user exists & is verified.
     await db.password_resets.insert_one({
         "email": email,
         "ts": datetime.now(timezone.utc).isoformat(),
     })
-
-    if not user or not user.get("verified"):
-        # Neutral response — no enumeration. Don't generate a token.
-        return neutral
 
     # Generate single-use token (30 min)
     now = datetime.now(timezone.utc)

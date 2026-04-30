@@ -1,57 +1,74 @@
 # Test Credentials
 
-## Email/Password Auth (NEW — flow principal)
-- Inscription via `/login` → onglet "Inscription" → Email + Mot de passe (≥6 char) + Nom (optionnel)
-- Mode démo actif (pas de `RESEND_API_KEY`) → le lien de vérification est renvoyé **directement dans la réponse** du `POST /api/auth/register` sous la clé `verification_link`
-- Le lien est aussi affiché dans l'UI sous la forme d'un encadré cyan cliquable
-- Cliquer le lien → `GET /api/auth/verify-email?token=xxx` → utilisateur vérifié + session créée + redirect `/dashboard`
-- Connexion suivante : onglet "Connexion" → email pré-rempli via `localStorage.codeforge_last_email` + mot de passe
+## Email/Password Auth (flow principal — mode RÉEL Resend activé)
+- Inscription via `/login` → onglet **Inscription** → Email Gmail + Mot de passe (≥6 char) + Nom (optionnel)
+- Mode RÉEL : email Resend envoyé depuis `CodeForge AI <onboarding@resend.dev>` avec Reply-To silencieux vers `commandes.et.publicites@gmail.com`
+- Lien magique TTL **5 min** ; cliquer le lien certifie le compte → l'onglet d'origine se déverrouille automatiquement (polling 2s) et navigue vers `/dashboard`
+- Bouton **"Renvoyer le lien"** dans le banner d'attente (rate-limit 3/10 min/email)
+- Si banner déclenche un 429, bouton désactivé visuellement pendant 10 min
 
-### Test user à créer à la volée (exemple curl)
+## Forgot Password (NEW iter_24)
+- Lien "Mot de passe oublié ?" sous le bouton Connexion
+- Email reset envoyé via Resend (TTL 30 min)
+- `/reset-password?token=xxx` → form (nouveau MDP + confirmation)
+- Token single-use ; reset invalide TOUTES les sessions du user (defense in depth)
+- Rate-limit 3/10 min/email
+
+## Idle Timeout (NEW iter_24)
+- 1h sans activité (mouse/keyboard/touch/scroll/wheel/visibility) → logout auto + `/login?reason=idle`
+- Bannière orange dismissible avec bouton X (data-testid `idle-logout-banner` + `idle-logout-banner-close`)
+
+## Auto-redirect Session Expirée (NEW iter_24)
+- Tout endpoint `/api/*` qui retourne 401 (sauf endpoints d'auth eux-mêmes et `/auth/me`) déclenche auto-clear localStorage + redirect `/login?reason=session_expired`
+- Pages publiques (/, /login, /sms-login, /verify-email, /reset-password) exemptées → pas de redirect en boucle
+
+## SMS Login (mode démo Twilio)
+- N'importe quel numéro fonctionne ; le code s'imprime dans l'UI
+
+## Test user à créer (curl)
 ```bash
 API=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d '=' -f2)
 EMAIL="test_$(date +%s)@gmail.com"
-
-# Register
+# 1. Register
 curl -s -X POST "$API/api/auth/register" -H "Content-Type: application/json" \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"Pass1234\",\"frontend_url\":\"$API\"}" | python3 -m json.tool
-# Copier le token depuis verification_link
-
-# Verify
-curl -s "$API/api/auth/verify-email?token=<TOKEN>" | python3 -m json.tool
-
-# Login
+  -d "{\"email\":\"$EMAIL\",\"password\":\"Pass1234\",\"frontend_url\":\"$API\"}"
+# Avec RESEND_API_KEY active : email envoyé. Sinon mode démo : verification_link dans la réponse.
+# 2. Verify avec le token reçu par email ou dans la réponse
+# 3. Login
 curl -s -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"Pass1234\"}" | python3 -m json.tool
+  -d "{\"email\":\"$EMAIL\",\"password\":\"Pass1234\"}"
 ```
 
-### Règles
-- Brute-force : 5 tentatives incorrectes / 15 min / email → 429
-- Password min. 6 chars, email validé par regex
-- Inscription sur un email existant **vérifié** → 409
-- Inscription sur un email existant **non-vérifié** → nouveau lien magique (pas d'erreur)
+## Endpoints critiques
+- `POST /api/auth/register` (5 min TTL)
+- `POST /api/auth/resend-verification` (3/10 min/email)
+- `GET /api/auth/verify-email?token=xxx`
+- `GET /api/auth/verification-status?token=xxx` (polling)
+- `POST /api/auth/login` (brute-force 5/15 min/email)
+- `POST /api/auth/forgot-password` (3/10 min/email, neutral msg si user inconnu)
+- `POST /api/auth/reset-password` (single-use, invalide toutes sessions)
+- `GET /api/auth/me` (Bearer / cookie)
+- `POST /api/auth/logout`
+- `GET /api/health` (checks mongo/resend/ollama/github)
+- `GET /api/guide` (HTML guide dépannage)
+- `GET /api/metrics` (auth_errors_24h, etc.)
 
-## SMS Login (mode démo Twilio)
-- Pas de clés Twilio configurées → mode démo actif
-- N'importe quel numéro fonctionne (ex: `+33612345678`)
-- Le code de vérification est imprimé dans l'UI au lieu d'être envoyé par SMS
+## Routes RETIRÉES
+- `POST /api/auth/session` (Emergent) → 404
+- `GET/POST /api/auth/google/login|callback` (OAuth natif) → 404
 
-## Google OAuth
-- **SUPPRIMÉ**. Plus d'Emergent Auth, plus de Google OAuth natif.
-- Remplacé par Email/Password + magic link.
+## Webhook Auto-Deploy
+- `DEPLOY_SECRET` dans `/app/backend/.env`
+- Endpoint : `POST /api/admin/redeploy` avec header `X-Deploy-Secret`
 
-## Webhook Auto-Deploy (Phase 2)
-- `DEPLOY_SECRET` dans `/app/backend/.env` : `748ca32d60fa5367d3ba872e11d07fb8367296b9556ad0400c8cdd9a0e52314f`
-- Endpoint : `POST /api/admin/redeploy` avec header `X-Deploy-Secret: <secret>`
-- ⚠️ Ne PAS appeler ce endpoint avec le bon secret pendant les tests — il déclenche `git reset --hard`
-
-## Tests pytest
-```bash
-cd /app && python3 -m pytest backend/tests/ -v
-```
+## Cleanup task (NEW iter_24)
+- Background task asyncio toutes les 10 min : purge tokens expirés, sessions périmées, rate-limit data >24h, auth_errors >7j
 
 ## Backend URL preview
-`https://no-code-builder-25.preview.emergentagent.com` (depuis `/app/frontend/.env REACT_APP_BACKEND_URL`)
+`https://no-code-builder-25.preview.emergentagent.com`
 
-## FRONTEND_URL (backend/.env)
-Ajouté : `FRONTEND_URL=https://no-code-builder-25.preview.emergentagent.com` — utilisé en fallback pour construire le lien magique si le body `frontend_url` n'est pas fourni.
+## ENV importants
+- `RESEND_API_KEY` : ✅ configurée — mode email RÉEL actif
+- `EMAIL_FROM` : `CodeForge AI <onboarding@resend.dev>`
+- `EMAIL_REPLY_TO` : `commandes.et.publicites@gmail.com` (catch-all silencieux)
+- `FRONTEND_URL` : `https://no-code-builder-25.preview.emergentagent.com`
