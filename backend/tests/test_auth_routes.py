@@ -106,21 +106,24 @@ class TestLogout:
 
 
 class TestSessionOAuth:
-    def test_invalid_session_id_returns_401(self):
+    def test_legacy_session_route_is_gone(self):
+        """The old Emergent Auth /auth/session endpoint was removed
+        during the email/password migration. It should return 404 or 405.
+        """
         r = requests.post(
             f"{API}/auth/session",
             json={"session_id": "definitely-invalid-fake-session-id"},
             timeout=15,
         )
-        assert r.status_code == 401
+        assert r.status_code in (404, 405)
 
 
 class TestMetrics:
     def test_metrics_endpoint(self):
-        # Trigger at least one auth error so the counter increments
+        # Trigger at least one auth error (bad login) so the counter increments
         requests.post(
-            f"{API}/auth/session",
-            json={"session_id": "fake-to-increment-metrics"},
+            f"{API}/auth/login",
+            json={"email": "nope@example.com", "password": "wrongpass123"},
             timeout=15,
         )
         time.sleep(0.5)

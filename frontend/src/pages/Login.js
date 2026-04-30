@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import confetti from 'canvas-confetti';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock } from 'lucide-react';
+import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -46,6 +46,7 @@ export default function Login() {
   // clicking the magic link in their email / the demo link).
   const [waitingFor, setWaitingFor] = useState(null); // { token, email } | null
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [resending, setResending] = useState(false);
   const pollRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -172,6 +173,35 @@ export default function Login() {
     }
   };
 
+  const handleResend = async () => {
+    if (resending || !waitingFor?.email) return;
+    setResending(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/resend-verification`, {
+        email: waitingFor.email,
+        frontend_url: window.location.origin,
+      });
+      if (data.verification_token) {
+        // Restart waiting with the new token — stopWaiting clears old timers first
+        stopWaiting();
+        if (data.email_sent) {
+          toast.success("Nouveau lien envoyé par email ! 5 minutes.");
+          setDemoLink(null);
+        } else if (data.verification_link) {
+          setDemoLink(data.verification_link);
+          toast.info("Nouveau lien généré (mode démo).");
+        }
+        startWaiting(data.verification_token, waitingFor.email, data.expires_in_seconds);
+      } else {
+        toast.info(data.message || "Demande de renvoi traitée.");
+      }
+    } catch (err) {
+      toast.error(formatDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setResending(false);
+    }
+  };
+
   const container = {
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { staggerChildren: 0.06, delayChildren: 0.08 } },
@@ -236,15 +266,27 @@ export default function Login() {
                   <p data-testid="verify-countdown" className="text-xs text-[#E4FF00] font-mono mt-2">
                     Expire dans {mm}:{ss}
                   </p>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={resending}
+                      data-testid="resend-link-btn"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E4FF00]/20 hover:bg-[#E4FF00]/30 text-[#E4FF00] text-xs font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-50"
+                    >
+                      {resending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                      {resending ? 'Envoi…' : 'Renvoyer le lien'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { stopWaiting(); setDemoLink(null); }}
+                      data-testid="verify-cancel-btn"
+                      className="text-xs text-[#A1A1AA] hover:text-white underline"
+                    >
+                      Annuler
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { stopWaiting(); setDemoLink(null); }}
-                  data-testid="verify-cancel-btn"
-                  className="text-xs text-[#A1A1AA] hover:text-white underline"
-                >
-                  Annuler
-                </button>
               </motion.div>
             )}
 

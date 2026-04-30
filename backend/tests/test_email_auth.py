@@ -106,20 +106,32 @@ class TestVerifyEmail:
         assert r.status_code == 400
 
     def test_valid_token_creates_session(self):
+        """After the cross-tab migration, /verify-email no longer sets a
+        cookie nor returns the user object — it just confirms the email
+        and stores a pending session_token for the original registration
+        tab to pick up via /verification-status polling."""
         email = _email()
         r = requests.post(f"{API}/auth/register",
                           json={"email": email, "password": "GoodPass123"},
                           timeout=15)
         token = r.json()["verification_link"].split("token=")[1]
-        s = requests.Session()
-        r2 = s.get(f"{API}/auth/verify-email", params={"token": token}, timeout=15)
+        verification_token = r.json()["verification_token"]
+        r2 = requests.get(f"{API}/auth/verify-email", params={"token": token}, timeout=15)
         assert r2.status_code == 200
         body = r2.json()
-        assert body["email"] == email
-        assert body["verified"] is True
-        assert "session_token" in body
-        assert "password_hash" not in body
-        assert "session_token" in s.cookies
+        assert "certifié" in body.get("message", "")
+        assert body.get("already_verified") is False
+
+        # Original tab polls and gets the session_token
+        r3 = requests.get(f"{API}/auth/verification-status",
+                          params={"token": verification_token}, timeout=15)
+        assert r3.status_code == 200
+        poll = r3.json()
+        assert poll["status"] == "verified"
+        assert "session_token" in poll
+        assert poll["user"]["email"] == email
+        assert poll["user"]["verified"] is True
+        assert "password_hash" not in poll["user"]
 
     def test_expired_token_returns_400(self, db):
         email = _email()

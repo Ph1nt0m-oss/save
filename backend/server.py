@@ -476,7 +476,7 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
                         f"<p><a href='{verify_url}' style='background:#E4FF00;color:#050505;"
                         f"padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold'>"
                         f"Confirmer mon compte</a></p>"
-                        f"<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 30 minutes.</p>"
+                        f"<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 5 minutes.</p>"
                         f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>"
                         f"</div>"
                     ),
@@ -599,6 +599,81 @@ async def register(payload: RegisterRequest, request: Request):
         # configuring an email provider. Aligned with the existing SMS demo.
         response["verification_link"] = verify_url
     return response
+
+
+class ResendRequest(BaseModel):
+    email: str
+    frontend_url: Optional[str] = None
+
+
+@api_router.post("/auth/resend-verification")
+async def resend_verification(payload: ResendRequest, request: Request):
+    """Generate a fresh magic link for an unverified account.
+
+    Rate-limited: at most 3 resends / 10 min / email. Already-verified
+    users get a friendly message instead of a link (no enumeration).
+    """
+    email = normalize_email(payload.email)
+    if not email or not EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
+    # Rate limit: 3 resends per 10 min
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    recent = await db.resend_attempts.count_documents({"email": email, "ts": {"$gte": cutoff}})
+    if recent >= 3:
+        raise HTTPException(status_code=429, detail="Trop de renvois. Patiente 10 minutes.")
+
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    # Neutral response if no user / already verified (no email enumeration)
+    if not user or user.get("verified"):
+        return {
+            "message": "Si un compte non confirmé existe pour cet email, un nouveau lien a été envoyé.",
+            "email_sent": False,
+        }
+
+    now = datetime.now(timezone.utc)
+    token = secrets.token_urlsafe(32)
+    await db.email_verifications.delete_many({"user_id": user["user_id"]})
+    await db.email_verifications.insert_one({
+        "token": token,
+        "user_id": user["user_id"],
+        "email": email,
+        "consumed_at": None,
+        "pending_session_token": None,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=5)).isoformat(),
+    })
+    await db.resend_attempts.insert_one({"email": email, "ts": now.isoformat()})
+
+    def _clean_origin(u: str) -> str:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(u or "")
+            if p.scheme in ("http", "https") and p.netloc:
+                return f"{p.scheme}://{p.netloc}"
+        except Exception:
+            pass
+        return ""
+
+    frontend_base = (
+        _clean_origin(payload.frontend_url)
+        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
+        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
+    )
+    verify_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
+
+    sent = await send_verification_email(email, verify_url)
+    resp = {
+        "message": "Nouveau lien envoyé ! Tu as 5 minutes." if sent
+        else "Nouveau lien généré (mode démo — aucun email envoyé).",
+        "email": email,
+        "email_sent": sent,
+        "verification_token": token,
+        "expires_in_seconds": 5 * 60,
+    }
+    if not sent:
+        resp["verification_link"] = verify_url
+    return resp
 
 
 @api_router.get("/auth/verify-email")
@@ -824,11 +899,14 @@ async def serve_guide():
         for line in text.split("\n"):
             if line.startswith("```"):
                 if in_list:
-                    out.append("</ul>"); in_list = False
+                    out.append("</ul>")
+                    in_list = False
                 if in_code:
-                    out.append("</code></pre>"); in_code = False
+                    out.append("</code></pre>")
+                    in_code = False
                 else:
-                    out.append("<pre><code>"); in_code = True
+                    out.append("<pre><code>")
+                    in_code = True
                 continue
             if in_code:
                 out.append(_html.escape(line))
@@ -860,13 +938,15 @@ async def serve_guide():
             m = _re.match(r"^(#{1,6})\s+(.*)$", line)
             if m:
                 if in_list:
-                    out.append("</ul>"); in_list = False
+                    out.append("</ul>")
+                    in_list = False
                 level = len(m.group(1))
                 out.append(f"<h{level}>{_html.escape(m.group(2))}</h{level}>")
                 continue
             if _re.match(r"^\s*[-*]\s+", line):
                 if not in_list:
-                    out.append("<ul>"); in_list = True
+                    out.append("<ul>")
+                    in_list = True
                 item = _re.sub(r"^\s*[-*]\s+", "", line)
                 item = _html.escape(item)
                 item = _re.sub(r"`([^`]+)`", r"<code>\1</code>", item)
@@ -874,7 +954,8 @@ async def serve_guide():
                 out.append(f"<li>{item}</li>")
                 continue
             if in_list:
-                out.append("</ul>"); in_list = False
+                out.append("</ul>")
+                in_list = False
             if line.strip() == "":
                 out.append("")
                 continue
@@ -952,7 +1033,8 @@ async def ai_generate_complete_app(request: Request, data: dict):
     description = data.get('description', '')
     mode = data.get('mode', 'online')
     wizard_config = data.get('wizard_config', {})
-    app_type = wizard_config.get('appType', 'web')
+    # app_type reserved for future template routing; kept in wizard_config payload.
+    _ = wizard_config.get('appType', 'web')
     
     # Prompt ULTRA DÉTAILLÉ comme Emergent
     prompt = f"""Tu es un développeur expert comme Emergent AI. Tu génères des applications COMPLÈTES, PROFESSIONNELLES et PRÊTES À L'EMPLOI.
@@ -1427,7 +1509,9 @@ Créé avec ❤️ par CodeForge AI"""
 @api_router.post("/ai/generate-code")
 async def ai_generate_code(request: Request, prompt_data: dict):
     """Generate code using Ollama (local, free, unlimited)"""
-    user_id = await get_current_user(request)
+    # Require authentication — we don't use the user_id here but we want
+    # to reject anonymous calls.
+    await get_current_user(request)
     
     prompt = prompt_data.get('prompt', '')
     existing_files = prompt_data.get('existing_files', [])
@@ -1483,7 +1567,7 @@ Important: Code propre, commenté, et fonctionnel."""
                         return generated
                     else:
                         raise ValueError("No JSON found")
-                except:
+                except (ValueError, json.JSONDecodeError):
                     # If parsing fails, return raw response
                     return {
                         "files": [{
@@ -1499,7 +1583,7 @@ Important: Code propre, commenté, et fonctionnel."""
         logger.error(f"Error generating code: {e}")
         raise HTTPException(
             status_code=500, 
-            detail=f"Installez Ollama pour une IA gratuite. Voir OLLAMA_SETUP.md"
+            detail="Installez Ollama pour une IA gratuite. Voir OLLAMA_SETUP.md"
         )
 
 # ==================== CHAT ROUTES ====================
@@ -1541,7 +1625,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 if response.status_code == 200:
                     result = response.json()
                     ai_response_text = result.get('response', '')
-                    logger.info(f"✅ Ollama response successful")
+                    logger.info("✅ Ollama response successful")
         except Exception as ollama_error:
             logger.warning(f"Ollama not available: {ollama_error}")
             
@@ -1567,7 +1651,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                         if response.status_code == 200:
                             result = response.json()
                             ai_response_text = result['choices'][0]['message']['content']
-                            logger.info(f"✅ Groq response successful")
+                            logger.info("✅ Groq response successful")
                 except Exception as groq_error:
                     logger.warning(f"Groq API error: {groq_error}")
         
@@ -1934,139 +2018,6 @@ async def download_export(request: Request, export_req: ExportRequest):
 async def redirect_to_pwa_install(project_id: str):
     """Redirect to PWA installation page"""
     return RedirectResponse(url=f"/api/pwa/install/{project_id}")
-    
-    if not project:
-        raise HTTPException(status_code=404, detail="Projet non trouvé")
-    
-    generated_code = project.get("generated_code", {})
-    files = generated_code.get("files", [])
-    
-    # Create APK-ready package with all necessary files
-    import io
-    import zipfile
-    
-    zip_buffer = io.BytesIO()
-    app_name = project.get('name', 'App')[:30]
-    safe_name = ''.join(c if c.isalnum() else '' for c in app_name.lower())
-    
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Add all generated files to www folder
-        for file in files:
-            zip_file.writestr(f"www/{file['path']}", file['content'])
-        
-        # Add Capacitor config for APK build
-        capacitor_config = f'''{{
-  "appId": "com.codeforge.{safe_name}",
-  "appName": "{app_name}",
-  "webDir": "www",
-  "server": {{
-    "androidScheme": "https"
-  }},
-  "plugins": {{
-    "SplashScreen": {{
-      "launchShowDuration": 2000,
-      "backgroundColor": "#050505"
-    }}
-  }}
-}}'''
-        zip_file.writestr("capacitor.config.json", capacitor_config)
-        
-        # Add package.json for Capacitor
-        package_json = f'''{{
-  "name": "{safe_name}",
-  "version": "1.0.0",
-  "description": "Application générée par CodeForge AI",
-  "main": "www/index.html",
-  "scripts": {{
-    "build:android": "npx cap add android && npx cap sync && cd android && ./gradlew assembleDebug"
-  }},
-  "dependencies": {{
-    "@capacitor/android": "^5.0.0",
-    "@capacitor/core": "^5.0.0",
-    "@capacitor/cli": "^5.0.0"
-  }}
-}}'''
-        zip_file.writestr("package.json", package_json)
-        
-        # Add build script for easy APK generation
-        build_script = '''#!/bin/bash
-echo "🚀 Building APK for Android..."
-npm install
-npx cap add android
-npx cap sync
-cd android && ./gradlew assembleDebug
-echo "✅ APK généré dans: android/app/build/outputs/apk/debug/app-debug.apk"
-'''
-        zip_file.writestr("build-apk.sh", build_script)
-        
-        # Windows batch file
-        build_bat = '''@echo off
-echo Building APK for Android...
-call npm install
-call npx cap add android
-call npx cap sync
-cd android && gradlew assembleDebug
-echo APK genere dans: android\\app\\build\\outputs\\apk\\debug\\app-debug.apk
-pause
-'''
-        zip_file.writestr("build-apk.bat", build_bat)
-        
-        # Add comprehensive README
-        readme = f'''# {app_name} - Package Android
-
-## 🚀 Méthode 1: PWABuilder (Le plus simple)
-1. Hébergez les fichiers du dossier `www/` sur un serveur web
-2. Allez sur https://www.pwabuilder.com/
-3. Entrez l'URL de votre site
-4. Cliquez "Package for stores" → "Android"
-5. Téléchargez votre APK !
-
-## 📱 Méthode 2: Installation PWA directe
-1. Hébergez les fichiers `www/` sur un serveur HTTPS
-2. Ouvrez le site dans Chrome sur Android
-3. Menu ⋮ → "Ajouter à l'écran d'accueil"
-4. L'app s'installe comme une vraie application !
-
-## 🔧 Méthode 3: Capacitor (Développeurs)
-Prérequis: Node.js, Android Studio, JDK 17+
-
-```bash
-# Linux/Mac
-chmod +x build-apk.sh
-./build-apk.sh
-
-# Windows
-build-apk.bat
-```
-
-L'APK sera dans: `android/app/build/outputs/apk/debug/app-debug.apk`
-
-## 📁 Contenu du package
-- `www/` - Code source de l'application
-- `capacitor.config.json` - Configuration Capacitor
-- `package.json` - Dépendances Node.js
-- `build-apk.sh` - Script de build Linux/Mac
-- `build-apk.bat` - Script de build Windows
-
-## 💡 Conseils
-- Pour publier sur le Play Store, utilisez `./gradlew assembleRelease`
-- Signez l'APK avec votre clé de développeur
-
-Généré par CodeForge AI 🎨
-'''
-        zip_file.writestr("README.md", readme)
-    
-    zip_buffer.seek(0)
-    
-    filename = f"{app_name.replace(' ', '_')}_android.zip"
-    
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"'
-        }
-    )
 
 @api_router.get("/export/desktop/{project_id}")
 async def redirect_to_desktop_install(project_id: str):
@@ -2833,15 +2784,9 @@ async def ensure_indexes():
         await db.users.create_index("email", unique=True, sparse=True)
         await db.email_verifications.create_index("token", unique=True)
         await db.email_verifications.create_index("user_id")
-        # TTL indexes to auto-clean stale rows. Mongo's TTL monitor removes
-        # documents whose date field is older than expireAfterSeconds.
-        # We store ISO strings, so we index created_at (a datetime) instead.
-        # created_at is already datetime in our inserts? — no, we store iso
-        # strings. Use a parallel numeric 'ttl_at' field would be cleaner;
-        # for simplicity we skip TTL here and rely on the explicit expiry
-        # check in the handlers. Index on identifier/token is enough.
         await db.user_sessions.create_index("session_token", unique=True)
         await db.login_attempts.create_index("identifier")
+        await db.resend_attempts.create_index("email")
         logger.info("✅ MongoDB indexes ready")
     except Exception as e:
         logger.warning(f"Index creation warning: {e}")

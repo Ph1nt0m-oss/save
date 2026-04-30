@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 23 — Validated POST /api/auth/resend-verification (all 6 cases) + non-regression on register/verify/login/guide/legacy routes + frontend 'Renvoyer le lien' button. 9 new pytest cases pass; total backend suite: 54 passed, 3 skipped (the 3 skipped are TestRedeployHappyPath which intentionally skip without real DEPLOY_SECRET — exceeds the requested 40/8 baseline). Playwright confirmed: signup → waiting-banner with 'Expire dans 05:00' countdown → click [data-testid=resend-link-btn] → countdown resets to ~05:00 + new demo link generated + toast 'Nouveau lien généré (mode démo).' Backend 429 rate-limit (3/10min/email) verified directly via pytest (test_rate_limit_4th_call_is_429). Old token correctly invalidated on resend (verification-status returns 'expired' or 'invalid', old verify-email link → 400). Code-review on /auth/resend-verification: clean implementation, neutral message for unknown/verified emails (no enumeration), proper 5-min TTL, resend_attempts index created at startup.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Rapid successive resend clicks",
+        "issue": "Race-condition: when a user clicks 'Renvoyer le lien' multiple times in rapid succession, the polling timer occasionally observes the OLD verification_token between handleResend's stopWaiting() and startWaiting(newToken) (or between backend delete_many() and insert_one() of the new email_verifications row), receives status='expired', and closes the banner via stopWaiting(). User then sees the registration form again instead of the new countdown. Reproduces ~50% of the time when clicking ≥3 times within 4s. Real users typing emails would rarely hit this; backend rate-limit (3/10min) is correct and verified.",
+        "affected_selectors": ["[data-testid=verify-waiting-banner]", "[data-testid=resend-link-btn]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_resend_iter23.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_iter23.xml",
+    "/app/test_reports/pytest/pytest_iter23_full.xml"
+  ],
+  "action_items": [
+    "(Optional, low priority) In Login.js handleResend catch-block: when err.response?.status === 429, do NOT modify waitingFor — current code correctly only shows toast.error, but consider also disabling resend-link-btn for the cooldown window (10 min) by storing rate-limit-until in state. Currently the button stays clickable and each click immediately yields a 429 toast.",
+    "(Optional) In server.py /auth/resend-verification: swap the order to insert_one(new_token) BEFORE delete_many(old) — eliminates the tiny window where polling on the old token returns 'expired'. Or inline an atomic replace_one. Not blocking."
+  ],
+  "critical_code_review_comments": [
+    "server.py:609-676 — resend_verification implementation is clean: validates email regex, enforces 3/10min rate-limit on db.resend_attempts, neutral response for unknown/verified emails (no enumeration), generates a fresh 32-byte token with 5-min TTL, deletes any prior email_verifications row for this user before inserting the new one. The 'frontend_url' fallback chain (payload → FRONTEND_URL env → REACT_APP_BACKEND_URL env) is robust. Returns expires_in_seconds=300 as required.",
+    "server.py:2789 — new index db.resend_attempts.create_index('email') created at startup. No TTL index on resend_attempts.ts; rows accumulate forever. Suggest add a 24h TTL index (create_index('ts', expireAfterSeconds=86400)) to keep the collection bounded. Low priority hygiene.",
+    "server.py global cleanup verified: ruff lint 100% clean, no F821 / unreachable-code warnings. The 133-line dead-code block claimed removed in /export/mobile/ confirmed absent.",
+    "Login.js:176-203 (handleResend) — minor improvement: in the 429 catch path, do not immediately re-enable the button; debounce or honour Retry-After header. Backend currently does not emit Retry-After.",
+    "server.py is still 2798 lines. Extracting routes/auth_email.py and routes/guide.py would simplify maintenance. Carried over from previous iterations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_resend_iter23.py (new — 9 test cases)",
+    "/app/backend/tests/conftest.py (new — auto-loads /app/backend/.env + /app/frontend/.env)"
+  ],
+  "success_rate": {
+    "backend": "100% (54/54 active pytest, 3 skipped DEPLOY_SECRET-gated)",
+    "frontend": "Resend button + countdown reset + new demo link verified end-to-end. 429 toast surfacing not directly observed in Playwright due to race-condition described above; backend 429 logic itself is fully covered by pytest."
+  },
+  "test_credentials": "On-the-fly throwaway users: test_iter23_*@gmail.com, playwright_iter23_*@gmail.com, playwright_iter23b_*@gmail.com, playwright_iter23c_*@gmail.com, all with password Pass1234. Safe to bulk-delete via db.users.delete_many({email: /^(test_iter23|playwright_iter23)/}).",
+  "seed_data_creation": "~10 throwaway users + matching email_verifications + ~10 resend_attempts rows. No production data touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "POST /api/auth/resend-verification is stable. Rate limit identifier = email only (no IP). Backend always returns 200 + verification_link in demo mode (RESEND_API_KEY absent). Frontend testid: data-testid='resend-link-btn'. Handler: handleResend in /app/frontend/src/pages/Login.js:176-203. The 429 detail string is 'Trop de renvois. Patiente 10 minutes.' — matched in Login.js via toast.error(formatDetail(err.response?.data?.detail)). conftest.py now auto-loads env files so MONGO_URL / REACT_APP_BACKEND_URL are available to all tests. Pytest baseline: 54 passed, 3 skipped (was 40/8 before this iteration's tests were added — ALL counts increased, none regressed).",
+  "rca of the issue": "N/A — no critical bugs. One minor race-condition documented under integration_issues with proposed fix in action_items."
+}
