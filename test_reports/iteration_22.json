@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 22 — Validated the 3 requested changes to the email+password+magic-link flow plus the new /api/guide HTML endpoint. All 9 pytest cases pass (test_verify_flow_iter22.py) and the full cross-tab Playwright scenario works end-to-end. (1) TTL is 5 minutes: /api/auth/register returns expires_in_seconds=300, and the frontend countdown opens at 05:00. (2) Exact expired message verified — simulated expiration via direct MongoDB update returns HTTP 400 with detail EXACTLY: 'La durée de validation de ce lien a expiré. Merci de réessayer à nouveau sur CodeForge AI.' Same exact string is surfaced in the React toast and on /verify-email expired phase. (3) Cross-tab auto-unlock flow works: signup → waiting-banner with countdown + demo-verification-link (target=_blank) → opening the link in a NEW browser tab triggers GET /api/auth/verify-email (no cookie set in that response), the page renders 'Votre compte est désormais certifié. Vous pouvez fermer cette page et retourner sur l'application.' — and the ORIGINAL tab polls /api/auth/verification-status every 2s, picks up status=verified + session_token, and auto-navigates to /dashboard. Single-use token enforced (second poll returns status=expired). /api/guide returns 200 text/html with 'Guide dépannage GitHub'. Legacy routes /api/auth/google/login, /api/auth/google/callback and /api/auth/session are confirmed 404.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_verify_flow_iter22.py",
+    "/app/test_reports/pytest/pytest_results_iter22.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:604-669 (verify-email) — correctly does NOT set a cookie, only writes pending_session_token in the verification row. Clean contract. Idempotent for already-consumed tokens (returns same success message with already_verified=true).",
+    "server.py:672-726 (verification-status) — single-use semantics implemented by deleting the email_verifications doc right after handing over the session_token. One minor redundancy: it also does response.set_cookie(session_token) but the React caller already stores the token in localStorage + AuthContext; the cookie is harmless but unused client-side. Not a bug.",
+    "server.py:546-557 — TTL is 5 min as requested (timedelta(minutes=5)). Still no MongoDB TTL index on email_verifications.expires_at; stale rows accumulate. Low priority hygiene.",
+    "Login.js:73-113 — polling cleared properly via startWaiting/stopWaiting refs; countdown and poll are both stopped on expiry, cancel, success, and unmount. No leak.",
+    "VerifyEmail.js:37 — 'expired' phase detection relies on substring 'expir' in the detail string. Works because backend returns the French sentence; slightly fragile if the copy changes. Consider keying on HTTP status + a distinct backend flag in a future iteration.",
+    "server.py:805-919 (/api/guide) — pure stdlib markdown → HTML with basic table/list/code-fence support. Good enough for a single curated file. Reads /app/GUIDE_GITHUB_DEPANNAGE.md on every request (no cache) — fine given size + low traffic.",
+    "server.py is still >2600 lines — splitting into routes/auth_email.py, routes/guide.py, routes/ai.py would significantly improve maintainability. Carried over from previous iterations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_verify_flow_iter22.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9 pytest)", "frontend": "100% (signup → banner+countdown 05:00 → new-tab verify → auto-unlock to /dashboard; Annuler button stops polling and restores tabs)"},
+  "test_credentials": "Created on-the-fly throwaway users: TEST_reg_*@example.com, TEST_poll_*@example.com, TEST_exp_*@example.com, TEST_expst_*@example.com, TEST_login_*@example.com, playwright_*@example.com, cancel_*@example.com. All with password Secret123!. Safe to bulk-delete via db.users.delete_many({email: /^(TEST_|playwright_|cancel_)/}).",
+  "seed_data_creation": "~9 throwaway users + matching email_verifications / user_sessions rows. No production data touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cross-tab flow is stable. Key testids: verify-waiting-banner, verify-countdown (text 'Expire dans MM:SS'), demo-verification-link, demo-verification-link-anchor (target=_blank), verify-cancel-btn, verify-success, verify-expired, verify-invalid. Expired message is asserted BYTE-FOR-BYTE in test_verify_flow_iter22.py::TestExpiredLinkMessage — do not change the French text without updating that test. /api/guide is a public HTML endpoint (no auth).",
+  "rca of the issue": "N/A — feature work verified on first pass. No regressions."
+}

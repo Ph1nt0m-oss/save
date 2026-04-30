@@ -543,15 +543,17 @@ async def register(payload: RegisterRequest, request: Request):
             "created_at": now.isoformat(),
         })
 
-    # Create verification token (single-use, 30 min)
+    # Create verification token (single-use, 5 min — aligné avec l'attente raisonnable)
     token = secrets.token_urlsafe(32)
     await db.email_verifications.delete_many({"user_id": user_id})
     await db.email_verifications.insert_one({
         "token": token,
         "user_id": user_id,
         "email": email,
+        "consumed_at": None,
+        "pending_session_token": None,
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+        "expires_at": (now + timedelta(minutes=5)).isoformat(),
     })
 
     # Build verification URL.
@@ -586,6 +588,11 @@ async def register(payload: RegisterRequest, request: Request):
         else "Compte créé ! Clique sur le lien ci-dessous pour confirmer (mode démo — aucun email envoyé).",
         "email": email,
         "email_sent": sent,
+        # The frontend uses this to poll /auth/verification-status and unlock
+        # the original tab automatically when the user clicks the magic link
+        # (possibly in another tab from their email client).
+        "verification_token": token,
+        "expires_in_seconds": 5 * 60,
     }
     if not sent:
         # Demo mode: expose the link so the user can click it without
@@ -595,12 +602,20 @@ async def register(payload: RegisterRequest, request: Request):
 
 
 @api_router.get("/auth/verify-email")
-async def verify_email(token: str, response: Response):
-    """Consume magic link, mark user as verified, create session, set cookie."""
+async def verify_email(token: str):
+    """Consume the magic link.
+
+    Marks the user as verified, stores a fresh session_token against the
+    verification row, and returns a friendly message. We do NOT set a
+    cookie here because the user may have opened this link in a different
+    tab/device from the one where they registered. The original tab is
+    polling /auth/verification-status and will pick up the session_token
+    on its next poll, then log the user in automatically.
+    """
     if not token:
         raise HTTPException(status_code=400, detail="Token manquant")
 
-    doc = await db.email_verifications.find_one_and_delete({"token": token}, projection={"_id": 0})
+    doc = await db.email_verifications.find_one({"token": token}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=400, detail="Lien invalide ou déjà utilisé")
 
@@ -608,7 +623,19 @@ async def verify_email(token: str, response: Response):
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Lien expiré. Recrée ton compte pour recevoir un nouveau lien.")
+        # Clean up the expired row so it can't be reused accidentally
+        await db.email_verifications.delete_one({"token": token})
+        raise HTTPException(
+            status_code=400,
+            detail="La durée de validation de ce lien a expiré. Merci de réessayer à nouveau sur CodeForge AI.",
+        )
+
+    # Already consumed? Idempotent friendly response.
+    if doc.get("consumed_at"):
+        return {
+            "message": "Votre compte est désormais certifié. Vous pouvez fermer cette page et retourner sur l'application.",
+            "already_verified": True,
+        }
 
     user_id = doc["user_id"]
     now = datetime.now(timezone.utc)
@@ -617,10 +644,8 @@ async def verify_email(token: str, response: Response):
         {"$set": {"verified": True, "last_login": now.isoformat()}},
     )
 
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-
+    # Prepare a fresh session token that the original tab will exchange
+    # when it polls /auth/verification-status.
     session_token = secrets.token_urlsafe(32)
     await db.user_sessions.insert_one({
         "session_token": session_token,
@@ -630,16 +655,75 @@ async def verify_email(token: str, response: Response):
         "expires_at": (now + timedelta(days=7)).isoformat(),
     })
 
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=7 * 24 * 3600,
-        path="/",
+    await db.email_verifications.update_one(
+        {"token": token},
+        {"$set": {
+            "consumed_at": now.isoformat(),
+            "pending_session_token": session_token,
+        }},
     )
-    return {**user, "session_token": session_token}
+
+    return {
+        "message": "Votre compte est désormais certifié. Vous pouvez fermer cette page et retourner sur l'application.",
+        "already_verified": False,
+    }
+
+
+@api_router.get("/auth/verification-status")
+async def verification_status(token: str, response: Response):
+    """Polled by the original registration tab every ~2 seconds.
+
+    Returns one of:
+      - {status: "pending"}  → user hasn't clicked the link yet
+      - {status: "expired"}  → link expired before being clicked
+      - {status: "verified", session_token, user}  → link consumed; the
+        original tab should now log the user in automatically. The
+        session_token is handed over exactly ONCE (the pending token is
+        cleared on the same call).
+    """
+    if not token:
+        raise HTTPException(status_code=400, detail="Token manquant")
+
+    doc = await db.email_verifications.find_one({"token": token}, {"_id": 0})
+    if not doc:
+        return {"status": "expired"}
+
+    expires_at = datetime.fromisoformat(doc["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    consumed = doc.get("consumed_at")
+    pending_token = doc.get("pending_session_token")
+
+    if consumed and pending_token:
+        # Hand the token over to the original tab and delete the row so it
+        # cannot be reused.
+        user = await db.users.find_one(
+            {"user_id": doc["user_id"]},
+            {"_id": 0, "password_hash": 0},
+        )
+        await db.email_verifications.delete_one({"token": token})
+
+        response.set_cookie(
+            key="session_token",
+            value=pending_token,
+            httponly=True,
+            secure=True,
+            samesite="none",
+            max_age=7 * 24 * 3600,
+            path="/",
+        )
+        return {
+            "status": "verified",
+            "session_token": pending_token,
+            "user": user,
+        }
+
+    if not consumed and expires_at < datetime.now(timezone.utc):
+        await db.email_verifications.delete_one({"token": token})
+        return {"status": "expired"}
+
+    return {"status": "pending"}
 
 
 @api_router.post("/auth/login")
@@ -716,6 +800,123 @@ async def log_auth_error(kind: str, detail: str, request: Request | None = None)
         await db.auth_errors.insert_one(doc)
     except Exception as e:
         logger.warning(f"log_auth_error failed: {e}")
+
+
+@api_router.get("/guide", response_class=HTMLResponse)
+async def serve_guide():
+    """Serve the GitHub troubleshooting guide as HTML so the user can
+    bookmark a simple URL and read it anywhere (phone, other PC, etc.)
+    without cloning the repo."""
+    guide_path = Path("/app/GUIDE_GITHUB_DEPANNAGE.md")
+    if not guide_path.exists():
+        raise HTTPException(status_code=404, detail="Guide introuvable")
+    md = guide_path.read_text(encoding="utf-8")
+    # Minimal markdown → HTML renderer (no external lib needed)
+    import html as _html
+    import re as _re
+
+    def render(text: str) -> str:
+        out = []
+        in_code = False
+        in_list = False
+        in_table = False
+        table_rows: list[str] = []
+        for line in text.split("\n"):
+            if line.startswith("```"):
+                if in_list:
+                    out.append("</ul>"); in_list = False
+                if in_code:
+                    out.append("</code></pre>"); in_code = False
+                else:
+                    out.append("<pre><code>"); in_code = True
+                continue
+            if in_code:
+                out.append(_html.escape(line))
+                continue
+
+            # Tables: detect header | ... | followed by separator row
+            if "|" in line and line.strip().startswith("|"):
+                table_rows.append(line)
+                in_table = True
+                continue
+            if in_table and not ("|" in line and line.strip().startswith("|")):
+                # flush table
+                if len(table_rows) >= 2:
+                    out.append("<table><thead><tr>")
+                    headers = [c.strip() for c in table_rows[0].strip().strip("|").split("|")]
+                    for h in headers:
+                        out.append(f"<th>{_html.escape(h)}</th>")
+                    out.append("</tr></thead><tbody>")
+                    for row in table_rows[2:]:
+                        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+                        out.append("<tr>")
+                        for c in cells:
+                            out.append(f"<td>{_html.escape(c)}</td>")
+                        out.append("</tr>")
+                    out.append("</tbody></table>")
+                table_rows = []
+                in_table = False
+
+            m = _re.match(r"^(#{1,6})\s+(.*)$", line)
+            if m:
+                if in_list:
+                    out.append("</ul>"); in_list = False
+                level = len(m.group(1))
+                out.append(f"<h{level}>{_html.escape(m.group(2))}</h{level}>")
+                continue
+            if _re.match(r"^\s*[-*]\s+", line):
+                if not in_list:
+                    out.append("<ul>"); in_list = True
+                item = _re.sub(r"^\s*[-*]\s+", "", line)
+                item = _html.escape(item)
+                item = _re.sub(r"`([^`]+)`", r"<code>\1</code>", item)
+                item = _re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", item)
+                out.append(f"<li>{item}</li>")
+                continue
+            if in_list:
+                out.append("</ul>"); in_list = False
+            if line.strip() == "":
+                out.append("")
+                continue
+            safe = _html.escape(line)
+            safe = _re.sub(r"`([^`]+)`", r"<code>\1</code>", safe)
+            safe = _re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", safe)
+            out.append(f"<p>{safe}</p>")
+        if in_list:
+            out.append("</ul>")
+        if in_code:
+            out.append("</code></pre>")
+        return "\n".join(out)
+
+    body = render(md)
+    html = f"""<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>Guide dépannage GitHub — CodeForge AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ background:#050505; color:#E4E4E7; font-family:ui-sans-serif,system-ui,sans-serif;
+         max-width:760px; margin:0 auto; padding:32px 20px 96px; line-height:1.6; }}
+  h1,h2,h3,h4 {{ color:#E4FF00; font-family:'Chivo',ui-sans-serif,system-ui,sans-serif; }}
+  h1 {{ border-bottom:2px solid #E4FF00; padding-bottom:12px; }}
+  h2 {{ margin-top:40px; }}
+  code {{ background:#0F0F13; padding:2px 6px; border-radius:4px; color:#00FF66; font-size:.9em; }}
+  pre {{ background:#0F0F13; padding:16px; border-radius:8px; overflow-x:auto;
+        border:1px solid rgba(255,255,255,.08); }}
+  pre code {{ background:none; padding:0; color:#E4E4E7; }}
+  a {{ color:#00D4FF; }}
+  strong {{ color:#fff; }}
+  ul {{ padding-left:24px; }}
+  table {{ border-collapse:collapse; width:100%; margin:16px 0; }}
+  th,td {{ border:1px solid rgba(255,255,255,.1); padding:10px; text-align:left; }}
+  th {{ background:#0F0F13; color:#E4FF00; }}
+  hr {{ border:none; border-top:1px solid rgba(255,255,255,.1); margin:32px 0; }}
+</style>
+</head><body>
+{body}
+<hr>
+<p style='color:#A1A1AA;font-size:12px'>Version Markdown source : <code>/app/GUIDE_GITHUB_DEPANNAGE.md</code> dans le dépôt.</p>
+</body></html>"""
+    return HTMLResponse(content=html)
 
 
 @api_router.get("/metrics")

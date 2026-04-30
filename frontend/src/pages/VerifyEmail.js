@@ -1,32 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import confetti from 'canvas-confetti';
 import { motion } from 'framer-motion';
-import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { useAuth } from '../contexts/AuthContext';
+import { CheckCircle2, AlertTriangle, Loader2, Clock } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// Phase: 'processing' | 'verified' | 'expired' | 'invalid'
 export default function VerifyEmail() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setUser } = useAuth();
   const processed = useRef(false);
   const [phase, setPhase] = useState('processing');
-  const [error, setError] = useState(null);
-  const [userName, setUserName] = useState(null);
-
-  const fireConfetti = () => {
-    const colors = ['#E4FF00', '#00FF66', '#ffffff'];
-    const end = Date.now() + 900;
-    (function frame() {
-      confetti({ particleCount: 3, angle: 60, spread: 55, startVelocity: 45, origin: { x: 0, y: 0.7 }, colors });
-      confetti({ particleCount: 3, angle: 120, spread: 55, startVelocity: 45, origin: { x: 1, y: 0.7 }, colors });
-      if (Date.now() < end) requestAnimationFrame(frame);
-    })();
-  };
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (processed.current) return;
@@ -35,33 +21,29 @@ export default function VerifyEmail() {
     const params = new URLSearchParams(location.search);
     const token = params.get('token');
     if (!token) {
-      setError("Lien invalide — aucun token présent.");
-      setPhase('error');
+      setPhase('invalid');
+      setMessage("Lien invalide — aucun token présent dans l'URL.");
       return;
     }
 
     (async () => {
       try {
         const { data } = await axios.get(`${API}/auth/verify-email`, { params: { token } });
-        if (data?.session_token) {
-          try { localStorage.setItem('session_token', data.session_token); } catch (_) {}
-        }
-        if (data?.email) {
-          try { localStorage.setItem('codeforge_last_email', data.email); } catch (_) {}
-        }
-        setUser(data);
-        setUserName(data?.name || data?.email || 'utilisateur');
-        setPhase('success');
-        fireConfetti();
-        toast.success('Email confirmé !');
-        setTimeout(() => navigate('/dashboard', { replace: true, state: { user: data } }), 1200);
+        setMessage(data?.message || 'Compte certifié.');
+        setPhase('verified');
       } catch (err) {
-        const detail = err.response?.data?.detail;
-        setError(typeof detail === 'string' ? detail : "Lien invalide ou expiré.");
-        setPhase('error');
+        const detail = err.response?.data?.detail || '';
+        // Backend sends the exact expired message text; detect it.
+        if (typeof detail === 'string' && detail.toLowerCase().includes('expir')) {
+          setPhase('expired');
+          setMessage(detail);
+        } else {
+          setPhase('invalid');
+          setMessage(typeof detail === 'string' ? detail : 'Lien invalide ou déjà utilisé.');
+        }
       }
     })();
-  }, [location.search, navigate, setUser]);
+  }, [location.search]);
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center relative overflow-hidden">
@@ -82,7 +64,7 @@ export default function VerifyEmail() {
             </div>
           )}
 
-          {phase === 'success' && (
+          {phase === 'verified' && (
             <motion.div
               data-testid="verify-success"
               initial={{ scale: 0.85, opacity: 0 }}
@@ -92,16 +74,49 @@ export default function VerifyEmail() {
               <div className="w-20 h-20 bg-[#00FF66] rounded-full flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(0,255,102,0.5)]">
                 <CheckCircle2 className="w-12 h-12 text-[#050505]" strokeWidth={2.5} />
               </div>
-              <h2 className="mt-6 text-2xl font-['Chivo'] font-black text-white">
-                {userName ? `Bienvenue, ${userName} !` : 'Compte confirmé !'}
+              <h2 className="mt-6 text-xl font-['Chivo'] font-black text-white leading-snug">
+                Compte certifié ✔
               </h2>
-              <p className="mt-2 text-[#A1A1AA] font-['IBM_Plex_Sans']">Redirection vers ton dashboard…</p>
+              <p className="mt-3 text-[#A1A1AA] font-['IBM_Plex_Sans'] text-sm leading-relaxed">
+                {message || 'Votre compte est désormais certifié. Vous pouvez fermer cette page et retourner sur l\'application.'}
+              </p>
+              <div className="mt-6 p-3 bg-[#00FF66]/10 border border-[#00FF66]/30 rounded-sm">
+                <p className="text-xs text-[#00FF66] font-['IBM_Plex_Sans']">
+                  L'onglet CodeForge AI d'origine se déverrouille automatiquement — pas besoin d'y retourner manuellement.
+                </p>
+              </div>
             </motion.div>
           )}
 
-          {phase === 'error' && (
+          {phase === 'expired' && (
             <motion.div
-              data-testid="verify-error"
+              data-testid="verify-expired"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="w-16 h-16 bg-orange-500/20 border-2 border-orange-500 rounded-full flex items-center justify-center mx-auto">
+                <Clock className="w-8 h-8 text-orange-400" />
+              </div>
+              <h2 className="mt-6 text-lg font-['Chivo'] font-bold text-white leading-snug">
+                Lien expiré
+              </h2>
+              <p className="mt-3 text-orange-200/80 font-['IBM_Plex_Sans'] text-sm leading-relaxed">
+                {message}
+              </p>
+              <button
+                onClick={() => navigate('/login', { replace: true })}
+                data-testid="verify-expired-retry-btn"
+                className="mt-6 inline-flex items-center gap-2 px-6 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all"
+              >
+                Recommencer sur CodeForge AI
+              </button>
+            </motion.div>
+          )}
+
+          {phase === 'invalid' && (
+            <motion.div
+              data-testid="verify-invalid"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.3 }}
@@ -109,11 +124,11 @@ export default function VerifyEmail() {
               <div className="w-16 h-16 bg-red-500/20 border-2 border-red-500 rounded-full flex items-center justify-center mx-auto">
                 <AlertTriangle className="w-8 h-8 text-red-400" />
               </div>
-              <h2 className="mt-6 text-xl font-['Chivo'] font-bold text-white">Lien invalide</h2>
-              <p className="mt-2 text-red-400 font-['IBM_Plex_Sans'] text-sm">{error}</p>
+              <h2 className="mt-6 text-lg font-['Chivo'] font-bold text-white">Lien invalide</h2>
+              <p className="mt-3 text-red-400 font-['IBM_Plex_Sans'] text-sm">{message}</p>
               <button
                 onClick={() => navigate('/login', { replace: true })}
-                data-testid="verify-error-back-btn"
+                data-testid="verify-invalid-back-btn"
                 className="mt-6 inline-flex items-center gap-2 px-6 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all"
               >
                 Retour à la connexion
