@@ -1,13 +1,13 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sparkles, Code, Smartphone, Monitor, Globe, Zap, Lock, Infinity } from 'lucide-react';
 
 export default function Landing() {
+  const navigate = useNavigate();
   const handleLogin = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + '/dashboard';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    // Email + password (no Emergent/Google OAuth — that flow is gone for good)
+    navigate('/login');
   };
 
   return (
