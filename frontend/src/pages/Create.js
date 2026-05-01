@@ -12,6 +12,7 @@ import {
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -40,16 +41,17 @@ export default function Create() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const generateApp = async () => {
-    if (!input.trim() || isGenerating) return;
+  const generateApp = async (overrideText) => {
+    const userMessage = (overrideText ?? input).trim();
+    if (!userMessage || isGenerating) return;
 
-    const userMessage = input;
-    setInput('');
+    if (!overrideText) setInput('');
     setIsGenerating(true);
 
     setMessages(prev => [...prev, {
       role: 'user',
       content: userMessage,
+      isVoice: !!overrideText,
       timestamp: new Date()
     }]);
 
@@ -291,7 +293,7 @@ export default function Create() {
             </ScrollArea>
 
             <div className="p-4 border-t border-white/10">
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3 items-end">
                 <input
                   type="text"
                   value={input}
@@ -299,18 +301,32 @@ export default function Create() {
                   onKeyPress={(e) => e.key === 'Enter' && generateApp()}
                   placeholder="Créé-moi une application de..."
                   disabled={isGenerating}
-                  className="flex-1 px-4 py-3 bg-[#050505] border border-white/20 rounded-lg focus:outline-none focus:border-[#E4FF00] disabled:opacity-50"
+                  className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#050505] border border-white/20 rounded-lg focus:outline-none focus:border-[#E4FF00] disabled:opacity-50"
+                />
+                <VoiceRecorder
+                  mode="dictate"
+                  disabled={isGenerating}
+                  language={language}
+                  onResult={(text) => setInput(prev => (prev ? `${prev} ${text}` : text))}
+                />
+                <VoiceRecorder
+                  mode="send"
+                  disabled={isGenerating}
+                  language={language}
+                  onResult={(text, autoSend) => {
+                    if (autoSend) generateApp(text);
+                  }}
                 />
                 <Button
-                  onClick={generateApp}
+                  onClick={() => generateApp()}
                   disabled={isGenerating || !input.trim()}
                   size="lg"
-                  className="bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 px-8"
+                  className="bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 px-4 sm:px-8 flex-shrink-0"
                 >
                   {isGenerating ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                    <><Sparkles className="w-5 h-5 mr-2" /> Générer</>
+                    <><Sparkles className="w-5 h-5 mr-2" /><span className="hidden sm:inline">Générer</span></>
                   )}
                 </Button>
               </div>

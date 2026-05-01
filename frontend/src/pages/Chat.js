@@ -6,6 +6,8 @@ import { Send, Loader2, ArrowLeft, Sparkles, Globe, FileText, FileType, Smartpho
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
+import VoiceRecorder from '../components/VoiceRecorder';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -13,6 +15,7 @@ const API = `${BACKEND_URL}/api`;
 export default function Chat() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { language } = useLanguage();
   const mode = location.state?.mode || 'online';
   
   const [messages, setMessages] = useState([]);
@@ -42,16 +45,21 @@ export default function Chat() {
   };
 
   const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    const userMessage = input;
+    if (e?.preventDefault) e.preventDefault();
+    const text = input.trim();
+    if (!text || isLoading) return;
     setInput('');
-    setIsLoading(true);
+    await sendText(text);
+  };
 
+  // Shared sender — used by the form, Enter key, and the voice "send" mic.
+  const sendText = async (userMessage, opts = {}) => {
+    if (!userMessage || isLoading) return;
+    setIsLoading(true);
     setMessages(prev => [...prev, {
       role: 'user',
       content: userMessage,
+      isVoice: !!opts.isVoice,
       timestamp: new Date()
     }]);
 
@@ -77,6 +85,16 @@ export default function Chat() {
       toast.error('Erreur de chat');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Bridge between VoiceRecorder and the chat input/sender.
+  const handleVoiceResult = (text, autoSend) => {
+    if (autoSend) {
+      sendText(text, { isVoice: true });
+    } else {
+      // dictate mode — fill the input for review.
+      setInput(prev => (prev ? `${prev} ${text}` : text));
     }
   };
 
@@ -211,7 +229,7 @@ export default function Chat() {
         </ScrollArea>
 
         <form onSubmit={sendMessage}>
-          <div className="flex gap-3 items-end">
+          <div className="flex gap-2 sm:gap-3 items-end">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -226,14 +244,16 @@ export default function Chat() {
               disabled={isLoading}
               rows={1}
               data-testid="chat-input"
-              className="flex-1 px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none disabled:opacity-50 resize-y min-h-[48px] max-h-[200px] font-['IBM_Plex_Sans']"
+              className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none disabled:opacity-50 resize-y min-h-[48px] max-h-[200px] font-['IBM_Plex_Sans']"
               style={{ borderColor: input ? modeColor : undefined }}
             />
+            <VoiceRecorder mode="dictate" onResult={handleVoiceResult} disabled={isLoading} language={language} />
+            <VoiceRecorder mode="send"    onResult={handleVoiceResult} disabled={isLoading} language={language} />
             <Button
               type="submit"
               disabled={isLoading || !input.trim()}
               size="lg"
-              className="px-8"
+              className="px-4 sm:px-8 flex-shrink-0"
               style={{ backgroundColor: modeColor, color: '#050505' }}
             >
               {isLoading ? (

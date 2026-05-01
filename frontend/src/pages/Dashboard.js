@@ -334,16 +334,16 @@ export default function Dashboard() {
       {/* Main Area */}
       <div className="flex-1 flex flex-col">
         {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu] */}
-        <header className="bg-[#0F0F13] border-b border-white/10 px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
+        <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
             {/* LEFT */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
                 onClick={() => setIsSidebarOpen(o => !o)}
                 data-testid="sidebar-toggle-btn"
                 aria-label={isSidebarOpen ? t('dashCollapseSidebar') : t('dashExpandSidebar')}
                 title={isSidebarOpen ? t('dashCollapseSidebar') : t('dashExpandSidebar')}
-                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
+                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] flex-shrink-0"
               >
                 {isSidebarOpen
                   ? <PanelLeftClose className="w-5 h-5" />
@@ -353,38 +353,37 @@ export default function Dashboard() {
             </div>
 
             {/* CENTER */}
-            <div className="flex flex-col items-center text-center">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#E4FF00]" />
-                <h1 className="font-['Chivo'] font-bold text-xl">{t('dashTitle')}</h1>
+            <div className="flex flex-col items-center text-center min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-[#E4FF00] flex-shrink-0" />
+                <h1 className="font-['Chivo'] font-bold text-sm sm:text-xl truncate">{t('dashTitle')}</h1>
               </div>
-              <p className="text-xs text-[#A1A1AA] hidden sm:block">{t('dashSubtitle')}</p>
+              <p className="text-[10px] sm:text-xs text-[#A1A1AA] hidden sm:block truncate">{t('dashSubtitle')}</p>
             </div>
 
             {/* RIGHT */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               <button
                 onClick={() => navigate('/discover')}
                 data-testid="dashboard-tutorial-btn"
                 title={t('dashTutorial')}
-                className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#E4FF00] border border-white/10 hover:border-[#E4FF00]/40 rounded-sm px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
+                aria-label={t('dashTutorial')}
+                className="inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#E4FF00] border border-white/10 hover:border-[#E4FF00]/40 rounded-sm px-2 sm:px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
               >
                 <BookOpen className="w-3.5 h-3.5" />
-                {t('dashTutorial')}
+                <span className="hidden md:inline">{t('dashTutorial')}</span>
               </button>
-
-              <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mx-1 hidden md:inline">EXPORTS:</span>
 
               <Button
                 onClick={() => exportProject('apk')}
                 size="sm"
                 variant="outline"
                 data-testid="export-apk-btn"
-                className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505]"
+                className="hidden sm:inline-flex border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 lg:px-3"
                 title="Export Mobile (APK)"
               >
-                <Smartphone className="w-4 h-4 mr-1" />
-                APK
+                <Smartphone className="w-4 h-4 lg:mr-1" />
+                <span className="hidden lg:inline">APK</span>
               </Button>
 
               <Button
@@ -392,11 +391,11 @@ export default function Dashboard() {
                 size="sm"
                 variant="outline"
                 data-testid="export-exe-btn"
-                className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505]"
+                className="hidden sm:inline-flex border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 lg:px-3"
                 title="Export Desktop (EXE)"
               >
-                <Monitor className="w-4 h-4 mr-1" />
-                EXE
+                <Monitor className="w-4 h-4 lg:mr-1" />
+                <span className="hidden lg:inline">EXE</span>
               </Button>
 
               <Button
@@ -404,14 +403,14 @@ export default function Dashboard() {
                 size="sm"
                 variant="outline"
                 data-testid="export-source-btn"
-                className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505]"
+                className="hidden sm:inline-flex border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 lg:px-3"
                 title="Source code (ZIP)"
               >
-                <Download className="w-4 h-4 mr-1" />
-                ZIP
+                <Download className="w-4 h-4 lg:mr-1" />
+                <span className="hidden lg:inline">ZIP</span>
               </Button>
 
-              <div className="ml-2 flex items-center gap-2 border-l border-white/10 pl-2">
+              <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <UserMenu user={user} onLogout={handleLogout} />
               </div>
             </div>

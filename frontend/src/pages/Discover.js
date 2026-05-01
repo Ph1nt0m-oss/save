@@ -315,24 +315,24 @@ export default function Discover() {
       <div className="fixed inset-0 grid-bg opacity-10 pointer-events-none"></div>
 
       {/* Top bar — [Lang] · [Logo + step counter] · [Connexion] */}
-      <header className="relative z-20 grid grid-cols-3 items-center px-6 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md" data-discover-allow>
-        <div className="justify-self-start flex items-center gap-3">
+      <header className="relative z-20 grid grid-cols-3 items-center px-3 sm:px-6 py-3 sm:py-4 border-b border-white/10 bg-black/60 backdrop-blur-md gap-2" data-discover-allow>
+        <div className="justify-self-start flex items-center gap-2 sm:gap-3 min-w-0">
           <LanguageToggle placement="bottom" />
           <button
             onClick={() => navigate('/')}
             data-testid="discover-exit-btn"
-            className="hidden sm:inline-flex items-center gap-2 text-sm text-[#A1A1AA] hover:text-[#E4FF00] transition-colors"
+            className="hidden md:inline-flex items-center gap-2 text-sm text-[#A1A1AA] hover:text-[#E4FF00] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> {t('d_exit')}
           </button>
         </div>
 
-        <div className="justify-self-center flex flex-col items-center gap-0.5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-[#E4FF00]" />
-            <span className="font-['Chivo'] font-black text-white">CodeForge AI</span>
+        <div className="justify-self-center flex flex-col items-center gap-0.5 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-[#E4FF00] flex-shrink-0" />
+            <span className="font-['Chivo'] font-black text-white text-sm sm:text-base truncate">CodeForge AI</span>
           </div>
-          <span className="text-[10px] text-[#A1A1AA] inline-flex items-center gap-1" data-testid="discover-step-counter">
+          <span className="text-[10px] text-[#A1A1AA] inline-flex items-center gap-1 whitespace-nowrap" data-testid="discover-step-counter">
             <Lightbulb className="w-3 h-3 text-[#E4FF00]" /> {t('d_step')} {step + 1} / {TOTAL_STEPS}
           </span>
         </div>
@@ -341,7 +341,7 @@ export default function Discover() {
           <button
             onClick={() => navigate('/login')}
             data-testid="discover-login-btn"
-            className="px-4 py-2 bg-[#E4FF00] text-[#050505] text-xs font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#E4FF00] text-[#050505] text-xs font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all whitespace-nowrap"
           >
             {t('d_login')}
           </button>
