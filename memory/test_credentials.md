@@ -7,12 +7,18 @@
 - Bouton **"Renvoyer le lien"** dans le banner d'attente (rate-limit 3/10 min/email)
 - Si banner déclenche un 429, bouton désactivé visuellement pendant 10 min
 
-## Forgot Password (NEW iter_24)
-- Lien "Mot de passe oublié ?" sous le bouton Connexion
-- Email reset envoyé via Resend (TTL 30 min)
-- `/reset-password?token=xxx` → form (nouveau MDP + confirmation)
-- Token single-use ; reset invalide TOUTES les sessions du user (defense in depth)
+## Forgot Password (REWRITTEN iter_30 — "set then confirm" flow)
+- Lien "Mot de passe oublié ?" sous le bouton Connexion → bascule en mode `forgot`
+- Saisir email + nouveau mot de passe + confirmation (≥6 chars)
+- POST `/api/auth/forgot-password` `{email, password, frontend_url}` → backend hash le nouveau mdp et le stocke en attente sur le token (30 min)
+- Resend envoie "Veuillez cliquer ici pour confirmer la réinitialisation de votre mot de passe"
+- Clic sur le lien → GET `/api/auth/confirm-password-reset?token=xxx` applique le mdp + invalide toutes sessions + page HTML succès → redirect /login
+- Token single-use, expire 30 min
 - Rate-limit 3/10 min/email
+
+## Test user actif
+- **Email** : `test_dash_1777658375@gmail.com`
+- **Password** : `Pass1234` (état actuel — l'agent de test a effectué un round-trip change → restauré)
 
 ## Idle Timeout (NEW iter_24)
 - 1h sans activité (mouse/keyboard/touch/scroll/wheel/visibility) → logout auto + `/login?reason=idle`

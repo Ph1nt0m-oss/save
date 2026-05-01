@@ -2,6 +2,11 @@
 
 ## Statut : VERSION ULTIME PHASE 6 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 1er Mai 2026 — Session 30 — Forgot password "set then confirm" + Dashboard cleanup
+- **NEW forgot-password flow** : utilisateur saisit email + nouveau mdp + confirmation → backend hash et stocke en attente sur le token (30 min) → email "Veuillez cliquer ici pour confirmer la réinitialisation de votre mot de passe" → clic = mdp appliqué + sessions invalidées + redirect /login. Endpoint `GET /api/auth/confirm-password-reset?token=`.
+- **Dashboard** : pill central "En ligne/Hors ligne" SUPPRIMÉ. Email + avatar style Google → en haut à droite (UserMenu trigger affiche l'email complet, plus le nom). Pill email dupliqué dans la sidebar SUPPRIMÉ.
+- **Tests** : iter_30.json — Backend 9/9 PASS, Frontend complet PASS, 0 issue.
+
 ### 1er Mai 2026 — Session 29 — Voice mics + Sidebar profile + ChatGPT mic + Paperclip + Login red error
 - **Chat AI conversationnel** : `/api/chat/message` réécrit. Mode online → Emergent GPT-4o (~3s, conversationnel "Bonjour ! Comment puis-je t'aider…"). Mode offline → Ollama uniquement. Sinon fallback localisé court 12 langues. Plus de message Ollama setup imposé.
 - **Login error inline rouge** : "Mot de passe incorrect" sous le champ password (rouge), bordure rouge, clear sur edit. `data-testid='auth-error'`.
