@@ -1,0 +1,29 @@
+{
+  "summary": "iter_31 (Dashboard project context menu: Renommer/Supprimer + Chat AI tone rewrite). BACKEND 8/8 PASS: PUT /api/projects/{id} renames, DELETE /api/projects/{id} removes, 404 on nonexistent id; /api/chat/message replies to 'Bonjour'/'salut'/'hello'/'hi' with <=2 sentences, <=100 words and NO forbidden tech keywords (React/PWA/LocalStorage/composant/hooks/Ollama/GPT/OpenAI). Real tech question ('comment créer un site de recettes') still gets a substantive reply without provider name leaks. FRONTEND 100% PASS: login → create project via prompt dialogs → right-click opens project-ctx-menu with rename+delete items → ESC closes → outside click closes → rename flow replaces button with project-rename-{id} input, Enter saves (PUT fired, new name visible) → left-click still selects (ChevronRight icon + E4FF00 border) → delete-cancel keeps project → delete-confirm fires DELETE and removes it from sidebar. Regression: user-menu-trigger still shows email top-right, no central En ligne/Hors ligne pill found near H2.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter31_projects_chat.py",
+    "/app/test_reports/pytest/iter31.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L2251-2261 system_prompt — rules are explicit and in French: greetings answered in one sentence, ambiguous queries get a clarification question, provider names (Ollama/GPT/OpenAI) forbidden, no auto-promo bullets. Verified live on GPT-4o: 'Bonjour' → ~1-sentence greeting, no tech leakage; real tech question gets a concise non-promotional answer. System prompt is also properly localized via lang_label.",
+    "Dashboard.js L40-109 context-menu plumbing — ctxMenu/renameTarget/deleteTarget state is clean, useEffect closes menu on outside click + Escape, PUT and DELETE both include withCredentials. Inline rename input uses autoFocus, Enter submits, Escape cancels, onBlur also submits. Delete uses a real modal with cancel+confirm buttons. All 6 required data-testids present (project-ctx-menu, project-ctx-rename, project-ctx-delete, project-rename-{id}, project-delete-modal, project-delete-cancel, project-delete-confirm).",
+    "Dashboard.js L162-186 createNewProject — still uses window.prompt() for name+type. Functional but low-UX: keyboard users and mobile see native browser dialog. Consider switching to the existing Dialog/Input component for consistency. Non-blocker for iter_31 acceptance."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter31_projects_chat.py (NEW — 8 pytest cases: project create/rename/delete round-trip, rename 404, delete 404, 4 greeting-tone parametrized cases, real tech question case)"
+  ],
+  "success_rate": { "backend": "100% (8/8)", "frontend": "100% (all acceptance criteria pass)" },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (used as-is, unchanged)",
+  "seed_data_creation": "One TEST_ctx_proj project created and fully deleted by frontend flow; one TEST_iter31_proj created/renamed/deleted by backend test. DB clean.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter_31 verified end-to-end on preview URL. (A) Backend — /api/chat/message returns {user_message, ai_response:{content,...}} (not 'response' field, use ai_response.content). On greetings in fr/en, GPT-4o produces short 1-sentence replies; forbidden keywords list (React/PWA/LocalStorage/composant/hooks/Ollama/GPT/OpenAI) never appears; real tech prompt 'comment créer un site de recettes' replies normally without provider names. /api/projects supports PUT name-update and DELETE with 404 on unknown id, both scoped to user_id so cross-user modification is impossible. (B) Frontend — Right-click on button[data-testid^='project-'] triggers onContextMenu which opens the floating menu (data-testid='project-ctx-menu'). ESC and outside-click both close via the useEffect listener. Rename swaps the button for an inline wrapper div[data-testid='project-rename-{id}'] > input[autoFocus]; Enter calls submitRename which PUTs /api/projects/{id} with {name} and updates local state+selectedProject if active. Delete opens data-testid='project-delete-modal' with cancel (closes) + confirm (DELETE+remove). Left-click still sets selectedProject and adds ChevronRight icon + bg-[#E4FF00]/10 border-[#E4FF00] styling. The tour key to preset is 'codeforge_onboarded_v1' (not codeforge_tour_done). createNewProject uses window.prompt() twice — tests must register page.on('dialog') or the create-project-btn click will hang. Regression: user-menu-trigger still contains the user email text, no central online/offline pill detected near 'What would you like to do?' H2.",
+  "rca_of_the_issue": "No bugs found. Implementation matches the spec exactly: context menu + inline rename + confirmation modal all functional; chat system_prompt rewrite effectively suppresses React/PWA/Ollama/GPT/OpenAI keywords on greetings while retaining capability for real dev questions. iter_30 regression (top-right email, no central pill, forgot-password flow) still intact."
+}

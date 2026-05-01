@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -37,9 +37,76 @@ export default function Dashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [aiStatus, setAiStatus] = useState('online');
   const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
-  
+  // Right-click context menu state for projects in the sidebar.
+  const [ctxMenu, setCtxMenu] = useState(null); // { x, y, project } | null
+  const [renameTarget, setRenameTarget] = useState(null); // project being renamed
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null); // project pending delete confirm
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Close the context menu on any outside click / escape.
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    const onKey = (e) => { if (e.key === 'Escape') setCtxMenu(null); };
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [ctxMenu]);
+
+  const onProjectContextMenu = (e, project) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, project });
+  };
+
+  const startRename = (project) => {
+    setRenameTarget(project);
+    setRenameValue(project.name || '');
+    setCtxMenu(null);
+  };
+
+  const submitRename = async () => {
+    if (!renameTarget) return;
+    const name = renameValue.trim();
+    if (!name || name === renameTarget.name) {
+      setRenameTarget(null);
+      return;
+    }
+    try {
+      await axios.put(`${API}/projects/${renameTarget.project_id}`,
+        { name }, { withCredentials: true });
+      setProjects(p => p.map(pr => pr.project_id === renameTarget.project_id ? { ...pr, name } : pr));
+      if (selectedProject?.project_id === renameTarget.project_id) {
+        setSelectedProject(s => ({ ...s, name }));
+      }
+      toast.success('Projet renommé');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Renommage impossible');
+    } finally {
+      setRenameTarget(null);
+    }
+  };
+
+  const askDelete = (project) => { setDeleteTarget(project); setCtxMenu(null); };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await axios.delete(`${API}/projects/${deleteTarget.project_id}`, { withCredentials: true });
+      setProjects(p => p.filter(pr => pr.project_id !== deleteTarget.project_id));
+      if (selectedProject?.project_id === deleteTarget.project_id) setSelectedProject(null);
+      toast.success('Projet supprimé');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Suppression impossible');
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -283,33 +350,55 @@ export default function Dashboard() {
         <ScrollArea className="flex-1 px-4">
           <div className="space-y-2">
             {projects.map(project => (
-              <button
-                key={project.project_id}
-                onClick={() => setSelectedProject(project)}
-                data-testid={`project-${project.project_id}`}
-                className={`w-full text-left p-3 rounded-sm border transition-all ${
-                  selectedProject?.project_id === project.project_id
-                    ? 'bg-[#E4FF00]/10 border-[#E4FF00]'
-                    : 'bg-[#050505] border-white/10 hover:border-white/30'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-['IBM_Plex_Sans'] font-medium truncate">
-                      {project.name}
-                    </div>
-                    <div className="text-xs text-[#A1A1AA] mt-1 flex items-center gap-2">
-                      {project.project_type === 'web' && <Globe className="w-3 h-3" />}
-                      {project.project_type === 'mobile' && <Smartphone className="w-3 h-3" />}
-                      {project.project_type === 'desktop' && <Monitor className="w-3 h-3" />}
-                      <span>{project.project_type}</span>
-                    </div>
-                  </div>
-                  {selectedProject?.project_id === project.project_id && (
-                    <ChevronRight className="w-4 h-4 text-[#E4FF00]" />
-                  )}
+              renameTarget?.project_id === project.project_id ? (
+                <div
+                  key={project.project_id}
+                  data-testid={`project-rename-${project.project_id}`}
+                  className="bg-white/[0.04] border border-[#E4FF00] rounded-sm p-2"
+                >
+                  <input
+                    autoFocus
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitRename();
+                      else if (e.key === 'Escape') setRenameTarget(null);
+                    }}
+                    onBlur={submitRename}
+                    className="w-full bg-transparent text-sm text-white font-['IBM_Plex_Sans'] focus:outline-none px-1"
+                  />
                 </div>
-              </button>
+              ) : (
+                <button
+                  key={project.project_id}
+                  onClick={() => setSelectedProject(project)}
+                  onContextMenu={(e) => onProjectContextMenu(e, project)}
+                  data-testid={`project-${project.project_id}`}
+                  className={`w-full text-left p-3 rounded-sm border transition-all ${
+                    selectedProject?.project_id === project.project_id
+                      ? 'bg-[#E4FF00]/10 border-[#E4FF00]'
+                      : 'bg-[#050505] border-white/10 hover:border-white/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-['IBM_Plex_Sans'] font-medium truncate">
+                        {project.name}
+                      </div>
+                      <div className="text-xs text-[#A1A1AA] mt-1 flex items-center gap-2">
+                        {project.project_type === 'web' && <Globe className="w-3 h-3" />}
+                        {project.project_type === 'mobile' && <Smartphone className="w-3 h-3" />}
+                        {project.project_type === 'desktop' && <Monitor className="w-3 h-3" />}
+                        <span>{project.project_type}</span>
+                      </div>
+                    </div>
+                    {selectedProject?.project_id === project.project_id && (
+                      <ChevronRight className="w-4 h-4 text-[#E4FF00]" />
+                    )}
+                  </div>
+                </button>
+              )
             ))}
           </div>
         </ScrollArea>
@@ -579,6 +668,77 @@ export default function Dashboard() {
         open={switchAccountOpen}
         onClose={() => setSwitchAccountOpen(false)}
       />
+
+      {/* Right-click context menu on a project */}
+      {ctxMenu && (
+        <div
+          data-testid="project-ctx-menu"
+          onClick={(e) => e.stopPropagation()}
+          style={{ top: Math.min(ctxMenu.y, window.innerHeight - 110), left: Math.min(ctxMenu.x, window.innerWidth - 200) }}
+          className="fixed z-50 w-48 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl py-1"
+        >
+          <button
+            type="button"
+            onClick={() => startRename(ctxMenu.project)}
+            data-testid="project-ctx-rename"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
+          >
+            <Pencil className="w-4 h-4 text-[#E4FF00]" />
+            <span>Renommer</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => askDelete(ctxMenu.project)}
+            data-testid="project-ctx-delete"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Supprimer</span>
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div
+          data-testid="project-delete-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-sm w-full bg-[#0F0F13] border border-red-500/40 rounded-sm p-6 space-y-4"
+          >
+            <div className="flex items-start gap-3">
+              <Trash2 className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <h3 className="font-['Chivo'] font-bold text-white">Supprimer ce projet ?</h3>
+                <p className="text-sm text-[#A1A1AA] mt-1">
+                  « {deleteTarget.name} » sera définitivement supprimé. Cette action est irréversible.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                data-testid="project-delete-cancel"
+                className="px-4 py-2 text-sm border border-white/15 rounded-sm text-white hover:border-white/30 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                data-testid="project-delete-confirm"
+                className="px-4 py-2 text-sm bg-red-500/20 border border-red-500 text-red-300 rounded-sm hover:bg-red-500/30 transition-colors font-['Chivo'] font-bold"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
