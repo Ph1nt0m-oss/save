@@ -1,6 +1,19 @@
 # CodeForge AI - PRD
 
-## Statut : VERSION ULTIME PHASE 6 — STABLE & PRODUCTION-READY (Avril 2026)
+## Statut : VERSION ULTIME PHASE 6 — STABLE & PRODUCTION-READY (Mai 2026)
+
+### 1er Mai 2026 — Session 26 — Refonte UX (Landing, Discover, Dashboard, i18n)
+- **Landing** : bouton top droit `Découvrir` (au lieu de Connexion), héro `Inscription` (primaire jaune) + `Connexion` (outline)
+- **Discover (/discover)** : tutoriel interactif 7 étapes avec **mock-écrans dédiés** (Dashboard, Wizard, Création, Chat, Aperçu app, Hors-ligne, CTA final). Navigation flèches Précédent/Suivant + clavier ← →. Tout autre clic affiche un toast "🔒 Connecte-toi…". Bouton final "S'inscrire" + "Connexion" en haut.
+- **Dashboard** :
+  - Bouton toggle sidebar projets dans le header (style ChatGPT, `PanelLeftClose/Open`) — toujours visible.
+  - "Changer de compte" déplacé dans la sidebar projets (bas).
+  - **Un seul bouton de déconnexion** (UserMenu dropdown). Grille bottom (Switch/Logout) supprimée.
+  - Tous les textes utilisent `t()` (avant : hardcoded FR/EN).
+  - Toggle FR/EN inline supprimé — remplacé par le composant `LanguageToggle` complet (12 langues).
+- **Sélecteur de langue** : drapeaux 🇫🇷🇬🇧🇪🇸🇵🇹🇩🇪🇳🇱🇷🇺🇨🇳🇹🇼🇮🇳🇧🇩🇵🇰 + nom natif complet (`English`, `Español`, `中文 (简体)`, …).
+- **AI multilingue** : `Create.js` envoie `language` à `/api/ai/generate-complete-app`. Le prompt backend ajoute une `language_directive` pour que l'IA produise UI/README/explanation dans la langue choisie.
+- **Tests** : iter_26.json — 4/4 backend pytest + 14/14 frontend acceptance criteria PASS.
 
 ### 30 Avril 2026 — Session 25 — Pack P1+P2 (VERSION FINALE)
 - **Page Profil/Paramètres** (`/profile`) avec 4 onglets :
