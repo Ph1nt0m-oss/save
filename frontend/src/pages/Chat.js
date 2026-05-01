@@ -211,14 +211,22 @@ export default function Chat() {
         </ScrollArea>
 
         <form onSubmit={sendMessage}>
-          <div className="flex gap-3">
-            <input
-              type="text"
+          <div className="flex gap-3 items-end">
+            <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Posez une question..."
+              onKeyDown={(e) => {
+                // Enter sends, Shift+Enter inserts a newline
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage(e);
+                }
+              }}
+              placeholder="Posez une question…  (Maj + Entrée pour aller à la ligne)"
               disabled={isLoading}
-              className="flex-1 px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none disabled:opacity-50"
+              rows={1}
+              data-testid="chat-input"
+              className="flex-1 px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none disabled:opacity-50 resize-y min-h-[48px] max-h-[200px] font-['IBM_Plex_Sans']"
               style={{ borderColor: input ? modeColor : undefined }}
             />
             <Button

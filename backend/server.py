@@ -1683,19 +1683,52 @@ IMPORTANT:
             ai_source = 'template'
             logger.info("Using basic template as fallback")
     
-    # Process AI response
+    # Process AI response — be resilient: AI sometimes wraps JSON in
+    # ```json ... ``` fences or includes literal newlines inside string
+    # values that break json.loads. We attempt several parsing strategies
+    # and gracefully fall back to a basic template if all fail (instead of
+    # returning a hard 500 to the user).
+    generated = None
+    parse_error = None
     try:
-        # Extract JSON from response
-        start = ai_text.find('{')
-        end = ai_text.rfind('}') + 1
-        
+        # Strip markdown fences if present
+        cleaned = ai_text.strip()
+        if cleaned.startswith("```"):
+            # Drop leading ```json or ``` and trailing ```
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
+            if cleaned.endswith("```"):
+                cleaned = cleaned[: -3]
+            cleaned = cleaned.strip()
+
+        start = cleaned.find('{')
+        end = cleaned.rfind('}') + 1
         if start >= 0 and end > start:
-            json_str = ai_text[start:end]
-            generated = json.loads(json_str)
-        else:
-            # If no JSON found, use template
+            json_str = cleaned[start:end]
+            try:
+                generated = json.loads(json_str)
+            except json.JSONDecodeError as e1:
+                # Try once more after escaping unescaped newlines inside strings.
+                try:
+                    fixed = re.sub(r'(?<!\\)\n', r'\\n', json_str)
+                    generated = json.loads(fixed)
+                except json.JSONDecodeError as e2:
+                    parse_error = f"{e1} / retry: {e2}"
+    except Exception as e:
+        parse_error = str(e)
+
+    if not generated:
+        logger.warning(f"AI parse failed, falling back to template. Error: {parse_error}. Preview: {ai_text[:200]!r}")
+        try:
             generated = json.loads(generate_basic_template(description))
-        
+            ai_source = "template_fallback"
+        except Exception as e:
+            logger.error(f"Template fallback also failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Génération temporairement indisponible. Réessaie dans quelques secondes ou décris ton projet plus simplement.",
+            )
+
+    try:
         # Create project
         project_id = f"proj_{uuid.uuid4().hex[:12]}"
         project = {
@@ -1722,8 +1755,7 @@ IMPORTANT:
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.previews.insert_one(preview_doc)
-        
-        # Get backend URL
+
         backend_url = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')
         preview_url = f"{backend_url}/api/preview/{preview_id}"
 
@@ -1734,12 +1766,8 @@ IMPORTANT:
             "preview_url": preview_url,
             "ai_source": ai_source
         }
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON parse error: {e}")
-        raise HTTPException(status_code=500, detail="Erreur de parsing de la réponse IA")
     except Exception as e:
-        logger.error(f"Error generating app: {e}")
+        logger.error(f"Error saving generated app: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 def generate_basic_template(description: str) -> str:

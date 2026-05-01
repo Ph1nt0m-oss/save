@@ -6,6 +6,8 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import LanguageToggle from '../components/LanguageToggle';
 
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -33,6 +35,7 @@ function fireConfetti() {
 export default function Login() {
   const navigate = useNavigate();
   const { setUser } = useAuth();
+  const { t } = useLanguage();
 
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
@@ -151,10 +154,10 @@ export default function Login() {
         try { localStorage.setItem(LAST_EMAIL_KEY, email.trim().toLowerCase()); } catch (_) {}
 
         if (data.email_sent) {
-          toast.success("Lien de confirmation envoyé par email ! Tu as 5 minutes.");
+          toast.success("Lien de confirmation envoyé par email ! Vérifie ta boîte (et tes spams). Tu as 5 minutes.", { duration: 6000 });
         } else if (data.verification_link) {
           setDemoLink(data.verification_link);
-          toast.info("Mode démo — clique sur le lien ci-dessous pour confirmer.");
+          toast.info("Email indisponible — clique sur le lien ci-dessous pour confirmer.");
         }
 
         // Kick off polling so the original tab auto-unlocks the moment
@@ -323,8 +326,8 @@ export default function Login() {
               <h1 className="text-2xl font-['Chivo'] font-black text-white">CodeForge AI</h1>
               <p className="text-sm text-[#A1A1AA] font-['IBM_Plex_Sans'] mt-1">
                 {waitingFor
-                  ? 'En attente de la confirmation…'
-                  : (mode === 'login' ? 'Connecte-toi pour continuer' : 'Crée ton compte gratuit')}
+                  ? t('loginWaitingForConfirm')
+                  : (mode === 'login' ? t('loginConnectToContinue') : t('loginCreateAccount'))}
               </p>
             </motion.div>
 
@@ -338,7 +341,7 @@ export default function Login() {
               >
                 <Clock className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
                 <p className="flex-1 text-xs font-['IBM_Plex_Sans'] text-orange-200/90 leading-relaxed">
-                  Vous avez été déconnecté après 1h ou plus d'inactivité. Vous pouvez fermer ce message et vous reconnecter.
+                  {t('loginIdleNotice')}
                 </p>
                 <button
                   type="button"
@@ -410,7 +413,7 @@ export default function Login() {
                       : 'text-[#A1A1AA] hover:text-white'
                   }`}
                 >
-                  Connexion
+                  {t('loginSignin')}
                 </button>
                 <button
                   type="button"
@@ -422,7 +425,7 @@ export default function Login() {
                       : 'text-[#A1A1AA] hover:text-white'
                   }`}
                 >
-                  Inscription
+                  {t('loginSignup')}
                 </button>
               </motion.div>
             )}
@@ -431,7 +434,7 @@ export default function Login() {
               <motion.form variants={item} onSubmit={handleSubmit} className="space-y-3 text-left">
                 {mode === 'signup' && (
                   <div>
-                    <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">Nom (optionnel)</label>
+                    <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">{t('loginName')}</label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
                       <input
@@ -448,7 +451,7 @@ export default function Login() {
 
                 <div>
                   <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">
-                    Adresse email (Gmail de préférence)
+                    {t('loginEmail')}
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
@@ -466,7 +469,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">Mot de passe</label>
+                  <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">{t('loginPassword')}</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
                     <input
@@ -482,7 +485,7 @@ export default function Login() {
                     />
                   </div>
                   {mode === 'signup' && (
-                    <p className="text-[10px] text-[#A1A1AA]/70 mt-1">6 caractères minimum</p>
+                    <p className="text-[10px] text-[#A1A1AA]/70 mt-1">{t('loginEmailMinChars')}</p>
                   )}
                 </div>
 
@@ -499,7 +502,7 @@ export default function Login() {
                     </>
                   ) : (
                     <>
-                      {mode === 'signup' ? 'Créer mon compte' : 'Se connecter'}
+                      {mode === 'signup' ? t('loginSubmitSignup') : t('loginSubmitSignin')}
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -515,7 +518,7 @@ export default function Login() {
                       className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-white/[0.04] border border-white/10 text-white text-sm font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all mt-2 disabled:opacity-60"
                     >
                       <Mail className="w-4 h-4" />
-                      Connexion par lien magique (sans mot de passe)
+                      {t('loginMagicLink')}
                     </button>
                     <button
                       type="button"
@@ -523,7 +526,7 @@ export default function Login() {
                       data-testid="forgot-password-btn"
                       className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
                     >
-                      Mot de passe oublié ?
+                      {t('loginForgot')}
                     </button>
                   </>
                 )}
@@ -539,7 +542,7 @@ export default function Login() {
                 className="p-3 bg-cyan-400/10 border border-cyan-400/30 rounded-sm text-left"
               >
                 <p className="text-xs font-['IBM_Plex_Sans'] text-cyan-200 leading-relaxed mb-2">
-                  <span className="font-bold">Mode démo actif.</span> Clique sur le lien (s'ouvre dans un nouvel onglet)&nbsp;:
+                  <span className="font-bold">Lien direct&nbsp;:</span> clique pour confirmer ton compte (s'ouvre dans un nouvel onglet) :
                 </p>
                 <div className="flex gap-2">
                   <a
@@ -570,7 +573,7 @@ export default function Login() {
                     <div className="w-full border-t border-white/10"></div>
                   </div>
                   <div className="relative flex justify-center">
-                    <span className="bg-[#0F0F13] px-3 text-xs text-[#A1A1AA]">ou mode hors-ligne</span>
+                    <span className="bg-[#0F0F13] px-3 text-xs text-[#A1A1AA]">{t('loginOrOffline')}</span>
                   </div>
                 </motion.div>
 
@@ -581,7 +584,7 @@ export default function Login() {
                   className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-white/[0.04] border border-white/10 text-white font-['Chivo'] font-bold rounded-sm hover:border-cyan-400 hover:text-cyan-400 hover:-translate-y-0.5 transition-all duration-200"
                 >
                   <Phone className="w-4 h-4" />
-                  Connexion SMS (démo)
+                  {t('loginSmsDemo')}
                 </motion.button>
               </>
             )}
@@ -599,7 +602,7 @@ export default function Login() {
             data-testid="back-to-home-btn"
             className="text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] transition-colors"
           >
-            ← Retour à l'accueil
+            {t('loginBackHome')}
           </button>
           <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-[#A1A1AA]/60">
             <button
@@ -608,7 +611,7 @@ export default function Login() {
               data-testid="link-how-it-works"
               className="hover:text-[#E4FF00] transition-colors"
             >
-              Comment ça marche
+              {t('loginHowItWorks')}
             </button>
             <span>·</span>
             <button
@@ -617,8 +620,10 @@ export default function Login() {
               data-testid="link-legal"
               className="hover:text-[#E4FF00] transition-colors"
             >
-              CGU & Confidentialité
+              {t('loginLegal')}
             </button>
+            <span>·</span>
+            <LanguageToggle />
           </div>
         </motion.div>
       </motion.div>
