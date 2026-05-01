@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Mic, MicOff, Loader2, Square } from 'lucide-react';
+import { Mic, Loader2, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -113,8 +113,12 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
   };
 
   const isSend = mode === 'send';
-  const colour = isSend ? '#ef4444' : '#E4FF00'; // red for "instant send", yellow for "dictate"
   const labelKey = isSend ? 'mic_voice_send' : 'mic_voice_text';
+
+  // Visual: dictate = neutral outlined; send = solid white/black (ChatGPT-style "voice send" pill).
+  const baseClasses = isSend
+    ? 'bg-white text-[#050505] border-white hover:bg-[#E4E4E7]'
+    : 'bg-white/[0.04] text-white border-white/15 hover:border-[#E4FF00]/50 hover:text-[#E4FF00]';
 
   return (
     <button
@@ -126,15 +130,15 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
       aria-label={t(labelKey)}
       className={`relative inline-flex items-center justify-center h-11 w-11 rounded-sm border transition-all flex-shrink-0 ${
         recording
-          ? 'border-red-500 bg-red-500/10 animate-pulse'
-          : 'border-white/15 bg-white/[0.04] hover:border-[#E4FF00]/50 hover:text-[#E4FF00]'
+          ? 'border-red-500 bg-red-500/10 text-red-400 animate-pulse'
+          : baseClasses
       } disabled:opacity-50 disabled:cursor-not-allowed`}
     >
       {busy ? (
         <Loader2 className="w-4 h-4 animate-spin" />
       ) : recording ? (
         <>
-          <Square className="w-4 h-4 fill-current" style={{ color: colour }} />
+          <Square className="w-4 h-4 fill-current" />
           {/* timer + red dot */}
           <span className="absolute -top-2 -right-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500 text-[9px] font-bold text-white">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
@@ -142,12 +146,7 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
           </span>
         </>
       ) : (
-        <>
-          <Mic className="w-4 h-4" style={{ color: isSend ? '#ef4444' : undefined }} />
-          {isSend && (
-            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#0F0F13]" />
-          )}
-        </>
+        <Mic className="w-4 h-4" />
       )}
     </button>
   );

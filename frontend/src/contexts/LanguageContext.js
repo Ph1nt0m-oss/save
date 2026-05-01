@@ -233,7 +233,24 @@ const translations = {
     mic_too_short: '🎤 Enregistrement trop court — réessaie.',
     mic_no_text: '🎤 Aucun texte reconnu — parle plus clairement.',
     mic_failed: '🎤 Échec de la transcription. Réessaie.',
-    mic_voice_badge: 'Vocal'
+    mic_voice_badge: 'Vocal',
+
+    // Attachments (paperclip)
+    attach_title: 'Joindre',
+    attach_device: 'Depuis l\'appareil',
+    attach_device_sub: 'Sélectionne un fichier sur ton appareil',
+    attach_clipboard: 'Depuis le presse-papier',
+    attach_clipboard_sub: 'Colle ce que tu viens de copier',
+    attach_url: 'Depuis une URL',
+    attach_url_sub: 'Colle un lien vers une image ou un fichier',
+    attach_clip_empty: '📋 Le presse-papier est vide.',
+    attach_clip_fail: '📋 Impossible de lire le presse-papier (autorisation requise).',
+    attach_url_invalid: '🔗 URL invalide. Vérifie le format.',
+    attach_attached: 'Pièce jointe ajoutée',
+    cancel: 'Annuler',
+    sidebar_my_profile: 'Mon profil',
+    login_password_wrong: 'Mot de passe incorrect',
+    login_email_unknown: 'Aucun compte avec cet email'
   },
   
   en: {
@@ -470,7 +487,24 @@ const translations = {
     mic_too_short: '🎤 Recording too short — try again.',
     mic_no_text: '🎤 No speech detected — speak more clearly.',
     mic_failed: '🎤 Transcription failed. Please try again.',
-    mic_voice_badge: 'Voice'
+    mic_voice_badge: 'Voice',
+
+    // Attachments
+    attach_title: 'Attach',
+    attach_device: 'From device',
+    attach_device_sub: 'Pick a file from your device',
+    attach_clipboard: 'From clipboard',
+    attach_clipboard_sub: 'Paste what you just copied',
+    attach_url: 'From URL',
+    attach_url_sub: 'Paste a link to an image or file',
+    attach_clip_empty: '📋 Clipboard is empty.',
+    attach_clip_fail: '📋 Unable to read clipboard (permission required).',
+    attach_url_invalid: '🔗 Invalid URL. Check the format.',
+    attach_attached: 'Attachment added',
+    cancel: 'Cancel',
+    sidebar_my_profile: 'My profile',
+    login_password_wrong: 'Incorrect password',
+    login_email_unknown: 'No account with this email'
   },
 
   // ========== ESPAÑOL ==========

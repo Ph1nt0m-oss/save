@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -315,18 +315,45 @@ export default function Dashboard() {
         </ScrollArea>
 
         <div className="p-4 border-t border-white/10 space-y-2">
-          <div className="flex items-center gap-2 text-sm font-['IBM_Plex_Mono']">
-            <div className="w-2 h-2 rounded-full bg-[#00FF66] animate-pulse-slow"></div>
-            <span className="text-[#A1A1AA]">{t('dashAiAvailable')}</span>
+          {/* Profile pill — non-clickable, shows email only */}
+          <div
+            data-testid="sidebar-profile-pill"
+            className="w-full flex items-center gap-2 px-3 py-2 bg-white/[0.04] border border-white/10 rounded-sm cursor-default select-text"
+            title={user?.email}
+          >
+            <div className="w-7 h-7 rounded-full bg-[#E4FF00] text-[#050505] flex items-center justify-center font-['Chivo'] font-black text-xs flex-shrink-0">
+              {(user?.email || '?').charAt(0).toUpperCase()}
+            </div>
+            <span className="flex-1 min-w-0 text-xs text-white font-['IBM_Plex_Sans'] truncate">
+              {user?.email || '—'}
+            </span>
           </div>
+
+          <button
+            onClick={() => navigate('/profile')}
+            data-testid="sidebar-profile-btn"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white/[0.04] border border-white/15 rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all text-sm font-['IBM_Plex_Sans']"
+          >
+            <UserCog className="w-4 h-4" />
+            <span>{t('sidebar_my_profile')}</span>
+          </button>
 
           <button
             onClick={() => setSwitchAccountOpen(true)}
             data-testid="sidebar-switch-account-btn"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-white/20 rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-white/20 rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all text-sm font-['IBM_Plex_Sans']"
           >
             <Users className="w-4 h-4" />
-            <span className="font-['IBM_Plex_Sans']">{t('dashSwitchAccount')}</span>
+            <span>{t('dashSwitchAccount')}</span>
+          </button>
+
+          <button
+            onClick={handleLogout}
+            data-testid="sidebar-logout-btn"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/40 text-red-400 rounded-sm hover:bg-red-500/20 hover:border-red-500 hover:text-red-300 transition-all text-sm font-['IBM_Plex_Sans']"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>{t('dashLogout')}</span>
           </button>
         </div>
       </motion.aside>

@@ -66,6 +66,7 @@ export default function Login() {
   const [demoLink, setDemoLink] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [idleNotice, setIdleNotice] = useState(false);
+  const [authError, setAuthError] = useState(''); // inline red error (wrong password, etc.)
 
   // Verification polling state (active between /register and the user
   // clicking the magic link in their email / the demo link).
@@ -201,7 +202,20 @@ export default function Login() {
         navigate('/dashboard', { replace: true, state: { user: data } });
       }
     } catch (err) {
-      toast.error(formatDetail(err.response?.data?.detail) || err.message);
+      const detail = formatDetail(err.response?.data?.detail) || err.message;
+      const lower = String(detail).toLowerCase();
+      // Map backend auth errors to inline red field error.
+      // Backend returns generic "Email ou mot de passe incorrect" for sign-in failures.
+      if (mode === 'login' && (
+        lower.includes('mot de passe') || lower.includes('password') ||
+        lower.includes('incorrect') || lower.includes('email ou mot')
+      )) {
+        setAuthError(t('login_password_wrong'));
+      } else if (mode === 'login' && (lower.includes('aucun compte') || lower.includes('no account') || lower.includes('not found'))) {
+        setAuthError(t('login_email_unknown'));
+      } else {
+        toast.error(detail);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -480,7 +494,7 @@ export default function Login() {
                     <input
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => { setEmail(e.target.value); if (authError) setAuthError(''); }}
                       required
                       autoComplete="email"
                       data-testid="auth-email-input"
@@ -497,15 +511,22 @@ export default function Login() {
                     <input
                       type="password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => { setPassword(e.target.value); if (authError) setAuthError(''); }}
                       required
                       minLength={6}
                       autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                       data-testid="auth-password-input"
                       placeholder="••••••••"
-                      className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
+                      className={`w-full bg-white/[0.04] border rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:outline-none transition-colors ${
+                        authError ? 'border-red-500 focus:border-red-500' : 'border-white/10 focus:border-[#E4FF00]'
+                      }`}
                     />
                   </div>
+                  {authError && (
+                    <p data-testid="auth-error" role="alert" className="text-xs text-red-400 mt-1.5 font-['IBM_Plex_Sans']">
+                      {authError}
+                    </p>
+                  )}
                   {mode === 'signup' && (
                     <p className="text-[10px] text-[#A1A1AA]/70 mt-1">{t('loginEmailMinChars')}</p>
                   )}

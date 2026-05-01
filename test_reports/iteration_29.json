@@ -1,0 +1,44 @@
+{
+  "summary": "iter_29 (chat AI rewrite + login red error + sidebar restructure + ChatGPT-style voice mic + paperclip attach menu + footer translated links + viewport zoom) — BACKEND 5/5 PASS, FRONTEND mostly PASS. Found + fixed ONE P1 bug in Login.js (mode string mismatch): inline auth-error was never triggered because code checked `mode === 'signin'` but the state uses `'login'`/`'signup'`. One-char fix applied and retested — inline red error now shows 'Incorrect password', password field gets red border, clears on edit. One pre-existing UI issue: /chat at 360px viewport has ~388px horizontal overflow from the preview-mode toggle row (chat-preview-web/app/pdf/docx buttons).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/chat @ 360px mobile",
+        "issues": [
+          "Horizontal overflow of ~388px caused by the preview-mode toggle row (buttons data-testid='chat-preview-web-btn', 'chat-preview-app-btn', 'chat-preview-pdf-btn', 'chat-preview-docx-btn' + 'PRÉVISUALISATION' label). Combined width ~478px at left=270px → scrollWidth=748px on a 360px viewport. Pre-existing (iter_28 did not test /chat at mobile width). Suggest: hide the textual label on mobile (use sm:inline) and/or make the preview toggle horizontally scrollable or collapse to icon-only on <sm breakpoints."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_chat_iter29.py",
+    "/app/test_reports/pytest/iter29_chat.xml"
+  ],
+  "action_items": [
+    "(FIXED by testing agent) /app/frontend/src/pages/Login.js L209 & L214: `mode === 'signin'` → `mode === 'login'`. The state values are 'login' and 'signup' (defined L61), so the `'signin'` branch was dead code and the inline red auth-error NEVER fired before this fix.",
+    "Fix /chat horizontal overflow at 360px: the preview-mode toggle row (web/app/pdf/docx buttons + PRÉVISUALISATION label) is ~478px wide and pushes past the viewport. Consider `hidden sm:flex` on the label, or collapse to icon-only buttons / wrap in an overflow-x-auto scroll container at mobile widths."
+  ],
+  "critical_code_review_comments": [
+    "server.py L2138-2260 /api/chat/message — clean rewrite. Online branch uses EMERGENT_LLM_KEY + gpt-4o through LlmChat with per-user session_id (short-term context), localized system prompt, no Ollama leakage. Offline branch tries Ollama, falls through to 12-language localized fallback (not the old 400-char install message). ai_source correctly set to 'emergent_gpt4o' / 'ollama' / 'fallback'. _id stripped from response. Excellent.",
+    "Login.js L61 state is ('login'|'signup') but L209/214 compared against the non-existent value 'signin' — classic state-name drift bug. Fixed by testing agent. Recommend adding a unit-level check or a TypeScript-style union to prevent recurrence.",
+    "AttachMenu.jsx — 3 rows (device/clipboard/url) with proper data-testids, upward-opening popover with `attach-url-form` + `attach-url-submit`. Clipboard branch uses navigator.clipboard.readText() with try/catch (good). File branch uses filename as [📎 name] tag. All 3 flows confirmed working live on /chat.",
+    "Dashboard.js sidebar bottom — 4-row layout (pill + profile btn + switch btn + logout red btn) renders correctly; logout uses bg-red-500/10 border-red-500/40 text-red-400 classes (passes 'red' check); 'IA Disponible' string is GONE. SwitchAccountModal opens correctly (confirmed visible with data-testid='switch-account-modal').",
+    "VoiceRecorder.jsx send mode — solid bg-white text-[#050505] border-white (computed bgcolor = rgb(255,255,255), color = rgb(5,5,5)) — matches ChatGPT look & removes the previous red.",
+    "Landing.js footer — 'footer-how-it-works' + 'footer-legal' data-testids present; both navigate correctly (/how-it-works and /legal). Text follows the user's selected language (verified EN default: 'How it works' / 'Terms & Privacy'). Translation keys how_it_works_title / legal_title are used.",
+    "public/index.html viewport meta — now `user-scalable=yes, maximum-scale=5` allows pinch-zoom 1x–5x (requirement met)."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/Login.js (BUGFIX: mode === 'signin' → mode === 'login' on 2 lines, L209 & L214)",
+    "/app/backend/tests/test_chat_iter29.py (NEW — 5 pytest cases)"
+  ],
+  "success_rate": { "backend": "100% (5/5)", "frontend": "95% (9/10 acceptance items pass; /chat mobile overflow pre-existing)" },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (verified working)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter_29 verified end-to-end on preview URL: (A) Backend /api/chat/message — online FR returns short GPT-4o reply ('Bonjour ! Comment puis-je t'aider aujourd'hui ?' ~55 chars, source=emergent_gpt4o), online EN returns English reply, offline FR/EN return <400char localized fallback with ai_source='fallback'. NO 'Ollama' / 'OLLAMA_SETUP' / install URL strings in any response. Unauth returns 401. 5/5 pytest cases pass in 4.9s. (B) Footer on Landing — footer-how-it-works + footer-legal both visible, both navigate correctly, text honors active language. (C) Login inline auth-error — WAS BROKEN (mode='signin' typo — state is 'login'). Testing agent patched Login.js L209 & L214 ('signin' → 'login'). Retested: 401 response → 'Incorrect password' (EN) shown with rgb(248,113,113) red color + 'border-red-500' on password input; clears on input edit. (D) Dashboard sidebar — 4 data-testids (sidebar-profile-pill / sidebar-profile-btn / sidebar-switch-account-btn / sidebar-logout-btn) all visible after login; pill shows full email; Mon profil navigates to /profile; Switch account opens switch-account-modal; Logout button has red-500 family classes. Old 'IA Disponible' literal string is absent from the Dashboard DOM. (E) /chat — attach-btn + attach-menu + attach-from-device / from-clipboard / from-url / attach-url-form / attach-url-submit all working; submitting 'https://example.com/file.pdf' correctly appends it to the textarea. (F) voice-send-btn computed style: bg=rgb(255,255,255), color=rgb(5,5,5), classes include 'bg-white text-[#050505] border-white' — no red anywhere. (G) Mobile 360px overflow: / = 0, /discover = 0, /dashboard = 0, /chat = 388px (pre-existing from chat-preview-* toggle row — NOT a regression from iter_29).",
+  "rca_of_the_issue": "Login inline auth-error bug: Login.js declares `const [mode, setMode] = useState('login')` with setters toggling between 'login' and 'signup' (Login.js L61, L444, L456). However, the catch-block conditional at L209 and L214 compared `mode === 'signin'` — a string value that never exists. Therefore, both the `login_password_wrong` and `login_email_unknown` setAuthError() calls were unreachable, and all auth errors fell through to `toast.error(detail)`. Repro: sign in with wrong password → toast shows 'Email ou mot de passe incorrect' but no inline red 'auth-error' appears. Fix: change both `'signin'` string literals to `'login'` in Login.js. Verified fix live — auth-error now renders with translated text, red color, red border on password field, and clears on input edit. Root cause appears to be state-naming drift during refactor (spec used 'signin' naming; implementation used 'login')."
+}

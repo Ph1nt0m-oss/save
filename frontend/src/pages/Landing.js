@@ -203,7 +203,26 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 backdrop-blur-md mt-10 sm:mt-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 text-center text-[#A1A1AA] font-['IBM_Plex_Sans'] text-xs sm:text-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 text-center text-[#A1A1AA] font-['IBM_Plex_Sans'] text-xs sm:text-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5">
+            <button
+              type="button"
+              onClick={() => navigate('/how-it-works')}
+              data-testid="footer-how-it-works"
+              className="hover:text-[#E4FF00] transition-colors underline-offset-2 hover:underline"
+            >
+              {t('loginHowItWorks')}
+            </button>
+            <span className="text-white/20">·</span>
+            <button
+              type="button"
+              onClick={() => navigate('/legal')}
+              data-testid="footer-legal"
+              className="hover:text-[#E4FF00] transition-colors underline-offset-2 hover:underline"
+            >
+              {t('loginLegal')}
+            </button>
+          </div>
           <p>{t('l_footer')}</p>
         </div>
       </footer>

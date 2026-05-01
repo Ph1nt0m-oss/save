@@ -152,6 +152,7 @@ class ChatMessageInput(BaseModel):
     message: str
     project_id: Optional[str] = None
     mode: Optional[str] = "online"
+    language: Optional[str] = "fr"
 
 class Project(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -2152,71 +2153,89 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         }
         await db.chat_messages.insert_one(user_message_doc)
         
-        # Try Ollama with DeepSeek Coder (better for code generation than Llama)
-        ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-        ollama_model = os.environ.get('OLLAMA_MODEL', 'deepseek-coder:33b')  # DeepSeek by default
-        
+        # Mode "online" → use Emergent GPT-4o (conversational assistant).
+        # Mode "offline" → try Ollama only; if unreachable, return a friendly localized message.
         ai_response_text = None
-        
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{ollama_url}/api/generate",
-                    json={
-                        "model": ollama_model,
-                        "prompt": f"Tu es un expert en développement logiciel. Réponds en français.\\n\\nQuestion: {input.message}",
-                        "stream": False
-                    }
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    ai_response_text = result.get('response', '')
-                    logger.info("✅ Ollama response successful")
-        except Exception as ollama_error:
-            logger.warning(f"Ollama not available: {ollama_error}")
-            
-            # Fallback to Groq (free API)
-            groq_api_key = os.environ.get('GROQ_API_KEY')
-            if groq_api_key:
-                try:
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        response = await client.post(
-                            "https://api.groq.com/openai/v1/chat/completions",
-                            headers={
-                                "Authorization": f"Bearer {groq_api_key}",
-                                "Content-Type": "application/json"
-                            },
-                            json={
-                                "model": "llama3-70b-8192",
-                                "messages": [
-                                    {"role": "system", "content": "Tu es un expert en développement logiciel. Réponds en français."},
-                                    {"role": "user", "content": input.message}
-                                ]
-                            }
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            ai_response_text = result['choices'][0]['message']['content']
-                            logger.info("✅ Groq response successful")
-                except Exception as groq_error:
-                    logger.warning(f"Groq API error: {groq_error}")
-        
-        # If both failed, use instructional response
+        ai_source = None
+
+        # Adapt the system prompt to the user's language (sent by the frontend).
+        user_language = (input.language or 'fr').lower()
+        language_names = {
+            'fr': 'français', 'en': 'English', 'es': 'español', 'pt': 'português',
+            'de': 'Deutsch', 'nl': 'Nederlands', 'ru': 'русский',
+            'zh': '中文（简体）', 'zh-tw': '中文（繁體）',
+            'hi': 'हिन्दी', 'bn': 'বাংলা', 'ur': 'اردو',
+        }
+        lang_label = language_names.get(user_language, 'français')
+        system_prompt = (
+            f"Tu es CodeForge AI, un assistant chaleureux, concis et utile, spécialisé en développement "
+            f"d'applications web/mobile/desktop sans code. Réponds TOUJOURS en {lang_label}. "
+            f"Sois conversationnel : ne récite pas d'instructions techniques sauf si elles sont demandées. "
+            f"Si on te dit simplement « bonjour » ou similaire, salue brièvement et propose ton aide. "
+            f"Pas de notes auto-promo (ne mentionne pas Ollama, GPT ni les fournisseurs)."
+        )
+
+        if input.mode == 'offline':
+            # Offline mode → Ollama only.
+            ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+            ollama_model = os.environ.get('OLLAMA_MODEL', 'deepseek-coder:33b')
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        f"{ollama_url}/api/generate",
+                        json={
+                            "model": ollama_model,
+                            "system": system_prompt,
+                            "prompt": input.message,
+                            "stream": False,
+                        },
+                    )
+                    if response.status_code == 200:
+                        ai_response_text = (response.json() or {}).get('response', '').strip()
+                        ai_source = 'ollama'
+                        logger.info("✅ Ollama (offline) chat response successful")
+            except Exception as ollama_error:
+                logger.info(f"Ollama offline unreachable: {ollama_error}")
+        else:
+            # Online mode → Emergent GPT-4o.
+            try:
+                from emergentintegrations.llm.chat import LlmChat, UserMessage
+                emergent_key = os.environ.get('EMERGENT_LLM_KEY')
+                if not emergent_key:
+                    raise ValueError("EMERGENT_LLM_KEY not configured")
+
+                # Reuse the same session per user so the AI keeps short-term context.
+                session_id = f"codeforge_chat_{user_id}"
+                chat = LlmChat(
+                    api_key=emergent_key,
+                    session_id=session_id,
+                    system_message=system_prompt,
+                ).with_model("openai", "gpt-4o")
+                user_message = UserMessage(text=input.message)
+                ai_response_text = (await chat.send_message(user_message) or '').strip()
+                ai_source = 'emergent_gpt4o'
+                logger.info("✅ Emergent GPT-4o chat response successful")
+            except Exception as emergent_error:
+                logger.warning(f"Emergent chat error: {emergent_error}")
+
+        # Final fallback — short, friendly, localized "I'm having trouble" message.
         if not ai_response_text:
-            ai_response_text = f"""Je comprends votre demande: "{input.message}"
-
-Pour une meilleure expérience avec IA gratuite et illimitée, installez **Ollama** :
-
-📥 Installation rapide : https://ollama.com
-🚀 Commande : `ollama pull llama3.3`
-📖 Guide complet : Voir OLLAMA_SETUP.md
-
-Ou utilisez le **Mode Création IA** (bouton vert) pour développer avec une interface complète.
-
-Vous pouvez aussi :
-- Créer un nouveau projet via le bouton "+"
-- Utiliser la génération de code automatique
-- Exporter vers mobile (APK) ou desktop (EXE)"""
+            offline_msgs = {
+                'fr': "Je n'arrive pas à répondre pour l'instant. Réessaie dans un instant 🙏",
+                'en': "I'm having trouble responding right now. Please try again in a moment 🙏",
+                'es': "No puedo responder en este momento. Vuelve a intentarlo en un momento 🙏",
+                'pt': "Não consigo responder de momento. Tenta de novo daqui a pouco 🙏",
+                'de': "Ich kann gerade nicht antworten. Bitte versuche es gleich noch einmal 🙏",
+                'nl': "Het lukt me even niet. Probeer het zo opnieuw 🙏",
+                'ru': "Сейчас не получается ответить. Попробуйте чуть позже 🙏",
+                'zh': "我现在无法回答，请稍后再试 🙏",
+                'zh-tw': "我現在無法回答，請稍後再試 🙏",
+                'hi': "मैं अभी जवाब नहीं दे पा रहा। कृपया थोड़ी देर बाद कोशिश करें 🙏",
+                'bn': "আমি এখন উত্তর দিতে পারছি না। একটু পরে আবার চেষ্টা করুন 🙏",
+                'ur': "میں ابھی جواب نہیں دے سکتا۔ تھوڑی دیر بعد دوبارہ کوشش کریں 🙏",
+            }
+            ai_response_text = offline_msgs.get(user_language, offline_msgs['fr'])
+            ai_source = 'fallback'
         
         # Save AI response
         ai_message_doc = {
@@ -2226,6 +2245,7 @@ Vous pouvez aussi :
             "role": "assistant",
             "content": ai_response_text,
             "mode": input.mode,
+            "ai_source": ai_source,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         await db.chat_messages.insert_one(ai_message_doc)

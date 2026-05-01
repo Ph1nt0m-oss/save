@@ -13,6 +13,7 @@ import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
 import VoiceRecorder from '../components/VoiceRecorder';
+import AttachMenu from '../components/AttachMenu';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -294,6 +295,14 @@ export default function Create() {
 
             <div className="p-4 border-t border-white/10">
               <div className="flex gap-2 sm:gap-3 items-end">
+                <AttachMenu
+                  disabled={isGenerating}
+                  onResult={(att) => {
+                    if (att.kind === 'text') setInput(prev => (prev ? `${prev} ${att.text}` : att.text));
+                    else if (att.kind === 'url') setInput(prev => (prev ? `${prev} ${att.url}` : att.url));
+                    else if (att.kind === 'file') setInput(prev => (prev ? `${prev} [📎 ${att.name}]` : `[📎 ${att.name}]`));
+                  }}
+                />
                 <input
                   type="text"
                   value={input}

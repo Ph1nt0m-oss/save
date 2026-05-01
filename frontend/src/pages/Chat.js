@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
 import VoiceRecorder from '../components/VoiceRecorder';
+import AttachMenu from '../components/AttachMenu';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -66,7 +67,7 @@ export default function Chat() {
     try {
       const response = await axios.post(
         `${API}/chat/message`,
-        { message: userMessage, mode },
+        { message: userMessage, mode, language },
         { withCredentials: true }
       );
 
@@ -95,6 +96,20 @@ export default function Chat() {
     } else {
       // dictate mode — fill the input for review.
       setInput(prev => (prev ? `${prev} ${text}` : text));
+    }
+  };
+
+  // Bridge between AttachMenu and the chat input.
+  const handleAttachment = (att) => {
+    if (att.kind === 'text') {
+      setInput(prev => (prev ? `${prev} ${att.text}` : att.text));
+    } else if (att.kind === 'url') {
+      setInput(prev => (prev ? `${prev} ${att.url}` : att.url));
+      toast.success('🔗 ' + att.url);
+    } else if (att.kind === 'file') {
+      // For now we just append the filename as a tag — full upload pipeline is a P2.
+      setInput(prev => (prev ? `${prev} [📎 ${att.name}]` : `[📎 ${att.name}]`));
+      toast.success('📎 ' + att.name);
     }
   };
 
@@ -230,6 +245,7 @@ export default function Chat() {
 
         <form onSubmit={sendMessage}>
           <div className="flex gap-2 sm:gap-3 items-end">
+            <AttachMenu onResult={handleAttachment} disabled={isLoading} />
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
