@@ -63,13 +63,14 @@ export default function UserMenu({ user, onLogout }) {
           className="flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-white/5 transition-colors group"
         >
           <Avatar className="w-8 h-8 ring-2 ring-[#E4FF00]/40 group-hover:ring-[#E4FF00] transition-all">
-            <AvatarImage src={user?.picture} alt={user?.name} />
+            <AvatarImage src={user?.picture} alt={user?.email} />
             <AvatarFallback className="bg-[#E4FF00] text-[#050505] font-['Chivo'] font-black text-xs">
-              {initials(user?.name)}
+              {(user?.email || '?').charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <span className="text-sm font-['IBM_Plex_Sans'] text-white max-w-[120px] truncate hidden sm:inline">
-            {user?.name || user?.email || 'Utilisateur'}
+          {/* Email-only, no first/last name. Visible from md upward. */}
+          <span className="text-sm font-['IBM_Plex_Sans'] text-white max-w-[180px] lg:max-w-[260px] truncate hidden md:inline">
+            {user?.email || '—'}
           </span>
         </button>
       </DropdownMenuTrigger>

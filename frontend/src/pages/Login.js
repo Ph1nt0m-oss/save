@@ -58,7 +58,9 @@ export default function Login() {
   const { setUser } = useAuth();
   const { t } = useLanguage();
 
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'forgot'
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -269,25 +271,37 @@ export default function Login() {
   const handleForgotPassword = async () => {
     const target = (email || '').trim().toLowerCase();
     if (!target) {
-      toast.error("Renseigne d'abord ton email pour recevoir le lien.");
+      toast.error("Renseigne ton email.");
       return;
     }
+    if (!password || password.length < 6) {
+      toast.error("Le nouveau mot de passe doit faire au moins 6 caractères.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+    setSubmitting(true);
     try {
       const { data } = await axios.post(`${API}/auth/forgot-password`, {
         email: target,
+        password,
         frontend_url: window.location.origin,
       });
+      setForgotSent(true);
       if (data.email_sent) {
-        toast.success("Email de réinitialisation envoyé ! Vérifie ta boîte.");
-      } else if (data.reset_link) {
-        // Demo mode: open the link directly
-        toast.info("Mode démo — lien de réinitialisation ouvert.");
-        window.open(data.reset_link, '_blank', 'noopener,noreferrer');
+        toast.success("Email de confirmation envoyé ! Vérifie ta boîte.");
+      } else if (data.confirm_link) {
+        toast.info("Mode démo — lien de confirmation ouvert.");
+        window.open(data.confirm_link, '_blank', 'noopener,noreferrer');
       } else {
-        toast.info(data.message || "Demande traitée.");
+        toast.info(data.message || "Si le compte existe, un email a été envoyé.");
       }
     } catch (err) {
       toast.error(formatDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -532,33 +546,100 @@ export default function Login() {
                   )}
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  data-testid={mode === 'signup' ? 'signup-submit-btn' : 'login-submit-btn'}
-                  className="w-full mt-2 flex items-center justify-center gap-2 px-6 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(228,255,0,0.3)] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <>
+                {mode !== 'forgot' && (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    data-testid={mode === 'signup' ? 'signup-submit-btn' : 'login-submit-btn'}
+                    className="w-full mt-2 flex items-center justify-center gap-2 px-6 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(228,255,0,0.3)] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {mode === 'signup' ? 'Création…' : 'Connexion…'}
+                      </>
+                    ) : (
+                      <>
+                        {mode === 'signup' ? t('loginSubmitSignup') : t('loginSubmitSignin')}
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {mode === 'forgot' && (
+                  <div data-testid="forgot-confirm-pwd-block">
+                    <label className="text-xs font-['Chivo'] font-bold text-[#A1A1AA] mb-1.5 block">
+                      Confirme le nouveau mot de passe
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        minLength={6}
+                        autoComplete="new-password"
+                        data-testid="auth-confirm-password-input"
+                        placeholder="••••••••"
+                        className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
+                      />
+                    </div>
+                    {password && confirmPassword && password !== confirmPassword && (
+                      <p className="text-xs text-red-400 mt-1.5">Les mots de passe ne correspondent pas.</p>
+                    )}
+                  </div>
+                )}
+
+                {mode === 'forgot' ? (
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={submitting || forgotSent}
+                    data-testid="forgot-submit-btn"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(228,255,0,0.4)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                    {forgotSent ? '✅ Email envoyé — vérifie ta boîte' : 'Envoyer le lien de confirmation'}
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    data-testid="auth-submit-btn"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(228,255,0,0.4)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      {mode === 'signup' ? 'Création…' : 'Connexion…'}
-                    </>
-                  ) : (
-                    <>
-                      {mode === 'signup' ? t('loginSubmitSignup') : t('loginSubmitSignin')}
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4" />
+                        {mode === 'signup' ? t('loginCreateAccount') : t('loginSignIn')}
+                      </>
+                    )}
+                  </button>
+                )}
 
                 {mode === 'login' && (
                   <button
                     type="button"
-                    onClick={handleForgotPassword}
+                    onClick={() => { setMode('forgot'); setForgotSent(false); setConfirmPassword(''); setAuthError(''); }}
                     data-testid="forgot-password-btn"
                     className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
                   >
                     {t('loginForgot')}
+                  </button>
+                )}
+
+                {mode === 'forgot' && (
+                  <button
+                    type="button"
+                    onClick={() => { setMode('login'); setForgotSent(false); setConfirmPassword(''); }}
+                    data-testid="forgot-back-btn"
+                    className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
+                  >
+                    ← Retour à la connexion
                   </button>
                 )}
               </motion.form>

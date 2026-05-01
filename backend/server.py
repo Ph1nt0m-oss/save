@@ -1122,6 +1122,7 @@ async def export_my_data(request: Request):
 
 class ForgotPasswordRequest(BaseModel):
     email: str
+    password: Optional[str] = None  # NEW flow: user supplies the new password upfront
     frontend_url: Optional[str] = None
 
 
@@ -1131,7 +1132,11 @@ class ResetPasswordRequest(BaseModel):
 
 
 async def send_reset_email(to_email: str, reset_url: str) -> bool:
-    """Send password reset link via Resend (same provider as verification)."""
+    """Send password reset confirmation link via Resend (same provider as verification).
+
+    The user has already entered + confirmed the new password on the website.
+    This email is the SECOND step: clicking the link applies the pending password.
+    """
     resend_key = os.environ.get("RESEND_API_KEY")
     if not resend_key:
         return False
@@ -1149,17 +1154,18 @@ async def send_reset_email(to_email: str, reset_url: str) -> bool:
                     "from": sender,
                     "to": [to_email],
                     "reply_to": reply_to,
-                    "subject": "Réinitialise ton mot de passe CodeForge AI",
+                    "subject": "Confirme la réinitialisation de ton mot de passe CodeForge AI",
                     "html": (
                         f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
                         f"<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
-                        f"<p style='color:#E4E4E7'>Quelqu'un (probablement toi) a demandé à réinitialiser le mot de passe de ce compte.</p>"
+                        f"<p style='color:#E4E4E7'>Tu viens de demander à changer le mot de passe de ce compte.</p>"
+                        f"<p style='color:#E4E4E7'>Pour finaliser le changement, clique sur le bouton ci-dessous&nbsp;:</p>"
                         f"<p style='margin:24px 0'><a href='{reset_url}' style='background:#E4FF00;color:#050505;"
                         f"padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>"
-                        f"Choisir un nouveau mot de passe</a></p>"
+                        f"Veuillez cliquer ici pour confirmer la réinitialisation de votre mot de passe</a></p>"
                         f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur&nbsp;:<br>"
                         f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{reset_url}</span></p>"
-                        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 30 minutes.</p>"
+                        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 30 minutes. Tant que tu ne cliques pas, ton ancien mot de passe reste valide.</p>"
                         f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email — ton mot de passe actuel reste inchangé.</p>"
                         f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
                         f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
@@ -1191,7 +1197,11 @@ def _clean_origin(u: str) -> str:
 
 @api_router.post("/auth/forgot-password")
 async def forgot_password(payload: ForgotPasswordRequest, request: Request):
-    """Send a password-reset link to the given email.
+    """Step 1 of the new "set then confirm" reset flow.
+
+    The user enters their email + a NEW password (twice, validated by the frontend).
+    We don't change the password yet — we store the new hash on a pending token,
+    then email them a confirmation link. Clicking the link applies the password.
 
     Always returns the same neutral message to prevent email enumeration.
     Rate-limited: 3 requests / 10 min / email.
@@ -1199,6 +1209,8 @@ async def forgot_password(payload: ForgotPasswordRequest, request: Request):
     email = normalize_email(payload.email)
     if not email or not EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="Adresse email invalide")
+    if not payload.password or len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 6 caractères")
 
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
     recent = await db.password_resets.count_documents({"email": email, "ts": {"$gte": cutoff}})
@@ -1207,29 +1219,27 @@ async def forgot_password(payload: ForgotPasswordRequest, request: Request):
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
     neutral = {
-        "message": "Si un compte existe pour cet email, un lien de réinitialisation t'a été envoyé.",
+        "message": "Si un compte existe pour cet email, un lien de confirmation t'a été envoyé.",
     }
 
     if not user or not user.get("verified"):
-        # Neutral response — no enumeration. Don't generate a token,
-        # don't even count toward rate limit (probing unknown emails
-        # shouldn't lock the system out for a legitimate user later).
         return neutral
 
-    # Log the attempt only once we know the user exists & is verified.
     await db.password_resets.insert_one({
         "email": email,
         "ts": datetime.now(timezone.utc).isoformat(),
     })
 
-    # Generate single-use token (30 min)
+    # Generate single-use token (30 min) carrying the PENDING password hash.
     now = datetime.now(timezone.utc)
     token = secrets.token_urlsafe(32)
+    pending_hash = hash_password(payload.password)
     await db.password_reset_tokens.delete_many({"user_id": user["user_id"]})
     await db.password_reset_tokens.insert_one({
         "token": token,
         "user_id": user["user_id"],
         "email": email,
+        "pending_password_hash": pending_hash,
         "consumed_at": None,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=30)).isoformat(),
@@ -1240,15 +1250,86 @@ async def forgot_password(payload: ForgotPasswordRequest, request: Request):
         or _clean_origin(os.environ.get("FRONTEND_URL", ""))
         or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
     )
-    reset_url = f"{frontend_base}/reset-password?token={token}" if frontend_base else f"/reset-password?token={token}"
+    # GET endpoint that finalizes the change — same pattern as /verify-email.
+    confirm_url = (
+        f"{frontend_base}/api/auth/confirm-password-reset?token={token}"
+        if frontend_base
+        else f"/api/auth/confirm-password-reset?token={token}"
+    )
 
-    sent = await send_reset_email(email, reset_url)
+    sent = await send_reset_email(email, confirm_url)
     response = {**neutral, "email_sent": sent}
     if not sent:
-        # Demo mode (no Resend key): expose the link directly so the
-        # flow is testable without an email provider.
-        response["reset_link"] = reset_url
+        response["confirm_link"] = confirm_url
     return response
+
+
+@api_router.get("/auth/confirm-password-reset")
+async def confirm_password_reset(request: Request, token: str):
+    """Step 2: user clicks the email link → apply the pending password.
+
+    Returns a small HTML success page that auto-redirects to /login after 3s.
+    """
+    frontend_base = _clean_origin(os.environ.get("FRONTEND_URL", "")) or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", "")) or ""
+
+    def html_page(title: str, body: str, ok: bool = True, redirect_to: str = "/login") -> HTMLResponse:
+        color = "#00FF66" if ok else "#ef4444"
+        meta = f"<meta http-equiv='refresh' content='3;url={frontend_base}{redirect_to}'>" if ok else ""
+        return HTMLResponse(content=(
+            "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+            f"<title>{title}</title>{meta}"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+            "<body style='font-family:system-ui,sans-serif;background:#050505;color:#fff;"
+            "display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px'>"
+            "<div style='max-width:460px;text-align:center'>"
+            f"<h1 style='color:{color};margin:0 0 16px'>{title}</h1>"
+            f"<p style='color:#A1A1AA;line-height:1.6'>{body}</p>"
+            f"<p style='margin-top:24px'><a href='{frontend_base}{redirect_to}' "
+            f"style='background:#E4FF00;color:#050505;padding:12px 24px;border-radius:6px;"
+            f"text-decoration:none;font-weight:bold'>Aller à la connexion</a></p>"
+            "</div></body></html>"
+        ))
+
+    if not token:
+        return html_page("Lien invalide", "Le lien de confirmation est manquant.", ok=False)
+
+    doc = await db.password_reset_tokens.find_one({"token": token}, {"_id": 0})
+    if not doc:
+        return html_page("Lien invalide", "Ce lien est invalide ou a déjà été utilisé.", ok=False)
+    if doc.get("consumed_at"):
+        return html_page("Lien déjà utilisé", "Ce lien a déjà servi à confirmer un changement.", ok=False)
+
+    expires_at = datetime.fromisoformat(doc["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        await db.password_reset_tokens.delete_one({"token": token})
+        return html_page("Lien expiré", "Ce lien a expiré (30 min). Refais une demande de réinitialisation.", ok=False)
+
+    pending_hash = doc.get("pending_password_hash")
+    if not pending_hash:
+        # Legacy token without pending hash (very old flow) — reject cleanly.
+        return html_page("Lien obsolète", "Refais une demande de réinitialisation depuis la page de connexion.", ok=False)
+
+    await db.users.update_one(
+        {"user_id": doc["user_id"]},
+        {"$set": {
+            "password_hash": pending_hash,
+            "last_password_change": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    await db.password_reset_tokens.update_one(
+        {"token": token},
+        {"$set": {"consumed_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    # Defense in depth — kick all open sessions for this user.
+    await db.user_sessions.delete_many({"user_id": doc["user_id"]})
+    await db.failed_logins.delete_many({"email": doc["email"]})
+
+    return html_page(
+        "✅ Mot de passe mis à jour",
+        "Tu peux maintenant te connecter avec ton nouveau mot de passe. Redirection automatique dans 3 secondes…",
+    )
 
 
 @api_router.post("/auth/reset-password")
