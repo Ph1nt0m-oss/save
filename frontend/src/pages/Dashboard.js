@@ -372,7 +372,10 @@ export default function Dashboard() {
               ) : (
                 <button
                   key={project.project_id}
-                  onClick={() => setSelectedProject(project)}
+                  onClick={() => {
+                    setSelectedProject(project);
+                    navigate('/chat', { state: { mode: 'online', project } });
+                  }}
                   onContextMenu={(e) => onProjectContextMenu(e, project)}
                   data-testid={`project-${project.project_id}`}
                   className={`w-full text-left p-3 rounded-sm border transition-all ${

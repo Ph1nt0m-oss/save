@@ -2,476 +2,428 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
-import { 
-  ArrowLeft, ArrowRight, Sparkles, Loader2, 
-  Smartphone, Monitor, Globe, CheckCircle,
-  Palette, Database, Users, ShoppingCart, MessageSquare, Image,
-  FileText, Calendar, Music, Video, Map, Bell
+import {
+  ArrowLeft, ArrowRight, Sparkles, Loader2,
+  Smartphone, Monitor, Globe, CheckCircle, Wand2,
+  Database, Users, ShoppingCart, MessageSquare, Image as ImgIcon,
+  FileText, Calendar, Video, Map, Bell, Music, Paintbrush, Cog
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
+import AttachMenu from '../components/AttachMenu';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-// Types d'applications prédéfinis
-const APP_TYPES = [
-  { id: 'ecommerce', icon: ShoppingCart, label: 'E-Commerce', desc: 'Boutique en ligne avec panier' },
-  { id: 'blog', icon: FileText, label: 'Blog/CMS', desc: 'Site de contenu avec gestion' },
-  { id: 'social', icon: Users, label: 'Réseau Social', desc: 'Communauté et partage' },
-  { id: 'chat', icon: MessageSquare, label: 'Messagerie', desc: 'Chat en temps réel' },
-  { id: 'portfolio', icon: Image, label: 'Portfolio', desc: 'Présentation de projets' },
-  { id: 'dashboard', icon: Database, label: 'Dashboard', desc: 'Tableau de bord analytique' },
-  { id: 'booking', icon: Calendar, label: 'Réservation', desc: 'Système de rendez-vous' },
-  { id: 'media', icon: Video, label: 'Média/Streaming', desc: 'Plateforme de contenu' },
-  { id: 'maps', icon: Map, label: 'Géolocalisation', desc: 'App basée sur les cartes' },
-  { id: 'notifications', icon: Bell, label: 'Utilitaire', desc: 'App de productivité' },
-  { id: 'music', icon: Music, label: 'Audio/Musique', desc: 'Lecteur ou streaming' },
-  { id: 'custom', icon: Sparkles, label: 'Personnalisé', desc: 'Décrivez votre idée' }
-];
-
-// Palettes de couleurs
-const COLOR_PALETTES = [
-  { id: 'cyber', name: 'Cyber Yellow', primary: '#E4FF00', secondary: '#00FF66', bg: '#050505' },
-  { id: 'ocean', name: 'Ocean Blue', primary: '#0EA5E9', secondary: '#06B6D4', bg: '#0F172A' },
-  { id: 'sunset', name: 'Sunset', primary: '#F97316', secondary: '#EF4444', bg: '#1C1917' },
-  { id: 'forest', name: 'Forest', primary: '#22C55E', secondary: '#10B981', bg: '#052E16' },
-  { id: 'purple', name: 'Royal Purple', primary: '#A855F7', secondary: '#EC4899', bg: '#1E1B4B' },
-  { id: 'minimal', name: 'Minimal', primary: '#FFFFFF', secondary: '#A1A1AA', bg: '#000000' }
-];
-
-// Plateformes cibles
 const PLATFORMS = [
-  { id: 'web', icon: Globe, label: 'Web', desc: 'Site responsive' },
-  { id: 'mobile', icon: Smartphone, label: 'Mobile', desc: 'Android/iOS' },
-  { id: 'desktop', icon: Monitor, label: 'Desktop', desc: 'Windows/Mac' },
-  { id: 'all', icon: Sparkles, label: 'Toutes', desc: 'Multi-plateforme' }
+  { id: 'web', icon: Globe, label: 'Site web', desc: 'Responsive, exporté en PWA' },
+  { id: 'mobile', icon: Smartphone, label: 'App mobile', desc: 'Android / iOS (APK)' },
+  { id: 'desktop', icon: Monitor, label: 'Logiciel', desc: 'Windows / macOS (EXE)' },
+];
+
+const APP_TYPES = [
+  { id: 'ecommerce', icon: ShoppingCart, label: 'E-Commerce' },
+  { id: 'blog', icon: FileText, label: 'Blog / CMS' },
+  { id: 'social', icon: Users, label: 'Réseau social' },
+  { id: 'chat', icon: MessageSquare, label: 'Messagerie' },
+  { id: 'portfolio', icon: ImgIcon, label: 'Portfolio' },
+  { id: 'dashboard', icon: Database, label: 'Dashboard' },
+  { id: 'booking', icon: Calendar, label: 'Réservation' },
+  { id: 'media', icon: Video, label: 'Média / Streaming' },
+  { id: 'maps', icon: Map, label: 'Géolocalisation' },
+  { id: 'notifications', icon: Bell, label: 'Utilitaire' },
+  { id: 'music', icon: Music, label: 'Audio / Musique' },
+  { id: 'custom', icon: Sparkles, label: 'Personnalisé' },
 ];
 
 export default function GuidedWizard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { language } = useLanguage();
   const mode = location.state?.mode || 'online';
-  
+
   const [step, setStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedProject, setGeneratedProject] = useState(null);
-  
-  // Wizard state
-  const [config, setConfig] = useState({
-    appType: null,
-    customDescription: '',
-    colorPalette: 'cyber',
-    platform: 'web',
-    features: [],
-    appName: '',
-    hasAuth: true,
-    hasDatabase: true,
-    language: 'fr'
-  });
 
-  const totalSteps = 5;
+  const [platforms, setPlatforms] = useState([]);            // multi-select
+  const [appTypes, setAppTypes] = useState([]);              // multi-select
+  const [appName, setAppName] = useState('');
+  const [nameSuggestions, setNameSuggestions] = useState([]);
+  const [magicLoading, setMagicLoading] = useState({ name: false, design: false });
+  const [designText, setDesignText] = useState('');          // visuel
+  const [funcText, setFuncText] = useState('');              // fonctionnement
+  const [attachments, setAttachments] = useState([]);        // [{kind, name?, text?, url?}]
 
-  const updateConfig = (key, value) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
-  };
+  const totalSteps = 4;
+
+  const togglePlatform = (id) => setPlatforms(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+  const toggleType = (id) => setAppTypes(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
   const canProceed = () => {
-    switch (step) {
-      case 1: return config.appType !== null;
-      case 2: return config.appName.trim().length > 0;
-      case 3: return true;
-      case 4: return true;
-      case 5: return true;
-      default: return false;
+    if (step === 1) return platforms.length > 0 && appTypes.length > 0;
+    if (step === 2) return appName.trim().length > 1;
+    if (step === 3) return designText.trim().length > 0 || funcText.trim().length > 0;
+    return true;
+  };
+
+  const askMagicName = async () => {
+    setMagicLoading(s => ({ ...s, name: true }));
+    try {
+      const r = await axios.post(`${API}/ai/wizard-suggest`,
+        { kind: 'name', platforms, app_type: appTypes[0] || null, description: funcText, language },
+        { withCredentials: true });
+      const list = Array.isArray(r.data?.suggestions) ? r.data.suggestions.slice(0, 3) : [];
+      setNameSuggestions(list);
+      if (list[0]) {
+        setAppName(prev => prev || list[0]);
+        toast.success('🪄 ' + list.join(' · '));
+      }
+    } catch (_) {
+      toast.error('Suggestion impossible');
+    } finally {
+      setMagicLoading(s => ({ ...s, name: false }));
     }
+  };
+
+  const askMagicDesign = async () => {
+    setMagicLoading(s => ({ ...s, design: true }));
+    try {
+      const r = await axios.post(`${API}/ai/wizard-suggest`,
+        { kind: 'design', platforms, app_type: appTypes[0] || null, description: funcText || appName, language },
+        { withCredentials: true });
+      const text = (r.data?.design || '').trim();
+      if (text) {
+        setDesignText(prev => prev ? `${prev}\n\n${text}` : text);
+        toast.success('🪄 Design ajouté');
+      }
+    } catch (_) {
+      toast.error('Suggestion impossible');
+    } finally {
+      setMagicLoading(s => ({ ...s, design: false }));
+    }
+  };
+
+  const handleAttach = (att) => {
+    setAttachments(a => [...a, att]);
+    if (att.kind === 'text') {
+      setFuncText(prev => prev ? `${prev}\n${att.text}` : att.text);
+      toast.success('📋 Presse-papier ajouté');
+    } else if (att.kind === 'url') {
+      setFuncText(prev => prev ? `${prev}\nRéférence : ${att.url}` : `Référence : ${att.url}`);
+      toast.success('🔗 ' + att.url);
+    } else if (att.kind === 'file') {
+      toast.success('📎 ' + att.name);
+    }
+  };
+
+  const removeAttachment = (idx) => setAttachments(a => a.filter((_, i) => i !== idx));
+
+  const summaryDescription = () => {
+    const platLabel = platforms.map(p => PLATFORMS.find(x => x.id === p)?.label).filter(Boolean).join(', ');
+    const typeLabel = appTypes.map(t => APP_TYPES.find(x => x.id === t)?.label).filter(Boolean).join(', ');
+    return [
+      `Application "${appName}" — type ${typeLabel}.`,
+      `Plateformes cibles : ${platLabel}.`,
+      designText ? `Direction visuelle : ${designText}` : '',
+      funcText ? `Fonctionnement attendu : ${funcText}` : '',
+      attachments.length ? `Pièces jointes : ${attachments.map(a => a.name || a.url || 'extrait').join(', ')}` : '',
+    ].filter(Boolean).join('\n\n');
   };
 
   const generateApplication = async () => {
     setIsGenerating(true);
-    
-    const appTypeLabel = APP_TYPES.find(t => t.id === config.appType)?.label || config.appType;
-    const paletteInfo = COLOR_PALETTES.find(p => p.id === config.colorPalette);
-    
-    const fullDescription = `
-Créer une application "${config.appName}" de type ${appTypeLabel}.
-${config.customDescription ? `Description supplémentaire: ${config.customDescription}` : ''}
-
-Spécifications:
-- Plateforme: ${config.platform}
-- Palette de couleurs: ${paletteInfo?.name} (Primary: ${paletteInfo?.primary}, Secondary: ${paletteInfo?.secondary}, Background: ${paletteInfo?.bg})
-- Authentification: ${config.hasAuth ? 'Oui' : 'Non'}
-- Base de données: ${config.hasDatabase ? 'Oui' : 'Non'}
-- Fonctionnalités: ${config.features.join(', ') || 'Standard'}
-- Langue de l'interface: ${config.language === 'fr' ? 'Français' : 'English'}
-
-Génère une application complète et fonctionnelle avec tous les fichiers nécessaires.
-    `.trim();
-
     try {
-      const response = await axios.post(
+      const r = await axios.post(
         `${API}/ai/generate-complete-app`,
-        { 
-          description: fullDescription,
+        {
+          description: summaryDescription(),
           mode,
-          wizard_config: config
+          wizard_config: { platforms, appTypes, appName, designText, funcText, language },
         },
         { withCredentials: true }
       );
-
-      setGeneratedProject(response.data);
-      toast.success('Application générée avec succès !');
-      setStep(6); // Success step
-    } catch (error) {
-      console.error('Generation error:', error);
-      toast.error('Erreur de génération. Réessayez.');
+      setGeneratedProject(r.data);
+      toast.success('Application générée !');
+      setStep(5);
+    } catch (e) {
+      toast.error('Erreur de génération. Réessaie.');
     } finally {
       setIsGenerating(false);
     }
   };
 
   const renderStep = () => {
-    switch (step) {
-      case 1:
-        return (
-          <div className="space-y-6">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-['Chivo'] font-bold mb-2">Quel type d'application ?</h2>
-              <p className="text-[#A1A1AA]">Choisissez le modèle qui correspond le mieux à votre projet</p>
+    if (step === 1) {
+      return (
+        <div className="space-y-10">
+          <header className="text-center">
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Que veux-tu créer ?</h2>
+            <p className="text-[#A1A1AA]">Choisis une ou plusieurs plateformes et un ou plusieurs types.</p>
+          </header>
+
+          <section>
+            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">Plateforme(s)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3" data-testid="wizard-platforms">
+              {PLATFORMS.map(p => {
+                const active = platforms.includes(p.id);
+                return (
+                  <motion.button
+                    key={p.id} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+                    onClick={() => togglePlatform(p.id)}
+                    data-testid={`wizard-platform-${p.id}`}
+                    className={`p-5 rounded-sm border-2 text-left transition-all ${
+                      active ? 'border-[#E4FF00] bg-[#E4FF00]/10' : 'border-white/10 bg-[#0F0F13] hover:border-white/30'
+                    }`}
+                  >
+                    <p.icon className={`w-7 h-7 mb-3 ${active ? 'text-[#E4FF00]' : 'text-[#A1A1AA]'}`} />
+                    <h4 className="font-['Chivo'] font-bold">{p.label}</h4>
+                    <p className="text-xs text-[#A1A1AA] mt-1">{p.desc}</p>
+                  </motion.button>
+                );
+              })}
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {APP_TYPES.map(type => (
-                <motion.button
-                  key={type.id}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => updateConfig('appType', type.id)}
-                  className={`p-4 rounded-lg border-2 text-left transition-all ${
-                    config.appType === type.id
-                      ? 'border-[#E4FF00] bg-[#E4FF00]/10'
-                      : 'border-white/10 bg-[#0F0F13] hover:border-white/30'
-                  }`}
-                >
-                  <type.icon className={`w-8 h-8 mb-3 ${config.appType === type.id ? 'text-[#E4FF00]' : 'text-[#A1A1AA]'}`} />
-                  <h3 className="font-bold mb-1">{type.label}</h3>
-                  <p className="text-xs text-[#A1A1AA]">{type.desc}</p>
-                </motion.button>
+          </section>
+
+          <section>
+            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">Type(s) d'application</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="wizard-types">
+              {APP_TYPES.map(t => {
+                const active = appTypes.includes(t.id);
+                return (
+                  <motion.button
+                    key={t.id} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+                    onClick={() => toggleType(t.id)}
+                    data-testid={`wizard-type-${t.id}`}
+                    className={`p-3 rounded-sm border text-left transition-all ${
+                      active ? 'border-[#E4FF00] bg-[#E4FF00]/10' : 'border-white/10 bg-[#0F0F13] hover:border-white/30'
+                    }`}
+                  >
+                    <t.icon className={`w-5 h-5 mb-2 ${active ? 'text-[#E4FF00]' : 'text-[#A1A1AA]'}`} />
+                    <h4 className="text-sm font-['Chivo'] font-bold">{t.label}</h4>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      );
+    }
+
+    if (step === 2) {
+      return (
+        <div className="space-y-8 max-w-xl mx-auto">
+          <header className="text-center">
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Donne-lui un nom</h2>
+            <p className="text-[#A1A1AA]">Tape un nom — ou laisse l'IA t'en proposer.</p>
+          </header>
+
+          <div className="relative">
+            <input
+              type="text" value={appName}
+              onChange={(e) => setAppName(e.target.value)}
+              placeholder="Mon application"
+              data-testid="wizard-app-name"
+              className="w-full px-6 py-5 pr-16 bg-[#0F0F13] border-2 border-white/15 rounded-sm focus:outline-none focus:border-[#E4FF00] text-2xl text-center font-['Chivo']"
+            />
+            <button
+              type="button" onClick={askMagicName}
+              data-testid="wizard-magic-name-btn"
+              disabled={magicLoading.name || platforms.length === 0}
+              title="🪄 Suggérer un nom"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-sm bg-[#E4FF00] text-[#050505] hover:scale-105 transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {magicLoading.name ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
+            </button>
+          </div>
+
+          {nameSuggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2 justify-center" data-testid="wizard-name-suggestions">
+              {nameSuggestions.map((n) => (
+                <button key={n} onClick={() => setAppName(n)}
+                  className="px-3 py-1.5 text-sm border border-white/15 rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-colors">
+                  {n}
+                </button>
               ))}
             </div>
-          </div>
-        );
+          )}
 
-      case 2:
-        return (
-          <div className="space-y-6 max-w-xl mx-auto">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-['Chivo'] font-bold mb-2">Donnez un nom</h2>
-              <p className="text-[#A1A1AA]">Comment s'appellera votre application ?</p>
-            </div>
-            
-            <div>
-              <input
-                type="text"
-                value={config.appName}
-                onChange={(e) => updateConfig('appName', e.target.value)}
-                placeholder="Mon Application"
-                className="w-full px-6 py-4 bg-[#0F0F13] border-2 border-white/20 rounded-lg focus:outline-none focus:border-[#E4FF00] text-2xl text-center"
-                data-testid="wizard-app-name"
+          <p className="text-xs text-[#A1A1AA] text-center">
+            La baguette magique a besoin d'au moins une plateforme à l'étape précédente.
+          </p>
+        </div>
+      );
+    }
+
+    if (step === 3) {
+      return (
+        <div className="space-y-8 max-w-3xl mx-auto">
+          <header className="text-center">
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Décris ton app</h2>
+            <p className="text-[#A1A1AA]">Sépare l'apparence (design) du comportement (fonctionnement). Tu peux joindre des fichiers.</p>
+          </header>
+
+          <div className="grid md:grid-cols-2 gap-5">
+            <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Paintbrush className="w-4 h-4 text-[#E4FF00]" /> Design / Visuel</h3>
+                <button onClick={askMagicDesign}
+                  data-testid="wizard-magic-design-btn"
+                  disabled={magicLoading.design}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#E4FF00] text-[#050505] font-bold rounded-sm hover:scale-105 transition-transform disabled:opacity-40">
+                  {magicLoading.design ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  Suggestion IA
+                </button>
+              </div>
+              <textarea
+                value={designText} onChange={(e) => setDesignText(e.target.value)}
+                rows={8} placeholder="Couleurs, ambiance, typographie, références…"
+                data-testid="wizard-design-textarea"
+                className="w-full bg-[#050505] border border-white/10 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-[#E4FF00]"
               />
             </div>
 
-            {config.appType === 'custom' && (
-              <div className="mt-6">
-                <label className="block text-sm font-medium mb-2">Description détaillée</label>
-                <textarea
-                  value={config.customDescription}
-                  onChange={(e) => updateConfig('customDescription', e.target.value)}
-                  placeholder="Décrivez votre application en détail..."
-                  rows={4}
-                  className="w-full px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none focus:border-[#E4FF00]"
-                />
+            <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Cog className="w-4 h-4 text-[#00FF66]" /> Fonctionnement</h3>
+                <AttachMenu onResult={handleAttach} />
               </div>
+              <textarea
+                value={funcText} onChange={(e) => setFuncText(e.target.value)}
+                rows={8} placeholder="Que fait l'app ? Quels écrans, quelles règles métier ?"
+                data-testid="wizard-func-textarea"
+                className="w-full bg-[#050505] border border-white/10 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-[#00FF66]"
+              />
+            </div>
+          </div>
+
+          {attachments.length > 0 && (
+            <div data-testid="wizard-attachments" className="flex flex-wrap gap-2">
+              {attachments.map((a, i) => (
+                <span key={i} className="inline-flex items-center gap-2 px-2.5 py-1 text-xs bg-white/5 border border-white/10 rounded-sm">
+                  📎 {a.name || a.url || 'extrait'}
+                  <button onClick={() => removeAttachment(i)} className="text-[#A1A1AA] hover:text-red-400">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (step === 4) {
+      return (
+        <div className="max-w-2xl mx-auto space-y-6" data-testid="wizard-recap">
+          <header className="text-center">
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Récapitulatif</h2>
+            <p className="text-[#A1A1AA]">Vérifie avant de générer. Tu pourras revenir en arrière.</p>
+          </header>
+
+          <div className="bg-[#0F0F13] border-2 border-[#E4FF00] rounded-sm p-6 space-y-4 text-sm">
+            <Row label="Nom" value={appName || '—'} />
+            <Row label="Plateformes" value={platforms.map(p => PLATFORMS.find(x => x.id === p)?.label).filter(Boolean).join(', ') || '—'} />
+            <Row label="Types" value={appTypes.map(t => APP_TYPES.find(x => x.id === t)?.label).filter(Boolean).join(', ') || '—'} />
+            <Row label="Design" value={designText || '—'} multiline />
+            <Row label="Fonctionnement" value={funcText || '—'} multiline />
+            {attachments.length > 0 && (
+              <Row label="Pièces jointes" value={attachments.map(a => a.name || a.url || 'extrait').join(', ')} />
             )}
           </div>
-        );
+        </div>
+      );
+    }
 
-      case 3:
-        return (
-          <div className="space-y-6">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-['Chivo'] font-bold mb-2">Choisissez vos couleurs</h2>
-              <p className="text-[#A1A1AA]">Sélectionnez une palette de couleurs</p>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-              {COLOR_PALETTES.map(palette => (
-                <motion.button
-                  key={palette.id}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => updateConfig('colorPalette', palette.id)}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    config.colorPalette === palette.id
-                      ? 'border-[#E4FF00]'
-                      : 'border-white/10 hover:border-white/30'
-                  }`}
-                  style={{ backgroundColor: palette.bg }}
-                >
-                  <div className="flex gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-full" style={{ backgroundColor: palette.primary }} />
-                    <div className="w-8 h-8 rounded-full" style={{ backgroundColor: palette.secondary }} />
-                  </div>
-                  <h3 className="font-bold text-sm">{palette.name}</h3>
-                </motion.button>
-              ))}
-            </div>
+    if (step === 5) {
+      return (
+        <div className="text-center space-y-8 max-w-xl mx-auto">
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
+            className="w-24 h-24 bg-[#00FF66] rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle className="w-12 h-12 text-[#050505]" />
+          </motion.div>
+          <div>
+            <h2 className="text-3xl font-['Chivo'] font-black mb-2">Application générée !</h2>
+            <p className="text-[#A1A1AA]">"{appName}" est prête.</p>
           </div>
-        );
-
-      case 4:
-        return (
-          <div className="space-y-6">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-['Chivo'] font-bold mb-2">Plateforme cible</h2>
-              <p className="text-[#A1A1AA]">Où sera utilisée votre application ?</p>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
-              {PLATFORMS.map(platform => (
-                <motion.button
-                  key={platform.id}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => updateConfig('platform', platform.id)}
-                  className={`p-6 rounded-lg border-2 text-center transition-all ${
-                    config.platform === platform.id
-                      ? 'border-[#E4FF00] bg-[#E4FF00]/10'
-                      : 'border-white/10 bg-[#0F0F13] hover:border-white/30'
-                  }`}
-                >
-                  <platform.icon className={`w-12 h-12 mx-auto mb-3 ${config.platform === platform.id ? 'text-[#E4FF00]' : 'text-[#A1A1AA]'}`} />
-                  <h3 className="font-bold mb-1">{platform.label}</h3>
-                  <p className="text-xs text-[#A1A1AA]">{platform.desc}</p>
-                </motion.button>
-              ))}
-            </div>
-          </div>
-        );
-
-      case 5:
-        return (
-          <div className="space-y-6 max-w-2xl mx-auto">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-['Chivo'] font-bold mb-2">Options avancées</h2>
-              <p className="text-[#A1A1AA]">Personnalisez les fonctionnalités</p>
-            </div>
-            
-            <div className="space-y-4">
-              <label className="flex items-center justify-between p-4 bg-[#0F0F13] rounded-lg border border-white/10 cursor-pointer hover:border-white/30">
-                <div>
-                  <h3 className="font-bold">Authentification</h3>
-                  <p className="text-sm text-[#A1A1AA]">Système de login/signup</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={config.hasAuth}
-                  onChange={(e) => updateConfig('hasAuth', e.target.checked)}
-                  className="w-6 h-6 accent-[#E4FF00]"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-4 bg-[#0F0F13] rounded-lg border border-white/10 cursor-pointer hover:border-white/30">
-                <div>
-                  <h3 className="font-bold">Base de données</h3>
-                  <p className="text-sm text-[#A1A1AA]">Stockage de données persistant</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={config.hasDatabase}
-                  onChange={(e) => updateConfig('hasDatabase', e.target.checked)}
-                  className="w-6 h-6 accent-[#E4FF00]"
-                />
-              </label>
-
-              <div className="p-4 bg-[#0F0F13] rounded-lg border border-white/10">
-                <h3 className="font-bold mb-2">Langue de l'interface</h3>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => updateConfig('language', 'fr')}
-                    className={`flex-1 py-2 rounded ${config.language === 'fr' ? 'bg-[#E4FF00] text-[#050505]' : 'bg-white/10'}`}
-                  >
-                    Français
-                  </button>
-                  <button
-                    onClick={() => updateConfig('language', 'en')}
-                    className={`flex-1 py-2 rounded ${config.language === 'en' ? 'bg-[#E4FF00] text-[#050505]' : 'bg-white/10'}`}
-                  >
-                    English
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Résumé */}
-            <div className="mt-8 p-6 bg-[#0F0F13] rounded-lg border border-[#E4FF00]">
-              <h3 className="font-bold text-[#E4FF00] mb-4">Résumé de votre application</h3>
-              <ul className="space-y-2 text-sm">
-                <li><span className="text-[#A1A1AA]">Nom:</span> {config.appName}</li>
-                <li><span className="text-[#A1A1AA]">Type:</span> {APP_TYPES.find(t => t.id === config.appType)?.label}</li>
-                <li><span className="text-[#A1A1AA]">Couleurs:</span> {COLOR_PALETTES.find(p => p.id === config.colorPalette)?.name}</li>
-                <li><span className="text-[#A1A1AA]">Plateforme:</span> {PLATFORMS.find(p => p.id === config.platform)?.label}</li>
-                <li><span className="text-[#A1A1AA]">Auth:</span> {config.hasAuth ? 'Oui' : 'Non'}</li>
-                <li><span className="text-[#A1A1AA]">Base de données:</span> {config.hasDatabase ? 'Oui' : 'Non'}</li>
-              </ul>
-            </div>
-          </div>
-        );
-
-      case 6:
-        return (
-          <div className="text-center space-y-8 max-w-xl mx-auto">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="w-24 h-24 bg-[#00FF66] rounded-full flex items-center justify-center mx-auto"
-            >
-              <CheckCircle className="w-12 h-12 text-[#050505]" />
-            </motion.div>
-            
-            <div>
-              <h2 className="text-3xl font-['Chivo'] font-bold mb-2">Application Générée !</h2>
-              <p className="text-[#A1A1AA]">"{config.appName}" est prête à être exportée</p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <Button
-                onClick={() => window.open(`${API}/export/mobile/${generatedProject?.project?.id}`, '_blank')}
-                className="bg-[#E4FF00] text-[#050505] py-6"
-                disabled={!generatedProject?.project?.id}
-              >
-                <Smartphone className="w-5 h-5 mr-2" />
-                APK
-              </Button>
-              <Button
-                onClick={() => window.open(`${API}/export/desktop/${generatedProject?.project?.id}`, '_blank')}
-                className="bg-[#E4FF00] text-[#050505] py-6"
-                disabled={!generatedProject?.project?.id}
-              >
-                <Monitor className="w-5 h-5 mr-2" />
-                EXE
-              </Button>
-              <Button
-                onClick={() => window.open(`${API}/preview/project/${generatedProject?.project?.id}`, '_blank')}
-                className="bg-[#00FF66] text-[#050505] py-6"
-                disabled={!generatedProject?.project?.id}
-              >
-                <Globe className="w-5 h-5 mr-2" />
-                Web
-              </Button>
-            </div>
-
-            <Button
-              onClick={() => navigate('/dashboard')}
-              variant="outline"
-              className="border-white/20"
-            >
-              Retour au Dashboard
+          <div className="grid grid-cols-3 gap-3">
+            <Button onClick={() => window.open(`${API}/export/mobile/${generatedProject?.project?.id}`, '_blank')}
+              className="bg-[#E4FF00] text-[#050505] py-6" disabled={!generatedProject?.project?.id}>
+              <Smartphone className="w-5 h-5 mr-2" /> APK
+            </Button>
+            <Button onClick={() => window.open(`${API}/export/desktop/${generatedProject?.project?.id}`, '_blank')}
+              className="bg-[#E4FF00] text-[#050505] py-6" disabled={!generatedProject?.project?.id}>
+              <Monitor className="w-5 h-5 mr-2" /> EXE
+            </Button>
+            <Button onClick={() => window.open(`${API}/preview/project/${generatedProject?.project?.id}`, '_blank')}
+              className="bg-[#00FF66] text-[#050505] py-6" disabled={!generatedProject?.project?.id}>
+              <Globe className="w-5 h-5 mr-2" /> Web
             </Button>
           </div>
-        );
-
-      default:
-        return null;
+          <Button onClick={() => navigate('/dashboard')} variant="outline" className="border-white/20">
+            Retour au Dashboard
+          </Button>
+        </div>
+      );
     }
+
+    return null;
   };
 
   return (
     <div className="min-h-screen bg-[#050505] text-white">
-      {/* Header */}
-      <header className="bg-[#0F0F13] border-b border-white/10 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Button onClick={() => navigate('/dashboard')} variant="ghost" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Retour
+              <ArrowLeft className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Retour</span>
             </Button>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-6 h-6 text-[#E4FF00]" />
-              <h1 className="font-['Chivo'] font-bold text-xl">Assistant de Création</h1>
-            </div>
+            <Sparkles className="w-5 h-5 text-[#E4FF00] flex-shrink-0" />
+            <h1 className="font-['Chivo'] font-bold text-base sm:text-xl truncate">Assistant de création</h1>
           </div>
-          
-          {/* Progress */}
           {step <= totalSteps && (
-            <div className="flex items-center gap-2">
-              {[1, 2, 3, 4, 5].map(s => (
-                <div
-                  key={s}
-                  className={`w-3 h-3 rounded-full transition-all ${
-                    s === step ? 'bg-[#E4FF00] w-8' : s < step ? 'bg-[#00FF66]' : 'bg-white/20'
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: totalSteps }, (_, i) => i + 1).map(s => (
+                <div key={s} data-testid={`wizard-step-dot-${s}`}
+                  className={`h-2 rounded-full transition-all ${
+                    s === step ? 'bg-[#E4FF00] w-6' : s < step ? 'bg-[#00FF66] w-2' : 'bg-white/20 w-2'
                   }`}
                 />
               ))}
-              <span className="ml-2 text-sm text-[#A1A1AA]">Étape {step}/{totalSteps}</span>
+              <span className="ml-2 text-xs text-[#A1A1AA] hidden sm:inline">Étape {step}/{totalSteps}</span>
             </div>
           )}
         </div>
       </header>
 
-      {/* Content */}
-      <div className="max-w-5xl mx-auto p-6">
+      <div className="max-w-5xl mx-auto p-4 sm:p-6">
         <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="py-8"
-          >
+          <motion.div key={step}
+            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+            className="py-6 sm:py-10">
             {renderStep()}
           </motion.div>
         </AnimatePresence>
 
-        {/* Navigation */}
         {step <= totalSteps && (
-          <div className="flex justify-between mt-8 pt-8 border-t border-white/10">
-            <Button
-              onClick={() => setStep(s => Math.max(1, s - 1))}
-              variant="outline"
-              disabled={step === 1}
-              className="border-white/20"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Précédent
+          <div className="flex justify-between mt-6 pt-6 border-t border-white/10 gap-3">
+            <Button onClick={() => setStep(s => Math.max(1, s - 1))} variant="outline"
+              disabled={step === 1} className="border-white/20" data-testid="wizard-back-btn">
+              <ArrowLeft className="w-4 h-4 mr-2" /> Précédent
             </Button>
 
             {step < totalSteps ? (
-              <Button
-                onClick={() => setStep(s => s + 1)}
-                disabled={!canProceed()}
-                className="bg-[#E4FF00] text-[#050505]"
-              >
-                Suivant
-                <ArrowRight className="w-4 h-4 ml-2" />
+              <Button onClick={() => setStep(s => s + 1)} disabled={!canProceed()}
+                data-testid="wizard-next-btn"
+                className="bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold">
+                Suivant <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             ) : (
-              <Button
-                onClick={generateApplication}
-                disabled={isGenerating || !canProceed()}
-                className="bg-[#00FF66] text-[#050505] px-8"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Génération...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5 mr-2" />
-                    Générer l'Application
-                  </>
-                )}
+              <Button onClick={generateApplication} disabled={isGenerating || !canProceed()}
+                data-testid="wizard-generate-btn"
+                className="bg-[#00FF66] text-[#050505] px-6 sm:px-8 font-['Chivo'] font-bold">
+                {isGenerating ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Génération…</>
+                  : <><Sparkles className="w-5 h-5 mr-2" /> Générer l'application</>}
               </Button>
             )}
           </div>
@@ -480,3 +432,10 @@ Génère une application complète et fonctionnelle avec tous les fichiers néce
     </div>
   );
 }
+
+const Row = ({ label, value, multiline }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-1 sm:gap-3">
+    <div className="text-xs uppercase tracking-widest text-[#A1A1AA]">{label}</div>
+    <div className={multiline ? 'whitespace-pre-wrap' : ''}>{value}</div>
+  </div>
+);

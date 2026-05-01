@@ -18,6 +18,7 @@ export default function Chat() {
   const location = useLocation();
   const { language } = useLanguage();
   const mode = location.state?.mode || 'online';
+  const project = location.state?.project || null;
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -27,6 +28,21 @@ export default function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load chat history when a project is provided.
+  useEffect(() => {
+    if (!project?.project_id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await axios.get(`${API}/chat/history?project_id=${project.project_id}`, { withCredentials: true });
+        if (!cancelled && Array.isArray(r.data)) {
+          setMessages(r.data.map(m => ({ ...m, timestamp: m.timestamp ? new Date(m.timestamp) : new Date() })));
+        }
+      } catch (_) { /* silent */ }
+    })();
+    return () => { cancelled = true; };
+  }, [project?.project_id]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -67,7 +83,7 @@ export default function Chat() {
     try {
       const response = await axios.post(
         `${API}/chat/message`,
-        { message: userMessage, mode, language },
+        { message: userMessage, mode, language, project_id: project?.project_id },
         { withCredentials: true }
       );
 
@@ -126,7 +142,9 @@ export default function Chat() {
               <span className="hidden sm:inline">Retour</span>
             </Button>
             <div className="min-w-0">
-              <h1 className="font-['Chivo'] font-bold text-base sm:text-2xl truncate">Interaction IA</h1>
+              <h1 className="font-['Chivo'] font-bold text-base sm:text-2xl truncate" data-testid="chat-title">
+                {project?.name ? project.name : 'Interaction IA'}
+              </h1>
               <div className="flex items-center gap-2 mt-1">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: modeColor }}></div>
                 <span className="text-xs font-['IBM_Plex_Mono']" style={{ color: modeColor }}>

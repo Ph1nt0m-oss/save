@@ -592,7 +592,7 @@ export default function Login() {
                   </div>
                 )}
 
-                {mode === 'forgot' ? (
+                {mode === 'forgot' && (
                   <button
                     type="button"
                     onClick={handleForgotPassword}
@@ -602,22 +602,6 @@ export default function Login() {
                   >
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
                     {forgotSent ? '✅ Email envoyé — vérifie ta boîte' : 'Envoyer le lien de confirmation'}
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    data-testid="auth-submit-btn"
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(228,255,0,0.4)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Mail className="w-4 h-4" />
-                        {mode === 'signup' ? t('loginCreateAccount') : t('loginSignIn')}
-                      </>
-                    )}
                   </button>
                 )}
 

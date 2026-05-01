@@ -2364,7 +2364,109 @@ async def get_chat_history(request: Request, project_id: Optional[str] = None, l
     
     return messages
 
-# ==================== PROJECT ROUTES ====================
+# ==================== WIZARD AI HELPERS ====================
+
+class WizardSuggestInput(BaseModel):
+    kind: str  # 'name' | 'design'
+    platforms: List[str] = []
+    app_type: Optional[str] = None
+    description: Optional[str] = None
+    language: Optional[str] = 'fr'
+
+@api_router.post("/ai/wizard-suggest")
+async def wizard_suggest(request: Request, payload: WizardSuggestInput):
+    """🪄 Magic-wand helper for the wizard: suggest a project name or a design brief.
+
+    Returns short JSON the frontend can use directly.
+      - kind='name'   → { "suggestions": ["AppName1", "AppName2", "AppName3"] }
+      - kind='design' → { "design": "courte description visuelle, palette, ambiance" }
+    """
+    user_id = await get_current_user(request)
+    _ = user_id  # auth gate only
+
+    plats = ", ".join(payload.platforms) if payload.platforms else "non spécifié"
+    desc = (payload.description or "").strip()[:600]
+
+    if payload.kind == 'name':
+        prompt = (
+            f"Propose 3 noms courts et originaux pour une application "
+            f"({payload.app_type or 'générique'}) ciblant {plats}. "
+            f"Contexte utilisateur : {desc or 'aucun'}. "
+            f"Réponds UNIQUEMENT en JSON : {{\"suggestions\": [\"...\", \"...\", \"...\"]}}"
+        )
+    else:
+        prompt = (
+            f"Propose une direction visuelle (palette, typographie, ambiance, mots-clés) "
+            f"pour une app {payload.app_type or 'générique'} ciblant {plats}. "
+            f"Contexte : {desc or 'aucun'}. "
+            f"Réponds UNIQUEMENT en JSON : {{\"design\": \"description courte (<60 mots)\"}}"
+        )
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        emergent_key = os.environ.get('EMERGENT_LLM_KEY')
+        if not emergent_key:
+            raise ValueError("EMERGENT_LLM_KEY not configured")
+        chat = LlmChat(
+            api_key=emergent_key,
+            session_id=f"codeforge_wizard_{uuid.uuid4().hex[:8]}",
+            system_message="Tu aides un utilisateur non technique à concevoir une app. Réponds STRICTEMENT en JSON valide sans markdown.",
+        ).with_model("openai", "gpt-4o")
+        raw = await chat.send_message(UserMessage(text=prompt))
+        text = (raw or '').strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+        start = text.find('{')
+        end = text.rfind('}') + 1
+        data = json.loads(text[start:end]) if start >= 0 and end > start else {}
+    except Exception as exc:
+        logger.warning(f"wizard-suggest failure: {exc}")
+        # Lightweight fallback so the UI never feels stuck.
+        if payload.kind == 'name':
+            data = {"suggestions": ["NovaApp", "PixelForge", "Lumino"]}
+        else:
+            data = {"design": "Interface sombre élégante, accent jaune-vert vif, typographie sans-serif moderne, ambiance high-tech bienveillante."}
+
+    if payload.kind == 'name' and not isinstance(data.get('suggestions'), list):
+        data = {"suggestions": ["NovaApp", "PixelForge", "Lumino"]}
+    if payload.kind == 'design' and not isinstance(data.get('design'), str):
+        data = {"design": "Interface sombre élégante, accent jaune-vert vif, ambiance moderne."}
+
+    return data
+
+
+# ==================== USER PREFERENCES ====================
+
+class UserPreferences(BaseModel):
+    theme: Optional[str] = 'dark'         # 'dark' | 'light' | 'auto'
+    contrast: Optional[str] = 'normal'    # 'normal' | 'high'
+    accent: Optional[str] = '#E4FF00'
+    notifications_email: Optional[bool] = True
+    notifications_push: Optional[bool] = False
+
+@api_router.get("/auth/preferences")
+async def get_user_preferences(request: Request):
+    user_id = await get_current_user(request)
+    doc = await db.user_preferences.find_one({"user_id": user_id}, {"_id": 0, "user_id": 0}) or {}
+    base = UserPreferences().model_dump()
+    base.update({k: v for k, v in doc.items() if k in base})
+    return base
+
+@api_router.put("/auth/preferences")
+async def put_user_preferences(request: Request, prefs: UserPreferences):
+    user_id = await get_current_user(request)
+    payload = prefs.model_dump()
+    await db.user_preferences.update_one(
+        {"user_id": user_id},
+        {"$set": {**payload, "user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return payload
+
+
 
 @api_router.post("/projects", response_model=Project, status_code=201)
 async def create_project(request: Request, input: ProjectCreate):
