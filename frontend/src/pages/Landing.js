@@ -50,16 +50,7 @@ export default function Landing() {
         className="relative z-30 border-b border-white/10 backdrop-blur-md"
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 grid grid-cols-3 items-center gap-2">
-          <div className="justify-self-start min-w-0">
-            <LanguageToggle placement="bottom" />
-          </div>
-
-          <div className="justify-self-center flex items-center gap-1.5 sm:gap-2 min-w-0">
-            <Sparkles className="w-5 h-5 sm:w-7 sm:h-7 text-[#E4FF00] flex-shrink-0" />
-            <span className="text-base sm:text-2xl font-['Chivo'] font-black tracking-tight truncate">CodeForge AI</span>
-          </div>
-
-          <div className="justify-self-end">
+          <div className="justify-self-start">
             <button
               onClick={goDiscover}
               data-testid="nav-discover-btn"
@@ -67,6 +58,15 @@ export default function Landing() {
             >
               {t('l_navDiscover')}
             </button>
+          </div>
+
+          <div className="justify-self-center flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <Sparkles className="w-5 h-5 sm:w-7 sm:h-7 text-[#E4FF00] flex-shrink-0" />
+            <span className="text-base sm:text-2xl font-['Chivo'] font-black tracking-tight truncate">CodeForge AI</span>
+          </div>
+
+          <div className="justify-self-end min-w-0">
+            <LanguageToggle placement="bottom" />
           </div>
         </div>
       </motion.nav>

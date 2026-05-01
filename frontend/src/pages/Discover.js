@@ -317,7 +317,13 @@ export default function Discover() {
       {/* Top bar — [Lang] · [Logo + step counter] · [Connexion] */}
       <header className="relative z-20 grid grid-cols-3 items-center px-3 sm:px-6 py-3 sm:py-4 border-b border-white/10 bg-black/60 backdrop-blur-md gap-2" data-discover-allow>
         <div className="justify-self-start flex items-center gap-2 sm:gap-3 min-w-0">
-          <LanguageToggle placement="bottom" />
+          <button
+            onClick={() => navigate('/login')}
+            data-testid="discover-login-btn"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#E4FF00] text-[#050505] text-xs font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all whitespace-nowrap"
+          >
+            {t('d_login')}
+          </button>
           <button
             onClick={() => navigate('/')}
             data-testid="discover-exit-btn"
@@ -337,14 +343,8 @@ export default function Discover() {
           </span>
         </div>
 
-        <div className="justify-self-end">
-          <button
-            onClick={() => navigate('/login')}
-            data-testid="discover-login-btn"
-            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#E4FF00] text-[#050505] text-xs font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all whitespace-nowrap"
-          >
-            {t('d_login')}
-          </button>
+        <div className="justify-self-end min-w-0">
+          <LanguageToggle placement="bottom" />
         </div>
       </header>
 

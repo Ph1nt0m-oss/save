@@ -2,6 +2,10 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 1er Mai 2026 — Session 33 — Legal i18n + navbar swap
+- **Legal page traduite 12 langues** (`LegalContent.js`) : CGU, Privacy (RGPD), Cookies en fr/en/es/pt/de/nl/ru/zh/zh-TW/hi/bn/ur. Sélecteur de langue ajouté en haut à droite de la page.
+- **Navbar swap** (Landing + Discover) : `LanguageToggle` déplacé à DROITE, bouton principal (Découvrir / Connexion) à GAUCHE — évite que le dropdown des langues déborde à gauche sur écrans zoomés.
+
 ### 1er Mai 2026 — Session 32 — P2 batch (Wizard rebuild + Settings + Multi-comptes) + cleanup login
 - **Login** : suppression du bouton "Connexion/Inscription" en double (`auth-submit-btn`). Plus qu'un seul CTA jaune par mode.
 - **Dashboard sidebar** : clic gauche sur un projet ouvre désormais directement `/chat` avec le projet en contexte (mobile : tap sans maintien). Le clic-droit (long-press mobile) ouvre toujours le menu Renommer/Supprimer.
