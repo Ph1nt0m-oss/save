@@ -14,6 +14,7 @@ import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import HowItWorks from './pages/HowItWorks';
 import Legal from './pages/Legal';
+import Discover from './pages/Discover';
 import FeedbackButton from './components/FeedbackButton';
 
 // Authenticated/heavy routes — lazy-loaded to shrink initial bundle
@@ -91,6 +92,7 @@ function AppRouter() {
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/discover" element={<Discover />} />
         <Route path="/legal" element={<Legal />} />
         <Route 
           path="/dashboard" 

@@ -12,6 +12,27 @@ import LanguageToggle from '../components/LanguageToggle';
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const LAST_EMAIL_KEY = 'codeforge_last_email';
+const KNOWN_ACCOUNTS_KEY = 'codeforge_known_accounts';
+
+function rememberAccount(user) {
+  if (!user || !user.email) return;
+  try {
+    const raw = localStorage.getItem(KNOWN_ACCOUNTS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const filtered = Array.isArray(list)
+      ? list.filter(a => a && a.email && a.email !== user.email)
+      : [];
+    const entry = {
+      email: user.email,
+      name: user.name || user.email.split('@')[0],
+      picture: user.picture || null,
+      last_used: new Date().toISOString(),
+    };
+    // newest first, cap at 6
+    const updated = [entry, ...filtered].slice(0, 6);
+    localStorage.setItem(KNOWN_ACCOUNTS_KEY, JSON.stringify(updated));
+  } catch (_) {}
+}
 
 function formatDetail(detail) {
   if (!detail) return 'Une erreur est survenue.';
@@ -174,6 +195,7 @@ export default function Login() {
           try { localStorage.setItem('session_token', data.session_token); } catch (_) {}
         }
         try { localStorage.setItem(LAST_EMAIL_KEY, email.trim().toLowerCase()); } catch (_) {}
+        rememberAccount(data);
         setUser(data);
         toast.success(`Bienvenue, ${data.name || data.email} !`);
         navigate('/dashboard', { replace: true, state: { user: data } });
@@ -509,26 +531,14 @@ export default function Login() {
                 </button>
 
                 {mode === 'login' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleMagicLink}
-                      disabled={submitting}
-                      data-testid="magic-link-btn"
-                      className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-white/[0.04] border border-white/10 text-white text-sm font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all mt-2 disabled:opacity-60"
-                    >
-                      <Mail className="w-4 h-4" />
-                      {t('loginMagicLink')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleForgotPassword}
-                      data-testid="forgot-password-btn"
-                      className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
-                    >
-                      {t('loginForgot')}
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    data-testid="forgot-password-btn"
+                    className="w-full text-center text-xs text-[#A1A1AA] hover:text-[#E4FF00] font-['IBM_Plex_Sans'] underline transition-colors mt-1"
+                  >
+                    {t('loginForgot')}
+                  </button>
                 )}
               </motion.form>
             )}
@@ -567,26 +577,10 @@ export default function Login() {
             )}
 
             {!waitingFor && (
-              <>
-                <motion.div variants={item} className="relative py-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-white/10"></div>
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-[#0F0F13] px-3 text-xs text-[#A1A1AA]">{t('loginOrOffline')}</span>
-                  </div>
-                </motion.div>
-
-                <motion.button
-                  variants={item}
-                  onClick={() => navigate('/sms-login')}
-                  data-testid="sms-login-btn"
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-white/[0.04] border border-white/10 text-white font-['Chivo'] font-bold rounded-sm hover:border-cyan-400 hover:text-cyan-400 hover:-translate-y-0.5 transition-all duration-200"
-                >
-                  <Phone className="w-4 h-4" />
-                  {t('loginSmsDemo')}
-                </motion.button>
-              </>
+              <motion.div variants={item} className="text-center text-[10px] text-[#A1A1AA]/50 mt-2">
+                {/* SMS demo and magic-link removed at user request — single
+                    sign-in path: email + password. */}
+              </motion.div>
             )}
           </div>
         </motion.div>

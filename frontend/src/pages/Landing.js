@@ -64,14 +64,15 @@ export default function Landing() {
               data-testid="hero-cta-btn"
               className="px-8 py-4 bg-[#E4FF00] text-[#050505] text-lg font-['Chivo'] font-black rounded-sm hover:-translate-y-1 hover:shadow-[0_6px_20px_rgba(228,255,0,0.5)] transition-all duration-200"
             >
-              Commencer Gratuitement
+              Connexion
             </button>
-            <Link
-              to="#features"
+            <button
+              onClick={() => navigate('/discover')}
+              data-testid="hero-discover-btn"
               className="px-8 py-4 border border-white/20 text-white text-lg font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all duration-200"
             >
               Découvrir
-            </Link>
+            </button>
           </div>
 
           {/* Stats */}

@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, Menu, X, ChevronRight, Zap,
-  Wand2, Languages, Wifi, WifiOff
+  Wand2, Languages, Wifi, WifiOff, Users
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import Onboarding from '../components/Onboarding';
 import UserMenu from '../components/UserMenu';
 import FeatureHint from '../components/FeatureHint';
+import SwitchAccountModal from '../components/SwitchAccountModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [aiStatus, setAiStatus] = useState('online');
+  const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
   
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -577,6 +579,28 @@ export default function Dashboard() {
               </motion.button>
             </div>
 
+            {/* Account actions — switch account / logout */}
+            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setSwitchAccountOpen(true)}
+                data-testid="dashboard-switch-account-btn"
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-white/[0.04] border border-white/10 text-white font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] hover:-translate-y-0.5 transition-all"
+              >
+                <Users className="w-4 h-4" />
+                {language === 'fr' ? 'Changer de compte' : 'Switch account'}
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                data-testid="dashboard-logout-btn"
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-white/[0.04] border border-red-500/30 text-red-300 font-['Chivo'] font-bold rounded-sm hover:bg-red-500/10 hover:border-red-500 hover:text-red-200 hover:-translate-y-0.5 transition-all"
+              >
+                <LogOut className="w-4 h-4" />
+                {language === 'fr' ? 'Déconnexion' : 'Sign out'}
+              </button>
+            </div>
+
             {/* Info section */}
             <div className="mt-12 text-center">
               <p className="text-sm text-[#A1A1AA] mb-2">
@@ -593,6 +617,11 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <SwitchAccountModal
+        open={switchAccountOpen}
+        onClose={() => setSwitchAccountOpen(false)}
+      />
     </div>
   );
 }
