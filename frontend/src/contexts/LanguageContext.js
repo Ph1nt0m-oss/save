@@ -279,19 +279,229 @@ const translations = {
     mobile: 'Mobile',
     desktop: 'Desktop',
     allPlatforms: 'All'
+  },
+
+  // ========== ESPAÑOL ==========
+  es: {
+    back: 'Volver', next: 'Siguiente', previous: 'Anterior', generate: 'Generar',
+    loading: 'Cargando…', error: 'Error', success: 'Éxito', cancel: 'Cancelar',
+    save: 'Guardar', delete: 'Eliminar', edit: 'Editar', close: 'Cerrar', yes: 'Sí', no: 'No',
+    loginSignin: 'Iniciar sesión', loginSignup: 'Registrarse',
+    loginConnectToContinue: 'Inicia sesión para continuar',
+    loginCreateAccount: 'Crea tu cuenta gratuita',
+    loginEmail: 'Correo electrónico (Gmail preferido)',
+    loginPassword: 'Contraseña', loginName: 'Nombre (opcional)',
+    loginSubmitSignin: 'Iniciar sesión', loginSubmitSignup: 'Crear mi cuenta',
+    loginMagicLink: 'Acceso por enlace mágico (sin contraseña)',
+    loginForgot: '¿Olvidaste tu contraseña?',
+    loginSmsDemo: 'Acceso por SMS (demo)',
+    loginOrOffline: 'o modo sin conexión',
+    loginBackHome: '← Volver al inicio',
+    loginHowItWorks: 'Cómo funciona', loginLegal: 'Términos y Privacidad',
+    loginWaitingForConfirm: 'Esperando confirmación…',
+    loginEmailMinChars: '6 caracteres mínimo', loginExpiresIn: 'Expira en',
+    loginResendBtn: 'Reenviar enlace', loginResendSent: 'Enviando…',
+    loginResendCooldown: 'Espera 10 min',
+    loginIdleNotice: 'Has sido desconectado tras 1 h o más de inactividad. Cierra este mensaje y vuelve a iniciar sesión.',
+  },
+
+  // ========== DEUTSCH ==========
+  de: {
+    back: 'Zurück', next: 'Weiter', previous: 'Vorherige', generate: 'Generieren',
+    loading: 'Lädt…', error: 'Fehler', success: 'Erfolg', cancel: 'Abbrechen',
+    save: 'Speichern', delete: 'Löschen', edit: 'Bearbeiten', close: 'Schließen', yes: 'Ja', no: 'Nein',
+    loginSignin: 'Anmelden', loginSignup: 'Registrieren',
+    loginConnectToContinue: 'Melde dich an, um fortzufahren',
+    loginCreateAccount: 'Erstelle dein kostenloses Konto',
+    loginEmail: 'E-Mail-Adresse (Gmail bevorzugt)',
+    loginPassword: 'Passwort', loginName: 'Name (optional)',
+    loginSubmitSignin: 'Anmelden', loginSubmitSignup: 'Konto erstellen',
+    loginMagicLink: 'Magic-Link-Anmeldung (ohne Passwort)',
+    loginForgot: 'Passwort vergessen?',
+    loginSmsDemo: 'SMS-Anmeldung (Demo)',
+    loginOrOffline: 'oder Offline-Modus',
+    loginBackHome: '← Zurück zur Startseite',
+    loginHowItWorks: 'Wie es funktioniert', loginLegal: 'AGB & Datenschutz',
+    loginWaitingForConfirm: 'Warte auf Bestätigung…',
+    loginEmailMinChars: 'Mindestens 6 Zeichen', loginExpiresIn: 'Läuft ab in',
+    loginResendBtn: 'Link erneut senden', loginResendSent: 'Senden…',
+    loginResendCooldown: '10 Min warten',
+    loginIdleNotice: 'Du wurdest nach 1+ Stunde Inaktivität abgemeldet. Schließe diese Nachricht und melde dich erneut an.',
+  },
+
+  // ========== NEDERLANDS ==========
+  nl: {
+    back: 'Terug', next: 'Volgende', previous: 'Vorige', generate: 'Genereren',
+    loading: 'Laden…', error: 'Fout', success: 'Gelukt', cancel: 'Annuleren',
+    save: 'Opslaan', delete: 'Verwijderen', edit: 'Bewerken', close: 'Sluiten', yes: 'Ja', no: 'Nee',
+    loginSignin: 'Inloggen', loginSignup: 'Aanmelden',
+    loginConnectToContinue: 'Log in om door te gaan',
+    loginCreateAccount: 'Maak je gratis account aan',
+    loginEmail: 'E-mailadres (Gmail aanbevolen)',
+    loginPassword: 'Wachtwoord', loginName: 'Naam (optioneel)',
+    loginSubmitSignin: 'Inloggen', loginSubmitSignup: 'Account aanmaken',
+    loginMagicLink: 'Inloggen via magic link (zonder wachtwoord)',
+    loginForgot: 'Wachtwoord vergeten?',
+    loginSmsDemo: 'SMS-login (demo)',
+    loginOrOffline: 'of offline modus',
+    loginBackHome: '← Terug naar home',
+    loginHowItWorks: 'Hoe het werkt', loginLegal: 'Voorwaarden & Privacy',
+    loginWaitingForConfirm: 'Wachten op bevestiging…',
+    loginEmailMinChars: 'Minimaal 6 tekens', loginExpiresIn: 'Verloopt over',
+    loginResendBtn: 'Link opnieuw versturen', loginResendSent: 'Bezig…',
+    loginResendCooldown: 'Wacht 10 min',
+    loginIdleNotice: 'Je bent uitgelogd na 1 uur of meer inactiviteit. Sluit dit bericht en log opnieuw in.',
+  },
+
+  // ========== РУССКИЙ ==========
+  ru: {
+    back: 'Назад', next: 'Далее', previous: 'Предыдущее', generate: 'Создать',
+    loading: 'Загрузка…', error: 'Ошибка', success: 'Успех', cancel: 'Отмена',
+    save: 'Сохранить', delete: 'Удалить', edit: 'Изменить', close: 'Закрыть', yes: 'Да', no: 'Нет',
+    loginSignin: 'Войти', loginSignup: 'Регистрация',
+    loginConnectToContinue: 'Войдите, чтобы продолжить',
+    loginCreateAccount: 'Создайте бесплатный аккаунт',
+    loginEmail: 'Адрес эл. почты (предпочтительно Gmail)',
+    loginPassword: 'Пароль', loginName: 'Имя (необязательно)',
+    loginSubmitSignin: 'Войти', loginSubmitSignup: 'Создать аккаунт',
+    loginMagicLink: 'Вход по волшебной ссылке (без пароля)',
+    loginForgot: 'Забыли пароль?',
+    loginSmsDemo: 'Вход по SMS (демо)',
+    loginOrOffline: 'или офлайн-режим',
+    loginBackHome: '← На главную',
+    loginHowItWorks: 'Как это работает', loginLegal: 'Условия и Конфиденциальность',
+    loginWaitingForConfirm: 'Ожидание подтверждения…',
+    loginEmailMinChars: 'Минимум 6 символов', loginExpiresIn: 'Истекает через',
+    loginResendBtn: 'Отправить ссылку снова', loginResendSent: 'Отправка…',
+    loginResendCooldown: 'Подождите 10 мин',
+    loginIdleNotice: 'Вы вышли после 1+ часа бездействия. Закройте это сообщение и войдите снова.',
+  },
+
+  // ========== 中文 简体 (Chinese Simplified) ==========
+  zh: {
+    back: '返回', next: '下一步', previous: '上一步', generate: '生成',
+    loading: '加载中…', error: '错误', success: '成功', cancel: '取消',
+    save: '保存', delete: '删除', edit: '编辑', close: '关闭', yes: '是', no: '否',
+    loginSignin: '登录', loginSignup: '注册',
+    loginConnectToContinue: '登录以继续',
+    loginCreateAccount: '免费创建账户',
+    loginEmail: '电子邮件 (推荐使用 Gmail)',
+    loginPassword: '密码', loginName: '姓名 (可选)',
+    loginSubmitSignin: '登录', loginSubmitSignup: '创建账户',
+    loginMagicLink: '魔法链接登录 (无需密码)',
+    loginForgot: '忘记密码？',
+    loginSmsDemo: '短信登录 (演示)',
+    loginOrOffline: '或离线模式',
+    loginBackHome: '← 返回首页',
+    loginHowItWorks: '使用说明', loginLegal: '服务条款与隐私',
+    loginWaitingForConfirm: '等待确认…',
+    loginEmailMinChars: '至少 6 个字符', loginExpiresIn: '到期时间',
+    loginResendBtn: '重新发送链接', loginResendSent: '发送中…',
+    loginResendCooldown: '请等待 10 分钟',
+    loginIdleNotice: '由于超过 1 小时未活动，您已被自动注销。请关闭此消息后重新登录。',
+  },
+
+  // ========== 中文 繁體 (Chinese Traditional) ==========
+  'zh-TW': {
+    back: '返回', next: '下一步', previous: '上一步', generate: '生成',
+    loading: '載入中…', error: '錯誤', success: '成功', cancel: '取消',
+    save: '儲存', delete: '刪除', edit: '編輯', close: '關閉', yes: '是', no: '否',
+    loginSignin: '登入', loginSignup: '註冊',
+    loginConnectToContinue: '登入以繼續',
+    loginCreateAccount: '免費建立帳戶',
+    loginEmail: '電子郵件 (建議使用 Gmail)',
+    loginPassword: '密碼', loginName: '姓名 (可選)',
+    loginSubmitSignin: '登入', loginSubmitSignup: '建立帳戶',
+    loginMagicLink: '魔法連結登入 (免密碼)',
+    loginForgot: '忘記密碼？',
+    loginSmsDemo: '簡訊登入 (示範)',
+    loginOrOffline: '或離線模式',
+    loginBackHome: '← 返回首頁',
+    loginHowItWorks: '使用說明', loginLegal: '服務條款與隱私',
+    loginWaitingForConfirm: '等待確認…',
+    loginEmailMinChars: '至少 6 個字元', loginExpiresIn: '到期時間',
+    loginResendBtn: '重新傳送連結', loginResendSent: '傳送中…',
+    loginResendCooldown: '請等待 10 分鐘',
+    loginIdleNotice: '由於超過 1 小時未操作，您已被自動登出。請關閉此訊息後重新登入。',
+  },
+
+  // ========== हिन्दी (Hindi) ==========
+  hi: {
+    back: 'वापस', next: 'अगला', previous: 'पिछला', generate: 'बनाएँ',
+    loading: 'लोड हो रहा है…', error: 'त्रुटि', success: 'सफलता', cancel: 'रद्द करें',
+    save: 'सहेजें', delete: 'हटाएँ', edit: 'संपादित करें', close: 'बंद करें', yes: 'हाँ', no: 'नहीं',
+    loginSignin: 'साइन इन', loginSignup: 'साइन अप',
+    loginConnectToContinue: 'जारी रखने के लिए साइन इन करें',
+    loginCreateAccount: 'अपना मुफ़्त खाता बनाएँ',
+    loginEmail: 'ईमेल पता (Gmail अनुशंसित)',
+    loginPassword: 'पासवर्ड', loginName: 'नाम (वैकल्पिक)',
+    loginSubmitSignin: 'साइन इन', loginSubmitSignup: 'खाता बनाएँ',
+    loginMagicLink: 'मैजिक लिंक साइन-इन (बिना पासवर्ड)',
+    loginForgot: 'पासवर्ड भूल गए?',
+    loginSmsDemo: 'SMS साइन-इन (डेमो)',
+    loginOrOffline: 'या ऑफ़लाइन मोड',
+    loginBackHome: '← होम पर वापस',
+    loginHowItWorks: 'यह कैसे काम करता है', loginLegal: 'नियम और गोपनीयता',
+    loginWaitingForConfirm: 'पुष्टि की प्रतीक्षा है…',
+    loginEmailMinChars: 'न्यूनतम 6 अक्षर', loginExpiresIn: 'समाप्त होगा',
+    loginResendBtn: 'लिंक फिर भेजें', loginResendSent: 'भेज रहे हैं…',
+    loginResendCooldown: '10 मिनट प्रतीक्षा करें',
+    loginIdleNotice: '1 घंटे या अधिक की निष्क्रियता के बाद आपको लॉग आउट कर दिया गया है। यह संदेश बंद करें और फिर से साइन इन करें।',
+  },
+
+  // ========== বাংলা (Bengali) ==========
+  bn: {
+    back: 'ফিরে যান', next: 'পরবর্তী', previous: 'পূর্ববর্তী', generate: 'তৈরি করুন',
+    loading: 'লোড হচ্ছে…', error: 'ত্রুটি', success: 'সফল', cancel: 'বাতিল',
+    save: 'সংরক্ষণ', delete: 'মুছুন', edit: 'সম্পাদনা', close: 'বন্ধ', yes: 'হ্যাঁ', no: 'না',
+    loginSignin: 'সাইন ইন', loginSignup: 'সাইন আপ',
+    loginConnectToContinue: 'চালিয়ে যেতে সাইন ইন করুন',
+    loginCreateAccount: 'আপনার বিনামূল্যে অ্যাকাউন্ট তৈরি করুন',
+    loginEmail: 'ইমেইল ঠিকানা (Gmail অনুমোদিত)',
+    loginPassword: 'পাসওয়ার্ড', loginName: 'নাম (ঐচ্ছিক)',
+    loginSubmitSignin: 'সাইন ইন', loginSubmitSignup: 'অ্যাকাউন্ট তৈরি করুন',
+    loginMagicLink: 'ম্যাজিক লিঙ্ক সাইন-ইন (পাসওয়ার্ড ছাড়া)',
+    loginForgot: 'পাসওয়ার্ড ভুলে গেছেন?',
+    loginSmsDemo: 'SMS সাইন-ইন (ডেমো)',
+    loginOrOffline: 'বা অফলাইন মোড',
+    loginBackHome: '← হোমে ফিরুন',
+    loginHowItWorks: 'এটি কীভাবে কাজ করে', loginLegal: 'শর্তাবলী ও গোপনীয়তা',
+    loginWaitingForConfirm: 'নিশ্চিতকরণের অপেক্ষায়…',
+    loginEmailMinChars: 'কমপক্ষে ৬ অক্ষর', loginExpiresIn: 'মেয়াদ শেষ হবে',
+    loginResendBtn: 'লিঙ্ক পুনরায় পাঠান', loginResendSent: 'পাঠানো হচ্ছে…',
+    loginResendCooldown: '১০ মিনিট অপেক্ষা করুন',
+    loginIdleNotice: '১ ঘণ্টা বা তার বেশি নিষ্ক্রিয়তার পর আপনি লগ আউট হয়েছেন। এই বার্তা বন্ধ করে আবার সাইন ইন করুন।',
   }
 };
+
+// Supported languages — used by the dropdown selector.
+export const SUPPORTED_LANGS = [
+  { code: 'fr', label: 'Français', native: 'FR' },
+  { code: 'en', label: 'English', native: 'EN' },
+  { code: 'es', label: 'Español', native: 'ES' },
+  { code: 'de', label: 'Deutsch', native: 'DE' },
+  { code: 'nl', label: 'Nederlands', native: 'NL' },
+  { code: 'ru', label: 'Русский', native: 'RU' },
+  { code: 'zh', label: '中文 (简体)', native: '中文' },
+  { code: 'zh-TW', label: '中文 (繁體)', native: '繁體' },
+  { code: 'hi', label: 'हिन्दी', native: 'हिन्दी' },
+  { code: 'bn', label: 'বাংলা', native: 'বাংলা' },
+];
 
 const LanguageContext = createContext();
 
 export function LanguageProvider({ children }) {
   const [language, setLanguage] = useState(() => {
-    // Récupérer depuis localStorage ou utiliser le navigateur
     const saved = localStorage.getItem('codeforge_language');
-    if (saved) return saved;
-    
-    const browserLang = navigator.language.split('-')[0];
-    return browserLang === 'fr' ? 'fr' : 'en';
+    if (saved && translations[saved]) return saved;
+
+    const supported = Object.keys(translations);
+    const full = (navigator.language || 'en').toLowerCase();
+    // Try full code first (e.g. zh-TW), then primary tag (e.g. zh)
+    if (supported.includes(full)) return full;
+    const primary = full.split('-')[0];
+    const exact = supported.find(c => c.toLowerCase() === primary || c.toLowerCase().startsWith(primary + '-'));
+    return exact || 'en';
   });
 
   useEffect(() => {
@@ -302,8 +512,13 @@ export function LanguageProvider({ children }) {
     return translations[language]?.[key] || translations['en']?.[key] || key;
   };
 
+  // Kept for backwards compatibility — cycles through supported languages.
   const toggleLanguage = () => {
-    setLanguage(prev => prev === 'fr' ? 'en' : 'fr');
+    setLanguage(prev => {
+      const codes = Object.keys(translations);
+      const idx = codes.indexOf(prev);
+      return codes[(idx + 1) % codes.length];
+    });
   };
 
   return (
