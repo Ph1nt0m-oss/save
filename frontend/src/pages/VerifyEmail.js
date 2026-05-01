@@ -2,17 +2,21 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { CheckCircle2, AlertTriangle, Loader2, Clock } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Loader2, Clock, ExternalLink, Copy, CheckCheck } from 'lucide-react';
+import { toast } from 'sonner';
+import { detectWebview, getWebviewHelpMessage } from '../utils/detectWebview';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// Phase: 'processing' | 'verified' | 'expired' | 'invalid'
+// Phase: 'webview' | 'processing' | 'verified' | 'expired' | 'invalid'
 export default function VerifyEmail() {
   const navigate = useNavigate();
   const location = useLocation();
   const processed = useRef(false);
   const [phase, setPhase] = useState('processing');
   const [message, setMessage] = useState('');
+  const [webviewKind, setWebviewKind] = useState('safe');
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (processed.current) return;
@@ -26,6 +30,16 @@ export default function VerifyEmail() {
       return;
     }
 
+    // If we're inside an in-app webview (Gmail, Facebook, etc.), don't
+    // even attempt the API call — many webviews block third-party cookies
+    // and some flows. Show a friendly screen with a copy button instead.
+    const kind = detectWebview();
+    if (kind !== 'safe') {
+      setWebviewKind(kind);
+      setPhase('webview');
+      return;
+    }
+
     (async () => {
       try {
         const { data } = await axios.get(`${API}/auth/verify-email`, { params: { token } });
@@ -33,7 +47,6 @@ export default function VerifyEmail() {
         setPhase('verified');
       } catch (err) {
         const detail = err.response?.data?.detail || '';
-        // Backend sends the exact expired message text; detect it.
         if (typeof detail === 'string' && detail.toLowerCase().includes('expir')) {
           setPhase('expired');
           setMessage(detail);
@@ -44,6 +57,18 @@ export default function VerifyEmail() {
       }
     })();
   }, [location.search]);
+
+  const copyCurrentLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      toast.success('Lien copié !');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (_) {
+      // Fallback: show prompt
+      window.prompt('Copie ce lien :', window.location.href);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center relative overflow-hidden">
@@ -57,6 +82,61 @@ export default function VerifyEmail() {
         className="relative z-10 w-full max-w-md mx-4"
       >
         <div className="bg-white/[0.03] border border-white/10 rounded-sm p-12 backdrop-blur-xl text-center">
+          {phase === 'webview' && (
+            <motion.div
+              data-testid="verify-webview"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="w-16 h-16 bg-orange-500/20 border-2 border-orange-500 rounded-full flex items-center justify-center mx-auto">
+                <ExternalLink className="w-8 h-8 text-orange-400" />
+              </div>
+              <h2 className="mt-6 text-lg font-['Chivo'] font-bold text-white leading-snug">
+                Ouvre ce lien dans ton navigateur
+              </h2>
+              <p className="mt-3 text-orange-200/80 font-['IBM_Plex_Sans'] text-sm leading-relaxed">
+                {getWebviewHelpMessage(webviewKind)}
+              </p>
+
+              <div className="mt-6 p-3 bg-black/40 border border-white/10 rounded-sm text-left">
+                <p className="text-[11px] text-[#A1A1AA] mb-2">Lien à copier&nbsp;:</p>
+                <p className="text-[11px] text-cyan-300 break-all font-mono">{typeof window !== 'undefined' ? window.location.href : ''}</p>
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={copyCurrentLink}
+                  data-testid="verify-webview-copy"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all"
+                >
+                  {linkCopied ? <CheckCheck className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {linkCopied ? 'Copié !' : 'Copier le lien'}
+                </button>
+                <a
+                  href={typeof window !== 'undefined' ? window.location.href : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="verify-webview-open"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white/[0.04] border border-white/10 text-white font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+
+              <details className="mt-5 text-left">
+                <summary className="text-xs text-[#A1A1AA] cursor-pointer hover:text-white">
+                  Comment faire ?
+                </summary>
+                <ol className="mt-2 text-xs text-[#A1A1AA] list-decimal pl-5 space-y-1">
+                  <li>Touche les <b>3 points</b> en haut à droite</li>
+                  <li>Choisis <b>« Ouvrir dans Chrome »</b> ou <b>« Ouvrir dans Safari »</b></li>
+                  <li>Ou colle le lien copié dans la barre d'adresse de ton navigateur</li>
+                </ol>
+              </details>
+            </motion.div>
+          )}
+
           {phase === 'processing' && (
             <div data-testid="verify-processing">
               <Loader2 className="w-12 h-12 text-[#E4FF00] mx-auto animate-spin" />

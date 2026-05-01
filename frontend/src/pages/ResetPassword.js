@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { Lock, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Lock, Loader2, CheckCircle2, AlertTriangle, ExternalLink, Copy, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { detectWebview, getWebviewHelpMessage } from '../utils/detectWebview';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -11,11 +12,13 @@ export default function ResetPassword() {
   const navigate = useNavigate();
   const location = useLocation();
   const tokenRef = useRef('');
-  const [phase, setPhase] = useState('form'); // 'form' | 'success' | 'error'
+  const [phase, setPhase] = useState('form'); // 'webview' | 'form' | 'success' | 'error'
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [webviewKind, setWebviewKind] = useState('safe');
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -26,7 +29,25 @@ export default function ResetPassword() {
       return;
     }
     tokenRef.current = token;
+
+    // Webview guard — same rationale as VerifyEmail
+    const kind = detectWebview();
+    if (kind !== 'safe') {
+      setWebviewKind(kind);
+      setPhase('webview');
+    }
   }, [location.search]);
+
+  const copyCurrentLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      toast.success('Lien copié !');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (_) {
+      window.prompt('Copie ce lien :', window.location.href);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,6 +95,48 @@ export default function ResetPassword() {
         className="relative z-10 w-full max-w-md mx-4"
       >
         <div className="bg-white/[0.03] border border-white/10 rounded-sm p-10 backdrop-blur-xl text-center">
+          {phase === 'webview' && (
+            <motion.div
+              data-testid="reset-webview"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="w-16 h-16 bg-orange-500/20 border-2 border-orange-500 rounded-full flex items-center justify-center mx-auto">
+                <ExternalLink className="w-8 h-8 text-orange-400" />
+              </div>
+              <h2 className="mt-6 text-lg font-['Chivo'] font-bold text-white leading-snug">
+                Ouvre ce lien dans ton navigateur
+              </h2>
+              <p className="mt-3 text-orange-200/80 font-['IBM_Plex_Sans'] text-sm leading-relaxed">
+                {getWebviewHelpMessage(webviewKind)}
+              </p>
+              <div className="mt-6 p-3 bg-black/40 border border-white/10 rounded-sm text-left">
+                <p className="text-[11px] text-[#A1A1AA] mb-2">Lien à copier&nbsp;:</p>
+                <p className="text-[11px] text-cyan-300 break-all font-mono">{typeof window !== 'undefined' ? window.location.href : ''}</p>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={copyCurrentLink}
+                  data-testid="reset-webview-copy"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all"
+                >
+                  {linkCopied ? <CheckCheck className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {linkCopied ? 'Copié !' : 'Copier le lien'}
+                </button>
+                <a
+                  href={typeof window !== 'undefined' ? window.location.href : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="reset-webview-open"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white/[0.04] border border-white/10 text-white font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            </motion.div>
+          )}
+
           {phase === 'form' && (
             <div data-testid="reset-form">
               <div className="w-16 h-16 bg-[#E4FF00] rounded-sm flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(228,255,0,0.35)]">
