@@ -2,6 +2,16 @@
 
 ## Statut : VERSION ULTIME PHASE 6 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 1er Mai 2026 — Session 27 — Layout 3-colonnes & i18n complète Landing/Discover
+- **Landing** :
+  - Navbar reorganisée : `[LanguageToggle gauche] · [CodeForge AI centré] · [Découvrir droite]`
+  - Héro : Connexion à GAUCHE / Inscription à DROITE, **les deux en outline (plus de jaune)**
+  - z-index navbar passé à `z-30` (fix dropdown langues qui était bloqué par le héro)
+- **Discover** : header `[LangToggle + Quitter] · [CodeForge AI + Étape X/7] · [Connexion]` (même layout 3-colonnes)
+- **Dashboard** : header reorganisé `[Sidebar toggle + LangToggle] · [CodeForge AI centré] · [Tutoriel + Exports + UserMenu]`. Nouveau bouton `data-testid=dashboard-tutorial-btn` qui mène à /discover.
+- **i18n complet 12 langues** : ajout de ~50 clés Landing (`l_*`) + Discover (`d_*`) + `dashTutorial` dans **fr, en, es, pt, de, nl, ru, zh, zh-TW, hi, bn, ur**. La page d'accueil ET le tutoriel se traduisent intégralement.
+- **Tests** : iter_27.json — 14/14 frontend acceptance criteria PASS, 0 issue restant.
+
 ### 1er Mai 2026 — Session 26 — Refonte UX (Landing, Discover, Dashboard, i18n)
 - **Landing** : bouton top droit `Découvrir` (au lieu de Connexion), héro `Inscription` (primaire jaune) + `Connexion` (outline)
 - **Discover (/discover)** : tutoriel interactif 7 étapes avec **mock-écrans dédiés** (Dashboard, Wizard, Création, Chat, Aperçu app, Hors-ligne, CTA final). Navigation flèches Précédent/Suivant + clavier ← →. Tout autre clic affiche un toast "🔒 Connecte-toi…". Bouton final "S'inscrire" + "Connexion" en haut.
