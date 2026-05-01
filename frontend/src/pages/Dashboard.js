@@ -3,29 +3,29 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCache } from '../contexts/CacheContext';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import axios from 'axios';
 import { 
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
-  Download, Loader2, Menu, X, ChevronRight, Zap,
-  Wand2, Languages, Wifi, WifiOff, Users
+  Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
+  Wand2, Wifi, WifiOff, Users
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
-import { Separator } from '../components/ui/separator';
 import { toast } from 'sonner';
 import Onboarding from '../components/Onboarding';
 import UserMenu from '../components/UserMenu';
 import FeatureHint from '../components/FeatureHint';
 import SwitchAccountModal from '../components/SwitchAccountModal';
+import LanguageToggle from '../components/LanguageToggle';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
-  const { language, toggleLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const { isOnline, cacheProjects, getCachedProjects } = useCache();
   const navigate = useNavigate();
   
@@ -262,17 +262,11 @@ export default function Dashboard() {
         animate={{ width: isSidebarOpen ? 280 : 0 }}
         className="bg-[#0F0F13] border-r border-white/10 flex flex-col overflow-hidden"
       >
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+        <div className="p-4 border-b border-white/10 flex items-center">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-5 h-5 text-[#E4FF00]" />
-            <span className="font-['Chivo'] font-bold">Projets</span>
+            <span className="font-['Chivo'] font-bold">{t('dashProjects')}</span>
           </div>
-          <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="lg:hidden text-[#A1A1AA] hover:text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         <div className="p-4">
@@ -282,7 +276,7 @@ export default function Dashboard() {
             className="w-full bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 font-['Chivo'] font-bold"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Nouveau Projet
+            {t('dashNewProject')}
           </Button>
         </div>
 
@@ -323,16 +317,16 @@ export default function Dashboard() {
         <div className="p-4 border-t border-white/10 space-y-2">
           <div className="flex items-center gap-2 text-sm font-['IBM_Plex_Mono']">
             <div className="w-2 h-2 rounded-full bg-[#00FF66] animate-pulse-slow"></div>
-            <span className="text-[#A1A1AA]">IA Disponible</span>
+            <span className="text-[#A1A1AA]">{t('dashAiAvailable')}</span>
           </div>
-          
+
           <button
-            onClick={handleLogout}
-            data-testid="logout-btn"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-white/20 rounded-sm hover:border-red-500 hover:text-red-500 transition-all"
+            onClick={() => setSwitchAccountOpen(true)}
+            data-testid="sidebar-switch-account-btn"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-white/20 rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all"
           >
-            <LogOut className="w-4 h-4" />
-            <span className="font-['IBM_Plex_Sans']">Déconnexion</span>
+            <Users className="w-4 h-4" />
+            <span className="font-['IBM_Plex_Sans']">{t('dashSwitchAccount')}</span>
           </button>
         </div>
       </motion.aside>
@@ -343,17 +337,20 @@ export default function Dashboard() {
         <header className="bg-[#0F0F13] border-b border-white/10 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              {!isSidebarOpen && (
-                <button
-                  onClick={() => setIsSidebarOpen(true)}
-                  className="text-[#A1A1AA] hover:text-white"
-                >
-                  <Menu className="w-6 h-6" />
-                </button>
-              )}
+              <button
+                onClick={() => setIsSidebarOpen(o => !o)}
+                data-testid="sidebar-toggle-btn"
+                aria-label={isSidebarOpen ? t('dashCollapseSidebar') : t('dashExpandSidebar')}
+                title={isSidebarOpen ? t('dashCollapseSidebar') : t('dashExpandSidebar')}
+                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
+              >
+                {isSidebarOpen
+                  ? <PanelLeftClose className="w-5 h-5" />
+                  : <PanelLeftOpen className="w-5 h-5" />}
+              </button>
               <div>
-                <h1 className="font-['Chivo'] font-bold text-xl">CodeForge AI</h1>
-                <p className="text-sm text-[#A1A1AA]">Création Sans Limites</p>
+                <h1 className="font-['Chivo'] font-bold text-xl">{t('dashTitle')}</h1>
+                <p className="text-sm text-[#A1A1AA]">{t('dashSubtitle')}</p>
               </div>
             </div>
 
@@ -398,6 +395,7 @@ export default function Dashboard() {
               </Button>
 
               <div className="ml-3 flex items-center gap-2 border-l border-white/10 pl-3">
+                <LanguageToggle placement="bottom" />
                 <UserMenu user={user} onLogout={handleLogout} />
               </div>
             </div>
@@ -412,33 +410,22 @@ export default function Dashboard() {
                 {/* Indicateur de connexion */}
                 <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs ${isOnline ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'bg-orange-400/20 text-orange-400'}`}>
                   {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                  {isOnline ? 'En ligne' : 'Hors ligne'}
+                  {isOnline ? t('dashOnline') : t('dashOffline')}
                 </div>
-                
-                {/* Sélecteur de langue */}
-                <button
-                  onClick={toggleLanguage}
-                  className="flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20 transition-colors"
-                >
-                  <Languages className="w-3 h-3" />
-                  {language === 'fr' ? 'FR' : 'EN'}
-                </button>
               </div>
-              
+
               <h2 className="text-4xl font-['Chivo'] font-black mb-4">
-                {language === 'fr' ? 'Que souhaitez-vous faire ?' : 'What would you like to do?'}
+                {t('dashWhatToDo')}
               </h2>
               <p className="text-[#A1A1AA] text-lg flex items-center justify-center gap-2">
-                {language === 'fr' ? 'Choisissez votre mode de travail' : 'Choose your work mode'}
+                {t('dashChooseMode')}
                 <FeatureHint id="modes" side="bottom">
-                  {language === 'fr'
-                    ? "Mode en ligne : IA puissante (GPT-4o). Mode hors ligne : nécessite Ollama installé. Chat = converser, Création = générer une app complète."
-                    : "Online: powerful AI. Offline: requires Ollama. Chat = converse, Create = generate full app."}
+                  {t('dashInfoOnline')} — {t('dashInfoOffline')}
                 </FeatureHint>
               </p>
               {projects.length === 0 && (
                 <p data-testid="empty-projects-hint" className="text-xs text-[#E4FF00]/80 mt-3 font-['IBM_Plex_Sans']">
-                  ✨ Aucun projet pour l'instant — choisis un mode ci-dessous pour commencer (tout est gratuit et sans limites).
+                  {t('dashEmptyHint')}
                 </p>
               )}
             </div>
@@ -461,12 +448,8 @@ export default function Dashboard() {
               <div className="flex items-center justify-center gap-4">
                 <Wand2 className="w-8 h-8" />
                 <div className="text-left">
-                  <h3 className="text-2xl font-['Chivo'] font-bold">
-                    {language === 'fr' ? 'Assistant Guidé' : 'Guided Wizard'}
-                  </h3>
-                  <p className="text-[#050505]/70">
-                    {language === 'fr' ? 'Créez votre app étape par étape avec des questions simples' : 'Create your app step by step with simple questions'}
-                  </p>
+                  <h3 className="text-2xl font-['Chivo'] font-bold">{t('dashWizard')}</h3>
+                  <p className="text-[#050505]/70">{t('dashWizardDesc')}</p>
                 </div>
               </div>
             </motion.button>
@@ -486,15 +469,11 @@ export default function Dashboard() {
                     <Send className="w-8 h-8 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      {language === 'fr' ? 'Interaction' : 'Chat'}
-                    </h3>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashChat')}</h3>
                     <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {language === 'fr' ? 'IA EN LIGNE' : 'ONLINE AI'}
+                      {t('dashChatBadgeOn')}
                     </div>
-                    <p className="text-[#A1A1AA]">
-                      {language === 'fr' ? 'Discutez avec une IA puissante' : 'Chat with a powerful AI'}
-                    </p>
+                    <p className="text-[#A1A1AA]">{t('dashChatDescOn')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -513,15 +492,11 @@ export default function Dashboard() {
                     <Code2 className="w-8 h-8 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      {language === 'fr' ? 'Création' : 'Create'}
-                    </h3>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashCreate')}</h3>
                     <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {language === 'fr' ? 'EN LIGNE' : 'ONLINE'}
+                      {t('dashCreateBadgeOn')}
                     </div>
-                    <p className="text-[#A1A1AA]">
-                      {language === 'fr' ? 'Générez apps mobile, web, desktop' : 'Generate mobile, web, desktop apps'}
-                    </p>
+                    <p className="text-[#A1A1AA]">{t('dashCreateDescOn')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -539,15 +514,11 @@ export default function Dashboard() {
                     <Send className="w-8 h-8 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      {language === 'fr' ? 'Interaction' : 'Chat'}
-                    </h3>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashChat')}</h3>
                     <div className="inline-block px-3 py-1 bg-cyan-400 text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {language === 'fr' ? 'IA HORS LIGNE' : 'OFFLINE AI'}
+                      {t('dashChatBadgeOff')}
                     </div>
-                    <p className="text-[#A1A1AA]">
-                      {language === 'fr' ? 'IA locale (Ollama) sans connexion' : 'Local AI (Ollama) without internet'}
-                    </p>
+                    <p className="text-[#A1A1AA]">{t('dashChatDescOff')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -565,54 +536,20 @@ export default function Dashboard() {
                     <Code2 className="w-8 h-8 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">
-                      {language === 'fr' ? 'Création' : 'Create'}
-                    </h3>
+                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashCreate')}</h3>
                     <div className="inline-block px-3 py-1 bg-purple-400 text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {language === 'fr' ? 'HORS LIGNE' : 'OFFLINE'}
+                      {t('dashCreateBadgeOff')}
                     </div>
-                    <p className="text-[#A1A1AA]">
-                      {language === 'fr' ? 'Générez apps avec IA locale (Ollama)' : 'Generate apps with local AI (Ollama)'}
-                    </p>
+                    <p className="text-[#A1A1AA]">{t('dashCreateDescOff')}</p>
                   </div>
                 </div>
               </motion.button>
             </div>
 
-            {/* Account actions — switch account / logout */}
-            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setSwitchAccountOpen(true)}
-                data-testid="dashboard-switch-account-btn"
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white/[0.04] border border-white/10 text-white font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] hover:-translate-y-0.5 transition-all"
-              >
-                <Users className="w-4 h-4" />
-                {language === 'fr' ? 'Changer de compte' : 'Switch account'}
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                data-testid="dashboard-logout-btn"
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white/[0.04] border border-red-500/30 text-red-300 font-['Chivo'] font-bold rounded-sm hover:bg-red-500/10 hover:border-red-500 hover:text-red-200 hover:-translate-y-0.5 transition-all"
-              >
-                <LogOut className="w-4 h-4" />
-                {language === 'fr' ? 'Déconnexion' : 'Sign out'}
-              </button>
-            </div>
-
             {/* Info section */}
             <div className="mt-12 text-center">
-              <p className="text-sm text-[#A1A1AA] mb-2">
-                {language === 'fr' 
-                  ? '💡 Mode en ligne : IA puissante avec Ollama distant'
-                  : '💡 Online mode: Powerful AI with remote Ollama'}
-              </p>
-              <p className="text-sm text-[#A1A1AA]">
-                {language === 'fr'
-                  ? '🔌 Mode hors ligne : Nécessite Ollama installé localement'
-                  : '🔌 Offline mode: Requires Ollama installed locally'}
-              </p>
+              <p className="text-sm text-[#A1A1AA] mb-2">{t('dashInfoOnline')}</p>
+              <p className="text-sm text-[#A1A1AA]">{t('dashInfoOffline')}</p>
             </div>
           </div>
         </div>

@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 26 — full validation of the UI/UX refresh (Landing, Discover 7-step tutorial, Dashboard layout, 12-language toggle) + smoke test of the new `language` field on /api/ai/generate-complete-app. Backend: 4/4 new pytest cases pass (register+verify+login + 3 generate-complete-app calls with language es/de/none). Frontend: all 14 acceptance criteria met — Landing buttons rename correctly, Discover tutorial has 7 steps with click-blocker toast + S'inscrire final CTA + Connexion top-right, Dashboard has sidebar-toggle (collapses 280→1px), sidebar-switch-account-btn (opens switch modal), bottom grid removed (dashboard-switch-account-btn + dashboard-logout-btn gone), inline FR/EN pill removed, language dropdown lists all 12 languages with flags+native labels, selecting Spanish translates header / sidebar / center texts.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter26_language.py",
+    "/app/test_reports/pytest/pytest_iter26.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Landing.js — handleDiscover goes to /discover (line 12), nav button label='Découvrir' with data-testid='nav-discover-btn', hero-cta-btn='Inscription', hero-login-btn='Connexion' — all three navigate to /login via handleLogin. Correct.",
+    "Discover.js — 7 steps (TOTAL_STEPS=15), data-testid='discover-screen-{0..6}' dynamic, click-blocker (line 318) filters targets missing [data-discover-allow], shows sonner toast '🔒 Connecte-toi pour utiliser cette fonctionnalité.', top-right Connexion btn + exit btn + tutorial card all carry data-discover-allow attr. Keyboard arrows (← →) work as UX bonus. Final step swaps Suivant→S'inscrire (discover-final-cta) that navigates to /login. All verified.",
+    "Dashboard.js — sidebar-toggle-btn toggles sidebar width 280→0 (verified 280→1px in DOM after toggle — visual collapse OK). sidebar-switch-account-btn bottom of projects sidebar opens switch-account-modal. Old bottom grid (dashboard-switch-account-btn + dashboard-logout-btn) confirmed REMOVED. Inline FR/EN pill confirmed GONE. t('dashWhatToDo') used for the center title.",
+    "LanguageContext.js — 12 languages × ~15 dashXxx keys: fr, en, es, pt, de, nl, ru, zh, zh-TW, hi, bn, ur (note: tests expected 🇮🇳🇧🇩🇵🇰 for hi/bn/ur — actually the flag served is also 🇵🇰 for ur; all 12 codes render). SUPPORTED_LANGS exposes flag+label+native for each, so dropdown renders all 12 with flag emoji. Verified.",
+    "LanguageToggle.jsx — role=listbox, renders 12 role=option buttons with data-testid='language-option-{code}'. Outside mousedown handler properly scoped to the component's ref. Small caveat: the initial render of aria-expanded is 'false' before click, which is correct. Dropdown not shown in previous screenshot because the one-time Onboarding modal was intercepting the click (out-of-scope per review_request). Once dismissed, dropdown opens instantly and Spanish selection translates the entire dashboard shell.",
+    "Create.js — payload includes language (line 56-58) as expected; verified via backend smoke test which accepted language='es' and returned 200.",
+    "server.py 1528-1640 ai_generate_complete_app — `data.get('language')` appended as language_directive in the prompt; backend returns 200 for es / de / no-language in 40–65s. Good.",
+    "No regressions in the code paths I touched: file sizes still within OK range, MongoDB _id correctly excluded in auth/me and user-returning endpoints, REACT_APP_BACKEND_URL used everywhere for API calls, env-driven config preserved, all interactive elements carry data-testid. Carried-over suggestion: split server.py (~3000 lines) into routes/ submodules — still open, not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter26_language.py (new — 4 tests: auth flow + 3 generate-complete-app language smoke)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 new pytest cases; auth+register+verify+login+generate-complete-app language=es/de/none all green)",
+    "frontend": "100% — all 14 acceptance checks in the review request verified with Playwright. Landing (3 labels+nav), Discover (counter 1/7, prev disabled, next advances & changes screen, click-blocker toast, top-right Connexion, final S'inscrire CTA), Dashboard (sidebar-toggle collapses, sidebar-switch-account-btn opens modal, removed dashboard-switch-account-btn/dashboard-logout-btn, 12 language options with flags, Spanish translates shell, inline FR/EN pill gone)."
+  },
+  "test_credentials": "Pre-existing verified user: test_dash_1777658375@gmail.com / Pass1234 (works). New throwaway users created by pytest: test_iter26_{ts}@gmail.com / Pass1234 (~2 rows — cleanup: db.users.delete_many({email: /^test_iter26_/}) ).",
+  "seed_data_creation": "~2-3 throwaway @gmail.com users via register+verify (Resend real mode). Well under free quota.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 26 UI/UX refresh fully validated — no open bugs in the scope delivered. The Onboarding modal auto-showing on the first dashboard login for a user is still in French & intercepts foreground clicks until dismissed; that is intentionally OUT OF SCOPE per the review_request and has not been flagged. When writing future Dashboard Playwright tests, always dismiss the onboarding dialog first (click 'Suivant' buttons until it closes or press the X). Login API returns `session_token` not `token` — use that key in test fixtures.",
+  "rca of the issue": "No unresolved issues this iteration."
+}

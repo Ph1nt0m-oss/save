@@ -1533,8 +1533,26 @@ async def ai_generate_complete_app(request: Request, data: dict):
     description = data.get('description', '')
     mode = data.get('mode', 'online')
     wizard_config = data.get('wizard_config', {})
+    user_language = data.get('language', 'fr')
     # app_type reserved for future template routing; kept in wizard_config payload.
     _ = wizard_config.get('appType', 'web')
+
+    # Map language codes to full names so the AI knows what language to use
+    # in the UI strings, comments, README, and explanation it generates.
+    language_names = {
+        'fr': 'French (Français)', 'en': 'English', 'es': 'Spanish (Español)',
+        'pt': 'Portuguese (Português)', 'de': 'German (Deutsch)',
+        'nl': 'Dutch (Nederlands)', 'ru': 'Russian (Русский)',
+        'zh': 'Simplified Chinese (中文 简体)', 'zh-TW': 'Traditional Chinese (中文 繁體)',
+        'hi': 'Hindi (हिन्दी)', 'bn': 'Bengali (বাংলা)', 'ur': 'Urdu (اردو)',
+    }
+    target_language = language_names.get(user_language, 'French')
+    language_directive = (
+        f"\n=== LANGUE DE SORTIE / OUTPUT LANGUAGE ===\n"
+        f"All UI strings, button labels, README, comments, and the `explanation`/`instructions` fields\n"
+        f"MUST be written in: {target_language}.\n"
+        f"For RTL languages (Arabic, Urdu, Hebrew), set <html dir=\"rtl\"> in index.html.\n"
+    )
     
     # Prompt ULTRA DÉTAILLÉ comme Emergent
     prompt = f"""Tu es un développeur expert comme Emergent AI. Tu génères des applications COMPLÈTES, PROFESSIONNELLES et PRÊTES À L'EMPLOI.
@@ -1616,7 +1634,7 @@ Génère ces fichiers:
 IMPORTANT: 
 - Le code doit fonctionner IMMÉDIATEMENT en ouvrant index.html
 - L'app doit être installable comme PWA sur mobile
-- Design IDENTIQUE à Emergent (sombre, moderne, animations)"""
+- Design IDENTIQUE à Emergent (sombre, moderne, animations)""" + language_directive
 
     ai_text = None
     ai_source = None

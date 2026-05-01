@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
@@ -17,6 +18,7 @@ const API = `${BACKEND_URL}/api`;
 
 export default function Create() {
   const { user } = useAuth();
+  const { language } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const mode = location.state?.mode || 'online';
@@ -54,7 +56,7 @@ export default function Create() {
     try {
       const response = await axios.post(
         `${API}/ai/generate-complete-app`,
-        { description: userMessage, mode },
+        { description: userMessage, mode, language },
         { withCredentials: true }
       );
 

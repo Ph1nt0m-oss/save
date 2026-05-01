@@ -9,6 +9,7 @@ export default function Landing() {
     // Email + password (no Emergent/Google OAuth — that flow is gone for good)
     navigate('/login');
   };
+  const handleDiscover = () => navigate('/discover');
 
   return (
     <div className="min-h-screen bg-[#050505] text-white overflow-hidden">
@@ -30,11 +31,11 @@ export default function Landing() {
             <span className="text-2xl font-['Chivo'] font-black tracking-tight">CodeForge AI</span>
           </div>
           <button
-            onClick={handleLogin}
-            data-testid="nav-login-btn"
+            onClick={handleDiscover}
+            data-testid="nav-discover-btn"
             className="px-6 py-2 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(228,255,0,0.4)] transition-all duration-200"
           >
-            Connexion
+            Découvrir
           </button>
         </div>
       </motion.nav>
@@ -64,14 +65,14 @@ export default function Landing() {
               data-testid="hero-cta-btn"
               className="px-8 py-4 bg-[#E4FF00] text-[#050505] text-lg font-['Chivo'] font-black rounded-sm hover:-translate-y-1 hover:shadow-[0_6px_20px_rgba(228,255,0,0.5)] transition-all duration-200"
             >
-              Connexion
+              Inscription
             </button>
             <button
-              onClick={() => navigate('/discover')}
-              data-testid="hero-discover-btn"
+              onClick={handleLogin}
+              data-testid="hero-login-btn"
               className="px-8 py-4 border border-white/20 text-white text-lg font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all duration-200"
             >
-              Découvrir
+              Connexion
             </button>
           </div>
 
