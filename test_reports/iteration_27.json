@@ -1,0 +1,31 @@
+{
+  "summary": "iter_27 frontend review: validated 3-column header layouts on Landing/Discover/Dashboard, both hero CTAs are outlined (no yellow on Inscription), language toggle, dashboard-tutorial-btn navigation, Discover 7-step navigation + locked-element toast + final CTA, and 12-language i18n on Landing/Discover/Dashboard. Found and fixed ONE critical stacking-context bug on Landing that blocked language selection.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Verify the z-index bump on the Landing navbar (z-10 → z-30) does not introduce regressions with any future overlays/modals on Landing.",
+    "(OUT-OF-SCOPE per request, just FYI) The onboarding modal that pops on first dashboard load is still hardcoded in French (\"Bienvenue sur CodeForge AI\", \"Crée des applications…\", \"Suivant\") even when the dashboard locale is e.g. Russian. Same for some UserMenu dropdown labels. Mentioned in the iter_27 brief as out of scope but worth tracking."
+  ],
+  "critical_code_review_comments": [
+    "[FIXED] /app/frontend/src/pages/Landing.js — the <nav> wrapper had `relative z-10` and the hero <section> right below it ALSO has `relative z-10`. Each `relative` creates a new stacking context, so the LanguageToggle dropdown's `z-50` was scoped to the navbar's z-10 context and was visually drawn but click-intercepted by the hero section (elementFromPoint returned the hero <section>, so option clicks did nothing). Bumped navbar to `relative z-30` — fixes Landing language switching for all 12 languages.",
+    "Discover/Dashboard navbars are `z-20`/`z-50` already, which is why the same toggle worked there.",
+    "Translations: ES/DE/ZH/RU/HI/PT/NL/ZH-TW/BN/UR all wired correctly for l_* and d_* keys; FR+EN are full and the abridged 10 fall back gracefully where keys aren't overridden.",
+    "Discover lock blocker also catches clicks on tutorial card children that AREN'T marked `data-discover-allow`. Currently OK because the tutorial card itself wraps the prev/next buttons under a parent that has `data-discover-allow`. Worth a regression check if buttons are restructured.",
+    "describeApp / generationInProgress are FR/EN-only — confirmed in the brief as out-of-scope; rendering uses `t('describeApp') || 'Prompt'` fallback so no UI break."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/Landing.js  (nav z-10 → z-30 to escape stacking-context overlap with hero section)"
+  ],
+  "success_rate": { "backend": "skipped (per request)", "frontend": "100% after 1 fix" },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (verified working)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 4 iter_27 changes verified end-to-end on the live preview URL: (1) Landing 3-col navbar with LangToggle left / Logo center / Discover right, hero buttons Connexion(left,outline) + Inscription(right,outline) — both outline, no yellow bg. (2) Dashboard 3-col header with sidebar+lang on left, centered title, tutorial-btn+exports+UserMenu on right; tutorial-btn navigates to /discover; Russian translation of dashboard headline confirmed. (3) Discover 3-col header with LangToggle+exit on left, logo+counter centered, login on right; ES translations of step title/body/counter/buttons all correct; Next button advances through screens 0..6; locked element click triggers 🔒 toast; final CTA navigates to /login. (4) i18n verified for ES/DE/ZH/RU/HI on Landing (H1, signup btn, nav-discover) — fix to navbar z-index was required to make options clickable on Landing. Onboarding modal text & UserMenu labels remain hardcoded FR (out of scope).",
+  "rca_of_the_issue": "ROOT CAUSE: stacking-context isolation. In Landing.js the <motion.nav> used `relative z-10`. The hero <section> immediately following it also used `relative z-10`. Both `position: relative` + `z-index` create new stacking contexts. The LanguageToggle dropdown's internal `z-50` only competes inside the navbar's z-10 context, so against sibling stacking contexts at the same outer level (the hero section, declared LATER in source order) it loses on tie-breaking and the hero section is painted on top in the hit-test layer. Visually the dropdown looked open and rendered above the page, but document.elementFromPoint(x,y) at any option's center returned the <section> — confirmed via in-page evaluate. Clicking via Playwright (which uses real hit testing) therefore landed on the section, not the option, so setLanguage() was never invoked and localStorage stayed unchanged. REPRO STEPS: (1) load /, (2) click [data-testid=language-toggle] → dropdown visible, (3) click [data-testid=language-option-es] with force=true → no language change, H1 still English, localStorage codeforge_language unchanged. FIX APPLIED: change navbar wrapper from `relative z-10` to `relative z-30` so its internal `z-50` dropdown wins against the hero section's z-10 stacking context. Verified: 5/5 sampled languages (es, de, zh, ru, hi) now switch H1 + nav-discover + signup button correctly on Landing."
+}

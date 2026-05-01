@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users
+  Wand2, Wifi, WifiOff, Users, BookOpen
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -333,10 +333,11 @@ export default function Dashboard() {
 
       {/* Main Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header with exports */}
+        {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu] */}
         <header className="bg-[#0F0F13] border-b border-white/10 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-4">
+            {/* LEFT */}
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setIsSidebarOpen(o => !o)}
                 data-testid="sidebar-toggle-btn"
@@ -348,16 +349,32 @@ export default function Dashboard() {
                   ? <PanelLeftClose className="w-5 h-5" />
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
-              <div>
-                <h1 className="font-['Chivo'] font-bold text-xl">{t('dashTitle')}</h1>
-                <p className="text-sm text-[#A1A1AA]">{t('dashSubtitle')}</p>
-              </div>
+              <LanguageToggle placement="bottom" />
             </div>
 
-            {/* EXPORTS - TOUJOURS VISIBLES */}
+            {/* CENTER */}
+            <div className="flex flex-col items-center text-center">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-[#E4FF00]" />
+                <h1 className="font-['Chivo'] font-bold text-xl">{t('dashTitle')}</h1>
+              </div>
+              <p className="text-xs text-[#A1A1AA] hidden sm:block">{t('dashSubtitle')}</p>
+            </div>
+
+            {/* RIGHT */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-2">EXPORTS:</span>
-              
+              <button
+                onClick={() => navigate('/discover')}
+                data-testid="dashboard-tutorial-btn"
+                title={t('dashTutorial')}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#E4FF00] border border-white/10 hover:border-[#E4FF00]/40 rounded-sm px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                {t('dashTutorial')}
+              </button>
+
+              <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mx-1 hidden md:inline">EXPORTS:</span>
+
               <Button
                 onClick={() => exportProject('apk')}
                 size="sm"
@@ -369,7 +386,7 @@ export default function Dashboard() {
                 <Smartphone className="w-4 h-4 mr-1" />
                 APK
               </Button>
-              
+
               <Button
                 onClick={() => exportProject('exe')}
                 size="sm"
@@ -381,21 +398,20 @@ export default function Dashboard() {
                 <Monitor className="w-4 h-4 mr-1" />
                 EXE
               </Button>
-              
+
               <Button
                 onClick={() => exportProject('source')}
                 size="sm"
                 variant="outline"
                 data-testid="export-source-btn"
                 className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505]"
-                title="Télécharger Code Source (ZIP)"
+                title="Source code (ZIP)"
               >
                 <Download className="w-4 h-4 mr-1" />
                 ZIP
               </Button>
 
-              <div className="ml-3 flex items-center gap-2 border-l border-white/10 pl-3">
-                <LanguageToggle placement="bottom" />
+              <div className="ml-2 flex items-center gap-2 border-l border-white/10 pl-2">
                 <UserMenu user={user} onLogout={handleLogout} />
               </div>
             </div>

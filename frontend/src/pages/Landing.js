@@ -1,46 +1,77 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sparkles, Code, Smartphone, Monitor, Globe, Zap, Lock, Infinity } from 'lucide-react';
+import LanguageToggle from '../components/LanguageToggle';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function Landing() {
   const navigate = useNavigate();
-  const handleLogin = () => {
-    // Email + password (no Emergent/Google OAuth — that flow is gone for good)
-    navigate('/login');
+  const { t } = useLanguage();
+  const goLogin = () => navigate('/login');
+  const goDiscover = () => navigate('/discover');
+
+  // Highlight the keyword inside the H1 line if present, else show plain text.
+  // Works for languages where the keyword exists; falls back gracefully otherwise.
+  const renderH1Line1 = () => {
+    const line = t('l_h1Line1');
+    const word = t('l_h1Highlight');
+    const idx = word ? line.indexOf(word) : -1;
+    if (idx === -1) return <span className="text-white">{line}</span>;
+    return (
+      <>
+        <span className="text-white">{line.slice(0, idx)}</span>
+        <span className="text-[#E4FF00] cyber-glow">{word}</span>
+        <span className="text-white">{line.slice(idx + word.length)}</span>
+      </>
+    );
   };
-  const handleDiscover = () => navigate('/discover');
+
+  const features = [
+    { icon: <Code className="w-12 h-12" />,       k: 'feat1', color: '#E4FF00' },
+    { icon: <Smartphone className="w-12 h-12" />, k: 'feat2', color: '#00FF66' },
+    { icon: <Monitor className="w-12 h-12" />,    k: 'feat3', color: '#E4FF00' },
+    { icon: <Globe className="w-12 h-12" />,      k: 'feat4', color: '#00FF66' },
+    { icon: <Zap className="w-12 h-12" />,        k: 'feat5', color: '#E4FF00' },
+    { icon: <Lock className="w-12 h-12" />,       k: 'feat6', color: '#00FF66' },
+  ];
 
   return (
     <div className="min-h-screen bg-[#050505] text-white overflow-hidden">
       {/* Noise texture */}
       <div className="fixed inset-0 noise-bg pointer-events-none"></div>
-      
       {/* Grid background */}
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none"></div>
 
-      {/* Navigation */}
-      <motion.nav 
+      {/* Navigation: [Language toggle] · [CodeForge AI logo] · [Discover button] */}
+      <motion.nav
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="relative z-10 border-b border-white/10 backdrop-blur-md"
+        className="relative z-30 border-b border-white/10 backdrop-blur-md"
       >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <Sparkles className="w-8 h-8 text-[#E4FF00]" />
+        <div className="max-w-7xl mx-auto px-6 py-4 grid grid-cols-3 items-center">
+          <div className="justify-self-start">
+            <LanguageToggle placement="bottom" />
+          </div>
+
+          <div className="justify-self-center flex items-center space-x-2">
+            <Sparkles className="w-7 h-7 text-[#E4FF00]" />
             <span className="text-2xl font-['Chivo'] font-black tracking-tight">CodeForge AI</span>
           </div>
-          <button
-            onClick={handleDiscover}
-            data-testid="nav-discover-btn"
-            className="px-6 py-2 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(228,255,0,0.4)] transition-all duration-200"
-          >
-            Découvrir
-          </button>
+
+          <div className="justify-self-end">
+            <button
+              onClick={goDiscover}
+              data-testid="nav-discover-btn"
+              className="px-5 py-2 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(228,255,0,0.4)] transition-all duration-200"
+            >
+              {t('l_navDiscover')}
+            </button>
+          </div>
         </div>
       </motion.nav>
 
-      {/* Hero Section */}
+      {/* Hero */}
       <section className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-32">
         <motion.div
           initial={{ y: 30, opacity: 0 }}
@@ -49,30 +80,30 @@ export default function Landing() {
           className="text-center space-y-8"
         >
           <h1 className="font-['Chivo'] font-black text-5xl sm:text-6xl lg:text-8xl tracking-tighter leading-none">
-            Créez des <span className="text-[#E4FF00] cyber-glow">Applications</span>
+            {renderH1Line1()}
             <br />
-            Sans Écrire de Code
+            <span className="text-white">{t('l_h1Line2')}</span>
           </h1>
-          
+
           <p className="text-lg sm:text-xl text-[#A1A1AA] max-w-3xl mx-auto font-['IBM_Plex_Sans'] leading-relaxed">
-            Décrivez votre projet en français, notre IA génère instantanément le code complet.
-            Applications web, mobile, et desktop. Sans limites. 100% gratuit.
+            {t('l_subtitle')}
           </p>
 
+          {/* Hero CTAs — Connexion (left, outline) · Inscription (right, outline) */}
           <div className="flex flex-wrap gap-4 justify-center items-center pt-4">
             <button
-              onClick={handleLogin}
-              data-testid="hero-cta-btn"
-              className="px-8 py-4 bg-[#E4FF00] text-[#050505] text-lg font-['Chivo'] font-black rounded-sm hover:-translate-y-1 hover:shadow-[0_6px_20px_rgba(228,255,0,0.5)] transition-all duration-200"
-            >
-              Inscription
-            </button>
-            <button
-              onClick={handleLogin}
+              onClick={goLogin}
               data-testid="hero-login-btn"
               className="px-8 py-4 border border-white/20 text-white text-lg font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all duration-200"
             >
-              Connexion
+              {t('l_loginBtn')}
+            </button>
+            <button
+              onClick={goLogin}
+              data-testid="hero-cta-btn"
+              className="px-8 py-4 border border-white/20 text-white text-lg font-['Chivo'] font-bold rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all duration-200"
+            >
+              {t('l_signupBtn')}
             </button>
           </div>
 
@@ -80,15 +111,15 @@ export default function Landing() {
           <div className="flex flex-wrap gap-12 justify-center pt-12 text-sm font-['IBM_Plex_Mono']">
             <div>
               <div className="text-3xl font-bold text-[#E4FF00]"><Infinity className="inline w-8 h-8" /></div>
-              <div className="text-[#A1A1AA] mt-1">Génération Illimitée</div>
+              <div className="text-[#A1A1AA] mt-1">{t('l_statUnlimited')}</div>
             </div>
             <div>
               <div className="text-3xl font-bold text-[#00FF66]">GPT-5.2</div>
-              <div className="text-[#A1A1AA] mt-1">IA de Pointe</div>
+              <div className="text-[#A1A1AA] mt-1">{t('l_statAI')}</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">3 Formats</div>
-              <div className="text-[#A1A1AA] mt-1">Web, Mobile, Desktop</div>
+              <div className="text-3xl font-bold text-white">3</div>
+              <div className="text-[#A1A1AA] mt-1">{t('l_statFormats')}</div>
             </div>
           </div>
         </motion.div>
@@ -102,50 +133,25 @@ export default function Landing() {
           viewport={{ once: true }}
           className="text-4xl sm:text-5xl font-['Chivo'] font-black text-center mb-16 tracking-tight"
         >
-          Une Plateforme <span className="text-[#E4FF00]">Révolutionnaire</span>
+          {(() => {
+            const title = t('l_featTitle');
+            const high = t('l_featTitleHighlight');
+            const idx = high ? title.indexOf(high) : -1;
+            if (idx === -1) return <span>{title}</span>;
+            return (
+              <>
+                <span>{title.slice(0, idx)}</span>
+                <span className="text-[#E4FF00]">{high}</span>
+                <span>{title.slice(idx + high.length)}</span>
+              </>
+            );
+          })()}
         </motion.h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {[
-            {
-              icon: <Code className="w-12 h-12" />,
-              title: "Génération Intelligente",
-              desc: "GPT-5.2 analyse votre description et génère du code professionnel instantanément.",
-              color: "#E4FF00"
-            },
-            {
-              icon: <Smartphone className="w-12 h-12" />,
-              title: "Apps Mobile (.apk)",
-              desc: "Exportez directement vers Android. Installation en un clic sur votre téléphone.",
-              color: "#00FF66"
-            },
-            {
-              icon: <Monitor className="w-12 h-12" />,
-              title: "Logiciels Desktop (.exe)",
-              desc: "Créez des applications Windows professionnelles prêtes à distribuer.",
-              color: "#E4FF00"
-            },
-            {
-              icon: <Globe className="w-12 h-12" />,
-              title: "Sites Web",
-              desc: "Déployez instantanément sur le web avec un hébergement intégré.",
-              color: "#00FF66"
-            },
-            {
-              icon: <Zap className="w-12 h-12" />,
-              title: "Mode Hors Ligne",
-              desc: "Continuez à créer même sans connexion. Basculement automatique.",
-              color: "#E4FF00"
-            },
-            {
-              icon: <Lock className="w-12 h-12" />,
-              title: "Sans Restrictions",
-              desc: "Aucune limite d'utilisation. Aucun crédit. Créativité totale.",
-              color: "#00FF66"
-            }
-          ].map((feature, idx) => (
+          {features.map((feature, idx) => (
             <motion.div
-              key={idx}
+              key={feature.k}
               initial={{ y: 20, opacity: 0 }}
               whileInView={{ y: 0, opacity: 1 }}
               viewport={{ once: true }}
@@ -154,13 +160,13 @@ export default function Landing() {
             >
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-sm"
                    style={{ boxShadow: `0 0 30px ${feature.color}20` }}></div>
-              
+
               <div className="relative z-10">
                 <div className="mb-4" style={{ color: feature.color }}>
                   {feature.icon}
                 </div>
-                <h3 className="text-xl font-['Chivo'] font-bold mb-2">{feature.title}</h3>
-                <p className="text-[#A1A1AA] font-['IBM_Plex_Sans'] leading-relaxed">{feature.desc}</p>
+                <h3 className="text-xl font-['Chivo'] font-bold mb-2">{t(`l_${feature.k}T`)}</h3>
+                <p className="text-[#A1A1AA] font-['IBM_Plex_Sans'] leading-relaxed">{t(`l_${feature.k}D`)}</p>
               </div>
             </motion.div>
           ))}
@@ -176,20 +182,20 @@ export default function Landing() {
           className="relative p-12 bg-[#0F0F13] border-2 border-[#E4FF00]/30 rounded-sm text-center"
         >
           <div className="absolute inset-0 bg-gradient-to-br from-[#E4FF00]/10 to-transparent rounded-sm"></div>
-          
+
           <div className="relative z-10 space-y-6">
             <h2 className="text-4xl sm:text-5xl font-['Chivo'] font-black tracking-tight">
-              Prêt à Créer Sans Limites ?
+              {t('l_ctaTitle')}
             </h2>
             <p className="text-lg text-[#A1A1AA] font-['IBM_Plex_Sans']">
-              Rejoignez la révolution du développement assisté par IA.
+              {t('l_ctaSub')}
             </p>
             <button
-              onClick={handleLogin}
+              onClick={goLogin}
               data-testid="footer-cta-btn"
               className="px-10 py-5 bg-[#E4FF00] text-[#050505] text-xl font-['Chivo'] font-black rounded-sm hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(228,255,0,0.6)] transition-all duration-200"
             >
-              Démarrer Maintenant
+              {t('l_ctaBtn')}
             </button>
           </div>
         </motion.div>
@@ -198,7 +204,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 backdrop-blur-md mt-20">
         <div className="max-w-7xl mx-auto px-6 py-8 text-center text-[#A1A1AA] font-['IBM_Plex_Sans'] text-sm">
-          <p>© 2026 CodeForge AI. Propulsé par Emergent AI. Sans restrictions, sans limites.</p>
+          <p>{t('l_footer')}</p>
         </div>
       </footer>
     </div>
