@@ -118,15 +118,15 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col">
-      <header className="bg-[#0F0F13] border-b border-white/10 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button onClick={() => navigate('/dashboard')} variant="ghost" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Retour
+      <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <Button onClick={() => navigate('/dashboard')} variant="ghost" size="sm" className="px-2 sm:px-3 flex-shrink-0">
+              <ArrowLeft className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Retour</span>
             </Button>
-            <div>
-              <h1 className="font-['Chivo'] font-bold text-2xl">Interaction IA</h1>
+            <div className="min-w-0">
+              <h1 className="font-['Chivo'] font-bold text-base sm:text-2xl truncate">Interaction IA</h1>
               <div className="flex items-center gap-2 mt-1">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: modeColor }}></div>
                 <span className="text-xs font-['IBM_Plex_Mono']" style={{ color: modeColor }}>
@@ -137,51 +137,51 @@ export default function Chat() {
           </div>
           
           {/* Boutons de Prévisualisation */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-2">PRÉVISUALISATION:</span>
-            
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-1 sm:mr-2 hidden md:inline">PRÉVISUALISATION:</span>
+
             <Button
               onClick={() => openPreview('web')}
               size="sm"
               variant="outline"
               data-testid="chat-preview-web-btn"
-              className="border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-[#050505]"
+              className="border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-[#050505] px-2 sm:px-3"
             >
-              <Globe className="w-4 h-4 mr-1" />
-              Web
+              <Globe className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">Web</span>
             </Button>
-            
+
             <Button
               onClick={() => openPreview('app')}
               size="sm"
               variant="outline"
               data-testid="chat-preview-app-btn"
-              className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505]"
+              className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 sm:px-3"
             >
-              <Smartphone className="w-4 h-4 mr-1" />
-              App
+              <Smartphone className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">App</span>
             </Button>
-            
+
             <Button
               onClick={() => openPreview('pdf')}
               size="sm"
               variant="outline"
               data-testid="chat-preview-pdf-btn"
-              className="border-red-400 text-red-400 hover:bg-red-400 hover:text-[#050505]"
+              className="border-red-400 text-red-400 hover:bg-red-400 hover:text-[#050505] px-2 sm:px-3"
             >
-              <FileText className="w-4 h-4 mr-1" />
-              PDF
+              <FileText className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">PDF</span>
             </Button>
-            
+
             <Button
               onClick={() => openPreview('docx')}
               size="sm"
               variant="outline"
               data-testid="chat-preview-docx-btn"
-              className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-[#050505]"
+              className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-[#050505] px-2 sm:px-3"
             >
-              <FileType className="w-4 h-4 mr-1" />
-              DOCX
+              <FileType className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">DOCX</span>
             </Button>
           </div>
         </div>

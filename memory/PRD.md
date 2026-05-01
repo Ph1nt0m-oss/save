@@ -2,6 +2,30 @@
 
 ## Statut : VERSION ULTIME PHASE 6 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 1er Mai 2026 — Session 29 — Voice mics + Sidebar profile + ChatGPT mic + Paperclip + Login red error
+- **Chat AI conversationnel** : `/api/chat/message` réécrit. Mode online → Emergent GPT-4o (~3s, conversationnel "Bonjour ! Comment puis-je t'aider…"). Mode offline → Ollama uniquement. Sinon fallback localisé court 12 langues. Plus de message Ollama setup imposé.
+- **Login error inline rouge** : "Mot de passe incorrect" sous le champ password (rouge), bordure rouge, clear sur edit. `data-testid='auth-error'`.
+- **Dashboard sidebar bottom** restructurée : pill email (non-cliquable, avatar initiale) → Mon profil → Changer de compte → Déconnexion (rouge). "IA Disponible" supprimé. `data-testid='sidebar-profile-pill|btn|switch-account-btn|logout-btn'`.
+- **Mic ChatGPT-style** : envoi vocal en blanc/noir (au lieu de rouge). Dictée reste neutre.
+- **Trombone (📎)** : nouveau composant `AttachMenu`, présent sur Chat + Create. Trois sources : appareil (file picker), presse-papier (`navigator.clipboard.read`), URL (input). `data-testid='attach-btn|menu|from-device|from-clipboard|from-url|url-form|url-submit'`.
+- **Footer Landing** : liens "Comment ça marche" + "CGU & Confidentialité" traduits 12 langues. `data-testid='footer-how-it-works|legal'`.
+- **Chat header responsive** : preview buttons compacts (icon-only) <sm, wrap natural sur 360px (overflow=NO confirmé).
+- **Viewport** : `user-scalable=yes, max-scale=5` (zoom navigateur autorisé).
+- **Tests** : iter_29.json — backend 5/5 + frontend mostly PASS (1 bug `mode==='signin'` vs `'login'` corrigé par testing agent, 1 chat preview overflow corrigé manuellement).
+
+### Backlog P2 (prochaine session)
+- **Wizard rebuild** : multi-select plateforme (web/app/logiciel), multi-select type, génération IA noms (baguette magique), génération IA design avec import pièce jointe, étape personnalisation à 2 textareas (design + fonctionnement) avec auto-description, écran récapitulatif final
+- **Profile settings expansion** : thème, contraste, accent color, notifications, device ID
+- **Reset mot de passe nouveau flow** : saisie nouveau mot de passe d'abord puis email de confirmation (au lieu de l'inverse actuel)
+- **Add/Remove email accounts** flow complet (mot de passe + confirmation email)
+
+### 1er Mai 2026 — Session 28 — Voice mics + i18n complète + Responsive
+- **Voice transcription** : `/api/voice/transcribe` (OpenAI Whisper via Emergent LLM Key). Composant `VoiceRecorder` (mode `send` instantané, mode `dictate` rempli champ).
+- **2 micros par chat** sur Chat & Create. Tooltips/erreurs traduits 12 langues.
+- **Tutorial step 4 (Chat)** mentionne les 2 micros 🎙️ dans toutes les langues.
+- **Responsive** : Landing/Discover/Dashboard/Chat/Create breakpoints sm/md/lg/xl (text-3xl→8xl), `overflow-x-hidden`, `truncate`, `whitespace-nowrap`, exports/labels masqués sm:inline. Plus besoin de zoom 30%.
+- **Tests** : iter_28.json — tous PASS.
+
 ### 1er Mai 2026 — Session 27 — Layout 3-colonnes & i18n complète Landing/Discover
 - **Landing** :
   - Navbar reorganisée : `[LanguageToggle gauche] · [CodeForge AI centré] · [Découvrir droite]`
