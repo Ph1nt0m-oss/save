@@ -471,6 +471,54 @@ const translations = {
     loginResendBtn: 'লিঙ্ক পুনরায় পাঠান', loginResendSent: 'পাঠানো হচ্ছে…',
     loginResendCooldown: '১০ মিনিট অপেক্ষা করুন',
     loginIdleNotice: '১ ঘণ্টা বা তার বেশি নিষ্ক্রিয়তার পর আপনি লগ আউট হয়েছেন। এই বার্তা বন্ধ করে আবার সাইন ইন করুন।',
+  },
+
+  // ========== Português ==========
+  pt: {
+    back: 'Voltar', next: 'Seguinte', previous: 'Anterior', generate: 'Gerar',
+    loading: 'A carregar…', error: 'Erro', success: 'Sucesso', cancel: 'Cancelar',
+    save: 'Guardar', delete: 'Eliminar', edit: 'Editar', close: 'Fechar', yes: 'Sim', no: 'Não',
+    loginSignin: 'Entrar', loginSignup: 'Registar',
+    loginConnectToContinue: 'Inicia sessão para continuar',
+    loginCreateAccount: 'Cria a tua conta gratuita',
+    loginEmail: 'Endereço de e-mail (Gmail recomendado)',
+    loginPassword: 'Palavra-passe', loginName: 'Nome (opcional)',
+    loginSubmitSignin: 'Entrar', loginSubmitSignup: 'Criar conta',
+    loginMagicLink: 'Entrar por link mágico (sem palavra-passe)',
+    loginForgot: 'Esqueceste a palavra-passe?',
+    loginSmsDemo: 'Entrar por SMS (demonstração)',
+    loginOrOffline: 'ou modo offline',
+    loginBackHome: '← Voltar ao início',
+    loginHowItWorks: 'Como funciona', loginLegal: 'Termos e Privacidade',
+    loginWaitingForConfirm: 'A aguardar confirmação…',
+    loginEmailMinChars: 'Mínimo de 6 caracteres', loginExpiresIn: 'Expira em',
+    loginResendBtn: 'Reenviar link', loginResendSent: 'A enviar…',
+    loginResendCooldown: 'Aguarda 10 min',
+    loginIdleNotice: 'Foste desconectado após 1h ou mais de inatividade. Fecha esta mensagem e inicia sessão novamente.',
+  },
+
+  // ========== اردو (Urdu) — RTL ==========
+  ur: {
+    back: 'واپس', next: 'اگلا', previous: 'پچھلا', generate: 'بنائیں',
+    loading: 'لوڈ ہو رہا ہے…', error: 'خرابی', success: 'کامیابی', cancel: 'منسوخ کریں',
+    save: 'محفوظ کریں', delete: 'حذف کریں', edit: 'ترمیم', close: 'بند کریں', yes: 'ہاں', no: 'نہیں',
+    loginSignin: 'سائن ان', loginSignup: 'سائن اپ',
+    loginConnectToContinue: 'جاری رکھنے کے لیے سائن ان کریں',
+    loginCreateAccount: 'اپنا مفت اکاؤنٹ بنائیں',
+    loginEmail: 'ای میل پتہ (Gmail ترجیحی)',
+    loginPassword: 'پاس ورڈ', loginName: 'نام (اختیاری)',
+    loginSubmitSignin: 'سائن ان', loginSubmitSignup: 'اکاؤنٹ بنائیں',
+    loginMagicLink: 'میجک لنک سائن ان (بغیر پاس ورڈ)',
+    loginForgot: 'پاس ورڈ بھول گئے؟',
+    loginSmsDemo: 'SMS سائن ان (ڈیمو)',
+    loginOrOffline: 'یا آف لائن موڈ',
+    loginBackHome: '← ہوم پر واپس',
+    loginHowItWorks: 'یہ کیسے کام کرتا ہے', loginLegal: 'شرائط و رازداری',
+    loginWaitingForConfirm: 'تصدیق کا انتظار…',
+    loginEmailMinChars: 'کم از کم 6 حروف', loginExpiresIn: 'ختم ہونے میں',
+    loginResendBtn: 'لنک دوبارہ بھیجیں', loginResendSent: 'بھیجا جا رہا ہے…',
+    loginResendCooldown: '10 منٹ انتظار کریں',
+    loginIdleNotice: '1 گھنٹے یا زیادہ غیر فعال رہنے کے بعد آپ کو لاگ آؤٹ کر دیا گیا ہے۔ یہ پیغام بند کریں اور دوبارہ سائن ان کریں۔',
   }
 };
 
@@ -479,6 +527,7 @@ export const SUPPORTED_LANGS = [
   { code: 'fr', label: 'Français', native: 'FR' },
   { code: 'en', label: 'English', native: 'EN' },
   { code: 'es', label: 'Español', native: 'ES' },
+  { code: 'pt', label: 'Português', native: 'PT' },
   { code: 'de', label: 'Deutsch', native: 'DE' },
   { code: 'nl', label: 'Nederlands', native: 'NL' },
   { code: 'ru', label: 'Русский', native: 'RU' },
@@ -486,6 +535,7 @@ export const SUPPORTED_LANGS = [
   { code: 'zh-TW', label: '中文 (繁體)', native: '繁體' },
   { code: 'hi', label: 'हिन्दी', native: 'हिन्दी' },
   { code: 'bn', label: 'বাংলা', native: 'বাংলা' },
+  { code: 'ur', label: 'اردو', native: 'اردو' },
 ];
 
 const LanguageContext = createContext();
@@ -506,6 +556,13 @@ export function LanguageProvider({ children }) {
 
   useEffect(() => {
     localStorage.setItem('codeforge_language', language);
+    // Apply RTL direction for Right-to-Left scripts (Urdu, Arabic, Hebrew…)
+    try {
+      const RTL_LANGS = ['ur', 'ar', 'he', 'fa'];
+      const dir = RTL_LANGS.includes(language) ? 'rtl' : 'ltr';
+      document.documentElement.setAttribute('dir', dir);
+      document.documentElement.setAttribute('lang', language);
+    } catch (_) {}
   }, [language]);
 
   const t = (key) => {
