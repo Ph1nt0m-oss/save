@@ -115,7 +115,7 @@ export default function FeedbackButton() {
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-4">
-                {TYPES.map(({ key, label, icon: Icon, color }) => (
+                {TYPES_T.map(({ key, label, icon: Icon, color }) => (
                   <button
                     key={key} type="button" onClick={() => setType(key)}
                     data-testid={`feedback-type-${key}`}

@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -93,6 +93,58 @@ export default function Dashboard() {
   };
 
   const askDelete = (project) => { setDeleteTarget(project); setCtxMenu(null); };
+
+  const exportProjectZip = async (project) => {
+    setCtxMenu(null);
+    if (!project?.project_id) return;
+    try {
+      const r = await axios.post(
+        `${API}/export/download`,
+        { project_id: project.project_id, export_type: 'source' },
+        { withCredentials: true, responseType: 'blob' }
+      );
+      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/zip' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project.name || project.project_id}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('ZIP téléchargé');
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message || 'Export impossible';
+      toast.error(detail);
+    }
+  };
+
+  const exportProjectGithub = async (project) => {
+    setCtxMenu(null);
+    if (!project?.project_id) return;
+    const t1 = toast.loading('Push GitHub en cours…');
+    try {
+      const r = await axios.post(
+        `${API}/export/github/${project.project_id}`,
+        {},
+        { withCredentials: true }
+      );
+      toast.dismiss(t1);
+      if (r.data?.url) {
+        toast.success('Poussé sur GitHub', {
+          action: {
+            label: 'Ouvrir',
+            onClick: () => window.open(r.data.url, '_blank'),
+          },
+          duration: 8000,
+        });
+      } else {
+        toast.success('Push terminé');
+      }
+    } catch (err) {
+      toast.dismiss(t1);
+      toast.error(err.response?.data?.detail || 'Push GitHub impossible');
+    }
+  };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -388,6 +440,7 @@ export default function Dashboard() {
                     {project.project_type === 'web' && <Globe className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
                     {project.project_type === 'mobile' && <Smartphone className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
                     {project.project_type === 'desktop' && <Monitor className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    {project.project_type === 'chat' && <MessageSquare className="w-4 h-4 text-[#E4FF00] flex-shrink-0" />}
                     <span className="font-['IBM_Plex_Sans'] font-medium truncate flex-1 min-w-0">
                       {project.name}
                     </span>
@@ -659,6 +712,24 @@ export default function Dashboard() {
           >
             <Pencil className="w-4 h-4 text-[#E4FF00]" />
             <span>Renommer</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => exportProjectZip(ctxMenu.project)}
+            data-testid="project-ctx-export-zip"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
+          >
+            <Download className="w-4 h-4 text-cyan-400" />
+            <span>Télécharger ZIP</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => exportProjectGithub(ctxMenu.project)}
+            data-testid="project-ctx-export-github"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
+          >
+            <BookOpen className="w-4 h-4 text-purple-400" />
+            <span>Pousser vers GitHub</span>
           </button>
           <button
             type="button"

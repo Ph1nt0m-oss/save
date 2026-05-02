@@ -30,6 +30,18 @@ const translations = {
     fbSend: 'Envoyer',
     fbSending: 'Envoi…',
 
+    // Chat (Pin to sidebar + empty state)
+    chatPinBtn: 'Épingler dans la barre',
+    chatPinned: 'Discussion épinglée dans la barre latérale.',
+    chatAlreadyPinned: 'Cette discussion est déjà épinglée.',
+    chatPinEmpty: 'Discute d\'abord avant d\'épingler.',
+    chatPinDescription: 'Discussion CodeForge AI épinglée',
+    chatEmptyTitle: 'Interaction IA',
+    chatEmptyOnline: 'Discute avec une IA puissante en ligne (GPT-5.2).',
+    chatEmptyOffline: 'Discute avec une IA locale (nécessite Ollama).',
+    chatPlaceholder: 'Pose une question…',
+    chatSend: 'Envoyer',
+
     // Login page
     loginSignin: 'Connexion',
     loginSignup: 'Inscription',
@@ -291,6 +303,18 @@ const translations = {
     fbChars: 'characters',
     fbSend: 'Send',
     fbSending: 'Sending…',
+
+    // Chat (Pin to sidebar + empty state)
+    chatPinBtn: 'Pin to sidebar',
+    chatPinned: 'Chat pinned to the sidebar.',
+    chatAlreadyPinned: 'This chat is already pinned.',
+    chatPinEmpty: 'Send a message before pinning.',
+    chatPinDescription: 'Pinned CodeForge AI chat',
+    chatEmptyTitle: 'AI Interaction',
+    chatEmptyOnline: 'Chat with a powerful online AI (GPT-5.2).',
+    chatEmptyOffline: 'Chat with a local AI (requires Ollama).',
+    chatPlaceholder: 'Ask a question…',
+    chatSend: 'Send',
 
     // Login page
     loginSignin: 'Sign in',

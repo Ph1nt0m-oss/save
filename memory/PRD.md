@@ -2,6 +2,24 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 2 Mai 2026 — Session 38 — Chat header cleanup + Sidebar pin chats + ZIP/GitHub export per project + i18n
+- **🚨 Fix crash FeedbackButton** : `TYPES is not defined` → renommé en `TYPES_T` (déjà déclaré).
+- **Chat header épuré** : seul le bouton **Retour** reste (les boutons Web/App/PDF/DOCX et le titre du chat ont été retirés).
+- **Épingler discussion dans la barre latérale** :
+  - Bouton "Pin" 📌 (jaune) en haut de chat quand on a déjà discuté sans projet.
+  - Crée un projet de type `chat`, attache les messages existants via nouvel endpoint `POST /api/chat/attach`.
+  - Sidebar affiche désormais l'icône 💬 `MessageSquare` (jaune) pour les chats épinglés.
+- **Export ZIP par projet** (clic-droit sidebar) :
+  - Endpoint `/api/export/download` (existant) — corrigé pour accepter les projets `chat` (sans code généré) → ZIP avec README + transcript.
+  - Toujours inclut un `README.md` à la racine si absent.
+  - Nouveau bouton "Télécharger ZIP" dans le menu contextuel.
+- **Export GitHub par projet** (clic-droit sidebar) :
+  - Nouveau endpoint `POST /api/export/github/{project_id}` → push tous les fichiers + README + chat-transcript dans `projects/<safe-name>-<id>/`.
+  - Nouveau bouton "Pousser vers GitHub" dans le menu contextuel + toast avec lien direct vers le dossier.
+  - Vérifié par curl : push OK sur `Ph1nt0m-oss/codeforge-ai` repo.
+- **i18n chat** : nouvelles clés `chatPinBtn`, `chatPinned`, `chatEmptyTitle/Online/Offline`, `chatPlaceholder` (FR + EN, fallback EN→clé).
+- **Anti-autofill** : déjà actif (Session 35).
+
 ### 2 Mai 2026 — Session 37 — Upgrade GPT-4o → GPT-5.2 + prompts senior + Ollama unifié
 - **Modèle** : `gpt-4o` → **`gpt-5.2`** sur les 3 routes IA (chat /api/chat/message, génération /api/ai/generate-complete-app, wizard /api/ai/wizard-suggest). Vérifié dans les logs LiteLLM (`completion() model= gpt-5.2; provider = openai`).
 - **Chat AI prompt repensé** (haut de gamme conversationnel) :

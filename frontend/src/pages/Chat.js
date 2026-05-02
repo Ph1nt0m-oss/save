@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles, Globe, FileText, FileType, Smartphone, ExternalLink } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -17,7 +17,7 @@ const API = `${BACKEND_URL}/api`;
 export default function Chat() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { user } = useAuth();
   const mode = location.state?.mode || 'online';
   const project = location.state?.project || null;
@@ -25,6 +25,7 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pinning, setPinning] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -50,25 +51,41 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Ouvrir la prévisualisation dans un nouvel onglet
-  const openPreview = (type) => {
-    const previewTypes = {
-      web: `${API}/preview/demo/web`,
-      pdf: `${API}/preview/demo/pdf`,
-      docx: `${API}/preview/demo/docx`,
-      app: `${API}/preview/demo/app`
-    };
-    
-    window.open(previewTypes[type], '_blank');
-    toast.success(`Prévisualisation ${type.toUpperCase()} ouverte`);
-  };
-
   const sendMessage = async (e) => {
     if (e?.preventDefault) e.preventDefault();
     const text = input.trim();
     if (!text || isLoading) return;
     setInput('');
     await sendText(text);
+  };
+
+  // Pin the current chat to the sidebar by creating a "chat" project linked to this user.
+  // The history is automatically tied via project_id on subsequent messages.
+  const pinChatToSidebar = async () => {
+    if (project?.project_id) { toast.info(t('chatAlreadyPinned')); return; }
+    if (messages.length === 0) { toast.error(t('chatPinEmpty')); return; }
+    setPinning(true);
+    try {
+      const firstUserMsg = messages.find(m => m.role === 'user')?.content || 'Discussion';
+      const name = firstUserMsg.slice(0, 60).trim();
+      const r = await axios.post(`${API}/projects`, {
+        name,
+        description: t('chatPinDescription'),
+        project_type: 'chat',
+      }, { withCredentials: true });
+      const newProj = r.data;
+      // Re-attach existing local messages to the new project_id (best-effort).
+      try {
+        await Promise.all(messages.map(m => axios.post(`${API}/chat/attach`, {
+          message_id: m.message_id || m.id,
+          project_id: newProj.project_id,
+        }, { withCredentials: true }).catch(() => null)));
+      } catch (_) { /* silent */ }
+      toast.success(t('chatPinned'));
+      navigate('/chat', { state: { mode, project: newProj } });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t('error'));
+    } finally { setPinning(false); }
   };
 
   // Shared sender — used by the form, Enter key, and the voice "send" mic.
@@ -137,73 +154,23 @@ export default function Chat() {
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col">
       <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-            <Button onClick={() => navigate('/dashboard')} variant="ghost" size="sm" className="px-2 sm:px-3 flex-shrink-0">
-              <ArrowLeft className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Retour</span>
-            </Button>
-            <div className="min-w-0">
-              <h1 className="font-['Chivo'] font-bold text-base sm:text-2xl truncate" data-testid="chat-title">
-                {project?.name ? project.name : 'Interaction IA'}
-              </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: modeColor }}></div>
-                <span className="text-xs font-['IBM_Plex_Mono']" style={{ color: modeColor }}>
-                  {modeLabel}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          {/* Boutons de Prévisualisation */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-            <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-1 sm:mr-2 hidden md:inline">PRÉVISUALISATION:</span>
-
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+          <Button onClick={() => navigate('/dashboard')} variant="ghost" size="sm" className="px-2 sm:px-3 flex-shrink-0" data-testid="chat-back-btn">
+            <ArrowLeft className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">{t('back')}</span>
+          </Button>
+          {!project?.project_id && messages.length > 0 && (
             <Button
-              onClick={() => openPreview('web')}
-              size="sm"
-              variant="outline"
-              data-testid="chat-preview-web-btn"
-              className="border-[#00FF66] text-[#00FF66] hover:bg-[#00FF66] hover:text-[#050505] px-2 sm:px-3"
+              onClick={pinChatToSidebar}
+              disabled={pinning}
+              variant="outline" size="sm"
+              data-testid="chat-pin-btn"
+              className="border-[#E4FF00]/40 text-[#E4FF00] hover:bg-[#E4FF00]/10 flex-shrink-0"
             >
-              <Globe className="w-4 h-4 sm:mr-1" />
-              <span className="hidden sm:inline">Web</span>
+              {pinning ? <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" /> : <Pin className="w-4 h-4 sm:mr-2" />}
+              <span className="hidden sm:inline">{t('chatPinBtn')}</span>
             </Button>
-
-            <Button
-              onClick={() => openPreview('app')}
-              size="sm"
-              variant="outline"
-              data-testid="chat-preview-app-btn"
-              className="border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 sm:px-3"
-            >
-              <Smartphone className="w-4 h-4 sm:mr-1" />
-              <span className="hidden sm:inline">App</span>
-            </Button>
-
-            <Button
-              onClick={() => openPreview('pdf')}
-              size="sm"
-              variant="outline"
-              data-testid="chat-preview-pdf-btn"
-              className="border-red-400 text-red-400 hover:bg-red-400 hover:text-[#050505] px-2 sm:px-3"
-            >
-              <FileText className="w-4 h-4 sm:mr-1" />
-              <span className="hidden sm:inline">PDF</span>
-            </Button>
-
-            <Button
-              onClick={() => openPreview('docx')}
-              size="sm"
-              variant="outline"
-              data-testid="chat-preview-docx-btn"
-              className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-[#050505] px-2 sm:px-3"
-            >
-              <FileType className="w-4 h-4 sm:mr-1" />
-              <span className="hidden sm:inline">DOCX</span>
-            </Button>
-          </div>
+          )}
         </div>
       </header>
 
@@ -213,12 +180,10 @@ export default function Chat() {
             <div className="text-center py-20">
               <Sparkles className="w-20 h-20 mx-auto mb-6" style={{ color: modeColor }} />
               <h2 className="text-2xl font-['Chivo'] font-bold mb-3">
-                Interaction IA {modeLabel}
+                {t('chatEmptyTitle')}
               </h2>
               <p className="text-[#A1A1AA] mb-4">
-                {mode === 'online' 
-                  ? 'Discutez avec une IA puissante en ligne'
-                  : 'Discutez avec une IA locale (nécessite Ollama)'}
+                {mode === 'online' ? t('chatEmptyOnline') : t('chatEmptyOffline')}
               </p>
             </div>
           )}
@@ -299,7 +264,7 @@ export default function Chat() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Posez une question…  (clique sur Envoyer ou utilise la flèche →)"
+              placeholder={t('chatPlaceholder')}
               disabled={isLoading}
               rows={1}
               data-testid="chat-input"

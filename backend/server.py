@@ -2477,6 +2477,37 @@ async def get_chat_history(request: Request, project_id: Optional[str] = None, l
     
     return messages
 
+
+class ChatAttachInput(BaseModel):
+    message_id: Optional[str] = None
+    project_id: str
+    attach_all_orphans: Optional[bool] = False  # if true, attach all messages with project_id=null
+
+
+@api_router.post("/chat/attach")
+async def attach_chat_to_project(request: Request, payload: ChatAttachInput):
+    """Attach an orphan chat message (project_id=null) to a project — used when
+    a user pins a free-running chat to the sidebar."""
+    user_id = await get_current_user(request)
+    # Validate the project belongs to the user.
+    proj = await db.projects.find_one({"project_id": payload.project_id, "user_id": user_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if payload.attach_all_orphans:
+        result = await db.chat_messages.update_many(
+            {"user_id": user_id, "project_id": None},
+            {"$set": {"project_id": payload.project_id}},
+        )
+        return {"updated": result.modified_count}
+    if not payload.message_id:
+        raise HTTPException(status_code=400, detail="message_id or attach_all_orphans required")
+    result = await db.chat_messages.update_one(
+        {"message_id": payload.message_id, "user_id": user_id},
+        {"$set": {"project_id": payload.project_id}},
+    )
+    return {"updated": result.modified_count}
+
+
 # ==================== WIZARD AI HELPERS ====================
 
 class WizardSuggestInput(BaseModel):
@@ -2847,6 +2878,81 @@ Glissez-déposez le dossier sur netlify.com
 
 # ==================== EXPORT ROUTES ====================
 
+@api_router.post("/export/github/{project_id}")
+async def export_project_to_github(project_id: str, request: Request):
+    """Push every file of a generated project to the configured GitHub repository
+    under `projects/<sanitized-name>/` so the user has a permanent backup like
+    Emergent's Save-to-Github.
+    """
+    user_id = await get_current_user(request)
+    project = await db.projects.find_one(
+        {"project_id": project_id, "user_id": user_id}, {"_id": 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Projet non trouvé")
+    if not GITHUB_ENABLED:
+        raise HTTPException(status_code=503, detail="GitHub non configuré côté serveur.")
+
+    files = (project.get("generated_code") or {}).get("files", [])
+    is_chat = project.get("project_type") == "chat"
+    if not files and not is_chat:
+        raise HTTPException(status_code=400, detail="Aucun code à exporter.")
+
+    # Sanitize folder name (avoid GitHub-unsafe characters).
+    base = (project.get("name") or project_id)[:60]
+    safe = "".join(c if (c.isalnum() or c in ('-', '_')) else '-' for c in base).strip('-') or project_id
+    folder = f"projects/{safe}-{project_id}"
+
+    pushed = []
+    failed = []
+    for f in files:
+        path = f.get("path") or "untitled.txt"
+        content = f.get("content") or ""
+        try:
+            ok = await push_to_github(f"{folder}/{path}", content)
+            (pushed if ok else failed).append(path)
+        except Exception as exc:
+            logger.warning(f"GitHub push failed for {path}: {exc}")
+            failed.append(path)
+
+    # README + chat transcript (chat-type projects get no source code, only history).
+    readme = (
+        f"# {project.get('name', '')}\n\n"
+        f"{project.get('description', '')}\n\n"
+        f"_Exporté depuis CodeForge AI · ID `{project_id}`_\n"
+    )
+    try:
+        await push_to_github(f"{folder}/README.md", readme)
+        pushed.append("README.md")
+    except Exception:
+        failed.append("README.md")
+
+    if is_chat:
+        msgs = await db.chat_messages.find(
+            {"user_id": user_id, "project_id": project_id},
+            {"_id": 0, "role": 1, "content": 1, "timestamp": 1},
+        ).sort("timestamp", 1).to_list(length=10000)
+        transcript = "\n\n".join(
+            f"### {('Toi' if m.get('role') == 'user' else 'CodeForge')} — {m.get('timestamp', '')}\n{m.get('content', '')}"
+            for m in msgs
+        )
+        try:
+            await push_to_github(f"{folder}/chat-transcript.md", transcript or "(vide)")
+            pushed.append("chat-transcript.md")
+        except Exception:
+            failed.append("chat-transcript.md")
+
+    repo_url = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO_NAME}/tree/main/{folder}"
+    return {
+        "success": True,
+        "repository": f"{GITHUB_OWNER}/{GITHUB_REPO_NAME}",
+        "folder": folder,
+        "url": repo_url,
+        "pushed": pushed,
+        "failed": failed,
+    }
+
+
 @api_router.post("/export/download")
 async def download_export(request: Request, export_req: ExportRequest):
     """Download project as ZIP"""
@@ -2860,8 +2966,13 @@ async def download_export(request: Request, export_req: ExportRequest):
     if not project:
         raise HTTPException(status_code=404, detail="Projet non trouvé")
     
-    if not project.get("generated_code"):
+    # Chat-type projects have no generated_code — they export the transcript only.
+    if not project.get("generated_code") and project.get("project_type") != "chat":
         raise HTTPException(status_code=400, detail="Aucun code généré. Générez d'abord le code.")
+    
+    # Ensure generated_code exists for the loop below.
+    if not project.get("generated_code"):
+        project["generated_code"] = {"files": []}
     
     # Create ZIP in memory
     zip_buffer = io.BytesIO()
@@ -2869,6 +2980,27 @@ async def download_export(request: Request, export_req: ExportRequest):
         generated_code = project["generated_code"]
         for file_data in generated_code.get("files", []):
             zip_file.writestr(file_data["path"], file_data["content"])
+        # Always include a README at the root if not already present.
+        existing_paths = {f.get("path") for f in generated_code.get("files", [])}
+        if "README.md" not in existing_paths and "readme.md" not in existing_paths:
+            readme = (
+                f"# {project['name']}\n\n"
+                f"{project.get('description', '')}\n\n"
+                f"---\nGénéré par CodeForge AI · ID `{project['project_id']}`\n"
+                f"Créé le : {project.get('created_at')}\n"
+            )
+            zip_file.writestr("README.md", readme)
+        # If this project is a saved chat, append a transcript file.
+        if project.get("project_type") == "chat":
+            msgs = await db.chat_messages.find(
+                {"user_id": user_id, "project_id": export_req.project_id},
+                {"_id": 0, "role": 1, "content": 1, "timestamp": 1},
+            ).sort("timestamp", 1).to_list(length=10000)
+            transcript = "\n\n".join(
+                f"### {('Toi' if m.get('role') == 'user' else 'CodeForge')} — {m.get('timestamp', '')}\n{m.get('content', '')}"
+                for m in msgs
+            )
+            zip_file.writestr("chat-transcript.md", transcript or "(empty)")
     
     zip_buffer.seek(0)
     
