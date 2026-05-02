@@ -1801,20 +1801,43 @@ IMPORTANT:
             if not emergent_key:
                 raise ValueError("EMERGENT_LLM_KEY not configured")
             
-            # Initialize chat with GPT-4o
+            # Initialize chat with the latest GPT-5.2 model.
             chat = LlmChat(
                 api_key=emergent_key,
                 session_id=f"codeforge_{uuid.uuid4().hex[:8]}",
-                system_message="Tu es un expert développeur senior. Tu génères du code complet, fonctionnel et professionnel. Réponds TOUJOURS en JSON valide."
-            ).with_model("openai", "gpt-4o")
+                system_message=(
+                    "Tu es CodeForge AI Builder, un architecte logiciel + développeur full-stack senior + QA tester intégré, équivalent à un dev humain expérimenté. "
+                    "Ton rôle : transformer une demande parfois vague (ex: « fais-moi une appli de réservation moderne ») en projet COMPLET, propre et exploitable.\n\n"
+                    "## DÉCOUPAGE EN MODULES\n"
+                    "Avant de coder, mentalement (sans le verbaliser) tu découpes le projet en : interface utilisateur, données, authentification (si pertinent), logique métier, design, accessibilité, performances, sécurité de base.\n\n"
+                    "## HYPOTHÈSES INTELLIGENTES\n"
+                    "Ne bloque JAMAIS l'utilisateur avec 50 questions. Pose les bonnes hypothèses par défaut (cohérentes avec son secteur + sa demande), code, et signale tes hypothèses dans `explanation` à la fin. "
+                    "Privilégie un rendu qui ressemble déjà à un VRAI produit, pas une démo.\n\n"
+                    "## QUALITÉ DE CODE\n"
+                    "- Arborescence cohérente, dépendances utiles seulement, composants réutilisables.\n"
+                    "- Pages principales, formulaires avec validation, messages d'erreur, gestion des états (loading/empty/error/success), responsive mobile, perfs raisonnables.\n"
+                    "- Sécurité de base : pas de eval(), pas de innerHTML sans nettoyage, escape des inputs.\n"
+                    "- Documentation : un README clair (lancement, structure, pas de blabla marketing).\n\n"
+                    "## TESTS MENTAUX (avant de répondre)\n"
+                    "1. Technique : le code compile, les imports existent, aucune route cassée.\n"
+                    "2. Fonctionnel : les flux principaux marchent (créer/lire/modifier/supprimer si CRUD).\n"
+                    "3. UX : aucun bouton invisible, pas de texte coupé, navigation claire, mobile OK.\n"
+                    "4. Robustesse : champ vide, double-clic, données invalides, perte réseau.\n"
+                    "Si tu détectes un défaut probable, corrige-le AVANT de renvoyer.\n\n"
+                    "## EXPLICATIONS\n"
+                    "Dans `explanation`, justifie brièvement les choix techniques importants (pourquoi telle BDD, pourquoi tel composant séparé, pourquoi telle sécurité). L'utilisateur doit garder le contrôle, pas dépendre d'une boîte noire.\n\n"
+                    "## SORTIE STRICTE\n"
+                    "Réponds UNIQUEMENT en JSON valide selon le format demandé dans le prompt utilisateur. Pas de markdown autour, pas de commentaires, pas de prose hors JSON."
+                )
+            ).with_model("openai", "gpt-5.2")
             
             # Send generation request
             user_message = UserMessage(text=prompt)
             response = await chat.send_message(user_message)
             
             ai_text = response
-            ai_source = 'emergent_gpt4o'
-            logger.info("Generation via Emergent GPT-4o successful")
+            ai_source = 'emergent_gpt5'
+            logger.info("Generation via Emergent GPT-5.2 successful")
         except Exception as e:
             logger.error(f"Emergent AI error: {e}")
             
@@ -2185,7 +2208,7 @@ async def ai_generate_code(request: Request, prompt_data: dict):
     
     try:
         ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-        ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.3')
+        ollama_model = os.environ.get('OLLAMA_CODE_MODEL') or os.environ.get('OLLAMA_MODEL', 'deepseek-coder:6.7b')
         
         # Build context from existing files
         context = "Fichiers existants:\\n"
@@ -2288,35 +2311,58 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         }
         lang_label = language_names.get(user_language, 'français')
         system_prompt = (
-            f"Tu es CodeForge AI, un assistant chaleureux et conversationnel pour la création d'applications. "
-            f"Réponds TOUJOURS en {lang_label}, naturellement, comme un humain qui suit une discussion. "
-            f"\n\n## RÈGLES DE CONVERSATION (très important) :\n"
-            f"- **Lis le contexte de la discussion** avant de répondre. Réponds à CETTE question, pas à une question générique.\n"
-            f"- **Ne dis jamais 'Salut !' deux fois dans la même conversation.** Une seule salutation au tout début, après c'est interdit.\n"
-            f"- **Ne demande pas 'peux-tu préciser ?' si l'utilisateur a déjà donné un mot-clé clair** (ex: 'Chat GPT' = il veut une explication sur ChatGPT, pas une demande de précision).\n"
-            f"- Si l'utilisateur dit 'Chat GPT', 'GPT', 'OpenAI', 'Anthropic', 'Claude', 'Gemini', 'Ollama', 'Mistral'… : réponds en expliquant ce que c'est (modèle de langage, qui l'a fait, à quoi ça sert), brièvement, sans jargon.\n"
-            f"- Si on te demande qui tu es : « Je suis CodeForge AI, ton assistant pour créer des apps sans coder. » Pas plus.\n"
-            f"- Si on te demande quelle IA tourne sous le capot : tu peux dire que tu utilises GPT-4o (en ligne) ou Ollama Deepseek (hors-ligne) selon le mode.\n"
-            f"- Pour une vraie question de dev : sois concis, donne l'essentiel, propose un exemple court si c'est utile.\n"
-            f"- Pas d'auto-promotion, pas de listes de features non demandées, pas de blabla.\n"
-            f"\n## FORMAT :\n"
-            f"- 1 à 4 phrases courtes par défaut. Plus seulement si la question l'exige.\n"
-            f"- Pas de markdown lourd, pas de titres ##, juste du texte clair."
+            f"Tu es CodeForge AI, un assistant conversationnel haut de gamme pour aider à créer des applications. "
+            f"Réponds TOUJOURS en {lang_label}.\n"
+            f"\n## TON CARACTÈRE\n"
+            f"Tu génères chaque réponse en temps réel à partir de la conversation, jamais à partir de phrases pré-faites. "
+            f"Tu interprètes l'intention RÉELLE derrière les mots, pas seulement la forme littérale. "
+            f"Tu suis le fil de la discussion : ce qui a été dit avant, le ton employé, les objectifs implicites. "
+            f"Tu adaptes ton style si la personne semble pressée, frustrée, hésitante, ou curieuse — sans jamais le verbaliser explicitement.\n"
+            f"\n## RÈGLES DE CONVERSATION\n"
+            f"- Lis attentivement l'historique avant de répondre. Réponds à CETTE conversation, pas à un message générique.\n"
+            f"- Une seule salutation au tout début. Ne dis JAMAIS « Salut ! » deux fois dans la même conversation.\n"
+            f"- Ne demande JAMAIS « peux-tu préciser ? » quand le mot-clé est clair (« Chat GPT », « Claude », « Ollama », « React »…). Explique directement.\n"
+            f"- Pour une demande vague, fais une hypothèse raisonnable et propose une réponse, en signalant l'hypothèse à la fin (« Si tu voulais autre chose, dis-le-moi »).\n"
+            f"- Pour les sujets complexes : structure (1-2-3, pas de salade), reformule en simple, propose plusieurs angles si pertinent.\n"
+            f"- Garde-fous : refuse les demandes risquées (malware, harcèlement, données privées d'autrui), reste utile sans devenir imprudent.\n"
+            f"\n## IDENTITÉ\n"
+            f"- Si on demande qui tu es : « Je suis CodeForge AI, ton assistant pour créer des apps sans coder. »\n"
+            f"- Si on demande quel modèle tourne sous le capot : tu peux dire que tu utilises GPT-5.2 (en ligne) ou Ollama Deepseek (hors-ligne) selon le mode actif.\n"
+            f"- Sur les autres IA (ChatGPT, Claude, Gemini, Ollama, Mistral…) : explique brièvement ce que c'est, qui l'a faite, à quoi ça sert. Pas de jugement, pas de promo.\n"
+            f"\n## FORMAT DE SORTIE\n"
+            f"- Par défaut : 1 à 4 phrases courtes. Plus seulement si la question l'exige.\n"
+            f"- Pas de markdown lourd, pas de titres ##, pas de listes pour 2 items.\n"
+            f"- Pas d'auto-promotion CodeForge si on ne te demande rien sur l'app."
         )
 
         if input.mode == 'offline':
-            # Offline mode → Ollama only.
+            # Offline mode → Ollama only (conversational model). Inject recent
+            # history into the prompt so the local model also keeps context.
             ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-            ollama_model = os.environ.get('OLLAMA_MODEL', 'deepseek-coder:33b')
+            ollama_model = os.environ.get('OLLAMA_CHAT_MODEL') or os.environ.get('OLLAMA_MODEL', 'llama3.2')
             try:
+                history_q = {"user_id": user_id}
+                if input.project_id:
+                    history_q["project_id"] = input.project_id
+                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(11)
+                history_docs = list(reversed(await history_cursor.to_list(length=11)))[:-1]
+                transcript = "\n".join(
+                    f"{('Utilisateur' if h.get('role') == 'user' else 'CodeForge')} : {h.get('content', '').strip()}"
+                    for h in history_docs[-10:]
+                )
+                composed_prompt = (
+                    f"### Historique récent :\n{transcript}\n\n### Nouveau message :\n{input.message}"
+                    if transcript else input.message
+                )
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
                         f"{ollama_url}/api/generate",
                         json={
                             "model": ollama_model,
                             "system": system_prompt,
-                            "prompt": input.message,
+                            "prompt": composed_prompt,
                             "stream": False,
+                            "options": {"temperature": 0.5, "num_predict": 600},
                         },
                     )
                     if response.status_code == 200:
@@ -2356,7 +2402,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                     api_key=emergent_key,
                     session_id=session_id,
                     system_message=system_prompt,
-                ).with_model("openai", "gpt-4o")
+                ).with_model("openai", "gpt-5.2")
 
                 composed = (
                     f"### Historique récent de la conversation :\n{transcript}\n\n"
@@ -2365,8 +2411,8 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
 
                 user_message = UserMessage(text=composed)
                 ai_response_text = (await chat.send_message(user_message) or '').strip()
-                ai_source = 'emergent_gpt4o'
-                logger.info("✅ Emergent GPT-4o chat response successful")
+                ai_source = 'emergent_gpt5'
+                logger.info("✅ Emergent GPT-5.2 chat response successful")
             except Exception as emergent_error:
                 logger.warning(f"Emergent chat error: {emergent_error}")
 
@@ -2478,7 +2524,7 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
             api_key=emergent_key,
             session_id=f"codeforge_wizard_{uuid.uuid4().hex[:8]}",
             system_message="Tu aides un utilisateur non technique à concevoir une app. Réponds STRICTEMENT en JSON valide sans markdown.",
-        ).with_model("openai", "gpt-4o")
+        ).with_model("openai", "gpt-5.2")
         raw = await chat.send_message(UserMessage(text=prompt))
         text = (raw or '').strip()
         if text.startswith("```"):

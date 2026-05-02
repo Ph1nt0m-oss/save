@@ -2,6 +2,30 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 2 Mai 2026 — Session 37 — Upgrade GPT-4o → GPT-5.2 + prompts senior + Ollama unifié
+- **Modèle** : `gpt-4o` → **`gpt-5.2`** sur les 3 routes IA (chat /api/chat/message, génération /api/ai/generate-complete-app, wizard /api/ai/wizard-suggest). Vérifié dans les logs LiteLLM (`completion() model= gpt-5.2; provider = openai`).
+- **Chat AI prompt repensé** (haut de gamme conversationnel) :
+  - Génération en temps réel à partir de l'historique, jamais de phrases pré-faites
+  - Interprétation de l'intention réelle, adaptation au ton (pressé/frustré/curieux)
+  - Garde-fous (refus malware/harcèlement/données privées tierces)
+  - Identité claire (CodeForge AI, GPT-5.2 en ligne / Ollama hors-ligne)
+  - Format : 1-4 phrases courtes par défaut
+- **Création AI prompt repensé** (architecte + dev full-stack + QA + chef de projet) :
+  - Découpage en modules (UI / data / auth / business / design / sécurité)
+  - Hypothèses intelligentes (jamais 50 questions bloquantes)
+  - Tests mentaux 4 couches (technique / fonctionnel / UX / robustesse) avant réponse
+  - Justification des choix techniques dans `explanation`
+  - Sortie JSON strict
+- **Ollama config unifiée** :
+  - `OLLAMA_CHAT_MODEL` (par défaut `llama3.2`) pour les chats hors-ligne (conversationnel)
+  - `OLLAMA_CODE_MODEL` (par défaut `deepseek-coder:6.7b`) pour les générations hors-ligne (code)
+  - Fallback en cascade : modèle spécifique → `OLLAMA_MODEL` → défaut hardcodé
+  - **Historique de conversation injecté aussi côté Ollama offline** (parité online/offline)
+- **Vérifié par curl** : 
+  - "Bonjour" → réponse contextuelle qui propose des options
+  - "Quelle IA tourne sous le capot ?" → cite GPT-5.2 + Ollama Deepseek correctement
+  - "Bonjour" 2e fois → réponse contextuelle différente (pas de doublon)
+
 ### 2 Mai 2026 — Session 36 — Multi-line Create + Copy with prefixes + Mic AudioLines + AI memory
 - **Create.js** : input → textarea, multi-ligne avec saut de ligne par Entrée. Bouton "Générer" pour soumettre.
 - **Chat copy** : préfixe rôle invisible (`fontSize:0`) inséré avant chaque message → quand l'utilisateur copie la conversation, le presse-papier contient `Elsa : Bonjour` / `CodeForge : Salut ! …`. Pas visible à l'écran (les avatars suffisent).
