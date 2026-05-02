@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import VoiceRecorder from '../components/VoiceRecorder';
 import AttachMenu from '../components/AttachMenu';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -294,14 +295,7 @@ export default function Chat() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                // Enter sends, Shift+Enter inserts a newline
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage(e);
-                }
-              }}
-              placeholder="Posez une question…  (Maj + Entrée pour aller à la ligne)"
+              placeholder="Posez une question…  (clique sur Envoyer ou utilise la flèche →)"
               disabled={isLoading}
               rows={1}
               data-testid="chat-input"

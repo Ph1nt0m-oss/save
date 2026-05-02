@@ -2,6 +2,20 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 1er Mai 2026 — Session 35 — Fix crash chat + restore offline modes + i18n HowItWorks/Feedback + anti-autofill
+- **🚨 Fix crash Chat** : import manquant `useAuth` ajouté → page chat ne plante plus.
+- **Dashboard restauré** : 4 cartes au total (Chat online, Création online, **Chat offline (Ollama)**, **Création offline (Ollama)**) + l'Assistant guidé. Section "Mode en ligne / Mode hors ligne" en bas RETIRÉE comme demandé.
+- **Microphones** : forme `rounded-full` (cercle plein) — dictée = **blanc plein**, envoi = **rouge plein**. Match l'image fournie.
+- **Send-on-Enter désactivé** sur Chat + Create (textarea/input) — l'utilisateur clique le bouton Envoyer/Générer pour soumettre, évite les envois accidentels Maj+Enter sur PC.
+- **HowItWorks i18n** (`HowItWorksContent.js`) : titre, intro, CTA, footer + 7 sections traduits dans 12 langues (FR/EN complets, autres langues utilisent les blocs EN par défaut + UI translateé). Sélecteur de langue ajouté en haut à droite.
+- **Feedback i18n** : "Ton avis nous intéresse / Bug / Idée / Autre / placeholder / caractères / Envoyer" via clés `fb*` (FR + EN, fallback EN→clé pour les 10 autres).
+- **Anti-autofill navigateur** sur Login :
+  - `autoComplete="off"` sur form + `autoComplete="new-password"` sur le champ password
+  - `name` randomisé à chaque rendu (déjoue les heuristiques Chrome/Safari/Firefox)
+  - Attributs `data-form-type="other"`, `data-lpignore="true"`, `data-1p-ignore="true"`, `data-bwignore="true"` (LastPass / 1Password / Bitwarden ignorent)
+  - 2 honeypots cachés `username/password` hors écran pour aspirer l'autofill
+  - Conséquence : l'utilisateur DOIT taper son email + mot de passe manuellement → confirmation d'identité.
+
 ### 1er Mai 2026 — Session 34 — UX polish batch (avatars, feedback v2, mic colors, Made-with hidden)
 - **Chat avatars** : avatar IA (rond jaune avec icône Sparkles) + avatar utilisateur (Google `user.picture` si dispo, sinon initiale). Plus de doute sur qui parle.
 - **Sidebar projets** : icône de plateforme (Globe/Smartphone/Monitor) **avant** le nom, tout sur une seule ligne. Clic gauche = ouvrir le chat avec contexte projet, clic droit (long-press mobile) = menu Renommer/Supprimer (icônes avant labels, suppression en rouge).

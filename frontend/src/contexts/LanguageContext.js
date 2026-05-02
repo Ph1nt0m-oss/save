@@ -19,6 +19,17 @@ const translations = {
     yes: 'Oui',
     no: 'Non',
 
+    // Feedback widget
+    fbTitle: 'Ton avis nous intéresse',
+    fbSubtitle: 'Bug, idée, ou autre — on lit tout. Une réponse n\'est pas garantie mais ça nous aide vraiment.',
+    fbBug: 'Bug',
+    fbSuggestion: 'Idée',
+    fbOther: 'Autre',
+    fbPlaceholder: 'Décris ton retour… Plus tu donnes de détails, mieux on peut t\'aider.',
+    fbChars: 'caractères',
+    fbSend: 'Envoyer',
+    fbSending: 'Envoi…',
+
     // Login page
     loginSignin: 'Connexion',
     loginSignup: 'Inscription',
@@ -269,6 +280,17 @@ const translations = {
     close: 'Close',
     yes: 'Yes',
     no: 'No',
+
+    // Feedback widget
+    fbTitle: 'We value your feedback',
+    fbSubtitle: 'Bug, idea, or anything else — we read everything. A reply is not guaranteed but it really helps us.',
+    fbBug: 'Bug',
+    fbSuggestion: 'Idea',
+    fbOther: 'Other',
+    fbPlaceholder: 'Describe your feedback… The more details, the better we can help.',
+    fbChars: 'characters',
+    fbSend: 'Send',
+    fbSending: 'Sending…',
 
     // Login page
     loginSignin: 'Sign in',

@@ -307,7 +307,6 @@ export default function Create() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && generateApp()}
                   placeholder="Créé-moi une application de..."
                   disabled={isGenerating}
                   className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#050505] border border-white/20 rounded-lg focus:outline-none focus:border-[#E4FF00] disabled:opacity-50"

@@ -4,14 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, Bug, Lightbulb, MoreHorizontal, X, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import AttachMenu from './AttachMenu';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const TYPES = [
-  { key: 'bug', label: 'Bug / Problème', icon: Bug, color: '#FF6B6B' },
-  { key: 'suggestion', label: 'Suggestion', icon: Lightbulb, color: '#E4FF00' },
-  { key: 'other', label: 'Autre', icon: MoreHorizontal, color: '#00D4FF' },
-];
 
 // Convert a File into a small data URL (capped at ~4 MB to keep payload sane).
 function fileToDataUrl(file) {
@@ -29,11 +24,18 @@ function fileToDataUrl(file) {
 }
 
 export default function FeedbackButton() {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState('suggestion');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [attachments, setAttachments] = useState([]);
+
+  const TYPES_T = [
+    { key: 'bug', label: t('fbBug'), icon: Bug, color: '#FF6B6B' },
+    { key: 'suggestion', label: t('fbSuggestion'), icon: Lightbulb, color: '#E4FF00' },
+    { key: 'other', label: t('fbOther'), icon: MoreHorizontal, color: '#00D4FF' },
+  ];
 
   const onAttach = async (att) => {
     if (att.kind === 'file' && att.file) {
@@ -162,7 +164,7 @@ export default function FeedbackButton() {
                 className="w-full mt-3 inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold rounded-sm hover:-translate-y-0.5 transition-all disabled:opacity-60"
               >
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {submitting ? 'Envoi…' : 'Envoyer'}
+                {submitting ? t('fbSending') : t('fbSend')}
               </button>
             </motion.form>
           </motion.div>

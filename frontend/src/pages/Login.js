@@ -481,7 +481,10 @@ export default function Login() {
             )}
 
             {!waitingFor && (
-              <motion.form variants={item} onSubmit={handleSubmit} className="space-y-3 text-left">
+              <motion.form variants={item} onSubmit={handleSubmit} autoComplete="off" data-form-type="other" className="space-y-3 text-left">
+                {/* Honeypot fields to discourage browser autofill (hidden from users). */}
+                <input type="text" name="username" tabIndex={-1} autoComplete="username" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
+                <input type="password" name="password" tabIndex={-1} autoComplete="current-password" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
                 {mode === 'signup' && (
                   <div>
                     <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">{t('loginName')}</label>
@@ -510,7 +513,15 @@ export default function Login() {
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); if (authError) setAuthError(''); }}
                       required
-                      autoComplete="email"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      name={`email_${Math.random().toString(36).slice(2, 8)}`}
+                      data-form-type="other"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
                       data-testid="auth-email-input"
                       placeholder="toi@gmail.com"
                       className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
@@ -528,7 +539,15 @@ export default function Login() {
                       onChange={(e) => { setPassword(e.target.value); if (authError) setAuthError(''); }}
                       required
                       minLength={6}
-                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      name={`pwd_${Math.random().toString(36).slice(2, 8)}`}
+                      data-form-type="other"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
                       data-testid="auth-password-input"
                       placeholder="••••••••"
                       className={`w-full bg-white/[0.04] border rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:outline-none transition-colors ${

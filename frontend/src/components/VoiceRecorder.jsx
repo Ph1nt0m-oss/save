@@ -115,10 +115,10 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
   const isSend = mode === 'send';
   const labelKey = isSend ? 'mic_voice_send' : 'mic_voice_text';
 
-  // Visual: dictate = solid white/black (review then send); send = solid red (one-tap voice message).
+  // Visual: dictate = solid white/black (review then send); send = solid red filled circle (one-tap voice message).
   const baseClasses = isSend
-    ? 'bg-red-500 text-white border-red-500 hover:bg-red-600'
-    : 'bg-white text-[#050505] border-white hover:bg-[#E4E4E7]';
+    ? 'bg-red-500 text-white border-red-500 hover:bg-red-600 rounded-full'
+    : 'bg-white text-[#050505] border-white hover:bg-[#E4E4E7] rounded-full';
 
   return (
     <button
@@ -128,9 +128,9 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
       data-testid={`voice-${mode}-btn${testIdSuffix ? `-${testIdSuffix}` : ''}`}
       title={t(labelKey)}
       aria-label={t(labelKey)}
-      className={`relative inline-flex items-center justify-center h-11 w-11 rounded-sm border transition-all flex-shrink-0 ${
+      className={`relative inline-flex items-center justify-center h-11 w-11 border transition-all flex-shrink-0 ${
         recording
-          ? 'border-red-500 bg-red-500/10 text-red-400 animate-pulse'
+          ? 'rounded-full border-red-500 bg-red-500 text-white animate-pulse'
           : baseClasses
       } disabled:opacity-50 disabled:cursor-not-allowed`}
     >
