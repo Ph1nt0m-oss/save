@@ -2,6 +2,15 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 2 Mai 2026 — Session 36 — Multi-line Create + Copy with prefixes + Mic AudioLines + AI memory
+- **Create.js** : input → textarea, multi-ligne avec saut de ligne par Entrée. Bouton "Générer" pour soumettre.
+- **Chat copy** : préfixe rôle invisible (`fontSize:0`) inséré avant chaque message → quand l'utilisateur copie la conversation, le presse-papier contient `Elsa : Bonjour` / `CodeForge : Salut ! …`. Pas visible à l'écran (les avatars suffisent).
+- **Mic envoi vocal** : icône `AudioLines` (lucide-react) sur **cercle noir plein** + barres en **rouge** — match l'image de référence.
+- **IA conversationnelle (gros fix)** :
+  - Système prompt revu : interdit de dire "Salut !" deux fois, interdit de demander "peux-tu préciser ?" sur des mots-clés clairs (Chat GPT, GPT, Claude, Gemini, Ollama, Mistral...) → l'IA explique directement.
+  - **Historique des 10 derniers messages chargé de MongoDB** et injecté dans le prompt utilisateur à chaque appel → la mémoire conversationnelle ne dépend plus uniquement du `session_id` LlmChat.
+  - Vérifié par curl : "Bonjour" → "Salut !..." / "Chat GPT" → explication d'OpenAI / "Bonjour" (2e fois) → "Comment puis-je t'aider aujourd'hui ?" (sans "Salut !").
+
 ### 1er Mai 2026 — Session 35 — Fix crash chat + restore offline modes + i18n HowItWorks/Feedback + anti-autofill
 - **🚨 Fix crash Chat** : import manquant `useAuth` ajouté → page chat ne plante plus.
 - **Dashboard restauré** : 4 cartes au total (Chat online, Création online, **Chat offline (Ollama)**, **Création offline (Ollama)**) + l'Assistant guidé. Section "Mode en ligne / Mode hors ligne" en bas RETIRÉE comme demandé.

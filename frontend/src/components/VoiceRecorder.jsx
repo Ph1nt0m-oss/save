@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Mic, Loader2, Square } from 'lucide-react';
+import { Mic, Loader2, Square, AudioLines } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -115,9 +115,9 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
   const isSend = mode === 'send';
   const labelKey = isSend ? 'mic_voice_send' : 'mic_voice_text';
 
-  // Visual: dictate = solid white/black (review then send); send = solid red filled circle (one-tap voice message).
+  // Visual: dictate = solid white circle / dark mic; send = solid black circle with red audio-lines (matches the user-provided reference).
   const baseClasses = isSend
-    ? 'bg-red-500 text-white border-red-500 hover:bg-red-600 rounded-full'
+    ? 'bg-black text-red-500 border-black hover:bg-[#0A0A0A] rounded-full'
     : 'bg-white text-[#050505] border-white hover:bg-[#E4E4E7] rounded-full';
 
   return (
@@ -146,7 +146,7 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
           </span>
         </>
       ) : (
-        <Mic className="w-4 h-4" />
+        isSend ? <AudioLines className="w-5 h-5" strokeWidth={2.5} /> : <Mic className="w-4 h-4" />
       )}
     </button>
   );

@@ -303,13 +303,13 @@ export default function Create() {
                     else if (att.kind === 'file') setInput(prev => (prev ? `${prev} [📎 ${att.name}]` : `[📎 ${att.name}]`));
                   }}
                 />
-                <input
-                  type="text"
+                <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Créé-moi une application de..."
+                  rows={1}
+                  placeholder="Créé-moi une application de... (Entrée = saut de ligne, clique sur Générer pour envoyer)"
                   disabled={isGenerating}
-                  className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#050505] border border-white/20 rounded-lg focus:outline-none focus:border-[#E4FF00] disabled:opacity-50"
+                  className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#050505] border border-white/20 rounded-lg focus:outline-none focus:border-[#E4FF00] disabled:opacity-50 resize-y min-h-[48px] max-h-[200px] font-['IBM_Plex_Sans']"
                 />
                 <VoiceRecorder
                   mode="dictate"

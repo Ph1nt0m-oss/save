@@ -2288,15 +2288,20 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         }
         lang_label = language_names.get(user_language, 'français')
         system_prompt = (
-            f"Tu es CodeForge AI, un assistant chaleureux et conversationnel. "
-            f"Réponds TOUJOURS en {lang_label}, comme un ami qui aide. "
-            f"\n\nRÈGLES IMPORTANTES :\n"
-            f"- Pour les salutations (« bonjour », « salut », « hello »…) : réponds par UNE phrase courte de salutation et propose ton aide. "
-            f"NE PARLE PAS de code, d'apps, de PWA, de React ou de tech tant que l'utilisateur ne le demande pas explicitement.\n"
-            f"- Pour les questions courtes ou floues : pose une question de précision plutôt que d'inventer une réponse technique.\n"
-            f"- Pour les vraies questions de dev : sois concis, donne l'essentiel, propose un exemple court si c'est utile.\n"
-            f"- Ne mentionne JAMAIS Ollama, GPT, OpenAI ni les fournisseurs. Tu es juste « CodeForge AI ».\n"
-            f"- Pas d'auto-promotion, pas de bullets de features non demandées."
+            f"Tu es CodeForge AI, un assistant chaleureux et conversationnel pour la création d'applications. "
+            f"Réponds TOUJOURS en {lang_label}, naturellement, comme un humain qui suit une discussion. "
+            f"\n\n## RÈGLES DE CONVERSATION (très important) :\n"
+            f"- **Lis le contexte de la discussion** avant de répondre. Réponds à CETTE question, pas à une question générique.\n"
+            f"- **Ne dis jamais 'Salut !' deux fois dans la même conversation.** Une seule salutation au tout début, après c'est interdit.\n"
+            f"- **Ne demande pas 'peux-tu préciser ?' si l'utilisateur a déjà donné un mot-clé clair** (ex: 'Chat GPT' = il veut une explication sur ChatGPT, pas une demande de précision).\n"
+            f"- Si l'utilisateur dit 'Chat GPT', 'GPT', 'OpenAI', 'Anthropic', 'Claude', 'Gemini', 'Ollama', 'Mistral'… : réponds en expliquant ce que c'est (modèle de langage, qui l'a fait, à quoi ça sert), brièvement, sans jargon.\n"
+            f"- Si on te demande qui tu es : « Je suis CodeForge AI, ton assistant pour créer des apps sans coder. » Pas plus.\n"
+            f"- Si on te demande quelle IA tourne sous le capot : tu peux dire que tu utilises GPT-4o (en ligne) ou Ollama Deepseek (hors-ligne) selon le mode.\n"
+            f"- Pour une vraie question de dev : sois concis, donne l'essentiel, propose un exemple court si c'est utile.\n"
+            f"- Pas d'auto-promotion, pas de listes de features non demandées, pas de blabla.\n"
+            f"\n## FORMAT :\n"
+            f"- 1 à 4 phrases courtes par défaut. Plus seulement si la question l'exige.\n"
+            f"- Pas de markdown lourd, pas de titres ##, juste du texte clair."
         )
 
         if input.mode == 'offline':
@@ -2328,14 +2333,37 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 if not emergent_key:
                     raise ValueError("EMERGENT_LLM_KEY not configured")
 
-                # Reuse the same session per user so the AI keeps short-term context.
-                session_id = f"codeforge_chat_{user_id}"
+                # Load last 10 messages from this user (excluding the one we just inserted)
+                # and feed them as transcript context — guarantees the model has memory
+                # even across stateless requests.
+                history_q = {"user_id": user_id}
+                if input.project_id:
+                    history_q["project_id"] = input.project_id
+                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(11)
+                history_docs = await history_cursor.to_list(length=11)
+                history_docs = list(reversed(history_docs))[:-1]  # drop the message we just inserted
+                transcript = ""
+                if history_docs:
+                    lines = []
+                    for h in history_docs[-10:]:
+                        speaker = "Utilisateur" if h.get("role") == "user" else "CodeForge"
+                        lines.append(f"{speaker} : {h.get('content', '').strip()}")
+                    transcript = "\n".join(lines)
+
+                # Reuse the same session per user/project so the AI keeps short-term context.
+                session_id = f"codeforge_chat_{user_id}_{input.project_id or 'noproj'}"
                 chat = LlmChat(
                     api_key=emergent_key,
                     session_id=session_id,
                     system_message=system_prompt,
                 ).with_model("openai", "gpt-4o")
-                user_message = UserMessage(text=input.message)
+
+                composed = (
+                    f"### Historique récent de la conversation :\n{transcript}\n\n"
+                    f"### Nouveau message de l'utilisateur :\n{input.message}"
+                ) if transcript else input.message
+
+                user_message = UserMessage(text=composed)
                 ai_response_text = (await chat.send_message(user_message) or '').strip()
                 ai_source = 'emergent_gpt4o'
                 logger.info("✅ Emergent GPT-4o chat response successful")

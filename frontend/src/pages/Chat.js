@@ -246,6 +246,10 @@ export default function Chat() {
                     }`}
                     style={!isUser ? { borderLeftColor: modeColor } : {}}
                   >
+                    {/* Visually hidden role prefix — inline in flow so it's INCLUDED when the user copies the conversation. */}
+                    <span style={{ fontSize: 0, lineHeight: 0, opacity: 0 }} aria-hidden="true" data-copy-prefix>
+                      {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
+                    </span>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                     <p className="text-xs text-[#A1A1AA] mt-2">
                       {msg.timestamp.toLocaleTimeString('fr-FR')}
