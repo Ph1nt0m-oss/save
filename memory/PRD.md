@@ -2,9 +2,26 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 1er Mai 2026 — Session 34 — UX polish batch (avatars, feedback v2, mic colors, Made-with hidden)
+- **Chat avatars** : avatar IA (rond jaune avec icône Sparkles) + avatar utilisateur (Google `user.picture` si dispo, sinon initiale). Plus de doute sur qui parle.
+- **Sidebar projets** : icône de plateforme (Globe/Smartphone/Monitor) **avant** le nom, tout sur une seule ligne. Clic gauche = ouvrir le chat avec contexte projet, clic droit (long-press mobile) = menu Renommer/Supprimer (icônes avant labels, suppression en rouge).
+- **Dashboard** : suppression du sous-titre "Choisissez votre mode de travail" + des 4 cartes online/offline. Conserve uniquement les 2 cartes en ligne (Chat / Création) + l'Assistant guidé.
+- **Wizard tutoriel** : "Créez votre app étape par étape" → "Créez votre **projet** étape par étape" dans les 12 langues.
+- **Microphones** :
+  - Mic dictée (le neutre) → **blanc** (bg-white)
+  - Mic envoi vocal direct → **rouge** (bg-red-500)
+- **Feedback v2** :
+  - Suppression de la limite de 5000 caractères
+  - Trombone (📎) ajouté : pièces jointes via fichier (data URL ≤ 4 Mo), URL ou presse-papier
+  - Email envoyé à `elsa.barroca2@gmail.com` (configurable via `FEEDBACK_INBOX_EMAIL`), **avec l'email de l'expéditeur masqué** dans le corps (privacy-first, comme les formulaires de contact d'entreprise)
+- **"Made with Emergent"** badge masqué (display:none dans index.html).
+- **Profile / Info — "Voir mon mot de passe"** :
+  - **Techniquement impossible** : passwords en bcrypt one-way. Remplacé par un bouton **"Réinitialiser mon mot de passe"** qui ouvre un mini-form (nouveau mdp + confirmation) → email avec lien sécurisé (réutilise le flow forgot-password "set then confirm").
+- **Auto-logout 1h inactivité** : déjà actif (session_24).
+
 ### 1er Mai 2026 — Session 33 — Legal i18n + navbar swap
-- **Legal page traduite 12 langues** (`LegalContent.js`) : CGU, Privacy (RGPD), Cookies en fr/en/es/pt/de/nl/ru/zh/zh-TW/hi/bn/ur. Sélecteur de langue ajouté en haut à droite de la page.
-- **Navbar swap** (Landing + Discover) : `LanguageToggle` déplacé à DROITE, bouton principal (Découvrir / Connexion) à GAUCHE — évite que le dropdown des langues déborde à gauche sur écrans zoomés.
+- **Legal page traduite 12 langues** (`LegalContent.js`) : CGU, Privacy (RGPD), Cookies en fr/en/es/pt/de/nl/ru/zh/zh-TW/hi/bn/ur. Sélecteur de langue ajouté en haut à droite.
+- **Navbar swap** (Landing + Discover) : `LanguageToggle` à DROITE, bouton principal à GAUCHE.
 
 ### 1er Mai 2026 — Session 32 — P2 batch (Wizard rebuild + Settings + Multi-comptes) + cleanup login
 - **Login** : suppression du bouton "Connexion/Inscription" en double (`auth-submit-btn`). Plus qu'un seul CTA jaune par mode.

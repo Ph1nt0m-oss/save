@@ -115,10 +115,10 @@ export default function VoiceRecorder({ mode = 'dictate', onResult, disabled, la
   const isSend = mode === 'send';
   const labelKey = isSend ? 'mic_voice_send' : 'mic_voice_text';
 
-  // Visual: dictate = neutral outlined; send = solid white/black (ChatGPT-style "voice send" pill).
+  // Visual: dictate = solid white/black (review then send); send = solid red (one-tap voice message).
   const baseClasses = isSend
-    ? 'bg-white text-[#050505] border-white hover:bg-[#E4E4E7]'
-    : 'bg-white/[0.04] text-white border-white/15 hover:border-[#E4FF00]/50 hover:text-[#E4FF00]';
+    ? 'bg-red-500 text-white border-red-500 hover:bg-red-600'
+    : 'bg-white text-[#050505] border-white hover:bg-[#E4E4E7]';
 
   return (
     <button

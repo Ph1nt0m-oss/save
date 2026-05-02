@@ -71,6 +71,33 @@ export default function Profile() {
   const [pwdForDelete, setPwdForDelete] = useState('');
   const [confirmDelete, setConfirmDelete] = useState('');
 
+  // Reset password (alternative to "view password" — bcrypt one-way)
+  const [resetSent, setResetSent] = useState(false);
+  const [resetNewPwd, setResetNewPwd] = useState('');
+  const [resetConfirmPwd, setResetConfirmPwd] = useState('');
+  const [resetOpen, setResetOpen] = useState(false);
+
+  const requestPasswordReset = async () => {
+    if (resetSent) return;
+    if (!resetOpen) { setResetOpen(true); return; }
+    if (resetNewPwd.length < 6) return toast.error('6 caractères minimum');
+    if (resetNewPwd !== resetConfirmPwd) return toast.error('Les mots de passe ne correspondent pas');
+    setSubmitting(true);
+    try {
+      const { data } = await axios.post(`${API}/auth/forgot-password`, {
+        email: user.email,
+        password: resetNewPwd,
+        frontend_url: window.location.origin,
+      });
+      setResetSent(true);
+      setResetOpen(false);
+      setResetNewPwd(''); setResetConfirmPwd('');
+      toast.success(data?.message || `Lien de confirmation envoyé à ${user.email}.`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Erreur — réessaie.');
+    } finally { setSubmitting(false); }
+  };
+
   // Preferences
   const [prefs, setPrefs] = useState(() => {
     try {
@@ -325,6 +352,36 @@ export default function Profile() {
                 <Field label="Membre depuis" value={fmtDate(user.created_at)} />
                 <Field label="Dernière connexion" value={fmtDate(user.last_login)} />
               </div>
+
+              <div className="mt-6 pt-6 border-t border-white/10">
+                <h3 className="font-['Chivo'] font-bold text-white mb-2">Mot de passe oublié ?</h3>
+                <p className="text-xs text-[#A1A1AA] mb-3">
+                  🔒 Pour des raisons de sécurité, ton mot de passe est stocké haché (bcrypt) et reste illisible — même par nous. Si tu l'as oublié, on t'envoie un lien sécurisé pour en définir un nouveau.
+                </p>
+                {resetOpen && !resetSent && (
+                  <div className="space-y-2 mb-3 p-3 bg-[#0F0F13] border border-[#E4FF00]/30 rounded-sm">
+                    <PwdInput value={resetNewPwd} onChange={setResetNewPwd} label="Nouveau mot de passe" testId="profile-reset-newpwd" hint="6 caractères minimum" />
+                    <PwdInput value={resetConfirmPwd} onChange={setResetConfirmPwd} label="Confirme le nouveau mot de passe" testId="profile-reset-confirmpwd" />
+                    {resetNewPwd && resetConfirmPwd && resetNewPwd !== resetConfirmPwd && (
+                      <p className="text-xs text-red-400">Les mots de passe ne correspondent pas.</p>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={requestPasswordReset}
+                  disabled={resetSent || submitting}
+                  data-testid="profile-request-reset-btn"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#E4FF00]/15 hover:bg-[#E4FF00]/25 border border-[#E4FF00]/30 text-[#E4FF00] text-sm font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-60"
+                >
+                  <Mail className="w-4 h-4" />
+                  {resetSent ? '✅ Email envoyé — vérifie ta boîte' : (resetOpen ? 'Envoyer le lien' : 'Réinitialiser mon mot de passe')}
+                </button>
+                {resetOpen && !resetSent && (
+                  <button onClick={() => { setResetOpen(false); setResetNewPwd(''); setResetConfirmPwd(''); }}
+                    className="ml-2 text-xs text-[#A1A1AA] hover:text-white underline">Annuler</button>
+                )}
+              </div>
+
               <div className="mt-6 pt-6 border-t border-white/10">
                 <h3 className="font-['Chivo'] font-bold text-white mb-2">Tes données (RGPD)</h3>
                 <p className="text-xs text-[#A1A1AA] mb-3">

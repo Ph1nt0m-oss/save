@@ -384,20 +384,15 @@ export default function Dashboard() {
                       : 'bg-[#050505] border-white/10 hover:border-white/30'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-['IBM_Plex_Sans'] font-medium truncate">
-                        {project.name}
-                      </div>
-                      <div className="text-xs text-[#A1A1AA] mt-1 flex items-center gap-2">
-                        {project.project_type === 'web' && <Globe className="w-3 h-3" />}
-                        {project.project_type === 'mobile' && <Smartphone className="w-3 h-3" />}
-                        {project.project_type === 'desktop' && <Monitor className="w-3 h-3" />}
-                        <span>{project.project_type}</span>
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    {project.project_type === 'web' && <Globe className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    {project.project_type === 'mobile' && <Smartphone className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    {project.project_type === 'desktop' && <Monitor className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    <span className="font-['IBM_Plex_Sans'] font-medium truncate flex-1 min-w-0">
+                      {project.name}
+                    </span>
                     {selectedProject?.project_id === project.project_id && (
-                      <ChevronRight className="w-4 h-4 text-[#E4FF00]" />
+                      <ChevronRight className="w-4 h-4 text-[#E4FF00] flex-shrink-0" />
                     )}
                   </div>
                 </button>
@@ -529,12 +524,6 @@ export default function Dashboard() {
               <h2 className="text-4xl font-['Chivo'] font-black mb-4">
                 {t('dashWhatToDo')}
               </h2>
-              <p className="text-[#A1A1AA] text-lg flex items-center justify-center gap-2">
-                {t('dashChooseMode')}
-                <FeatureHint id="modes" side="bottom">
-                  {t('dashInfoOnline')} — {t('dashInfoOffline')}
-                </FeatureHint>
-              </p>
               {projects.length === 0 && (
                 <p data-testid="empty-projects-hint" className="text-xs text-[#E4FF00]/80 mt-3 font-['IBM_Plex_Sans']">
                   {t('dashEmptyHint')}
@@ -568,7 +557,7 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Bouton 1: Interaction en ligne */}
+              {/* Bouton Chat (en ligne uniquement) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
@@ -582,15 +571,12 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashChat')}</h3>
-                    <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {t('dashChatBadgeOn')}
-                    </div>
                     <p className="text-[#A1A1AA]">{t('dashChatDescOn')}</p>
                   </div>
                 </div>
               </motion.button>
 
-              {/* Bouton 2: Création en ligne */}
+              {/* Bouton Création (en ligne uniquement) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
@@ -605,54 +591,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashCreate')}</h3>
-                    <div className="inline-block px-3 py-1 bg-[#00FF66] text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {t('dashCreateBadgeOn')}
-                    </div>
                     <p className="text-[#A1A1AA]">{t('dashCreateDescOn')}</p>
-                  </div>
-                </div>
-              </motion.button>
-
-              {/* Bouton 3: Interaction hors ligne */}
-              <motion.button
-                whileHover={{ y: -2, scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/chat', { state: { mode: 'offline' } })}
-                data-testid="offline-chat-btn"
-                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
-              >
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center">
-                    <Send className="w-8 h-8 text-[#050505]" />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashChat')}</h3>
-                    <div className="inline-block px-3 py-1 bg-cyan-400 text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {t('dashChatBadgeOff')}
-                    </div>
-                    <p className="text-[#A1A1AA]">{t('dashChatDescOff')}</p>
-                  </div>
-                </div>
-              </motion.button>
-
-              {/* Bouton 4: Création hors ligne */}
-              <motion.button
-                whileHover={{ y: -2, scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/create', { state: { mode: 'offline' } })}
-                data-testid="offline-create-btn"
-                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
-              >
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="w-16 h-16 bg-purple-400 rounded-full flex items-center justify-center">
-                    <Code2 className="w-8 h-8 text-[#050505]" />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashCreate')}</h3>
-                    <div className="inline-block px-3 py-1 bg-purple-400 text-[#050505] rounded-full text-xs font-bold mb-3">
-                      {t('dashCreateBadgeOff')}
-                    </div>
-                    <p className="text-[#A1A1AA]">{t('dashCreateDescOff')}</p>
                   </div>
                 </div>
               </motion.button>

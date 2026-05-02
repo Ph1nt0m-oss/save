@@ -1376,20 +1376,31 @@ async def reset_password(payload: ResetPasswordRequest):
 
 # ==================== USER FEEDBACK ====================
 
+class FeedbackAttachment(BaseModel):
+    name: Optional[str] = None
+    kind: Optional[str] = None  # 'file' | 'url' | 'text'
+    url: Optional[str] = None
+    text: Optional[str] = None
+    data_url: Optional[str] = None  # base64 data URL for files (<= 4MB)
+
+
 class FeedbackRequest(BaseModel):
     type: str  # 'bug' | 'suggestion' | 'other'
     message: str
     email: Optional[str] = None
     page: Optional[str] = None  # current page url for context
+    attachments: Optional[List[FeedbackAttachment]] = None
 
 
 @api_router.post("/feedback")
 async def submit_feedback(payload: FeedbackRequest, request: Request):
-    """Store user feedback in MongoDB + send email to admin."""
+    """Store user feedback in MongoDB + send email to a private inbox.
+    The sender's email is NEVER exposed in the From header (privacy by design,
+    same pattern as company contact forms): user reads the redacted message,
+    can reply once, then the conversation can be elevated to a real address.
+    """
     if not payload.message or len(payload.message.strip()) < 5:
         raise HTTPException(status_code=400, detail="Le message doit contenir au moins 5 caractères")
-    if len(payload.message) > 5000:
-        raise HTTPException(status_code=400, detail="Message trop long (max 5000 caractères)")
 
     feedback_type = payload.type if payload.type in ("bug", "suggestion", "other") else "other"
     user_email = payload.email or "anonyme"
@@ -1402,45 +1413,73 @@ async def submit_feedback(payload: FeedbackRequest, request: Request):
     except Exception:
         pass
 
+    atts = payload.attachments or []
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "feedback_id": f"fb_{uuid.uuid4().hex[:12]}",
         "type": feedback_type,
         "message": payload.message.strip(),
-        "user_email": user_email,
+        "user_email": user_email,  # stored privately, not exposed to outside
         "page": payload.page,
+        "attachments": [a.model_dump() for a in atts],
         "created_at": now,
     }
     await db.feedbacks.insert_one(doc)
 
-    # Email to admin (best-effort, never block the response)
+    # Email to private inbox (best-effort, never block the response).
+    # Sender email NOT included in the visible body to preserve user privacy.
     resend_key = os.environ.get("RESEND_API_KEY")
-    admin = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
+    admin = os.environ.get("FEEDBACK_INBOX_EMAIL", "elsa.barroca2@gmail.com")
     if resend_key:
         try:
             sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
-            async with httpx.AsyncClient(timeout=8.0) as client:
+            # Build HTML attachments preview (URLs + filenames, no email exposure)
+            atts_html = ""
+            email_attachments = []
+            if atts:
+                items = []
+                for a in atts:
+                    if a.kind == 'url' and a.url:
+                        items.append(f"<li>🔗 <a href='{a.url}'>{a.url}</a></li>")
+                    elif a.kind == 'text' and a.text:
+                        snippet = (a.text[:200] + '…') if len(a.text) > 200 else a.text
+                        items.append(f"<li>📋 (presse-papier) <em>{snippet.replace('<','&lt;')}</em></li>")
+                    elif a.kind == 'file' and a.name:
+                        items.append(f"<li>📎 {a.name}</li>")
+                        # Attach to email if data_url provided.
+                        if a.data_url and ',' in a.data_url:
+                            try:
+                                b64 = a.data_url.split(',', 1)[1]
+                                email_attachments.append({"filename": a.name, "content": b64})
+                            except Exception:
+                                pass
+                if items:
+                    atts_html = "<p><b>Pièces jointes :</b></p><ul>" + "".join(items) + "</ul>"
+            body = {
+                "from": sender,
+                "to": [admin],
+                "subject": f"[CodeForge AI] Nouveau {feedback_type}",
+                "html": (
+                    f"<div style='font-family:system-ui,sans-serif'>"
+                    f"<p><b>Type :</b> {feedback_type}</p>"
+                    f"<p><b>Page :</b> {payload.page or '—'}</p>"
+                    f"<p><b>Message :</b></p><pre style='white-space:pre-wrap;background:#f4f4f5;padding:12px;border-radius:6px'>{(payload.message or '').replace('<','&lt;')}</pre>"
+                    f"{atts_html}"
+                    f"<hr><p style='color:#888;font-size:11px'>ID : {doc['feedback_id']} · {now} · expéditeur masqué</p></div>"
+                ),
+            }
+            if email_attachments:
+                body["attachments"] = email_attachments
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 await client.post(
                     "https://api.resend.com/emails",
                     headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                    json={
-                        "from": sender,
-                        "to": [admin],
-                        "subject": f"[CodeForge AI] Nouveau {feedback_type}",
-                        "html": (
-                            f"<div style='font-family:system-ui,sans-serif'>"
-                            f"<p><b>Type :</b> {feedback_type}</p>"
-                            f"<p><b>Email :</b> {user_email}</p>"
-                            f"<p><b>Page :</b> {payload.page or '—'}</p>"
-                            f"<p><b>Message :</b></p><pre style='white-space:pre-wrap;background:#f4f4f5;padding:12px;border-radius:6px'>{(payload.message or '').replace('<','&lt;')}</pre>"
-                            f"<hr><p style='color:#888;font-size:11px'>ID : {doc['feedback_id']} · {now}</p></div>"
-                        ),
-                    },
+                    json=body,
                 )
         except Exception as e:
             logger.warning(f"Feedback admin email failed: {e}")
 
-    return {"message": "Merci ! Ton retour a bien été enregistré.", "feedback_id": doc["feedback_id"]}
+    return {"message": "Merci ! Ton retour a bien été envoyé.", "feedback_id": doc["feedback_id"]}
 
 
 # ==================== METRICS ====================

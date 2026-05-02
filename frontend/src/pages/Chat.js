@@ -17,6 +17,7 @@ export default function Chat() {
   const navigate = useNavigate();
   const location = useLocation();
   const { language } = useLanguage();
+  const { user } = useAuth();
   const mode = location.state?.mode || 'online';
   const project = location.state?.project || null;
   
@@ -222,35 +223,61 @@ export default function Chat() {
           )}
 
           <div className="space-y-4">
-            {messages.map((msg, idx) => (
-              <motion.div
-                key={msg.message_id || msg.id || `msg-${msg.timestamp || idx}`}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] p-4 rounded-lg ${
-                    msg.role === 'user'
-                      ? 'bg-[#0F0F13] border border-white/10'
-                      : 'bg-[#0F0F13] border-l-2'
-                  }`}
-                  style={msg.role === 'assistant' ? { borderLeftColor: modeColor } : {}}
+            {messages.map((msg, idx) => {
+              const isUser = msg.role === 'user';
+              return (
+                <motion.div
+                  key={msg.message_id || msg.id || `msg-${msg.timestamp || idx}`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex items-start gap-2 sm:gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                  <p className="text-xs text-[#A1A1AA] mt-2">
-                    {msg.timestamp.toLocaleTimeString('fr-FR')}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
+                  {!isUser && (
+                    <div className="flex-shrink-0 w-9 h-9 rounded-full bg-[#E4FF00] text-[#050505] flex items-center justify-center font-['Chivo'] font-black text-sm shadow-[0_0_12px_rgba(228,255,0,0.4)]" data-testid="chat-avatar-ai" title="CodeForge AI">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[78%] p-4 rounded-lg ${
+                      isUser
+                        ? 'bg-[#0F0F13] border border-white/10'
+                        : 'bg-[#0F0F13] border-l-2'
+                    }`}
+                    style={!isUser ? { borderLeftColor: modeColor } : {}}
+                  >
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <p className="text-xs text-[#A1A1AA] mt-2">
+                      {msg.timestamp.toLocaleTimeString('fr-FR')}
+                    </p>
+                  </div>
+                  {isUser && (
+                    user?.picture ? (
+                      <img
+                        src={user.picture} alt={user.name || user.email || 'Toi'}
+                        data-testid="chat-avatar-user"
+                        title={user.name || user.email}
+                        className="flex-shrink-0 w-9 h-9 rounded-full border border-white/15 object-cover"
+                      />
+                    ) : (
+                      <div data-testid="chat-avatar-user" title={user?.name || user?.email || 'Toi'}
+                        className="flex-shrink-0 w-9 h-9 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white font-['Chivo'] font-bold text-sm">
+                        {(user?.name || user?.email || '?')[0]?.toUpperCase()}
+                      </div>
+                    )
+                  )}
+                </motion.div>
+              );
+            })}
 
             {isLoading && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex justify-start"
+                className="flex items-start gap-2 sm:gap-3 justify-start"
               >
+                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-[#E4FF00] text-[#050505] flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 animate-pulse" />
+                </div>
                 <div className="bg-[#0F0F13] border-l-2 p-4 rounded-lg" style={{ borderLeftColor: modeColor }}>
                   <Loader2 className="w-5 h-5 animate-spin" style={{ color: modeColor }} />
                 </div>
