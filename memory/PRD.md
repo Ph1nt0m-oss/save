@@ -1,6 +1,30 @@
 # CodeForge AI - PRD
 
-## Statut : VERSION P2++ — STABLE & PRODUCTION-READY (Mai 2026)
+## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
+
+### 3 Mai 2026 — Session 42 — Auto-import chats + ronds colorés + copier lien + personnalité Caly + durcissement sécurité login
+- **Auto-création de projet pour chaque chat** : dès le 1er message utilisateur, un projet `type=chat` est créé automatiquement et apparaît dans la sidebar (`POST /api/chat/message` sans `project_id` crée le projet + retourne son id). Plus besoin du bouton "Pin to sidebar".
+- **Champ `ai_mode` ajouté au modèle Project** (`online` / `offline`), avec backfill safe dans `GET /api/projects` et `GET /api/projects/{id}` (gère les legacy sans `updated_at`).
+- **Ronds colorés dans la sidebar** (data-testid=project-dot-{id}) :
+  - 🟡 **Jaune** `bg-yellow-400` — Chat online (IA GPT-5.2)
+  - 🟢 **Vert** `bg-emerald-400` — Création online (Emergent)
+  - 🔵 **Bleu** `bg-sky-400` — Chat offline (Ollama)
+  - 🟣 **Violet** `bg-violet-400` — Création offline (Ollama)
+  - Le rond est visible aussi pendant le rename (`opacity-70`) et n'est pas modifiable.
+- **"Copier le lien" au clic droit** (data-testid=project-ctx-copy-link) — copie `{origin}/chat?project={id}` dans le presse-papier. Permet de référencer une ancienne discussion dans un nouveau chat quand on a supprimé la première. Chat.js lit `?project=X` et charge le projet correspondant.
+- **Personnalité "Caly"** dans le prompt chat GPT : vif, chaleureux, direct, curieux, taquin calibré, avec opinions assumées. **INTERDIT** de proposer de créer une app/site/logiciel sauf demande explicite. C'est un vrai assistant généraliste, pas un commercial CodeForge.
+- **Sécurité login renforcée** (vol d'appareil) :
+  - Password input devient `type="text"` + `style={WebkitTextSecurity:'disc'}` → **Chrome ne propose plus de sauvegarder le mot de passe**, tout en conservant le masquage visuel.
+  - Email **plus jamais prefill** (localStorage `LAST_EMAIL_KEY` nettoyé au mount, plus aucun `setItem` dans le flow). Chaque connexion force une saisie complète.
+- **Éléments pédagogiques retirés** du dashboard :
+  - Bouton "Tutorial" (dashboard-tutorial-btn)
+  - Bouton "Améliorer les IA" (dashboard-improve-ai-btn)
+  - Bouton "Entraîner l'IA (90j)" (dashboard-train-ai-btn)
+  - Bandeau "Guided Wizard" (wizard-btn) — route `/wizard` toujours accessible
+  - Modal "Bienvenue sur CodeForge AI" (`<Onboarding />`) — auto-découverte par l'utilisateur
+  - Les markdowns `AMÉLIORER_LES_IA.md` et `ENTRAÎNER_CODEFORGE.md` **déplacés dans `/app/memory/`** (non-exposés publiquement) — seule l'équipe CodeForge peut y accéder.
+- **Image en prévisualisation** des pièces jointes utilisateur dans le chat : vraie miniature `48x48px` avant envoi (data-testid=chat-pending-preview-N), plus l'émoji placeholder.
+- **Tests** : backend 6/6 ✅ (après fix du bug KeyError: updated_at détecté par le testing agent), frontend 85% ✅ (les 2 "issues" sont des limitations de scénario de test Playwright, pas de vrais bugs).
 
 ### 3 Mai 2026 — Session 41-IV — Tutoriel administrateur « ENTRAÎNER CODEFORGE » (programme 90 jours)
 - **Nouveau guide `/app/ENTRAÎNER_CODEFORGE.md`** (320 lignes, 23 Ko) — destiné à l'administrateur du site (pas à l'utilisateur final comme `AMÉLIORER_LES_IA.md`).
