@@ -2,6 +2,21 @@
 
 ## Statut : VERSION P2++ — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 3 Mai 2026 — Session 41-IV — Tutoriel administrateur « ENTRAÎNER CODEFORGE » (programme 90 jours)
+- **Nouveau guide `/app/ENTRAÎNER_CODEFORGE.md`** (320 lignes, 23 Ko) — destiné à l'administrateur du site (pas à l'utilisateur final comme `AMÉLIORER_LES_IA.md`).
+- **Contenu** :
+  - **Protocole de sécurité** de 10 règles ouvrant le document (jamais de conscience, jamais d'auto-exécution, jamais d'accès secrets/DB non validé, kill-switch humain, etc.).
+  - **Calendrier 12 semaines × 7 gestes = 84 actions** concrètes pour améliorer l'IA chaque jour en 5-15 minutes.
+  - **7 axes d'amélioration** couverts : Mémoire, Personnalité, Connaissances, Compétences, Outils, Sécurité, Feedback.
+  - **Cheat sheet** indiquant exactement quel fichier modifier pour quoi (prompt système, cfaction, langues, modules Python…).
+  - **Procédure safe-change** en 9 étapes (commit Git avant → tester 3× après).
+  - **Tableau de mesure hebdomadaire** avec 5 critères (ton/clarté/longueur/action/exactitude) pour tracer les progrès.
+  - **3 annexes** : modèle de manuel de style, 15 prompts système prêts à coller, 3 mini-projets bonus.
+- **Bouton "Entraîner l'IA (90j)"** ajouté au header Dashboard (`data-testid=dashboard-train-ai-btn`, icon Brain, visible en `lg:inline-flex`) → ouvre `/ENTRAINER_CODEFORGE.md` dans un nouvel onglet.
+- **2 guides complémentaires** désormais disponibles :
+  - `AMÉLIORER_LES_IA.md` (utilisateur final — bien utiliser l'IA)
+  - `ENTRAÎNER_CODEFORGE.md` (administrateur — faire évoluer l'IA)
+
 ### 3 Mai 2026 — Session 41ter — REPL persistant + upload sandbox + export Jupyter + plotly + refactor _analyze_*
 - **REPL Python persistant** : le sandbox accepte maintenant un `session_id` optionnel. Dans ce mode, le namespace est **serialisé via dill** entre chaque appel — les variables définies dans un bloc sont disponibles dans le suivant, style Jupyter. TTL 1 h d'inactivité, cap 50 sessions, LRU eviction. Nouvelle route `POST /api/sandbox/reset` pour purger un namespace.
 - **Variables REPL affichées** : la réponse sandbox inclut `variables: [{name, type, repr}]` (max 30) — le frontend les affiche en chips violets sous le résultat (data-testid=code-run-variables).

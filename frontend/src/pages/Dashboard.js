@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -538,6 +538,19 @@ export default function Dashboard() {
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">Améliorer les IA</span>
+              </a>
+
+              <a
+                href="/ENTRAINER_CODEFORGE.md"
+                target="_blank"
+                rel="noreferrer"
+                data-testid="dashboard-train-ai-btn"
+                title="Entraîner CodeForge — programme 90 jours pour admin"
+                aria-label="Entraîner CodeForge — programme 90 jours"
+                className="hidden lg:inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-purple-300 border border-white/10 hover:border-purple-400/40 rounded-sm px-2 sm:px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
+              >
+                <Brain className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline">Entraîner l'IA (90j)</span>
               </a>
 
               <Button
