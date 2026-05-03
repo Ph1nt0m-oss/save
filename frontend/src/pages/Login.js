@@ -524,6 +524,8 @@ export default function Login() {
                       data-bwignore="true"
                       data-testid="auth-email-input"
                       placeholder="toi@gmail.com"
+                      readOnly
+                      onFocus={(e) => { e.target.removeAttribute('readonly'); }}
                       className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
                     />
                   </div>
@@ -550,6 +552,8 @@ export default function Login() {
                       data-bwignore="true"
                       data-testid="auth-password-input"
                       placeholder="••••••••"
+                      readOnly
+                      onFocus={(e) => { e.target.removeAttribute('readonly'); }}
                       className={`w-full bg-white/[0.04] border rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:outline-none transition-colors ${
                         authError ? 'border-red-500 focus:border-red-500' : 'border-white/10 focus:border-[#E4FF00]'
                       }`}
@@ -600,8 +604,13 @@ export default function Login() {
                         required
                         minLength={6}
                         autoComplete="new-password"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
                         data-testid="auth-confirm-password-input"
                         placeholder="••••••••"
+                        readOnly
+                        onFocus={(e) => { e.target.removeAttribute('readonly'); }}
                         className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
                       />
                     </div>

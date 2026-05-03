@@ -23,6 +23,7 @@ const Create = lazy(() => import('./pages/Create'));
 const Chat = lazy(() => import('./pages/Chat'));
 const GuidedWizard = lazy(() => import('./pages/GuidedWizard'));
 const Profile = lazy(() => import('./pages/Profile'));
+const ProjectPreview = lazy(() => import('./pages/ProjectPreview'));
 
 // Suspense fallback while a chunk is downloading
 const RouteFallback = () => (
@@ -133,6 +134,14 @@ function AppRouter() {
               <Profile />
             </ProtectedRoute>
           } 
+        />
+        <Route
+          path="/preview/:projectId"
+          element={
+            <ProtectedRoute>
+              <ProjectPreview />
+            </ProtectedRoute>
+          }
         />
       </Routes>
     </Suspense>

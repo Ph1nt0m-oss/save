@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -527,6 +527,19 @@ export default function Dashboard() {
                 <span className="hidden md:inline">{t('dashTutorial')}</span>
               </button>
 
+              <a
+                href="/AMELIORER_LES_IA.md"
+                target="_blank"
+                rel="noreferrer"
+                data-testid="dashboard-improve-ai-btn"
+                title="Améliorer les IA — guide débutant"
+                aria-label="Améliorer les IA — guide débutant"
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#E4FF00] border border-white/10 hover:border-[#E4FF00]/40 rounded-sm px-2 sm:px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Améliorer les IA</span>
+              </a>
+
               <Button
                 onClick={() => exportProject('apk')}
                 size="sm"
@@ -701,7 +714,7 @@ export default function Dashboard() {
         <div
           data-testid="project-ctx-menu"
           onClick={(e) => e.stopPropagation()}
-          style={{ top: Math.min(ctxMenu.y, window.innerHeight - 110), left: Math.min(ctxMenu.x, window.innerWidth - 200) }}
+          style={{ top: Math.min(ctxMenu.y, window.innerHeight - 160), left: Math.min(ctxMenu.x, window.innerWidth - 200) }}
           className="fixed z-50 w-48 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl py-1"
         >
           <button
@@ -713,6 +726,17 @@ export default function Dashboard() {
             <Pencil className="w-4 h-4 text-[#E4FF00]" />
             <span>Renommer</span>
           </button>
+          {(ctxMenu.project?.project_type !== 'chat') && (
+            <button
+              type="button"
+              onClick={() => { const pid = ctxMenu.project.project_id; setCtxMenu(null); navigate(`/preview/${pid}`); }}
+              data-testid="project-ctx-preview"
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
+            >
+              <Eye className="w-4 h-4 text-emerald-400" />
+              <span>Aperçu Live</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => exportProjectZip(ctxMenu.project)}

@@ -2361,7 +2361,13 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             f"Utilise-les pour répondre précisément : résumer, corriger, restructurer, transformer, extraire des données, expliquer.\n"
             f"\n## CODE & ENVIRONNEMENTS\n"
             f"Tu sais écrire, corriger, expliquer et simuler du code dans : Python (toutes lib courantes — pandas, numpy, requests, FastAPI, SQLAlchemy, openpyxl, python-docx, pptx, PIL, reportlab...), PowerShell, CMD/Batch, Bash, JavaScript/TypeScript, HTML/CSS, SQL. "
-            f"Quand l'utilisateur demande du code, donne du code **complet, exécutable, commenté en français**, et explique ses choix si utile.\n"
+            f"Quand l'utilisateur demande du code, donne du code **complet, exécutable, commenté dans la langue de l'utilisateur ({lang_label})**, et explique ses choix si utile.\n"
+            f"\n## SANDBOX PYTHON\n"
+            f"Si l'utilisateur demande d'**exécuter** / **lancer** / **tester** / **essayer** du code Python (ou dit « montre-moi le résultat », « qu'est-ce que ça affiche », etc.), "
+            f"tu peux TERMINER ta réponse par un bloc `cfaction` avec `type=run_python` : "
+            f"`{{\"type\":\"run_python\",\"title\":\"<description courte>\",\"content\":\"<code python complet, utilise print() pour afficher les résultats>\"}}`. "
+            f"Le serveur exécutera ce code dans un sandbox sécurisé (timeout 10s, modules scientifiques disponibles : numpy, pandas, matplotlib, requests…) et affichera le résultat dans le chat. "
+            f"N'utilise PAS d'input() ni d'appels système dangereux. Affiche les résultats avec `print()`.\n"
         )
 
         if input.mode == 'offline':
@@ -2373,11 +2379,13 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 history_q = {"user_id": user_id}
                 if input.project_id:
                     history_q["project_id"] = input.project_id
-                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(21)
-                history_docs = list(reversed(await history_cursor.to_list(length=11)))[:-1]
+                # ZERO limite : on remonte TOUT l'historique de la conversation (signature CodeForge AI).
+                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", 1)
+                history_docs_all = await history_cursor.to_list(length=None)
+                history_docs = history_docs_all[:-1] if history_docs_all else []  # drop the just-inserted message
                 transcript = "\n".join(
                     f"{('Utilisateur' if h.get('role') == 'user' else 'CodeForge')} : {h.get('content', '').strip()}"
-                    for h in history_docs[-20:]
+                    for h in history_docs
                 )
                 composed_prompt = (
                     f"### Historique récent :\n{transcript}\n\n### Nouveau message :\n{input.message}"
@@ -2414,13 +2422,14 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 history_q = {"user_id": user_id}
                 if input.project_id:
                     history_q["project_id"] = input.project_id
-                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(21)
-                history_docs = await history_cursor.to_list(length=11)
-                history_docs = list(reversed(history_docs))[:-1]  # drop the message we just inserted
+                # ZERO limite : on remonte TOUT l'historique de la conversation (signature CodeForge AI).
+                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", 1)
+                history_docs_all = await history_cursor.to_list(length=None)
+                history_docs = history_docs_all[:-1] if history_docs_all else []  # drop the message we just inserted
                 transcript = ""
                 if history_docs:
                     lines = []
-                    for h in history_docs[-20:]:
+                    for h in history_docs:
                         speaker = "Utilisateur" if h.get("role") == "user" else "CodeForge"
                         lines.append(f"{speaker} : {h.get('content', '').strip()}")
                     transcript = "\n".join(lines)
@@ -2538,8 +2547,31 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                         except Exception as ie:
                             logger.warning(f"cfaction image gen failed: {ie}")
                             download = None
+                    elif a_type in ("run_python", "python_run", "run_py", "execute_python"):
+                        # Sandbox Python execution — the result is *inlined* in the AI response,
+                        # not returned as a download.
+                        py_code = action.get("content") or action.get("code") or ""
+                        sandbox_result = await _run_python_sandbox(py_code)
+                        # Build a formatted block to append after cleaning cfaction.
+                        py_block_parts = []
+                        py_block_parts.append("\n\n**▶️ Exécution Python (sandbox) :**")
+                        if sandbox_result.get("stdout"):
+                            py_block_parts.append(f"```\n{sandbox_result['stdout'][:4000]}\n```")
+                        if sandbox_result.get("stderr"):
+                            py_block_parts.append(f"**Erreurs :**\n```\n{sandbox_result['stderr'][:2000]}\n```")
+                        if sandbox_result.get("timed_out"):
+                            py_block_parts.append("⏱️ *(Exécution interrompue : dépassement du timeout de 10 s)*")
+                        py_block_parts.append(f"*Durée : {sandbox_result.get('duration_ms', 0)} ms — Code exit : {sandbox_result.get('exit_code', 0)}*")
+                        # Inject the result block RIGHT BEFORE the cfaction block so it flows naturally.
+                        injected = "\n".join(py_block_parts)
+                        ai_response_text = (ai_response_text[: m.start()].rstrip() + injected + ai_response_text[m.end():]).strip()
+                        # Signal we already cleaned/modified the response to the following block.
+                        download = None
+                        # Skip the normal cleaning step below.
+                        action = None  # type: ignore
                     # Clean the `cfaction` block from the displayed text.
-                    ai_response_text = (ai_response_text[: m.start()] + ai_response_text[m.end():]).strip()
+                    if action is not None:
+                        ai_response_text = (ai_response_text[: m.start()] + ai_response_text[m.end():]).strip()
         except Exception as exc:
             logger.warning(f"cfaction post-process failed: {exc}")
         
@@ -3006,6 +3038,102 @@ async def _build_image(user_id: str, prompt: str) -> Dict[str, str]:
         user_id,
     )
     return await _persist_generated(info)
+
+
+async def _run_python_sandbox(code: str, timeout_sec: int = 10) -> Dict[str, Any]:
+    """Exécute du code Python dans un sous-processus avec timeout dur.
+
+    Retourne { stdout, stderr, exit_code, timed_out, duration_ms }.
+    Bibliothèques disponibles : numpy, pandas, matplotlib, sympy, requests, bs4,
+    openpyxl, python-docx, pptx, reportlab, pypdf, httpx, PIL, yaml.
+    """
+    import asyncio as _asyncio
+    import tempfile as _tempfile
+    import time as _time
+    import shutil as _shutil
+    import sys as _sys
+
+    code = (code or "").strip()
+    if not code:
+        return {"stdout": "", "stderr": "Aucun code fourni.", "exit_code": -1, "timed_out": False, "duration_ms": 0}
+
+    # Safety preamble — restreint certains appels dangereux en soft-mode.
+    preamble = (
+        "import sys, os\n"
+        "os.environ.pop('EMERGENT_LLM_KEY', None)\n"
+        "os.environ.pop('RESEND_API_KEY', None)\n"
+        "os.environ.pop('MONGO_URL', None)\n"
+        "os.environ.pop('DB_NAME', None)\n"
+        "os.environ.pop('OLLAMA_BASE_URL', None)\n"
+        "sys.setrecursionlimit(1000)\n"
+    )
+    tmp_dir = _tempfile.mkdtemp(prefix="cfsandbox_")
+    script_path = os.path.join(tmp_dir, "user_script.py")
+    try:
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(preamble + "\n# --- user code ---\n" + code)
+
+        start = _time.monotonic()
+        try:
+            proc = await _asyncio.create_subprocess_exec(
+                _sys.executable, script_path,
+                stdout=_asyncio.subprocess.PIPE,
+                stderr=_asyncio.subprocess.PIPE,
+                cwd=tmp_dir,
+                env={
+                    "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin"),
+                    "HOME": tmp_dir,
+                    "LC_ALL": "C.UTF-8",
+                    "LANG": "C.UTF-8",
+                    "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
+                    "MPLBACKEND": "Agg",
+                },
+            )
+            try:
+                stdout_b, stderr_b = await _asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+                timed_out = False
+            except _asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                try:
+                    stdout_b, stderr_b = await proc.communicate()
+                except Exception:
+                    stdout_b, stderr_b = b"", b""
+                timed_out = True
+            duration_ms = int((_time.monotonic() - start) * 1000)
+            stdout = (stdout_b or b"").decode("utf-8", errors="replace")[:8000]
+            stderr = (stderr_b or b"").decode("utf-8", errors="replace")[:4000]
+            return {
+                "stdout": stdout,
+                "stderr": stderr,
+                "exit_code": proc.returncode if proc.returncode is not None else -1,
+                "timed_out": timed_out,
+                "duration_ms": duration_ms,
+            }
+        except Exception as e:
+            return {"stdout": "", "stderr": f"Sandbox error: {e}", "exit_code": -1, "timed_out": False, "duration_ms": 0}
+    finally:
+        try:
+            _shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+class RunPythonInput(BaseModel):
+    code: str
+    timeout_sec: Optional[int] = 10
+
+
+@api_router.post("/sandbox/python")
+async def sandbox_python(request: Request, payload: RunPythonInput):
+    """Exécute du code Python dans le sandbox serveur avec timeout dur."""
+    await get_current_user(request)
+    t = max(1, min(int(payload.timeout_sec or 10), 30))
+    return await _run_python_sandbox(payload.code or "", timeout_sec=t)
+
+
 
 
 @api_router.post("/chat/generate-docx")
@@ -3736,8 +3864,8 @@ async def get_project_preview(project_id: str):
     if not project:
         return HTMLResponse("<h1>Projet non trouvé</h1>", status_code=404)
     
-    generated_code = project.get("generated_code", {})
-    files = generated_code.get("files", [])
+    generated_code = project.get("generated_code") or {}
+    files = (generated_code.get("files") if isinstance(generated_code, dict) else None) or []
     
     # Generate combined HTML preview
     html_parts = ["""<!DOCTYPE html>

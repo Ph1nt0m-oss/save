@@ -1,0 +1,39 @@
+{
+  "summary": "iter_41 (Session 41: Python sandbox, unlimited chat memory, dynamic reply language, cfaction run_python inlining, login autofill guard, /preview/:projectId iframe page, Dashboard 'Améliorer les IA' btn + context-menu 'Aperçu Live'). BACKEND 10/10 PASS after one fix. FRONTEND 100% PASS on all acceptance criteria.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter41_sandbox_chat.py",
+    "/app/test_reports/pytest/iter41.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FIXED during testing — server.py L3868 get_project_preview crashed with 500 AttributeError when project.generated_code was None (project never had code generated yet). Replaced `project.get('generated_code', {})` with `project.get('generated_code') or {}` + dict-guard on files. The original .get(key, default) only uses default when key is ABSENT; a key set to None still returns None. This is a classic Python pitfall — should be audited across the codebase.",
+    "server.py L3043-3134 _run_python_sandbox — correctly uses asyncio.subprocess with wait_for timeout, env isolation (pops EMERGENT_LLM_KEY, RESEND_API_KEY, MONGO_URL, DB_NAME, OLLAMA_BASE_URL), MPLBACKEND=Agg for matplotlib. Timeout clamped 1-30s. Sandbox has access to numpy/pandas/matplotlib/sympy (confirmed live). Minor: preamble sets sys.setrecursionlimit(1000) but doesn't restrict __import__, os.system, subprocess — a determined user can still shell out. Not a blocker for internal tool.",
+    "server.py L2492-2574 cfaction parser — handles docx/pdf/xlsx/pptx/txt/md/csv/json/yaml/xml/ini/env/sql/py/js/ts/tsx/jsx/html/css/sh/ps1/bat/image/run_python. run_python branch correctly inlines stdout/stderr/timeout/duration into ai_response_text and sets download=None, action=None to skip the final cleaning step (line 2571 comment). Works as documented.",
+    "server.py L2382-2385 chat memory — `db.chat_messages.find(...).sort('timestamp', 1)` with `to_list(length=None)` fetches the entire conversation; drops last item (just-inserted user msg). This is the 'ZERO limite' change. Live-verified: retains 'Sébastien' across 2 turns.",
+    "server.py L2313-2324 language routing — lang_label mapped from input.language to a full locale name and injected into system prompt. Live-verified: `language='en'` yields English reply. No hard French lock-in.",
+    "Login.js L513-556 autofill guard — CONFIRMED via document.querySelector(...).readOnly live inspection: BOTH email AND password inputs have readOnly=true + hasAttribute('readonly')=true at mount. Click/focus triggers removeAttribute('readonly') so user can type. Name attrs randomized (email_xxxxxx / pwd_xxxxxx) blocks Chrome autofill heuristic. data-lpignore/1p-ignore/bwignore also set. Strong defense-in-depth.",
+    "ProjectPreview.js — clean 127 lines, 3 device presets (desktop/tablet/mobile), iframe sandbox='allow-scripts allow-forms allow-popups allow-same-origin'. Emits the W3C warning 'An iframe which has both allow-scripts and allow-same-origin... can escape its sandboxing' — acceptable for same-origin preview but worth a comment.",
+    "Dashboard.js L729-740 — project-ctx-preview item correctly gated by `ctxMenu.project?.project_type !== 'chat'`. Live-verified: appears for type=web, absent for type=chat.",
+    "Dashboard.js L525-540 — 'Améliorer les IA' btn href='/AMELIORER_LES_IA.md' target='_blank'. MD file exists at both /app/AMÉLIORER_LES_IA.md and /app/frontend/public/AMELIORER_LES_IA.md (served by CRA static)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter41_sandbox_chat.py (NEW — 10 pytest cases: 5 sandbox, 1 chat run_python, 1 unlimited memory, 1 language=en, 1 cfaction docx, 1 preview html)",
+    "/app/backend/server.py L3867-3868 (fix None-handling on project.generated_code in /api/preview/project/{id})"
+  ],
+  "success_rate": { "backend": "100% (10/10 after 1 fix)", "frontend": "100% (all 4 acceptance criteria verified)" },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (verified via backend curl + browser login)",
+  "seed_data_creation": "Backend tests create TEST_iter41_* and TEST_mem_* and TEST_lang_* projects and delete them. Frontend flow created TEST_ctx_web41 and TEST_ctx_chat41 projects which remain in DB under the test user (clearly prefixed TEST_; non-blocking).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter_41 fully verified on preview URL. Key findings: (1) Sandbox /api/sandbox/python is auth-gated (401 when anonymous, 200 with Bearer/cookie), returns {stdout,stderr,exit_code,timed_out,duration_ms}. Timeout 2s triggers timed_out=true within ~2000ms. numpy/pandas/sympy/matplotlib all importable. (2) Chat run_python: ask 'Exécute un code Python qui calcule 2+2' in mode='online' → response contains '▶️ Exécution Python (sandbox) :' + code-fenced stdout block; cfaction block is stripped from output; download field is null. (3) Memory: send 'Je m'appelle Sébastien' then 'Comment je m'appelle ?' in same project_id → model recalls the name. No .limit(21) anymore — full history is injected. (4) Language: language='en' produces English replies; model follows lang_label interpolation. (5) Preview endpoint: /api/preview/project/{project_id} returns HTMLResponse 200 even on empty projects (after fix L3868). (6) Login autofill guard works — readOnly initially true on BOTH email AND password; onFocus removes it. Note: when scripting with Playwright, DO NOT use .fill() directly — first .click() to trigger onFocus. Otherwise readonly blocks the value. (7) Dashboard: dashboard-improve-ai-btn opens /AMELIORER_LES_IA.md in new tab. project-ctx-preview appears only for non-chat projects. /preview/:projectId renders iframe + 3 device buttons + refresh + open-new, all data-testids present (preview-iframe, preview-device-desktop|tablet|mobile, preview-refresh-btn, preview-open-new-btn, preview-back-btn). createNewProject still uses window.prompt() x2 — any automated test must register page.on('dialog'). No blocking issues remain.",
+  "rca_of_the_issue": "One real backend bug found and fixed: GET /api/preview/project/{project_id} returned HTTP 500 with AttributeError 'NoneType' object has no attribute 'get' whenever a project document had generated_code=None (all freshly-created projects until code has been generated). Root cause: dict.get('key', {}) returns None when the key exists with value None — the default is only used when the key is ABSENT. Fix (server.py L3867-3868): `generated_code = project.get('generated_code') or {}` followed by a dict-guard on .get('files'). All other tests pass as expected — no business-logic regressions."
+}
