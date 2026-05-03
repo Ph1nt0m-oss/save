@@ -79,12 +79,10 @@ export default function Login() {
   const pollRef = useRef(null);
   const timerRef = useRef(null);
 
-  // Prefill email from localStorage (returning users)
+  // Sécurité : on NE prefill PAS l'email pour ne pas laisser de trace sur
+  // un appareil partagé ou volé. Chaque connexion demande une saisie complète.
   useEffect(() => {
-    try {
-      const last = localStorage.getItem(LAST_EMAIL_KEY);
-      if (last) setEmail(last);
-    } catch (_) {}
+    try { localStorage.removeItem(LAST_EMAIL_KEY); } catch (_) {}
   }, []);
 
   // Surface ?verified=1 (post email confirm) or ?reason=idle (auto logout)
@@ -143,7 +141,7 @@ export default function Login() {
         if (data.status === 'verified' && data.session_token) {
           stopWaiting();
           try { localStorage.setItem('session_token', data.session_token); } catch (_) {}
-          try { localStorage.setItem(LAST_EMAIL_KEY, userEmail); } catch (_) {}
+          /* email non persisté (sécurité) */
           setUser(data.user || { email: userEmail, session_token: data.session_token });
           setDemoLink(null);
           fireConfetti();
@@ -175,7 +173,7 @@ export default function Login() {
           name: name.trim() || undefined,
           frontend_url: window.location.origin,
         });
-        try { localStorage.setItem(LAST_EMAIL_KEY, email.trim().toLowerCase()); } catch (_) {}
+        /* email non persisté (sécurité) */
 
         if (data.email_sent) {
           toast.success("Lien de confirmation envoyé par email ! Vérifie ta boîte (et tes spams). Tu as 5 minutes.", { duration: 6000 });
@@ -197,7 +195,7 @@ export default function Login() {
         if (data.session_token) {
           try { localStorage.setItem('session_token', data.session_token); } catch (_) {}
         }
-        try { localStorage.setItem(LAST_EMAIL_KEY, email.trim().toLowerCase()); } catch (_) {}
+        /* email non persisté (sécurité) */
         rememberAccount(data);
         setUser(data);
         toast.success(`Bienvenue, ${data.name || data.email} !`);
@@ -317,7 +315,7 @@ export default function Login() {
         email: target,
         frontend_url: window.location.origin,
       });
-      try { localStorage.setItem(LAST_EMAIL_KEY, target); } catch (_) {}
+      /* email non persisté (sécurité) */
       if (data.email_sent) {
         toast.success("Lien de connexion envoyé par email !");
       } else if (data.verification_link) {
@@ -536,16 +534,16 @@ export default function Login() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
                     <input
-                      type="password"
+                      type="text"
                       value={password}
                       onChange={(e) => { setPassword(e.target.value); if (authError) setAuthError(''); }}
                       required
                       minLength={6}
-                      autoComplete="new-password"
+                      autoComplete="off"
                       autoCorrect="off"
                       autoCapitalize="off"
                       spellCheck={false}
-                      name={`pwd_${Math.random().toString(36).slice(2, 8)}`}
+                      name={`x_pwd_${Math.random().toString(36).slice(2, 8)}`}
                       data-form-type="other"
                       data-lpignore="true"
                       data-1p-ignore="true"
@@ -554,6 +552,12 @@ export default function Login() {
                       placeholder="••••••••"
                       readOnly
                       onFocus={(e) => { e.target.removeAttribute('readonly'); }}
+                      style={{
+                        WebkitTextSecurity: 'disc',
+                        MozTextSecurity: 'disc',
+                        textSecurity: 'disc',
+                        fontFamily: 'text-security-disc, "Chivo", monospace',
+                      }}
                       className={`w-full bg-white/[0.04] border rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:outline-none transition-colors ${
                         authError ? 'border-red-500 focus:border-red-500' : 'border-white/10 focus:border-[#E4FF00]'
                       }`}
@@ -598,12 +602,12 @@ export default function Login() {
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
                       <input
-                        type="password"
+                        type="text"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
                         minLength={6}
-                        autoComplete="new-password"
+                        autoComplete="off"
                         data-lpignore="true"
                         data-1p-ignore="true"
                         data-bwignore="true"
@@ -611,6 +615,7 @@ export default function Login() {
                         placeholder="••••••••"
                         readOnly
                         onFocus={(e) => { e.target.removeAttribute('readonly'); }}
+                        style={{ WebkitTextSecurity: 'disc', MozTextSecurity: 'disc', textSecurity: 'disc' }}
                         className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
                       />
                     </div>

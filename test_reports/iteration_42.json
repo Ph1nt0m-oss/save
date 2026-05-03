@@ -1,0 +1,65 @@
+{
+  "summary": "Session 42 batch tested (backend + frontend). 5/6 backend tests pass. Login, removed buttons, colored project dots, context-menu 'Copier le lien' and auto-create-chat-project feature all verified on frontend. One critical bug found: GET /api/projects/{id} crashes 500 (KeyError: 'updated_at') for auto-created chat projects because the single-project endpoint lacks the backfill that the list endpoint has.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/projects/{project_id}",
+        "issue": "500 Internal Server Error → KeyError: 'updated_at' for chat projects auto-created via POST /api/chat/message (the insert at server.py L2320-2328 omits 'updated_at'). The list endpoint L3287-3291 backfills safely, but the detail endpoint L3314-3315 does a hard key lookup and crashes.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Chat first-message flow",
+        "issue": "Could not fully verify 'Pin to sidebar button disappears' because the /chat page in this build did not expose a pin button at all (count=0 before and after). Likely working-as-intended since auto-create removes the need, but the sidebar refresh with the new chat project was not visibly validated from the Chat page (new project dot was not observed appearing in the sidebar while staying on /chat). Backend confirms the project IS created.",
+        "affected_selectors": ["[data-testid^=project-dot-]"]
+      },
+      {
+        "flow": "Image attachment preview (data-testid=chat-pending-preview-0)",
+        "issue": "Not exercised — no image upload performed in this session. The file input exists; the preview markup presence is conditional on attachment selection. Recommend manual/E1 validation or a future test that drives setInputFiles.",
+        "affected_selectors": ["[data-testid^=chat-pending-preview-]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter42_session.py",
+    "/app/test_reports/pytest/iter42_results.xml"
+  ],
+  "action_items": [
+    "FIX: GET /api/projects/{project_id} must backfill 'updated_at' and 'ai_mode' like GET /api/projects does. Suggested patch around server.py L3311-3315:",
+    "    if project.get('created_at') and isinstance(project['created_at'], str): project['created_at'] = datetime.fromisoformat(project['created_at'])",
+    "    if isinstance(project.get('updated_at'), str): project['updated_at'] = datetime.fromisoformat(project['updated_at'])",
+    "    elif not project.get('updated_at'): project['updated_at'] = project.get('created_at') or datetime.now(timezone.utc)",
+    "    if not project.get('ai_mode'): src=(project.get('ai_source') or '').lower(); project['ai_mode'] = 'offline' if src.startswith('ollama') else 'online'",
+    "ALSO: the auto-create insert at L2320-2328 should include 'updated_at' from the start to avoid relying on backfill everywhere."
+  ],
+  "critical_code_review_comments": [
+    "Duplication of backfill logic between /projects (L3282-3294) and /projects/{id} (L3311-3315). Extract to helper _normalize_project(doc) and reuse.",
+    "server.py is 4576 lines — exceeds the 700-line soft ceiling. Strongly recommend splitting into routers (auth, chat, projects, files, admin) + services.",
+    "Auto-create chat project payload at L2320-2328 uses datetime.now(...).isoformat() inline — should use the Project model / shared helper to guarantee all required fields (incl. updated_at) are present.",
+    "Login 'honeypot' password field (type=password) + real field (type=text + WebkitTextSecurity:disc) is creative but may break real password managers / screen readers. Current iter tested OK, but flag as UX risk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter42_session.py (new regression file)"
+  ],
+  "success_rate": {
+    "backend": "83% (5/6)",
+    "frontend": "85% (6/7 checks — image preview not driven, Pin-button disappearance not visibly validated)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — works",
+  "seed_data_creation": "3 chat projects auto-created via POST /api/chat/message during testing (names start with 'TEST_iter42'). Not auto-deleted; main agent can cleanup via DELETE /api/projects/{id} if desired.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All Session-42 frontend contracts (auth-email-input / auth-password-input / project-dot-{id} / project-ctx-copy-link / no tutorial/wizard/improve/train buttons / no welcome modal) are confirmed on the live preview URL. The email input uses readonly + focus-based release as anti-autofill, so Playwright must .click() before .type() (fill() will timeout). Test user is test_dash_1777658375@gmail.com / Pass1234. The markdown files /AMELIORER_LES_IA.md and /ENTRAINER_CODEFORGE.md correctly 404 publicly. ONE MUST-FIX bug remains on GET /api/projects/{id}.",
+  "rca_of_the_issue": {
+    "bug": "GET /api/projects/{project_id} returns HTTP 500",
+    "reproduction": "1) POST /api/chat/message WITHOUT project_id (logged in) → response.project_id=X. 2) GET /api/projects/X → 500. Backend log: KeyError: 'updated_at' at server.py:3314 in get_project.",
+    "root_cause": "The auto-create-chat-project insert in send_chat_message (L2320-2328) writes the new doc without 'updated_at'. The get_projects list endpoint (L3287-3291) backfills safely, but the get_project detail endpoint (L3311-3315) does a direct dict access project['updated_at'] that raises KeyError.",
+    "mitigation": "Either (a) add 'updated_at' field at insert time (L2320-2328) and use the Project model to serialize, OR (b) mirror the safe backfill in get_project. Preferably both."
+  }
+}

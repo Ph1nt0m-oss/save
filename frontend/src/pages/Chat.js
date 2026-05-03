@@ -21,7 +21,28 @@ export default function Chat() {
   const { language, t } = useLanguage();
   const { user } = useAuth();
   const mode = location.state?.mode || 'online';
-  const project = location.state?.project || null;
+  const projectFromState = location.state?.project || null;
+
+  // Support linking directly to a chat via ?project=<id>
+  const [urlProject, setUrlProject] = useState(null);
+  useEffect(() => {
+    if (projectFromState?.project_id) return;
+    const qp = new URLSearchParams(location.search);
+    const pid = qp.get('project');
+    if (!pid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await axios.get(`${API}/projects/${pid}`, { withCredentials: true });
+        if (!cancelled && r?.data) setUrlProject(r.data);
+      } catch {
+        if (!cancelled) toast.error('Lien invalide ou discussion supprimée');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [location.search, projectFromState?.project_id]);
+
+  const project = projectFromState || urlProject;
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -130,6 +151,18 @@ export default function Chat() {
         timestamp: new Date()
       }]);
       setPendingAtts([]);
+      // If backend auto-created a project for this chat (first message case),
+      // adopt it locally so the conversation is pinned from the first message.
+      const autoPid = response.data.project_id;
+      if (autoPid && !project?.project_id) {
+        try {
+          const pr = await axios.get(`${API}/projects/${autoPid}`, { withCredentials: true });
+          if (pr?.data) {
+            // Replace the project reference so pinChatToSidebar button hides.
+            navigate('/chat', { state: { mode, project: pr.data }, replace: true });
+          }
+        } catch { /* silent */ }
+      }
     } catch (error) {
       console.error('Chat error:', error);
       setMessages(prev => [...prev, {
@@ -345,16 +378,28 @@ export default function Chat() {
 
         <form onSubmit={sendMessage}>
           {pendingAtts.length > 0 && (
-            <div data-testid="chat-pending-atts" className="flex flex-wrap gap-1.5 mb-2">
-              {pendingAtts.map((a, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#0F0F13] border border-white/10 rounded-sm text-xs">
-                  {a.kind === 'image' ? '🖼️' : '📄'}
-                  <span className="max-w-[160px] truncate">{a.filename}</span>
-                  <button type="button" onClick={() => removePendingAtt(i)} className="text-[#A1A1AA] hover:text-red-400">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
+            <div data-testid="chat-pending-atts" className="flex flex-wrap gap-2 mb-2">
+              {pendingAtts.map((a, i) => {
+                const isImg = a.kind === 'image' && a.data_base64;
+                return (
+                  <div key={i} className="relative inline-flex items-center gap-2 p-1.5 bg-[#0F0F13] border border-white/10 rounded-sm">
+                    {isImg ? (
+                      <img
+                        src={`data:${a.mime_type || 'image/png'};base64,${a.data_base64}`}
+                        alt={a.filename}
+                        data-testid={`chat-pending-preview-${i}`}
+                        className="w-12 h-12 object-cover rounded-sm border border-white/10"
+                      />
+                    ) : (
+                      <span className="w-12 h-12 flex items-center justify-center text-2xl bg-white/[0.03] border border-white/10 rounded-sm">📄</span>
+                    )}
+                    <span className="max-w-[140px] truncate text-xs text-[#D4D4D8] px-1">{a.filename}</span>
+                    <button type="button" onClick={() => removePendingAtt(i)} className="text-[#A1A1AA] hover:text-red-400 pr-1" title="Retirer">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
               {analyzingAtt && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#E4FF00]" />}
             </div>
           )}

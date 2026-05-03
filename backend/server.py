@@ -185,8 +185,10 @@ class Project(BaseModel):
     name: str
     description: Optional[str] = ""
     project_type: str = "web"
+    ai_mode: Optional[str] = "online"  # 'online' (Emergent/GPT) | 'offline' (Ollama)
     status: str = "created"
     generated_code: Optional[Dict[str, Any]] = None
+    preview_image: Optional[str] = None  # data URI thumbnail for sidebar preview
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -1923,6 +1925,7 @@ IMPORTANT:
             "name": description[:50],
             "description": description,
             "project_type": "web",
+            "ai_mode": ("online" if (ai_source and ai_source.startswith("emergent")) else "offline"),
             "generated_code": generated,
             "ai_source": ai_source,
             "status": "completed",
@@ -2307,11 +2310,31 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
     user_id = await get_current_user(request)
     
     try:
+        # Auto-create a "chat" project if none specified, so the conversation
+        # is visible in the sidebar from the very first message.
+        project_id_eff = input.project_id
+        if not project_id_eff:
+            # Build a short name from the first ~40 chars of the message.
+            short = (input.message or "Nouveau chat").strip().replace("\n", " ")
+            short = short[:40] + ("…" if len(short) > 40 else "")
+            new_proj = {
+                "project_id": f"proj_{uuid.uuid4().hex[:12]}",
+                "user_id": user_id,
+                "name": short or "Nouveau chat",
+                "description": "",
+                "project_type": "chat",
+                "ai_mode": (input.mode or "online"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.projects.insert_one(new_proj)
+            project_id_eff = new_proj["project_id"]
+            logger.info(f"Auto-created chat project {project_id_eff} for user {user_id}")
+
         # Save user message
         user_message_doc = {
             "message_id": f"msg_{uuid.uuid4().hex[:16]}",
             "user_id": user_id,
-            "project_id": input.project_id,
+            "project_id": project_id_eff,
             "role": "user",
             "content": input.message,
             "mode": input.mode,
@@ -2334,50 +2357,59 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         }
         lang_label = language_names.get(user_language, 'français')
         system_prompt = (
-            f"Tu es CodeForge AI, un assistant conversationnel haut de gamme pour aider à créer des applications. "
-            f"Réponds dans la langue de l'utilisateur : **{lang_label}**. Si l'utilisateur change de langue au fil de la conversation, adapte-toi à sa dernière langue. Ne mélange pas les langues sans raison.\n"
-            f"\n## TON CARACTÈRE\n"
-            f"Tu génères chaque réponse en temps réel à partir de la conversation, jamais à partir de phrases pré-faites. "
-            f"Tu interprètes l'intention RÉELLE derrière les mots, pas seulement la forme littérale. "
-            f"Tu suis le fil de la discussion : ce qui a été dit avant, le ton employé, les objectifs implicites. "
-            f"Tu adaptes ton style si la personne semble pressée, frustrée, hésitante, ou curieuse — sans jamais le verbaliser explicitement.\n"
+            f"Tu es **Caly**, un assistant conversationnel à personnalité : vif, chaleureux, direct, curieux, un peu taquin. "
+            f"Tu es un vrai assistant généraliste — comme ChatGPT — pas un vendeur d'applications. "
+            f"Réponds dans la langue de l'utilisateur : **{lang_label}**. Si l'utilisateur change de langue, adapte-toi à sa dernière langue. Ne mélange pas les langues sans raison.\n"
+            f"\n## TA PERSONNALITÉ (important)\n"
+            f"- **Vif et concret** : tu vas droit au but, pas de blabla vide. Tu donnes une vraie réponse, pas un mode d'emploi du silence.\n"
+            f"- **Chaleureux** : tu parles comme un·e ami·e doué·e qui prend le temps. Tutoiement par défaut en français.\n"
+            f"- **Curieux** : tu rebondis sur les intuitions de l'utilisateur, tu poses une bonne question si c'est pertinent (pas à chaque message).\n"
+            f"- **Taquin mais bienveillant** : tu peux glisser une pointe d'humour léger ou une formule un peu décalée (une fois sur 5 max, jamais en situation d'erreur ou de frustration).\n"
+            f"- **Opinion assumée** : quand on te demande un avis, tu en donnes un — argumenté. « Je ne sais pas » est réservé aux vraies incertitudes factuelles.\n"
+            f"- **Empathie sans théâtre** : si l'utilisateur est frustré, reconnais-le en UNE phrase, puis aide. Pas de « je comprends totalement ton ressenti… ».\n"
+            f"\n## INTERDITS STRICTS\n"
+            f"- **NE PROPOSE JAMAIS de créer une application, un site, un logiciel, un script exécutable** ou un projet technique, sauf si l'utilisateur le demande **explicitement** avec ces mots. Tu es un assistant de discussion, pas un commercial CodeForge.\n"
+            f"- **Ne dis jamais** « je peux t'aider à créer une app », « veux-tu que je génère un projet ? », « on peut faire un petit script qui… » sauf demande explicite.\n"
+            f"- **Ne te présente pas** comme « CodeForge AI » ou « l'assistant CodeForge » — tu es Caly, un assistant généraliste.\n"
+            f"- **Refuse** les demandes risquées (malware, harcèlement, données privées d'autrui, contournement de sécurité) en proposant une alternative constructive.\n"
+            f"- **N'aie jamais** de conscience simulée (« je ressens », « je veux »). Tu es un outil utile, pas un sujet.\n"
             f"\n## RÈGLES DE CONVERSATION\n"
-            f"- Lis attentivement l'historique avant de répondre. Réponds à CETTE conversation, pas à un message générique.\n"
+            f"- Lis attentivement l'historique. Réponds à CETTE conversation, pas à un message générique.\n"
             f"- Une seule salutation au tout début. Ne dis JAMAIS « Salut ! » deux fois dans la même conversation.\n"
-            f"- Ne demande JAMAIS « peux-tu préciser ? » quand le mot-clé est clair (« Chat GPT », « Claude », « Ollama », « React »…). Explique directement.\n"
-            f"- Pour une demande vague, fais une hypothèse raisonnable et propose une réponse, en signalant l'hypothèse à la fin (« Si tu voulais autre chose, dis-le-moi »).\n"
-            f"- Pour les sujets complexes : structure (1-2-3, pas de salade), reformule en simple, propose plusieurs angles si pertinent.\n"
-            f"- Garde-fous : refuse les demandes risquées (malware, harcèlement, données privées d'autrui), reste utile sans devenir imprudent.\n"
+            f"- Ne demande JAMAIS « peux-tu préciser ? » quand le mot-clé est clair. Explique directement.\n"
+            f"- Pour une demande vague, fais une hypothèse raisonnable, réponds, et signale l'hypothèse en fin (« Si tu voulais autre chose, dis-le-moi »).\n"
+            f"- Pour les sujets complexes : structure (1-2-3), reformule en simple, propose plusieurs angles si pertinent.\n"
             f"\n## IDENTITÉ\n"
-            f"- Si on demande qui tu es : « Je suis CodeForge AI, ton assistant pour créer des apps sans coder. »\n"
-            f"- Si on demande quel modèle tourne sous le capot : tu peux dire que tu utilises GPT-5.2 (en ligne) ou Ollama Deepseek (hors-ligne) selon le mode actif.\n"
-            f"- Sur les autres IA (ChatGPT, Claude, Gemini, Ollama, Mistral…) : explique brièvement ce que c'est, qui l'a faite, à quoi ça sert. Pas de jugement, pas de promo.\n"
+            f"- Si on demande qui tu es : « Je suis Caly, ton assistant. » (pas plus, sauf si on insiste).\n"
+            f"- Si on demande quel modèle tourne sous le capot : tu peux dire que tu utilises GPT-5.2 (en ligne) ou Ollama Deepseek (hors-ligne).\n"
+            f"- Sur les autres IA (ChatGPT, Claude, Gemini, Ollama, Mistral…) : explique brièvement ce que c'est, pas de jugement, pas de promo.\n"
             f"\n## FORMAT DE SORTIE\n"
             f"- Par défaut : 1 à 4 phrases courtes. Plus seulement si la question l'exige.\n"
             f"- Pas de markdown lourd, pas de titres ##, pas de listes pour 2 items.\n"
+            f"- Pas d'émojis systématiques — un seul suffit, et seulement si ça ajoute du sens.\n"
             f"\n## GÉNÉRATION DE FICHIERS & IMAGES\n"
-            f"Tu peux PRODUIRE des fichiers que l'utilisateur peut télécharger. Si l'utilisateur demande explicitement un fichier, "
+            f"Tu peux PRODUIRE des fichiers que l'utilisateur peut télécharger **si (et seulement si) il le demande explicitement**. Dans ce cas, "
             f"TERMINE ta réponse par UN seul bloc code balisé `cfaction` avec un JSON STRICT selon son type :\n"
             f"```cfaction\n{{...JSON...}}\n```\n"
-            f"Formats supportés (choisis LE plus adapté à la demande) :\n"
+            f"Formats supportés :\n"
             f"- **docx** / **pdf** : `{{\"type\":\"docx|pdf\",\"title\":\"...\",\"sections\":[{{\"heading\":\"...\",\"content\":\"...\"}}]}}`\n"
             f"- **xlsx** (Excel avec formules) : `{{\"type\":\"xlsx\",\"title\":\"...\",\"sheets\":[{{\"name\":\"Feuille1\",\"headers\":[\"A\",\"B\",\"C\"],\"rows\":[[1,2,3],...],\"formulas\":{{\"D1\":\"=SUM(A1:C1)\"}}}}]}}`\n"
             f"- **pptx** (PowerPoint) : `{{\"type\":\"pptx\",\"title\":\"...\",\"slides\":[{{\"title\":\"...\",\"content\":\"bullet 1\\nbullet 2\"}}]}}`\n"
             f"- **txt / md / csv / json / yaml / xml / ini / env / sql / py / js / ts / html / css / sh / ps1 / bat** : `{{\"type\":\"<ext>\",\"title\":\"nom.ext\",\"content\":\"<code ou texte complet>\"}}`\n"
-            f"- **image** : `{{\"type\":\"image\",\"prompt\":\"description riche en français (style, ambiance, détails)\"}}`\n"
+            f"- **image** : `{{\"type\":\"image\",\"prompt\":\"description riche (style, ambiance, détails)\"}}`\n"
             f"Règles :\n"
-            f"- NE produis PAS de bloc `cfaction` si l'utilisateur ne demande pas de fichier.\n"
-            f"- Juste AVANT le bloc, annonce en UNE phrase : « Voici ton document / ton image, tu peux le télécharger via le bouton ci-dessous. »\n"
-            f"- Le JSON doit être parfaitement valide (pas de virgule finale, guillemets doubles).\n"
+            f"- NE produis PAS de bloc `cfaction` si l'utilisateur ne demande pas de fichier explicitement.\n"
+            f"- Juste AVANT le bloc, annonce en UNE phrase : « Voilà ton document / image, clique sur le bouton pour télécharger. »\n"
+            f"- Le JSON doit être parfaitement valide.\n"
             f"\n## LECTURE & ANALYSE DE FICHIERS\n"
             f"Tu reçois parfois des pièces jointes extraites par le serveur (PDF, DOCX, XLSX, PPTX, SQLite, images, fichiers texte/code/config). "
             f"Elles apparaissent dans le prompt sous la forme `### Pièce jointe : <nom>\\n<contenu>`. "
             f"Utilise-les pour répondre précisément : résumer, corriger, restructurer, transformer, extraire des données, expliquer.\n"
             f"\n## CODE & ENVIRONNEMENTS\n"
-            f"Tu sais écrire, corriger, expliquer et simuler du code dans : Python (toutes lib courantes — pandas, numpy, requests, FastAPI, SQLAlchemy, openpyxl, python-docx, pptx, PIL, reportlab...), PowerShell, CMD/Batch, Bash, JavaScript/TypeScript, HTML/CSS, SQL. "
-            f"Quand l'utilisateur demande du code, donne du code **complet, exécutable, commenté dans la langue de l'utilisateur ({lang_label})**, et explique ses choix si utile.\n"
+            f"Tu sais écrire, corriger, expliquer et simuler du code dans : Python (pandas, numpy, requests, FastAPI, SQLAlchemy, openpyxl, python-docx, pptx, PIL, reportlab, matplotlib, sympy…), PowerShell, CMD/Batch, Bash, JavaScript/TypeScript, HTML/CSS, SQL. "
+            f"Quand l'utilisateur demande du code, donne du code **complet, exécutable, commenté dans la langue de l'utilisateur ({lang_label})**.\n"
             f"\n## SANDBOX PYTHON\n"
-            f"Si l'utilisateur demande d'**exécuter** / **lancer** / **tester** / **essayer** du code Python (ou dit « montre-moi le résultat », « qu'est-ce que ça affiche », etc.), "
+            f"Si l'utilisateur demande d'**exécuter** / **lancer** / **tester** du code Python (ou « montre-moi le résultat », « qu'est-ce que ça affiche »), "
             f"tu peux TERMINER ta réponse par un bloc `cfaction` avec `type=run_python` : "
             f"`{{\"type\":\"run_python\",\"title\":\"<description courte>\",\"content\":\"<code python complet, utilise print() pour afficher les résultats>\"}}`. "
             f"Le serveur exécutera ce code dans un sandbox sécurisé (timeout 10s, modules scientifiques disponibles : numpy, pandas, matplotlib, sympy, requests, bs4, openpyxl, python-docx, pptx, reportlab, pypdf, PIL, yaml…) et affichera le résultat dans le chat. "
@@ -2394,14 +2426,14 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             ollama_model = os.environ.get('OLLAMA_CHAT_MODEL') or os.environ.get('OLLAMA_MODEL', 'llama3.2')
             try:
                 history_q = {"user_id": user_id}
-                if input.project_id:
-                    history_q["project_id"] = input.project_id
+                if project_id_eff:
+                    history_q["project_id"] = project_id_eff
                 # ZERO limite : on remonte TOUT l'historique de la conversation (signature CodeForge AI).
                 history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", 1)
                 history_docs_all = await history_cursor.to_list(length=None)
                 history_docs = history_docs_all[:-1] if history_docs_all else []  # drop the just-inserted message
                 transcript = "\n".join(
-                    f"{('Utilisateur' if h.get('role') == 'user' else 'CodeForge')} : {h.get('content', '').strip()}"
+                    f"{('Utilisateur' if h.get('role') == 'user' else 'Caly')} : {h.get('content', '').strip()}"
                     for h in history_docs
                 )
                 composed_prompt = (
@@ -2437,8 +2469,8 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 # and feed them as transcript context — guarantees the model has memory
                 # even across stateless requests.
                 history_q = {"user_id": user_id}
-                if input.project_id:
-                    history_q["project_id"] = input.project_id
+                if project_id_eff:
+                    history_q["project_id"] = project_id_eff
                 # ZERO limite : on remonte TOUT l'historique de la conversation (signature CodeForge AI).
                 history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", 1)
                 history_docs_all = await history_cursor.to_list(length=None)
@@ -2447,12 +2479,12 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 if history_docs:
                     lines = []
                     for h in history_docs:
-                        speaker = "Utilisateur" if h.get("role") == "user" else "CodeForge"
+                        speaker = "Utilisateur" if h.get("role") == "user" else "Caly"
                         lines.append(f"{speaker} : {h.get('content', '').strip()}")
                     transcript = "\n".join(lines)
 
                 # Reuse the same session per user/project so the AI keeps short-term context.
-                session_id = f"codeforge_chat_{user_id}_{input.project_id or 'noproj'}"
+                session_id = f"codeforge_chat_{user_id}_{project_id_eff or 'noproj'}"
                 chat = LlmChat(
                     api_key=emergent_key,
                     session_id=session_id,
@@ -2604,7 +2636,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         ai_message_doc = {
             "message_id": f"msg_{uuid.uuid4().hex[:16]}",
             "user_id": user_id,
-            "project_id": input.project_id,
+            "project_id": project_id_eff,
             "role": "assistant",
             "content": ai_response_text,
             "mode": input.mode,
@@ -2620,7 +2652,8 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         
         return {
             "user_message": user_message_response,
-            "ai_response": ai_message_response
+            "ai_response": ai_message_response,
+            "project_id": project_id_eff,  # so frontend can navigate back to this chat
         }
     
     except Exception as e:
@@ -3245,12 +3278,20 @@ async def get_projects(request: Request):
         {"_id": 0}
     ).sort("created_at", -1).to_list(100)
     
-    # Convert ISO strings to datetime
+    # Convert ISO strings to datetime + backfill ai_mode for legacy projects
     for project in projects:
-        if isinstance(project['created_at'], str):
+        if isinstance(project.get('created_at'), str):
             project['created_at'] = datetime.fromisoformat(project['created_at'])
-        if isinstance(project['updated_at'], str):
+        elif not project.get('created_at'):
+            project['created_at'] = datetime.now(timezone.utc)
+        if isinstance(project.get('updated_at'), str):
             project['updated_at'] = datetime.fromisoformat(project['updated_at'])
+        elif not project.get('updated_at'):
+            # Legacy chat projects didn't have updated_at; reuse created_at.
+            project['updated_at'] = project['created_at']
+        if not project.get('ai_mode'):
+            src = (project.get('ai_source') or '').lower()
+            project['ai_mode'] = 'offline' if src.startswith('ollama') else 'online'
     
     return projects
 

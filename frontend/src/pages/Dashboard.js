@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -374,7 +374,7 @@ export default function Dashboard() {
 
   return (
     <div className="h-screen bg-[#050505] text-white flex overflow-hidden">
-      <Onboarding />
+      {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* Sidebar - Projects */}
       <motion.aside
         initial={false}
@@ -406,8 +406,19 @@ export default function Dashboard() {
                 <div
                   key={project.project_id}
                   data-testid={`project-rename-${project.project_id}`}
-                  className="bg-white/[0.04] border border-[#E4FF00] rounded-sm p-2"
+                  className="bg-white/[0.04] border border-[#E4FF00] rounded-sm p-2 flex items-center gap-2"
                 >
+                  {/* Dot visible mais non modifiable pendant le rename */}
+                  {(() => {
+                    const t2 = project.project_type || 'web';
+                    const m = project.ai_mode || 'online';
+                    let bg = 'bg-[#A1A1AA]';
+                    if (t2 === 'chat' && m === 'online') bg = 'bg-yellow-400';
+                    else if (t2 === 'chat' && m === 'offline') bg = 'bg-sky-400';
+                    else if (t2 !== 'chat' && m === 'online') bg = 'bg-emerald-400';
+                    else if (t2 !== 'chat' && m === 'offline') bg = 'bg-violet-400';
+                    return <span className={`flex-shrink-0 w-2.5 h-2.5 rounded-full ${bg} opacity-70`} />;
+                  })()}
                   <input
                     autoFocus
                     type="text"
@@ -418,7 +429,7 @@ export default function Dashboard() {
                       else if (e.key === 'Escape') setRenameTarget(null);
                     }}
                     onBlur={submitRename}
-                    className="w-full bg-transparent text-sm text-white font-['IBM_Plex_Sans'] focus:outline-none px-1"
+                    className="flex-1 bg-transparent text-sm text-white font-['IBM_Plex_Sans'] focus:outline-none px-1"
                   />
                 </div>
               ) : (
@@ -426,7 +437,12 @@ export default function Dashboard() {
                   key={project.project_id}
                   onClick={() => {
                     setSelectedProject(project);
-                    navigate('/chat', { state: { mode: 'online', project } });
+                    const mode = project.ai_mode || 'online';
+                    if (project.project_type === 'chat') {
+                      navigate('/chat', { state: { mode, project } });
+                    } else {
+                      navigate('/chat', { state: { mode, project } });
+                    }
                   }}
                   onContextMenu={(e) => onProjectContextMenu(e, project)}
                   data-testid={`project-${project.project_id}`}
@@ -437,10 +453,27 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="flex items-center gap-2">
+                    {/* Type dot — couleur selon (project_type, ai_mode) */}
+                    {(() => {
+                      const t2 = project.project_type || 'web';
+                      const m = project.ai_mode || 'online';
+                      let bg = 'bg-[#A1A1AA]'; let title = 'Projet';
+                      if (t2 === 'chat' && m === 'online')  { bg = 'bg-yellow-400';  title = 'Discussion avec l’IA en ligne (GPT-5.2)'; }
+                      else if (t2 === 'chat' && m === 'offline') { bg = 'bg-sky-400';    title = 'Discussion avec Ollama (hors-ligne)'; }
+                      else if (t2 !== 'chat' && m === 'online')  { bg = 'bg-emerald-400';title = 'Création avec Emergent (en ligne)'; }
+                      else if (t2 !== 'chat' && m === 'offline') { bg = 'bg-violet-400'; title = 'Création avec Ollama (hors-ligne)'; }
+                      return (
+                        <span
+                          data-testid={`project-dot-${project.project_id}`}
+                          title={title}
+                          className={`flex-shrink-0 w-2.5 h-2.5 rounded-full ${bg} shadow-[0_0_6px_rgba(255,255,255,0.15)]`}
+                        />
+                      );
+                    })()}
                     {project.project_type === 'web' && <Globe className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
                     {project.project_type === 'mobile' && <Smartphone className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
                     {project.project_type === 'desktop' && <Monitor className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
-                    {project.project_type === 'chat' && <MessageSquare className="w-4 h-4 text-[#E4FF00] flex-shrink-0" />}
+                    {project.project_type === 'chat' && <MessageSquare className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
                     <span className="font-['IBM_Plex_Sans'] font-medium truncate flex-1 min-w-0">
                       {project.name}
                     </span>
@@ -516,43 +549,6 @@ export default function Dashboard() {
 
             {/* RIGHT */}
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-              <button
-                onClick={() => navigate('/discover')}
-                data-testid="dashboard-tutorial-btn"
-                title={t('dashTutorial')}
-                aria-label={t('dashTutorial')}
-                className="inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#E4FF00] border border-white/10 hover:border-[#E4FF00]/40 rounded-sm px-2 sm:px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">{t('dashTutorial')}</span>
-              </button>
-
-              <a
-                href="/AMELIORER_LES_IA.md"
-                target="_blank"
-                rel="noreferrer"
-                data-testid="dashboard-improve-ai-btn"
-                title="Améliorer les IA — guide débutant"
-                aria-label="Améliorer les IA — guide débutant"
-                className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#E4FF00] border border-white/10 hover:border-[#E4FF00]/40 rounded-sm px-2 sm:px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Améliorer les IA</span>
-              </a>
-
-              <a
-                href="/ENTRAINER_CODEFORGE.md"
-                target="_blank"
-                rel="noreferrer"
-                data-testid="dashboard-train-ai-btn"
-                title="Entraîner CodeForge — programme 90 jours pour admin"
-                aria-label="Entraîner CodeForge — programme 90 jours"
-                className="hidden lg:inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-purple-300 border border-white/10 hover:border-purple-400/40 rounded-sm px-2 sm:px-2.5 py-1.5 transition-colors font-['Chivo'] font-bold"
-              >
-                <Brain className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Entraîner l'IA (90j)</span>
-              </a>
-
               <Button
                 onClick={() => exportProject('apk')}
                 size="sm"
@@ -610,30 +606,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Assistant Guidé - Nouveau bouton principal */}
-            <div className="relative">
-              <div className="absolute top-3 right-3 z-10">
-                <FeatureHint id="wizard">
-                  35+ templates prêts à personnaliser : CRM, e-commerce, blog, jeu, IA. Idéal si tu n'as pas d'idée précise — réponds à 4-5 questions, l'IA fait le reste.
-                </FeatureHint>
-              </div>
-              <motion.button
-              whileHover={{ y: -2, scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => navigate('/wizard')}
-              data-testid="wizard-btn"
-              data-tour="wizard"
-              className="w-full mb-6 bg-gradient-to-r from-[#E4FF00] to-[#00FF66] text-[#050505] rounded-lg p-6 hover:opacity-95 hover:shadow-[0_8px_30px_rgba(228,255,0,0.35)] transition-all"
-            >
-              <div className="flex items-center justify-center gap-4">
-                <Wand2 className="w-8 h-8" />
-                <div className="text-left">
-                  <h3 className="text-2xl font-['Chivo'] font-bold">{t('dashWizard')}</h3>
-                  <p className="text-[#050505]/70">{t('dashWizardDesc')}</p>
-                </div>
-              </div>
-            </motion.button>
-            </div>
+            {/* (Assistant Guidé retiré du dashboard sur demande utilisateur — la route /wizard reste accessible) */}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Bouton Chat (en ligne uniquement) */}
@@ -727,7 +700,7 @@ export default function Dashboard() {
         <div
           data-testid="project-ctx-menu"
           onClick={(e) => e.stopPropagation()}
-          style={{ top: Math.min(ctxMenu.y, window.innerHeight - 160), left: Math.min(ctxMenu.x, window.innerWidth - 200) }}
+          style={{ top: Math.min(ctxMenu.y, window.innerHeight - 200), left: Math.min(ctxMenu.x, window.innerWidth - 200) }}
           className="fixed z-50 w-48 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl py-1"
         >
           <button
@@ -738,6 +711,25 @@ export default function Dashboard() {
           >
             <Pencil className="w-4 h-4 text-[#E4FF00]" />
             <span>Renommer</span>
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const pid = ctxMenu.project.project_id;
+              const url = `${window.location.origin}/chat?project=${encodeURIComponent(pid)}`;
+              try {
+                await navigator.clipboard.writeText(url);
+                toast.success('Lien copié ! Colle-le dans un nouveau chat pour y faire référence.');
+              } catch {
+                toast.error('Impossible de copier le lien');
+              }
+              setCtxMenu(null);
+            }}
+            data-testid="project-ctx-copy-link"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
+          >
+            <Link2 className="w-4 h-4 text-cyan-400" />
+            <span>Copier le lien</span>
           </button>
           {(ctxMenu.project?.project_type !== 'chat') && (
             <button
