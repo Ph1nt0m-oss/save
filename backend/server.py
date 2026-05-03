@@ -3308,11 +3308,18 @@ async def get_project(request: Request, project_id: str):
     if not project:
         raise HTTPException(status_code=404, detail="Projet non trouvé")
     
-    # Convert ISO strings to datetime
-    if isinstance(project['created_at'], str):
+    # Convert ISO strings to datetime + backfill (same logic as list endpoint)
+    if isinstance(project.get('created_at'), str):
         project['created_at'] = datetime.fromisoformat(project['created_at'])
-    if isinstance(project['updated_at'], str):
+    elif not project.get('created_at'):
+        project['created_at'] = datetime.now(timezone.utc)
+    if isinstance(project.get('updated_at'), str):
         project['updated_at'] = datetime.fromisoformat(project['updated_at'])
+    elif not project.get('updated_at'):
+        project['updated_at'] = project['created_at']
+    if not project.get('ai_mode'):
+        src = (project.get('ai_source') or '').lower()
+        project['ai_mode'] = 'offline' if src.startswith('ollama') else 'online'
     
     return project
 
