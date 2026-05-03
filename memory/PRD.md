@@ -1,6 +1,18 @@
 # CodeForge AI - PRD
 
-## Statut : VERSION P2+ — STABLE & PRODUCTION-READY (Mai 2026)
+## Statut : VERSION P2++ — STABLE & PRODUCTION-READY (Mai 2026)
+
+### 3 Mai 2026 — Session 41ter — REPL persistant + upload sandbox + export Jupyter + plotly + refactor _analyze_*
+- **REPL Python persistant** : le sandbox accepte maintenant un `session_id` optionnel. Dans ce mode, le namespace est **serialisé via dill** entre chaque appel — les variables définies dans un bloc sont disponibles dans le suivant, style Jupyter. TTL 1 h d'inactivité, cap 50 sessions, LRU eviction. Nouvelle route `POST /api/sandbox/reset` pour purger un namespace.
+- **Variables REPL affichées** : la réponse sandbox inclut `variables: [{name, type, repr}]` (max 30) — le frontend les affiche en chips violets sous le résultat (data-testid=code-run-variables).
+- **Upload de fichiers dans le sandbox** : nouveau champ `files: [{filename, data_base64}]` dans le payload (max 6 fichiers × 10 Mo). Les fichiers sont déposés dans le `cwd` et accessibles par `open()`, `pandas.read_csv()`, `PIL.Image.open()`, etc. Bouton "Joindre" 📎 dans chaque bloc de code Python (data-testid=code-attach-btn).
+- **Session REPL par projet** : dans le chat, tous les blocs de code partagent automatiquement le même `replSessionId = repl_{user_id}_{project_id}`. Toutes les exécutions s'enchaînent comme un notebook unique.
+- **Bouton "Reset REPL"** dans le header du chat (data-testid=chat-repl-reset-btn).
+- **Export conversation en Jupyter .ipynb** : `GET /api/chat/export-ipynb/{project_id}` — chaque message utilisateur → cellule markdown, chaque bloc ``` ```python``` ``` → cellule code (avec stdout pré-rempli quand disponible). Nbformat 4 valide, importable directement dans Jupyter/VSCode/Colab. Bouton dans le header chat (data-testid=chat-export-ipynb-btn).
+- **Refactor `_analyze_*` → cfaction_engine.py** : les 5 analyzers (`analyze_pdf/docx/xlsx/pptx/sqlite`) sont maintenant des fonctions pures dans `cfaction_engine.py`. server.py délègue via wrappers `async _analyze_*`. Zero breaking change.
+- **Plotly installé** (v6.7) dans le sandbox pour futurs graphiques JS interactifs (export HTML).
+- **Nouvelles dépendances backend** : `plotly`, `dill`, `narwhals` (dep de plotly).
+- **Tests** : backend 9/9 ✅ (REPL persistance, éphémère, upload CSV, reset, export ipynb happy+error path, régressions), frontend 100% ✅ (tous les nouveaux boutons et chips).
 
 ### 3 Mai 2026 — Session 41bis — Markdown chat + bouton Exécuter + matplotlib inline + refactor cfaction_engine
 - **Rendu Markdown riche dans le chat** : nouveau composant `MessageContent.jsx` basé sur `react-markdown` + `remark-gfm` + `react-syntax-highlighter` (thème oneDark Prism) — tableaux, listes, blockquotes, liens, titres h1/h2/h3.
