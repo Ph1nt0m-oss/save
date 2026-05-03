@@ -2,6 +2,30 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 3 Mai 2026 — Session 39 — Chat multimodal : analyse fichiers + génération DOCX/PDF/image
+- **Analyse de pièces jointes** dans le chat (trombone) : 
+  - PDF → extraction texte via `pypdf` (40 pages max)
+  - DOCX → extraction paragraphes via `python-docx`
+  - Images (PNG/JPG/WEBP/GIF) → description via GPT-5.2 vision (ImageContent)
+  - Texte brut (.txt, .md, .csv, .json, code) → lecture directe
+  - Cap à 20 Mo par fichier, 30k chars par extraction.
+  - Endpoint : `POST /api/chat/analyze-attachment` (multipart).
+- **Génération DOCX / PDF / image via l'IA** :
+  - Système prompt enrichi : GPT-5.2 termine sa réponse par un bloc ` ```cfaction {"type":"docx|pdf|image",...} ``` ` quand l'utilisateur demande explicitement un fichier.
+  - Backend parse le bloc, génère le fichier (python-docx / reportlab / Gemini Nano Banana), stocke sur disque + collection `generated_files` Mongo, retourne `{file_id, url, filename, mime_type}`.
+  - Endpoint download : `GET /api/download/generated/{file_id}` (ownership-checked).
+  - 3 fonctions pures `_build_docx`, `_build_pdf`, `_build_image` + endpoints REST dédiés `/chat/generate-docx|pdf|image`.
+- **Frontend Chat** :
+  - Trombone : `handleAttachment` upload le fichier → analyse → stocké dans `pendingAtts`, envoyé avec le prochain message.
+  - Chips de pièces jointes en attente avec bouton X pour retirer.
+  - Message IA : si `download` présent → bouton de téléchargement jaune + preview inline pour les images.
+  - Imports ajoutés : `Pin, Download, X`.
+- **Tests curl validés** :
+  - Analyse PDF → extraction texte OK ✅
+  - Génération Word (Intro + Conclusion sur chiens) → filename `Petit_document___Chiens.docx` (36 Ko) ✅
+  - Génération image (chat roux) → PNG via Gemini ✅
+  - Download endpoint → HTTP 200 + file OK ✅
+
 ### 2 Mai 2026 — Session 38 — Chat header cleanup + Sidebar pin chats + ZIP/GitHub export per project + i18n
 - **🚨 Fix crash FeedbackButton** : `TYPES is not defined` → renommé en `TYPES_T` (déjà déclaré).
 - **Chat header épuré** : seul le bouton **Retour** reste (les boutons Web/App/PDF/DOCX et le titre du chat ont été retirés).

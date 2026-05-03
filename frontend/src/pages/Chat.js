@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -26,6 +26,9 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [pinning, setPinning] = useState(false);
+  // Pending attachments for the NEXT message (analyzed by the backend).
+  const [pendingAtts, setPendingAtts] = useState([]); // [{kind, filename, mime_type, content, data_base64}]
+  const [analyzingAtt, setAnalyzingAtt] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -40,7 +43,11 @@ export default function Chat() {
       try {
         const r = await axios.get(`${API}/chat/history?project_id=${project.project_id}`, { withCredentials: true });
         if (!cancelled && Array.isArray(r.data)) {
-          setMessages(r.data.map(m => ({ ...m, timestamp: m.timestamp ? new Date(m.timestamp) : new Date() })));
+          setMessages(r.data.map(m => ({
+            ...m,
+            download: m.download || null,
+            timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+          })));
         }
       } catch (_) { /* silent */ }
     })();
@@ -54,9 +61,9 @@ export default function Chat() {
   const sendMessage = async (e) => {
     if (e?.preventDefault) e.preventDefault();
     const text = input.trim();
-    if (!text || isLoading) return;
+    if ((!text && pendingAtts.length === 0) || isLoading) return;
     setInput('');
-    await sendText(text);
+    await sendText(text || '(pièce jointe)', { attachments: pendingAtts });
   };
 
   // Pin the current chat to the sidebar by creating a "chat" project linked to this user.
@@ -102,15 +109,23 @@ export default function Chat() {
     try {
       const response = await axios.post(
         `${API}/chat/message`,
-        { message: userMessage, mode, language, project_id: project?.project_id },
+        {
+          message: userMessage,
+          mode,
+          language,
+          project_id: project?.project_id,
+          attachments: opts.attachments || [],
+        },
         { withCredentials: true }
       );
 
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.data.ai_response.content,
+        download: response.data.ai_response.download || null,
         timestamp: new Date()
       }]);
+      setPendingAtts([]);
     } catch (error) {
       console.error('Chat error:', error);
       setMessages(prev => [...prev, {
@@ -135,18 +150,35 @@ export default function Chat() {
   };
 
   // Bridge between AttachMenu and the chat input.
-  const handleAttachment = (att) => {
+  const handleAttachment = async (att) => {
     if (att.kind === 'text') {
       setInput(prev => (prev ? `${prev} ${att.text}` : att.text));
     } else if (att.kind === 'url') {
       setInput(prev => (prev ? `${prev} ${att.url}` : att.url));
       toast.success('🔗 ' + att.url);
-    } else if (att.kind === 'file') {
-      // For now we just append the filename as a tag — full upload pipeline is a P2.
-      setInput(prev => (prev ? `${prev} [📎 ${att.name}]` : `[📎 ${att.name}]`));
-      toast.success('📎 ' + att.name);
+    } else if (att.kind === 'file' && att.file) {
+      setAnalyzingAtt(true);
+      const t1 = toast.loading(`Analyse de ${att.name}…`);
+      try {
+        const fd = new FormData();
+        fd.append('file', att.file, att.name || att.file.name);
+        const r = await axios.post(`${API}/chat/analyze-attachment`, fd, {
+          withCredentials: true,
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        setPendingAtts(prev => [...prev, r.data]);
+        toast.dismiss(t1);
+        toast.success(`📎 ${r.data.filename} — analysé`);
+      } catch (err) {
+        toast.dismiss(t1);
+        toast.error(err.response?.data?.detail || "Analyse impossible");
+      } finally {
+        setAnalyzingAtt(false);
+      }
     }
   };
+
+  const removePendingAtt = (idx) => setPendingAtts(a => a.filter((_, i) => i !== idx));
 
   const modeColor = mode === 'online' ? '#00FF66' : 'cyan';
   const modeLabel = mode === 'online' ? 'EN LIGNE' : 'HORS LIGNE';
@@ -216,6 +248,26 @@ export default function Chat() {
                       {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
                     </span>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.download && (
+                      <a
+                        href={`${API}${msg.download.url}`}
+                        target="_blank" rel="noopener noreferrer"
+                        data-testid="chat-download-link"
+                        download={msg.download.filename}
+                        className="inline-flex items-center gap-2 mt-3 px-3 py-2 bg-[#E4FF00] hover:bg-[#C8E000] text-[#050505] text-sm font-['Chivo'] font-bold rounded-sm transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        {msg.download.filename}
+                      </a>
+                    )}
+                    {msg.download && (msg.download.mime_type || '').startsWith('image/') && (
+                      <img
+                        src={`${API}${msg.download.url}`}
+                        alt={msg.download.filename}
+                        data-testid="chat-download-preview"
+                        className="mt-3 max-w-full rounded-sm border border-white/10"
+                      />
+                    )}
                     <p className="text-xs text-[#A1A1AA] mt-2">
                       {msg.timestamp.toLocaleTimeString('fr-FR')}
                     </p>
@@ -259,8 +311,22 @@ export default function Chat() {
         </ScrollArea>
 
         <form onSubmit={sendMessage}>
+          {pendingAtts.length > 0 && (
+            <div data-testid="chat-pending-atts" className="flex flex-wrap gap-1.5 mb-2">
+              {pendingAtts.map((a, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#0F0F13] border border-white/10 rounded-sm text-xs">
+                  {a.kind === 'image' ? '🖼️' : '📄'}
+                  <span className="max-w-[160px] truncate">{a.filename}</span>
+                  <button type="button" onClick={() => removePendingAtt(i)} className="text-[#A1A1AA] hover:text-red-400">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              {analyzingAtt && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#E4FF00]" />}
+            </div>
+          )}
           <div className="flex gap-2 sm:gap-3 items-end">
-            <AttachMenu onResult={handleAttachment} disabled={isLoading} />
+            <AttachMenu onResult={handleAttachment} disabled={isLoading || analyzingAtt} />
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}

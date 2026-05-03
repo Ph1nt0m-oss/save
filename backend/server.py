@@ -148,11 +148,20 @@ api_router = APIRouter(prefix="/api")
 
 # ==================== PYDANTIC MODELS ====================
 
+class ChatAttachment(BaseModel):
+    kind: str  # 'text' | 'image'
+    filename: Optional[str] = None
+    mime_type: Optional[str] = None
+    content: Optional[str] = None       # extracted text for kind='text'
+    data_base64: Optional[str] = None   # for kind='image' (no data:<...>, prefix)
+
+
 class ChatMessageInput(BaseModel):
     message: str
     project_id: Optional[str] = None
     mode: Optional[str] = "online"
     language: Optional[str] = "fr"
+    attachments: Optional[List[ChatAttachment]] = None
 
 class Project(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -2332,7 +2341,19 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             f"\n## FORMAT DE SORTIE\n"
             f"- Par défaut : 1 à 4 phrases courtes. Plus seulement si la question l'exige.\n"
             f"- Pas de markdown lourd, pas de titres ##, pas de listes pour 2 items.\n"
-            f"- Pas d'auto-promotion CodeForge si on ne te demande rien sur l'app."
+            f"\n## GÉNÉRATION DE FICHIERS & IMAGES\n"
+            f"Si l'utilisateur te demande explicitement un document Word/.docx, PDF, ou une image, "
+            f"TERMINE ta réponse (et uniquement dans ce cas) par UN bloc code balisé `cfaction` avec un JSON STRICT :\n"
+            f"```cfaction\n"
+            f"{{\"type\": \"docx\"|\"pdf\"|\"image\", "
+            f"\"title\": \"...\", "
+            f"\"sections\": [{{\"heading\": \"...\", \"content\": \"...\"}}], "
+            f"\"prompt\": \"<pour type=image uniquement>\" "
+            f"}}\n```\n"
+            f"- Pour type=\"docx\" ou \"pdf\" : fournis `title` + `sections` (tableau). Pas de `prompt`.\n"
+            f"- Pour type=\"image\" : fournis `prompt` riche (style, ambiance, détails). Pas de `sections`.\n"
+            f"- NE PRODUIS PAS de bloc `cfaction` si l'utilisateur ne demande pas de fichier à télécharger.\n"
+            f"- Avant le bloc, annonce brièvement en 1 phrase : « Voici ton document / ton image, tu peux le télécharger via le bouton ci-dessous. »"
         )
 
         if input.mode == 'offline':
@@ -2374,7 +2395,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         else:
             # Online mode → Emergent GPT-4o.
             try:
-                from emergentintegrations.llm.chat import LlmChat, UserMessage
+                from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
                 emergent_key = os.environ.get('EMERGENT_LLM_KEY')
                 if not emergent_key:
                     raise ValueError("EMERGENT_LLM_KEY not configured")
@@ -2409,7 +2430,23 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                     f"### Nouveau message de l'utilisateur :\n{input.message}"
                 ) if transcript else input.message
 
-                user_message = UserMessage(text=composed)
+                # Inline attached file excerpts (text) so the model reasons on them.
+                text_atts = [a for a in (input.attachments or []) if a.kind == 'text' and (a.content or '').strip()]
+                if text_atts:
+                    chunks = []
+                    for a in text_atts:
+                        chunks.append(f"### Pièce jointe : {a.filename or 'fichier'}\n{a.content.strip()[:15000]}")
+                    composed = composed + "\n\n" + "\n\n".join(chunks)
+
+                # Attach images via vision.
+                image_contents = []
+                for a in (input.attachments or []):
+                    if a.kind == 'image' and a.data_base64:
+                        try:
+                            image_contents.append(ImageContent(a.data_base64))
+                        except Exception:
+                            pass
+                user_message = UserMessage(text=composed, file_contents=image_contents) if image_contents else UserMessage(text=composed)
                 ai_response_text = (await chat.send_message(user_message) or '').strip()
                 ai_source = 'emergent_gpt5'
                 logger.info("✅ Emergent GPT-5.2 chat response successful")
@@ -2434,6 +2471,33 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             }
             ai_response_text = offline_msgs.get(user_language, offline_msgs['fr'])
             ai_source = 'fallback'
+
+        # -------- Parse `cfaction` block to generate a downloadable artefact. --------
+        download = None
+        try:
+            m = re.search(r"```cfaction\s*(\{.*?\})\s*```", ai_response_text or "", re.DOTALL)
+            if m:
+                try:
+                    action = json.loads(m.group(1))
+                except Exception as je:
+                    logger.warning(f"cfaction JSON parse error: {je}")
+                    action = None
+                if isinstance(action, dict):
+                    a_type = (action.get("type") or "").lower()
+                    if a_type == "docx":
+                        download = await _build_docx(user_id, action.get("title") or "Document", action.get("sections") or [])
+                    elif a_type == "pdf":
+                        download = await _build_pdf(user_id, action.get("title") or "Document", action.get("sections") or [])
+                    elif a_type == "image":
+                        try:
+                            download = await _build_image(user_id, (action.get("prompt") or action.get("title") or input.message)[:800])
+                        except Exception as ie:
+                            logger.warning(f"cfaction image gen failed: {ie}")
+                            download = None
+                    # Clean the `cfaction` block from the displayed text.
+                    ai_response_text = (ai_response_text[: m.start()] + ai_response_text[m.end():]).strip()
+        except Exception as exc:
+            logger.warning(f"cfaction post-process failed: {exc}")
         
         # Save AI response
         ai_message_doc = {
@@ -2444,6 +2508,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             "content": ai_response_text,
             "mode": input.mode,
             "ai_source": ai_source,
+            "download": download,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         await db.chat_messages.insert_one(ai_message_doc)
@@ -2509,6 +2574,283 @@ async def attach_chat_to_project(request: Request, payload: ChatAttachInput):
 
 
 # ==================== WIZARD AI HELPERS ====================
+
+# ==================== CHAT FILE TOOLS (analyze / generate docx/pdf/image) ====================
+
+# Directory for generated downloadable files.
+GENERATED_FILES_DIR = Path("/app/backend/generated_files")
+GENERATED_FILES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _sanitize_filename(name: str, ext: str = "") -> str:
+    # Split off extension to preserve a literal dot.
+    stem = name or "file"
+    extpart = ""
+    if "." in stem:
+        stem, dot, extpart = stem.rpartition(".")
+        extpart = f".{extpart}"
+    base = "".join(c if (c.isalnum() or c in ("-", "_", " ")) else "_" for c in stem).strip()
+    base = base.replace(" ", "_")[:80] or "file"
+    return f"{base}{extpart}{ext}"
+
+
+async def _analyze_pdf(data: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        parts = []
+        for i, page in enumerate(reader.pages[:40]):  # cap at 40 pages
+            try:
+                t = page.extract_text() or ""
+            except Exception:
+                t = ""
+            if t.strip():
+                parts.append(f"[Page {i + 1}]\n{t.strip()}")
+        text = "\n\n".join(parts)
+        return text[:30000]  # hard cap so prompts stay reasonable
+    except Exception as e:
+        logger.warning(f"PDF analyze failed: {e}")
+        return ""
+
+
+async def _analyze_docx(data: bytes) -> str:
+    try:
+        from docx import Document
+        doc = Document(io.BytesIO(data))
+        parts = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
+        return ("\n".join(parts))[:30000]
+    except Exception as e:
+        logger.warning(f"DOCX analyze failed: {e}")
+        return ""
+
+
+async def _analyze_image_with_vision(data: bytes, mime_type: str, question: Optional[str] = None) -> str:
+    """Use GPT-5.2 vision to describe an uploaded image."""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+        if not emergent_key:
+            return "(clé Emergent non configurée)"
+        b64 = base64.b64encode(data).decode("utf-8")
+        chat = LlmChat(
+            api_key=emergent_key,
+            session_id=f"cf_vision_{uuid.uuid4().hex[:8]}",
+            system_message="Tu analyses des images précisément et brièvement.",
+        ).with_model("openai", "gpt-5.2")
+        prompt = question or "Décris cette image de façon concise (contenu, contexte, éléments notables)."
+        msg = UserMessage(text=prompt, file_contents=[ImageContent(b64)])
+        return (await chat.send_message(msg) or "").strip()[:6000]
+    except Exception as e:
+        logger.warning(f"Vision analyze failed: {e}")
+        return ""
+
+
+@api_router.post("/chat/analyze-attachment")
+async def chat_analyze_attachment(request: Request, file: UploadFile = File(...)):
+    """Extract the usable content of an uploaded file for the chat.
+
+    Returns a JSON object with a `kind` ('text' or 'image') and the content the
+    frontend should embed in the next chat message.
+    """
+    _ = await get_current_user(request)  # auth gate
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:  # 20 MB cap
+        raise HTTPException(status_code=413, detail="Fichier trop lourd (max 20 Mo)")
+
+    name = file.filename or "attachment"
+    mime = (file.content_type or "").lower()
+    lower = name.lower()
+
+    if mime.startswith("image/") or lower.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+        description = await _analyze_image_with_vision(data, mime)
+        return {
+            "kind": "image",
+            "filename": name,
+            "mime_type": mime or "image/png",
+            "content": description,
+            "data_base64": base64.b64encode(data).decode("utf-8"),
+        }
+
+    text = ""
+    if mime == "application/pdf" or lower.endswith(".pdf"):
+        text = await _analyze_pdf(data)
+    elif lower.endswith(".docx") or mime.endswith("wordprocessingml.document"):
+        text = await _analyze_docx(data)
+    elif lower.endswith((".txt", ".md", ".csv", ".json", ".log", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css")):
+        try:
+            text = data.decode("utf-8", errors="ignore")[:30000]
+        except Exception:
+            text = ""
+    else:
+        # Fallback attempt
+        try:
+            text = data.decode("utf-8", errors="ignore")[:20000]
+        except Exception:
+            text = ""
+
+    if not text.strip():
+        raise HTTPException(status_code=415, detail="Impossible d'extraire le contenu du fichier.")
+
+    return {"kind": "text", "filename": name, "mime_type": mime or "text/plain", "content": text}
+
+
+# ---- File GENERATION (docx / pdf / image) ----
+
+class GenerateDocxInput(BaseModel):
+    title: Optional[str] = "Document"
+    sections: List[Dict[str, Any]] = []     # [{ "heading": str, "content": str }]
+
+
+class GeneratePdfInput(BaseModel):
+    title: Optional[str] = "Document"
+    sections: List[Dict[str, Any]] = []
+
+
+class GenerateImageInput(BaseModel):
+    prompt: str
+    size: Optional[str] = "1024x1024"
+
+
+def _store_generated(blob: bytes, filename: str, mime: str, user_id: str) -> Dict[str, str]:
+    file_id = f"gen_{uuid.uuid4().hex[:16]}"
+    safe = _sanitize_filename(filename)
+    disk = GENERATED_FILES_DIR / f"{file_id}__{safe}"
+    disk.write_bytes(blob)
+    return {
+        "file_id": file_id,
+        "filename": safe,
+        "url": f"/api/download/generated/{file_id}",
+        "mime_type": mime,
+        "size": len(blob),
+        "disk_path": str(disk),
+        "user_id": user_id,
+    }
+
+
+async def _persist_generated(info: Dict[str, Any]) -> Dict[str, str]:
+    await db.generated_files.insert_one({
+        "file_id": info["file_id"],
+        "user_id": info["user_id"],
+        "filename": info["filename"],
+        "mime_type": info["mime_type"],
+        "size": info["size"],
+        "path": info["disk_path"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    # Return only the public-facing keys.
+    return {"file_id": info["file_id"], "filename": info["filename"], "url": info["url"], "mime_type": info["mime_type"]}
+
+
+async def _build_docx(user_id: str, title: str, sections: List[Dict[str, Any]]) -> Dict[str, str]:
+    from docx import Document
+    doc = Document()
+    doc.add_heading(title or "Document", 0)
+    for sec in sections or []:
+        h = (sec.get("heading") or "").strip()
+        c = (sec.get("content") or "").strip()
+        if h:
+            doc.add_heading(h, 1)
+        if c:
+            for para in c.split("\n\n"):
+                doc.add_paragraph(para)
+    buf = io.BytesIO()
+    doc.save(buf)
+    info = _store_generated(
+        buf.getvalue(),
+        f"{title or 'document'}.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        user_id,
+    )
+    return await _persist_generated(info)
+
+
+async def _build_pdf(user_id: str, title: str, sections: List[Dict[str, Any]]) -> Dict[str, str]:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.units import cm
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, title=title or "Document")
+    styles = getSampleStyleSheet()
+    flow = [Paragraph(title or "Document", styles["Title"]), Spacer(1, 0.6 * cm)]
+    for sec in sections or []:
+        h = (sec.get("heading") or "").strip()
+        c = (sec.get("content") or "").strip()
+        if h:
+            flow.append(Paragraph(h, styles["Heading1"]))
+            flow.append(Spacer(1, 0.2 * cm))
+        if c:
+            for para in c.split("\n\n"):
+                flow.append(Paragraph(para.replace("\n", "<br/>"), styles["BodyText"]))
+                flow.append(Spacer(1, 0.2 * cm))
+    doc.build(flow)
+    info = _store_generated(buf.getvalue(), f"{title or 'document'}.pdf", "application/pdf", user_id)
+    return await _persist_generated(info)
+
+
+async def _build_image(user_id: str, prompt: str) -> Dict[str, str]:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not emergent_key:
+        raise ValueError("EMERGENT_LLM_KEY missing")
+    chat = LlmChat(
+        api_key=emergent_key,
+        session_id=f"cf_imggen_{uuid.uuid4().hex[:8]}",
+        system_message="You are a helpful AI assistant.",
+    )
+    chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+    _text, images = await chat.send_message_multimodal_response(UserMessage(text=prompt))
+    if not images:
+        raise ValueError("no image generated")
+    img = images[0]
+    data = base64.b64decode(img["data"])
+    info = _store_generated(
+        data,
+        f"{_sanitize_filename((prompt[:40]) or 'image', ext='')}.png",
+        img.get("mime_type", "image/png"),
+        user_id,
+    )
+    return await _persist_generated(info)
+
+
+@api_router.post("/chat/generate-docx")
+async def chat_generate_docx(request: Request, payload: GenerateDocxInput):
+    user_id = await get_current_user(request)
+    return await _build_docx(user_id, payload.title or "Document", payload.sections or [])
+
+
+@api_router.post("/chat/generate-pdf")
+async def chat_generate_pdf(request: Request, payload: GeneratePdfInput):
+    user_id = await get_current_user(request)
+    return await _build_pdf(user_id, payload.title or "Document", payload.sections or [])
+
+
+@api_router.post("/chat/generate-image")
+async def chat_generate_image(request: Request, payload: GenerateImageInput):
+    user_id = await get_current_user(request)
+    try:
+        return await _build_image(user_id, payload.prompt)
+    except Exception as e:
+        logger.warning(f"image gen failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Génération d'image impossible : {e}")
+
+
+@api_router.get("/download/generated/{file_id}")
+async def download_generated_file(file_id: str, request: Request):
+    """Ownership-checked download endpoint for AI-generated files."""
+    user_id = await get_current_user(request)
+    doc = await db.generated_files.find_one({"file_id": file_id, "user_id": user_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    p = Path(doc.get("path", ""))
+    if not p.exists():
+        raise HTTPException(status_code=410, detail="Fichier expiré")
+    return FileResponse(
+        path=str(p),
+        media_type=doc.get("mime_type", "application/octet-stream"),
+        filename=doc.get("filename", "file"),
+    )
+
 
 class WizardSuggestInput(BaseModel):
     kind: str  # 'name' | 'design'
