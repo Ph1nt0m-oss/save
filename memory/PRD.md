@@ -2,6 +2,30 @@
 
 ## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 3 Mai 2026 — Session 40 — Chat full-modal : Excel/PowerPoint/code files + Python stack complet + FR strict + zéro limite
+- **Python stack étendu** : `openpyxl`, `python-pptx`, `xlsxwriter`, `pypdf`, `python-docx`, `reportlab`, `Pillow`, `PyYAML` installés → `requirements.txt` gelé.
+- **Analyse de pièces jointes étendue** (`/api/chat/analyze-attachment`) :
+  - **XLSX** → `openpyxl` extrait toutes feuilles en tableau texte (6 feuilles × 200 lignes max)
+  - **PPTX** → `python-pptx` extrait le texte de toutes les slides (60 max)
+  - **SQLite / DB** → `sqlite3` liste les tables + schéma + 10 lignes exemple par table
+  - **Formats texte élargis** : `.yaml/.yml/.xml/.ini/.env/.cfg/.toml/.sql/.sh/.ps1/.bat/.cmd/.rb/.go/.rs/.java/.c/.cpp/.cs/.php/.kt/.swift` + tous les `.log`
+- **Génération de fichiers étendue** (bloc `cfaction`) — 17 formats supportés :
+  - **docx / pdf / xlsx** (avec formules Excel) / **pptx**
+  - **image** (Gemini Nano Banana)
+  - Fichiers texte & code : **txt, md, csv, json, yaml/yml, xml, ini, env, sql, py, js, ts, tsx, jsx, html, css, sh, ps1, bat**
+- **Regex cfaction renforcée** : capture le contenu complet entre ` ```cfaction` et ` ``` ` (DOTALL non-greedy) → plus robuste avec du code multi-ligne.
+- **Système prompt élargi** :
+  - « Réponds TOUJOURS en français — 0% d'anglais parasite »
+  - Liste des 17 formats cfaction avec exemples JSON stricts
+  - « Tu sais écrire, corriger, expliquer et simuler du code Python (pandas, numpy, requests, FastAPI, SQLAlchemy, openpyxl, python-docx, pptx, PIL, reportlab), PowerShell, CMD, Bash, JS/TS, SQL »
+- **Vérification limites** : `grep -n "rate_limit|quota|messages_per|chat_limit|daily|monthly"` → **aucune occurrence** sur les 4 flows de chat. Aucune limite artificielle.
+- **Tests curl validés** :
+  - Excel avec formule `=A2+B2` → `Addition_A_B.xlsx` ✅
+  - PowerPoint 3 slides → `Écosystèmes_marins.pptx` ✅
+  - Script Python RSS → `feed.py` (2321 octets, complet, commenté en français) ✅
+  - PDF analyze → extraction texte ✅
+  - Image (chat roux) → PNG Gemini ✅
+
 ### 3 Mai 2026 — Session 39 — Chat multimodal : analyse fichiers + génération DOCX/PDF/image
 - **Analyse de pièces jointes** dans le chat (trombone) : 
   - PDF → extraction texte via `pypdf` (40 pages max)

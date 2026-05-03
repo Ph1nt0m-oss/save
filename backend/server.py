@@ -1,5 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Cookie, Response, Request, UploadFile, File
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse, RedirectResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Response, Request, UploadFile, File
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
@@ -2321,7 +2321,8 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         lang_label = language_names.get(user_language, 'français')
         system_prompt = (
             f"Tu es CodeForge AI, un assistant conversationnel haut de gamme pour aider à créer des applications. "
-            f"Réponds TOUJOURS en {lang_label}.\n"
+            f"Réponds TOUJOURS en {lang_label}. "
+            f"RÈGLE STRICTE : 0% d'anglais parasite — aucune phrase, titre, commentaire, clé JSON de UI ou message technique ne doit être en anglais si l'utilisateur n'est pas en anglais. Même les messages d'erreur ou remarques sont traduits.\n"
             f"\n## TON CARACTÈRE\n"
             f"Tu génères chaque réponse en temps réel à partir de la conversation, jamais à partir de phrases pré-faites. "
             f"Tu interprètes l'intention RÉELLE derrière les mots, pas seulement la forme littérale. "
@@ -2342,18 +2343,26 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             f"- Par défaut : 1 à 4 phrases courtes. Plus seulement si la question l'exige.\n"
             f"- Pas de markdown lourd, pas de titres ##, pas de listes pour 2 items.\n"
             f"\n## GÉNÉRATION DE FICHIERS & IMAGES\n"
-            f"Si l'utilisateur te demande explicitement un document Word/.docx, PDF, ou une image, "
-            f"TERMINE ta réponse (et uniquement dans ce cas) par UN bloc code balisé `cfaction` avec un JSON STRICT :\n"
-            f"```cfaction\n"
-            f"{{\"type\": \"docx\"|\"pdf\"|\"image\", "
-            f"\"title\": \"...\", "
-            f"\"sections\": [{{\"heading\": \"...\", \"content\": \"...\"}}], "
-            f"\"prompt\": \"<pour type=image uniquement>\" "
-            f"}}\n```\n"
-            f"- Pour type=\"docx\" ou \"pdf\" : fournis `title` + `sections` (tableau). Pas de `prompt`.\n"
-            f"- Pour type=\"image\" : fournis `prompt` riche (style, ambiance, détails). Pas de `sections`.\n"
-            f"- NE PRODUIS PAS de bloc `cfaction` si l'utilisateur ne demande pas de fichier à télécharger.\n"
-            f"- Avant le bloc, annonce brièvement en 1 phrase : « Voici ton document / ton image, tu peux le télécharger via le bouton ci-dessous. »"
+            f"Tu peux PRODUIRE des fichiers que l'utilisateur peut télécharger. Si l'utilisateur demande explicitement un fichier, "
+            f"TERMINE ta réponse par UN seul bloc code balisé `cfaction` avec un JSON STRICT selon son type :\n"
+            f"```cfaction\n{{...JSON...}}\n```\n"
+            f"Formats supportés (choisis LE plus adapté à la demande) :\n"
+            f"- **docx** / **pdf** : `{{\"type\":\"docx|pdf\",\"title\":\"...\",\"sections\":[{{\"heading\":\"...\",\"content\":\"...\"}}]}}`\n"
+            f"- **xlsx** (Excel avec formules) : `{{\"type\":\"xlsx\",\"title\":\"...\",\"sheets\":[{{\"name\":\"Feuille1\",\"headers\":[\"A\",\"B\",\"C\"],\"rows\":[[1,2,3],...],\"formulas\":{{\"D1\":\"=SUM(A1:C1)\"}}}}]}}`\n"
+            f"- **pptx** (PowerPoint) : `{{\"type\":\"pptx\",\"title\":\"...\",\"slides\":[{{\"title\":\"...\",\"content\":\"bullet 1\\nbullet 2\"}}]}}`\n"
+            f"- **txt / md / csv / json / yaml / xml / ini / env / sql / py / js / ts / html / css / sh / ps1 / bat** : `{{\"type\":\"<ext>\",\"title\":\"nom.ext\",\"content\":\"<code ou texte complet>\"}}`\n"
+            f"- **image** : `{{\"type\":\"image\",\"prompt\":\"description riche en français (style, ambiance, détails)\"}}`\n"
+            f"Règles :\n"
+            f"- NE produis PAS de bloc `cfaction` si l'utilisateur ne demande pas de fichier.\n"
+            f"- Juste AVANT le bloc, annonce en UNE phrase : « Voici ton document / ton image, tu peux le télécharger via le bouton ci-dessous. »\n"
+            f"- Le JSON doit être parfaitement valide (pas de virgule finale, guillemets doubles).\n"
+            f"\n## LECTURE & ANALYSE DE FICHIERS\n"
+            f"Tu reçois parfois des pièces jointes extraites par le serveur (PDF, DOCX, XLSX, PPTX, SQLite, images, fichiers texte/code/config). "
+            f"Elles apparaissent dans le prompt sous la forme `### Pièce jointe : <nom>\\n<contenu>`. "
+            f"Utilise-les pour répondre précisément : résumer, corriger, restructurer, transformer, extraire des données, expliquer.\n"
+            f"\n## CODE & ENVIRONNEMENTS\n"
+            f"Tu sais écrire, corriger, expliquer et simuler du code dans : Python (toutes lib courantes — pandas, numpy, requests, FastAPI, SQLAlchemy, openpyxl, python-docx, pptx, PIL, reportlab...), PowerShell, CMD/Batch, Bash, JavaScript/TypeScript, HTML/CSS, SQL. "
+            f"Quand l'utilisateur demande du code, donne du code **complet, exécutable, commenté en français**, et explique ses choix si utile.\n"
         )
 
         if input.mode == 'offline':
@@ -2475,12 +2484,13 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         # -------- Parse `cfaction` block to generate a downloadable artefact. --------
         download = None
         try:
-            m = re.search(r"```cfaction\s*(\{.*?\})\s*```", ai_response_text or "", re.DOTALL)
+            m = re.search(r"```cfaction\s*\n?(.*?)\n?```", ai_response_text or "", re.DOTALL)
             if m:
+                raw = m.group(1).strip()
                 try:
-                    action = json.loads(m.group(1))
+                    action = json.loads(raw)
                 except Exception as je:
-                    logger.warning(f"cfaction JSON parse error: {je}")
+                    logger.warning(f"cfaction JSON parse error: {je} | raw[:200]={raw[:200]!r}")
                     action = None
                 if isinstance(action, dict):
                     a_type = (action.get("type") or "").lower()
@@ -2488,6 +2498,41 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                         download = await _build_docx(user_id, action.get("title") or "Document", action.get("sections") or [])
                     elif a_type == "pdf":
                         download = await _build_pdf(user_id, action.get("title") or "Document", action.get("sections") or [])
+                    elif a_type in ("xlsx", "excel"):
+                        download = await _build_xlsx(user_id, action.get("title") or "Classeur", action.get("sheets") or [])
+                    elif a_type in ("pptx", "powerpoint"):
+                        download = await _build_pptx(user_id, action.get("title") or "Présentation", action.get("slides") or [])
+                    elif a_type in ("txt", "md", "csv", "json", "yaml", "yml", "xml", "ini", "env", "sql",
+                                    "py", "js", "ts", "tsx", "jsx", "html", "css", "sh", "ps1", "bat"):
+                        ext_map = {
+                            "txt": (".txt", "text/plain"),
+                            "md": (".md", "text/markdown"),
+                            "csv": (".csv", "text/csv"),
+                            "json": (".json", "application/json"),
+                            "yaml": (".yaml", "application/x-yaml"),
+                            "yml": (".yml", "application/x-yaml"),
+                            "xml": (".xml", "application/xml"),
+                            "ini": (".ini", "text/plain"),
+                            "env": (".env", "text/plain"),
+                            "sql": (".sql", "text/plain"),
+                            "py": (".py", "text/x-python"),
+                            "js": (".js", "text/javascript"),
+                            "ts": (".ts", "text/typescript"),
+                            "tsx": (".tsx", "text/typescript"),
+                            "jsx": (".jsx", "text/javascript"),
+                            "html": (".html", "text/html"),
+                            "css": (".css", "text/css"),
+                            "sh": (".sh", "text/x-shellscript"),
+                            "ps1": (".ps1", "text/plain"),
+                            "bat": (".bat", "text/plain"),
+                        }
+                        ext, mime = ext_map[a_type]
+                        download = await _build_plain(
+                            user_id,
+                            action.get("title") or f"fichier{ext}",
+                            action.get("content") or "",
+                            ext, mime,
+                        )
                     elif a_type == "image":
                         try:
                             download = await _build_image(user_id, (action.get("prompt") or action.get("title") or input.message)[:800])
@@ -2624,6 +2669,75 @@ async def _analyze_docx(data: bytes) -> str:
         return ""
 
 
+async def _analyze_xlsx(data: bytes) -> str:
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
+        parts = []
+        for ws in wb.worksheets[:6]:  # cap on sheet count
+            parts.append(f"=== Feuille : {ws.title} ===")
+            rows = []
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                if i >= 200:  # cap on rows per sheet
+                    rows.append("...(lignes suivantes omises)")
+                    break
+                cells = ["" if c is None else str(c) for c in row]
+                rows.append(" | ".join(cells))
+            parts.append("\n".join(rows))
+        return ("\n\n".join(parts))[:30000]
+    except Exception as e:
+        logger.warning(f"XLSX analyze failed: {e}")
+        return ""
+
+
+async def _analyze_pptx(data: bytes) -> str:
+    try:
+        from pptx import Presentation
+        prs = Presentation(io.BytesIO(data))
+        parts = []
+        for i, slide in enumerate(prs.slides[:60]):
+            texts = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for p in shape.text_frame.paragraphs:
+                        t = "".join(run.text for run in p.runs).strip()
+                        if t:
+                            texts.append(t)
+            if texts:
+                parts.append(f"=== Slide {i + 1} ===\n" + "\n".join(texts))
+        return ("\n\n".join(parts))[:30000]
+    except Exception as e:
+        logger.warning(f"PPTX analyze failed: {e}")
+        return ""
+
+
+async def _analyze_sqlite(data: bytes) -> str:
+    import sqlite3
+    import tempfile
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tf:
+            tf.write(data)
+            path = tf.name
+        con = sqlite3.connect(path)
+        cur = con.cursor()
+        parts = []
+        tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT 40").fetchall()]
+        parts.append(f"Tables ({len(tables)}) : {', '.join(tables) if tables else '(aucune)'}")
+        for t in tables[:10]:
+            try:
+                schema = cur.execute("SELECT sql FROM sqlite_master WHERE name=?", (t,)).fetchone()
+                parts.append(f"\n--- {t} ---\n{(schema[0] if schema else '')}")
+                rows = cur.execute(f'SELECT * FROM "{t}" LIMIT 10').fetchall()
+                parts.append("Exemples (10 lignes max) :\n" + "\n".join(" | ".join(str(c) for c in r) for r in rows))
+            except Exception as te:
+                parts.append(f"(erreur {t}: {te})")
+        con.close()
+        return ("\n".join(parts))[:30000]
+    except Exception as e:
+        logger.warning(f"SQLITE analyze failed: {e}")
+        return ""
+
+
 async def _analyze_image_with_vision(data: bytes, mime_type: str, question: Optional[str] = None) -> str:
     """Use GPT-5.2 vision to describe an uploaded image."""
     try:
@@ -2676,13 +2790,22 @@ async def chat_analyze_attachment(request: Request, file: UploadFile = File(...)
         text = await _analyze_pdf(data)
     elif lower.endswith(".docx") or mime.endswith("wordprocessingml.document"):
         text = await _analyze_docx(data)
-    elif lower.endswith((".txt", ".md", ".csv", ".json", ".log", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css")):
+    elif lower.endswith(".xlsx") or mime.endswith("spreadsheetml.sheet"):
+        text = await _analyze_xlsx(data)
+    elif lower.endswith(".pptx") or mime.endswith("presentationml.presentation"):
+        text = await _analyze_pptx(data)
+    elif lower.endswith((".sqlite", ".db", ".sqlite3")):
+        text = await _analyze_sqlite(data)
+    elif lower.endswith((".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".log",
+                        ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".htm", ".css", ".scss",
+                        ".xml", ".yaml", ".yml", ".ini", ".env", ".cfg", ".conf", ".toml",
+                        ".sql", ".sh", ".ps1", ".bat", ".cmd", ".rb", ".go", ".rs", ".java",
+                        ".c", ".cpp", ".h", ".hpp", ".cs", ".php", ".kt", ".swift")):
         try:
             text = data.decode("utf-8", errors="ignore")[:30000]
         except Exception:
             text = ""
     else:
-        # Fallback attempt
         try:
             text = data.decode("utf-8", errors="ignore")[:20000]
         except Exception:
@@ -2785,6 +2908,79 @@ async def _build_pdf(user_id: str, title: str, sections: List[Dict[str, Any]]) -
                 flow.append(Spacer(1, 0.2 * cm))
     doc.build(flow)
     info = _store_generated(buf.getvalue(), f"{title or 'document'}.pdf", "application/pdf", user_id)
+    return await _persist_generated(info)
+
+
+async def _build_xlsx(user_id: str, title: str, sheets: List[Dict[str, Any]]) -> Dict[str, str]:
+    """sheets = [{"name": "Feuille1", "headers": ["A","B"], "rows": [[1,2]], "formulas": {"C2": "=A2+B2"}}]"""
+    import xlsxwriter
+    buf = io.BytesIO()
+    wb = xlsxwriter.Workbook(buf, {"in_memory": True})
+    header_fmt = wb.add_format({"bold": True, "bg_color": "#E4FF00", "border": 1})
+    for idx, sh in enumerate(sheets or [{"name": "Feuille1", "rows": []}]):
+        ws = wb.add_worksheet(sh.get("name") or f"Feuille{idx + 1}")
+        row_offset = 0
+        headers = sh.get("headers") or []
+        if headers:
+            for c, h in enumerate(headers):
+                ws.write(0, c, h, header_fmt)
+            row_offset = 1
+        for r_i, row in enumerate(sh.get("rows") or []):
+            for c_i, val in enumerate(row):
+                ws.write(row_offset + r_i, c_i, val)
+        for cell, formula in (sh.get("formulas") or {}).items():
+            try:
+                ws.write_formula(cell, formula)
+            except Exception:
+                pass
+        if headers:
+            ws.autofilter(0, 0, row_offset + len(sh.get("rows") or []) - 1, len(headers) - 1)
+    wb.close()
+    info = _store_generated(
+        buf.getvalue(),
+        f"{title or 'classeur'}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        user_id,
+    )
+    return await _persist_generated(info)
+
+
+async def _build_pptx(user_id: str, title: str, slides: List[Dict[str, Any]]) -> Dict[str, str]:
+    """slides = [{"title": "...", "content": "bullet 1\nbullet 2"}, ...]"""
+    from pptx import Presentation
+    prs = Presentation()
+    # Title slide
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    slide.shapes.title.text = title or "Présentation"
+    for s in slides or []:
+        layout = prs.slide_layouts[1]
+        sl = prs.slides.add_slide(layout)
+        sl.shapes.title.text = s.get("title") or ""
+        body = sl.placeholders[1]
+        tf = body.text_frame
+        content = s.get("content") or ""
+        lines = content.split("\n")
+        tf.text = lines[0] if lines else ""
+        for extra in lines[1:]:
+            p = tf.add_paragraph()
+            p.text = extra
+    buf = io.BytesIO()
+    prs.save(buf)
+    info = _store_generated(
+        buf.getvalue(),
+        f"{title or 'presentation'}.pptx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        user_id,
+    )
+    return await _persist_generated(info)
+
+
+async def _build_plain(user_id: str, title: str, content: str, ext: str, mime: str) -> Dict[str, str]:
+    data = (content or "").encode("utf-8")
+    name = title or "fichier"
+    if not name.lower().endswith(ext):
+        name = f"{name}{ext}"
+    info = _store_generated(data, name, mime, user_id)
     return await _persist_generated(info)
 
 
