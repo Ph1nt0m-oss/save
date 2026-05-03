@@ -2321,8 +2321,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
         lang_label = language_names.get(user_language, 'français')
         system_prompt = (
             f"Tu es CodeForge AI, un assistant conversationnel haut de gamme pour aider à créer des applications. "
-            f"Réponds TOUJOURS en {lang_label}. "
-            f"RÈGLE STRICTE : 0% d'anglais parasite — aucune phrase, titre, commentaire, clé JSON de UI ou message technique ne doit être en anglais si l'utilisateur n'est pas en anglais. Même les messages d'erreur ou remarques sont traduits.\n"
+            f"Réponds dans la langue de l'utilisateur : **{lang_label}**. Si l'utilisateur change de langue au fil de la conversation, adapte-toi à sa dernière langue. Ne mélange pas les langues sans raison.\n"
             f"\n## TON CARACTÈRE\n"
             f"Tu génères chaque réponse en temps réel à partir de la conversation, jamais à partir de phrases pré-faites. "
             f"Tu interprètes l'intention RÉELLE derrière les mots, pas seulement la forme littérale. "
@@ -2374,11 +2373,11 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 history_q = {"user_id": user_id}
                 if input.project_id:
                     history_q["project_id"] = input.project_id
-                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(11)
+                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(21)
                 history_docs = list(reversed(await history_cursor.to_list(length=11)))[:-1]
                 transcript = "\n".join(
                     f"{('Utilisateur' if h.get('role') == 'user' else 'CodeForge')} : {h.get('content', '').strip()}"
-                    for h in history_docs[-10:]
+                    for h in history_docs[-20:]
                 )
                 composed_prompt = (
                     f"### Historique récent :\n{transcript}\n\n### Nouveau message :\n{input.message}"
@@ -2415,13 +2414,13 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 history_q = {"user_id": user_id}
                 if input.project_id:
                     history_q["project_id"] = input.project_id
-                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(11)
+                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", -1).limit(21)
                 history_docs = await history_cursor.to_list(length=11)
                 history_docs = list(reversed(history_docs))[:-1]  # drop the message we just inserted
                 transcript = ""
                 if history_docs:
                     lines = []
-                    for h in history_docs[-10:]:
+                    for h in history_docs[-20:]:
                         speaker = "Utilisateur" if h.get("role") == "user" else "CodeForge"
                         lines.append(f"{speaker} : {h.get('content', '').strip()}")
                     transcript = "\n".join(lines)
