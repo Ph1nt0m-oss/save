@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Play, Loader2, Copy, Check } from 'lucide-react';
+import { Play, Loader2, Copy, Check, Paperclip, X as XIcon } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -14,10 +14,12 @@ const API = `${BACKEND_URL}/api`;
  * Bloc de code avec bouton Copier + bouton Exécuter (si langage Python).
  * Le résultat d'exécution s'affiche sous le bloc.
  */
-function CodeBlock({ language, code }) {
+function CodeBlock({ language, code, replSessionId }) {
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState(null); // { stdout, stderr, exit_code, timed_out, duration_ms }
+  const [result, setResult] = useState(null); // { stdout, stderr, exit_code, timed_out, duration_ms, images, variables }
+  const [uploadedFiles, setUploadedFiles] = useState([]); // [{filename, data_base64}]
+  const fileInputRef = React.useRef(null);
 
   const isPython = /^(py|python|python3)$/i.test(language || '');
 
@@ -31,11 +33,30 @@ function CodeBlock({ language, code }) {
     }
   };
 
+  const onFilePicked = async (e) => {
+    const files = Array.from(e.target.files || []);
+    const max = 10 * 1024 * 1024; // 10 MB
+    const processed = [];
+    for (const f of files.slice(0, 4)) {
+      if (f.size > max) { toast.error(`${f.name} > 10 Mo`); continue; }
+      const buf = await f.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      processed.push({ filename: f.name, data_base64: b64 });
+    }
+    setUploadedFiles((prev) => [...prev, ...processed].slice(0, 6));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeFile = (i) => setUploadedFiles((prev) => prev.filter((_, idx) => idx !== i));
+
   const doRun = async () => {
     setRunning(true);
     setResult(null);
     try {
-      const res = await axios.post(`${API}/sandbox/python`, { code, timeout_sec: 15 }, { withCredentials: true });
+      const payload = { code, timeout_sec: 15 };
+      if (replSessionId) payload.session_id = replSessionId;
+      if (uploadedFiles.length) payload.files = uploadedFiles;
+      const res = await axios.post(`${API}/sandbox/python`, payload, { withCredentials: true });
       setResult(res.data);
     } catch (e) {
       setResult({
@@ -58,17 +79,37 @@ function CodeBlock({ language, code }) {
         </span>
         <div className="flex items-center gap-1.5">
           {isPython && (
-            <button
-              type="button"
-              onClick={doRun}
-              disabled={running}
-              data-testid="code-run-btn"
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-sm bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30 transition-colors disabled:opacity-60"
-              title="Exécuter dans le sandbox Python"
-            >
-              {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-              {running ? 'Exécution…' : 'Exécuter'}
-            </button>
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={onFilePicked}
+                className="hidden"
+                data-testid="code-file-input"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="code-attach-btn"
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-sm bg-white/[0.04] text-[#A1A1AA] hover:bg-white/[0.08] hover:text-white border border-white/10 transition-colors"
+                title="Joindre un fichier (CSV, JSON, image…) au cwd du sandbox"
+              >
+                <Paperclip className="w-3 h-3" />
+                {uploadedFiles.length > 0 ? `${uploadedFiles.length} fichier${uploadedFiles.length > 1 ? 's' : ''}` : 'Joindre'}
+              </button>
+              <button
+                type="button"
+                onClick={doRun}
+                disabled={running}
+                data-testid="code-run-btn"
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-sm bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30 transition-colors disabled:opacity-60"
+                title="Exécuter dans le sandbox Python"
+              >
+                {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                {running ? 'Exécution…' : 'Exécuter'}
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -90,6 +131,19 @@ function CodeBlock({ language, code }) {
       >
         {code}
       </SyntaxHighlighter>
+      {uploadedFiles.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-white/10 bg-white/[0.02] flex flex-wrap gap-1.5" data-testid="code-attach-chips">
+          {uploadedFiles.map((f, i) => (
+            <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-sm bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-mono">
+              <Paperclip className="w-2.5 h-2.5" />
+              {f.filename}
+              <button type="button" onClick={() => removeFile(i)} className="text-cyan-300/70 hover:text-white ml-0.5" title="Retirer">
+                <XIcon className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       {result && (
         <div data-testid="code-run-output" className="border-t border-white/10 bg-black/40 p-3 text-[12.5px] font-mono">
           <div className="text-[11px] uppercase tracking-widest text-emerald-400 mb-1.5">
@@ -114,6 +168,21 @@ function CodeBlock({ language, code }) {
               ))}
             </div>
           )}
+          {result.variables && result.variables.length > 0 && (
+            <div className="mt-3 border-t border-white/10 pt-2" data-testid="code-run-variables">
+              <div className="text-[10px] uppercase tracking-widest text-purple-300 mb-1">
+                ◆ Variables ({result.variables.length}) — persistantes (REPL)
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {result.variables.map((v, i) => (
+                  <span key={i} className="text-[11px] px-1.5 py-0.5 rounded-sm bg-purple-500/10 border border-purple-500/20 text-purple-200 font-mono" title={v.repr}>
+                    <span className="text-white">{v.name}</span>
+                    <span className="text-purple-300/70">: {v.type}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -124,7 +193,7 @@ function CodeBlock({ language, code }) {
  * Rendu riche du message IA : markdown + GFM (tables, listes) + syntax highlight
  * + bouton Exécuter sur les blocs Python. Pour les messages utilisateur on reste simple.
  */
-export default function MessageContent({ content, isUser = false }) {
+export default function MessageContent({ content, isUser = false, replSessionId = null }) {
   if (isUser) {
     return <p className="whitespace-pre-wrap">{content}</p>;
   }
@@ -144,7 +213,7 @@ export default function MessageContent({ content, isUser = false }) {
                 </code>
               );
             }
-            return <CodeBlock language={lang} code={raw} />;
+            return <CodeBlock language={lang} code={raw} replSessionId={replSessionId} />;
           },
           p({ children }) { return <p className="my-2">{children}</p>; },
           ul({ children }) { return <ul className="my-2 ml-5 list-disc space-y-1">{children}</ul>; },

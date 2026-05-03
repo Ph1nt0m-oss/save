@@ -19,6 +19,11 @@ from cfaction_engine import (
     build_xlsx_bytes as _cf_build_xlsx_bytes,
     build_pptx_bytes as _cf_build_pptx_bytes,
     run_python_sandbox as _cf_run_python_sandbox,
+    analyze_pdf as _cf_analyze_pdf,
+    analyze_docx as _cf_analyze_docx,
+    analyze_xlsx as _cf_analyze_xlsx,
+    analyze_pptx as _cf_analyze_pptx,
+    analyze_sqlite as _cf_analyze_sqlite,
 )
 
 import os
@@ -2683,102 +2688,23 @@ def _sanitize_filename(name: str, ext: str = "") -> str:
 
 
 async def _analyze_pdf(data: bytes) -> str:
-    try:
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(data))
-        parts = []
-        for i, page in enumerate(reader.pages[:40]):  # cap at 40 pages
-            try:
-                t = page.extract_text() or ""
-            except Exception:
-                t = ""
-            if t.strip():
-                parts.append(f"[Page {i + 1}]\n{t.strip()}")
-        text = "\n\n".join(parts)
-        return text[:30000]  # hard cap so prompts stay reasonable
-    except Exception as e:
-        logger.warning(f"PDF analyze failed: {e}")
-        return ""
+    return _cf_analyze_pdf(data)
 
 
 async def _analyze_docx(data: bytes) -> str:
-    try:
-        from docx import Document
-        doc = Document(io.BytesIO(data))
-        parts = [p.text for p in doc.paragraphs if p.text and p.text.strip()]
-        return ("\n".join(parts))[:30000]
-    except Exception as e:
-        logger.warning(f"DOCX analyze failed: {e}")
-        return ""
+    return _cf_analyze_docx(data)
 
 
 async def _analyze_xlsx(data: bytes) -> str:
-    try:
-        from openpyxl import load_workbook
-        wb = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
-        parts = []
-        for ws in wb.worksheets[:6]:  # cap on sheet count
-            parts.append(f"=== Feuille : {ws.title} ===")
-            rows = []
-            for i, row in enumerate(ws.iter_rows(values_only=True)):
-                if i >= 200:  # cap on rows per sheet
-                    rows.append("...(lignes suivantes omises)")
-                    break
-                cells = ["" if c is None else str(c) for c in row]
-                rows.append(" | ".join(cells))
-            parts.append("\n".join(rows))
-        return ("\n\n".join(parts))[:30000]
-    except Exception as e:
-        logger.warning(f"XLSX analyze failed: {e}")
-        return ""
+    return _cf_analyze_xlsx(data)
 
 
 async def _analyze_pptx(data: bytes) -> str:
-    try:
-        from pptx import Presentation
-        prs = Presentation(io.BytesIO(data))
-        parts = []
-        for i, slide in enumerate(prs.slides[:60]):
-            texts = []
-            for shape in slide.shapes:
-                if shape.has_text_frame:
-                    for p in shape.text_frame.paragraphs:
-                        t = "".join(run.text for run in p.runs).strip()
-                        if t:
-                            texts.append(t)
-            if texts:
-                parts.append(f"=== Slide {i + 1} ===\n" + "\n".join(texts))
-        return ("\n\n".join(parts))[:30000]
-    except Exception as e:
-        logger.warning(f"PPTX analyze failed: {e}")
-        return ""
+    return _cf_analyze_pptx(data)
 
 
 async def _analyze_sqlite(data: bytes) -> str:
-    import sqlite3
-    import tempfile
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tf:
-            tf.write(data)
-            path = tf.name
-        con = sqlite3.connect(path)
-        cur = con.cursor()
-        parts = []
-        tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT 40").fetchall()]
-        parts.append(f"Tables ({len(tables)}) : {', '.join(tables) if tables else '(aucune)'}")
-        for t in tables[:10]:
-            try:
-                schema = cur.execute("SELECT sql FROM sqlite_master WHERE name=?", (t,)).fetchone()
-                parts.append(f"\n--- {t} ---\n{(schema[0] if schema else '')}")
-                rows = cur.execute(f'SELECT * FROM "{t}" LIMIT 10').fetchall()
-                parts.append("Exemples (10 lignes max) :\n" + "\n".join(" | ".join(str(c) for c in r) for r in rows))
-            except Exception as te:
-                parts.append(f"(erreur {t}: {te})")
-        con.close()
-        return ("\n".join(parts))[:30000]
-    except Exception as e:
-        logger.warning(f"SQLITE analyze failed: {e}")
-        return ""
+    return _cf_analyze_sqlite(data)
 
 
 async def _analyze_image_with_vision(data: bytes, mime_type: str, question: Optional[str] = None) -> str:
@@ -2980,22 +2906,49 @@ async def _build_image(user_id: str, prompt: str) -> Dict[str, str]:
     return await _persist_generated(info)
 
 
-async def _run_python_sandbox(code: str, timeout_sec: int = 10) -> Dict[str, Any]:
+async def _run_python_sandbox(code: str, timeout_sec: int = 10, session_id: Optional[str] = None, files: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
     """Exécute du code Python dans le sandbox. Délègue à cfaction_engine.run_python_sandbox."""
-    return await _cf_run_python_sandbox(code, timeout_sec=timeout_sec)
+    return await _cf_run_python_sandbox(code, timeout_sec=timeout_sec, session_id=session_id, files=files)
+
+
+class SandboxFileInput(BaseModel):
+    filename: str
+    data_base64: str
 
 
 class RunPythonInput(BaseModel):
     code: str
     timeout_sec: Optional[int] = 10
+    session_id: Optional[str] = None  # if set → persistent REPL mode
+    files: Optional[List[SandboxFileInput]] = None  # files dropped into cwd
+
+
+class SessionResetInput(BaseModel):
+    session_id: str
 
 
 @api_router.post("/sandbox/python")
 async def sandbox_python(request: Request, payload: RunPythonInput):
-    """Exécute du code Python dans le sandbox serveur avec timeout dur."""
+    """Exécute du code Python dans le sandbox serveur avec timeout dur.
+
+    Mode éphémère (par défaut) : namespace fresh à chaque appel.
+    Mode REPL : passer un `session_id` réutilise les variables entre appels (style Jupyter).
+    Upload : passer `files=[{filename, data_base64}]` pour déposer des fichiers au cwd.
+    """
     await get_current_user(request)
     t = max(1, min(int(payload.timeout_sec or 10), 30))
-    return await _run_python_sandbox(payload.code or "", timeout_sec=t)
+    files = [f.model_dump() for f in (payload.files or [])]
+    return await _run_python_sandbox(payload.code or "", timeout_sec=t, session_id=payload.session_id, files=files)
+
+
+@api_router.post("/sandbox/reset")
+async def sandbox_reset(request: Request, payload: SessionResetInput):
+    """Réinitialise le namespace persistant d'une session REPL."""
+    await get_current_user(request)
+    from cfaction_engine import reset_sandbox_session
+    ok = reset_sandbox_session(payload.session_id)
+    return {"reset": ok, "session_id": payload.session_id}
+
 
 
 
@@ -3020,6 +2973,127 @@ async def chat_generate_image(request: Request, payload: GenerateImageInput):
     except Exception as e:
         logger.warning(f"image gen failed: {e}")
         raise HTTPException(status_code=500, detail=f"Génération d'image impossible : {e}")
+
+
+@api_router.get("/chat/export-ipynb/{project_id}")
+async def export_chat_as_ipynb(project_id: str, request: Request):
+    """Exporte une conversation chat en notebook Jupyter (.ipynb).
+
+    Chaque message utilisateur devient une cellule markdown. Chaque bloc
+    ```python``` trouvé dans les réponses AI devient une cellule code (avec le
+    stdout déjà capturé en output si le bloc `▶️ Exécution Python (sandbox)` suit).
+    """
+    user_id = await get_current_user(request)
+    # Validate ownership
+    proj = await db.projects.find_one({"project_id": project_id, "user_id": user_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    # Collect messages in order
+    msgs = await db.chat_messages.find(
+        {"user_id": user_id, "project_id": project_id},
+        {"_id": 0}
+    ).sort("timestamp", 1).to_list(length=None)
+    if not msgs:
+        raise HTTPException(status_code=400, detail="Aucun message à exporter")
+
+    cells: List[Dict[str, Any]] = []
+    # Title cell
+    cells.append({
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            f"# {proj.get('name', 'Conversation')}\n",
+            f"\n*Exporté depuis CodeForge AI — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*\n",
+            "\n---\n",
+        ],
+    })
+
+    code_block_re = re.compile(r"```(?:python|py)\s*\n(.*?)```", re.DOTALL)
+    stdout_after_re = re.compile(
+        r"\*\*▶️ Exécution Python \(sandbox\)[^\n]*\n+```\n(.*?)```",
+        re.DOTALL,
+    )
+
+    for m in msgs:
+        role = m.get("role", "assistant")
+        content = m.get("content", "") or ""
+        if role == "user":
+            cells.append({
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": ["**👤 Utilisateur**\n\n", content],
+            })
+        else:
+            # Try to split AI response into: pre-code markdown, code cells, post-code markdown.
+            pos = 0
+            code_blocks = list(code_block_re.finditer(content))
+            if not code_blocks:
+                cells.append({
+                    "cell_type": "markdown",
+                    "metadata": {},
+                    "source": ["**🤖 CodeForge**\n\n", content],
+                })
+                continue
+            # Preamble markdown
+            prefix = content[: code_blocks[0].start()].rstrip()
+            if prefix:
+                cells.append({
+                    "cell_type": "markdown",
+                    "metadata": {},
+                    "source": ["**🤖 CodeForge**\n\n", prefix],
+                })
+            for i, cb in enumerate(code_blocks):
+                code_src = cb.group(1).rstrip()
+                # Look for an inline sandbox stdout block right after this cell.
+                tail = content[cb.end():]
+                stdout_m = stdout_after_re.search(tail[:4000])
+                outputs = []
+                if stdout_m:
+                    outputs.append({
+                        "name": "stdout",
+                        "output_type": "stream",
+                        "text": stdout_m.group(1).splitlines(keepends=True),
+                    })
+                cells.append({
+                    "cell_type": "code",
+                    "execution_count": i + 1,
+                    "metadata": {},
+                    "outputs": outputs,
+                    "source": code_src.splitlines(keepends=True),
+                })
+                pos = cb.end()
+            # Trailing markdown
+            trailing = content[pos:]
+            # Strip the "Exécution Python (sandbox)" blocks from trailing since we moved them.
+            trailing_clean = re.sub(stdout_after_re, "", trailing).strip()
+            if trailing_clean:
+                cells.append({
+                    "cell_type": "markdown",
+                    "metadata": {},
+                    "source": [trailing_clean],
+                })
+
+    notebook = {
+        "cells": cells,
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python", "version": "3.11"},
+            "codeforge_export": {
+                "project_id": project_id,
+                "project_name": proj.get("name"),
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+            },
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    raw = json.dumps(notebook, ensure_ascii=False, indent=1).encode("utf-8")
+    safe_name = _sanitize_filename(proj.get("name") or project_id) + ".ipynb"
+    return Response(
+        content=raw,
+        media_type="application/x-ipynb+json",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
 
 
 @api_router.get("/download/generated/{file_id}")

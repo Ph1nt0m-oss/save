@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -30,6 +30,9 @@ export default function Chat() {
   // Pending attachments for the NEXT message (analyzed by the backend).
   const [pendingAtts, setPendingAtts] = useState([]); // [{kind, filename, mime_type, content, data_base64}]
   const [analyzingAtt, setAnalyzingAtt] = useState(false);
+  // Persistent REPL session — shared across all code blocks in this chat.
+  // Same projectId => same Python namespace across messages (Jupyter-style).
+  const replSessionId = `repl_${user?.id || user?.email || 'anon'}_${project?.project_id || 'noproj'}`;
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -204,6 +207,35 @@ export default function Chat() {
               <span className="hidden sm:inline">{t('chatPinBtn')}</span>
             </Button>
           )}
+          <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+            <Button
+              onClick={async () => {
+                try {
+                  await axios.post(`${API}/sandbox/reset`, { session_id: replSessionId }, { withCredentials: true });
+                  toast.success('État REPL réinitialisé');
+                } catch (e) { toast.error('Échec reset REPL'); }
+              }}
+              variant="ghost" size="sm"
+              title="Effacer les variables persistantes du sandbox Python"
+              data-testid="chat-repl-reset-btn"
+              className="px-2 text-[#A1A1AA] hover:text-white"
+            >
+              <RotateCcw className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden md:inline text-xs">Reset REPL</span>
+            </Button>
+            {project?.project_id && messages.length > 0 && (
+              <a
+                href={`${API}/chat/export-ipynb/${project.project_id}`}
+                download
+                data-testid="chat-export-ipynb-btn"
+                title="Exporter la conversation en notebook Jupyter"
+                className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-sm border border-purple-400/30 text-purple-300 hover:bg-purple-500/10 transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Export .ipynb</span>
+              </a>
+            )}
+          </div>
         </div>
       </header>
 
@@ -248,7 +280,7 @@ export default function Chat() {
                     <span style={{ fontSize: 0, lineHeight: 0, opacity: 0 }} aria-hidden="true" data-copy-prefix>
                       {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
                     </span>
-                    <MessageContent content={msg.content} isUser={isUser} />
+                    <MessageContent content={msg.content} isUser={isUser} replSessionId={replSessionId} />
                     {msg.download && (
                       <a
                         href={`${API}${msg.download.url}`}

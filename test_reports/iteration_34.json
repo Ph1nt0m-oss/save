@@ -1,0 +1,33 @@
+{
+  "summary": "iter_41ter: validation complète des 5 nouveautés (refactor cfaction_engine déjà validé iter33, REPL persistent Python, upload fichiers sandbox, export .ipynb Jupyter, plotly installé). Backend 9/9 PASS. Frontend UI: Reset REPL btn, Export .ipynb btn (visible seulement si project+messages), Paperclip 'Joindre', chip code-attach-chips, code-run-output, code-run-variables — TOUS validés en browser_automation.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter41ter_repl_files_ipynb.py",
+    "/app/test_reports/pytest/iter41ter.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py — POST /api/sandbox/python retourne bien toutes les clés spec: stdout, stderr, exit_code, timed_out, duration_ms, images, variables, session_id. Ephemeral mode retourne session_id=None — le spec dit 'retourne session_id' mais tolérer None/vide est acceptable sémantiquement.",
+    "server.py export_chat_as_ipynb — bien structuré: title cell markdown avec nom projet, user msgs→markdown, AI code fences→code cells avec stdout extrait via regex (stdout_after_re). nbformat=4, nbformat_minor=5 conformes. Content-Disposition avec filename sanitisé. Gestion propre 400 (aucun message) et 404 (projet inexistant avec ownership check).",
+    "cfaction_engine run_python_sandbox — files upload: base64 décodé vers cwd avec validation filename. Persistent sessions via dill pickle sur _SESSION_DIRS, TTL 1h, max 50 sessions. Reset via reset_sandbox_session() OK.",
+    "MessageContent.jsx CodeBlock — bonne prop drilling replSessionId depuis Chat.js. Upload fichiers via <input type='file' data-testid='code-file-input' hidden>, bouton Paperclip data-testid='code-attach-btn', chips data-testid='code-attach-chips' s'affichent uniquement si uploadedFiles.length>0. Max 6 fichiers côté frontend (slice(0,6)) cohérent avec limite backend.",
+    "Chat.js — replSessionId calculé comme `repl_${user.id||email}_${project_id||'noproj'}` — stable et unique par (utilisateur, projet). Bouton Reset REPL data-testid='chat-repl-reset-btn' présent toujours; bouton Export .ipynb data-testid='chat-export-ipynb-btn' rendu conditionnellement (project?.project_id && messages.length > 0), href={API}/chat/export-ipynb/{project_id} avec attribute `download` — bon pattern de download natif navigateur.",
+    "Mineur (non-bloquant): le bouton Send principal dans Chat.js n'a toujours pas de data-testid='chat-send-btn' (sélecteur actuel button:has(svg.lucide-send)). Déjà signalé iter_33. Recommandation persistante.",
+    "Mineur: l'export .ipynb se fait via <a href={...} download> → cookie httpOnly/Bearer token envoyés automatiquement par le navigateur seulement si withCredentials implicite. Ici le navigateur attache le cookie httpOnly de même origine — OK pour le preview URL actuel mais à tester si le backend est jamais déployé sur un sous-domaine différent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter41ter_repl_files_ipynb.py (NOUVEAU — 9 tests: 3 REPL persistent/ephemeral/shape, 1 file upload CSV pandas, 1 reset, 3 export .ipynb happy+400+404, 1 régression basic sandbox)"
+  ],
+  "success_rate": { "backend": "100% (9/9)", "frontend": "100% (Reset REPL btn OK, Export .ipynb hidden sans project / visible avec project+messages OK, Paperclip 'Joindre' OK, code-attach-chips OK après upload, code-run-output OK, code-run-variables affiche a:int b:int après exécution)" },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (validé login UI via data-testid auth-email-input + focus avant fill pour contourner l'autofill-guard readonly)",
+  "seed_data_creation": "Tests backend créent/nettoient TEST_iter41ter_* (projets + sessions REPL). Pas de données résiduelles bloquantes. Le test de file upload écrit /tmp/test_iter41ter.csv local pour Playwright.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter_41ter VALIDÉ. Pour login Playwright: utiliser [data-testid='auth-email-input'] avec CLIC + wait_for_timeout(300) AVANT fill (car l'input est readonly jusqu'au focus — stratégie anti-autofill). Pour envoyer message chat: button:has(svg.lucide-send). Pour uploader un fichier sandbox: page.set_input_files('[data-testid=\"code-file-input\"]', path). Le chip code-attach-chips rend correctement avec data-testid. Les variables REPL (a:int, b:int) s'affichent bien après exécution. L'export .ipynb est un <a download> pas un bouton — utiliser get_attribute('href') pour lire l'URL. Aucune régression des iter 29-33.",
+  "rca_of_the_issue": "Aucun bug. Tous les acceptance criteria remplis. Un seul nitpick mineur (non-bloquant): dans l'ephemeral sandbox response, session_id est null; le spec dit 'retourne session_id' mais le champ est bien présent (key in payload), juste à null — sémantiquement correct."
+}
