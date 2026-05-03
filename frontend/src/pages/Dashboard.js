@@ -42,6 +42,8 @@ export default function Dashboard() {
   const [renameTarget, setRenameTarget] = useState(null); // project being renamed
   const [renameValue, setRenameValue] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null); // project pending delete confirm
+  // Filtre de la sidebar — 'all' | 'chat-online' | 'chat-offline' | 'web-online' | 'web-offline'
+  const [sidebarFilter, setSidebarFilter] = useState('all');
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -400,8 +402,60 @@ export default function Dashboard() {
         </div>
 
         <ScrollArea className="flex-1 px-4">
+          {/* Filtres rapides — catégories de projets */}
+          {projects.length > 0 && (() => {
+            const counts = {
+              all: projects.length,
+              'chat-online': 0, 'chat-offline': 0, 'web-online': 0, 'web-offline': 0,
+            };
+            for (const p of projects) {
+              const t2 = p.project_type === 'chat' ? 'chat' : 'web';
+              const m = p.ai_mode || 'online';
+              const k = `${t2}-${m}`;
+              if (counts[k] !== undefined) counts[k] += 1;
+            }
+            const filters = [
+              { id: 'all',          label: 'Tout',      dot: 'bg-white' },
+              { id: 'chat-online',  label: 'Chat IA',   dot: 'bg-yellow-400' },
+              { id: 'chat-offline', label: 'Chat Ollama',   dot: 'bg-sky-400' },
+              { id: 'web-online',   label: 'Création Emergent', dot: 'bg-emerald-400' },
+              { id: 'web-offline',  label: 'Création Ollama',   dot: 'bg-violet-400' },
+            ];
+            return (
+              <div className="flex flex-wrap gap-1 mb-2" data-testid="sidebar-filters">
+                {filters.map((f) => {
+                  const active = sidebarFilter === f.id;
+                  const count = counts[f.id] || 0;
+                  if (f.id !== 'all' && count === 0) return null;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setSidebarFilter(f.id)}
+                      data-testid={`sidebar-filter-${f.id}`}
+                      title={`${f.label} (${count})`}
+                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-sm border transition-colors ${
+                        active
+                          ? 'bg-white/[0.08] border-white/30 text-white'
+                          : 'bg-transparent border-white/10 text-[#A1A1AA] hover:bg-white/[0.04] hover:text-white'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${f.dot}`} />
+                      <span>{f.label}</span>
+                      <span className="text-[10px] text-[#71717A]">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
           <div className="space-y-2">
-            {projects.map(project => (
+            {projects.filter((p) => {
+              if (sidebarFilter === 'all') return true;
+              const t2 = p.project_type === 'chat' ? 'chat' : 'web';
+              const m = p.ai_mode || 'online';
+              return `${t2}-${m}` === sidebarFilter;
+            }).map(project => (
               renameTarget?.project_id === project.project_id ? (
                 <div
                   key={project.project_id}
