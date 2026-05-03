@@ -8,6 +8,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
 import VoiceRecorder from '../components/VoiceRecorder';
 import AttachMenu from '../components/AttachMenu';
+import MessageContent from '../components/MessageContent';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -247,7 +248,7 @@ export default function Chat() {
                     <span style={{ fontSize: 0, lineHeight: 0, opacity: 0 }} aria-hidden="true" data-copy-prefix>
                       {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
                     </span>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <MessageContent content={msg.content} isUser={isUser} />
                     {msg.download && (
                       <a
                         href={`${API}${msg.download.url}`}

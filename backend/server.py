@@ -12,6 +12,15 @@ from typing import List, Optional, Dict, Any
 
 from datetime import datetime, timezone, timedelta
 
+from cfaction_engine import (
+    sanitize_filename as _cf_sanitize_filename,
+    build_docx_bytes as _cf_build_docx_bytes,
+    build_pdf_bytes as _cf_build_pdf_bytes,
+    build_xlsx_bytes as _cf_build_xlsx_bytes,
+    build_pptx_bytes as _cf_build_pptx_bytes,
+    run_python_sandbox as _cf_run_python_sandbox,
+)
+
 import os
 import re
 import uuid
@@ -2562,6 +2571,14 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                         if sandbox_result.get("timed_out"):
                             py_block_parts.append("⏱️ *(Exécution interrompue : dépassement du timeout de 10 s)*")
                         py_block_parts.append(f"*Durée : {sandbox_result.get('duration_ms', 0)} ms — Code exit : {sandbox_result.get('exit_code', 0)}*")
+                        # Inject inline markdown images for any matplotlib/generated image.
+                        for idx, img in enumerate((sandbox_result.get("images") or [])[:4]):
+                            try:
+                                py_block_parts.append(
+                                    f"\n![figure {idx + 1}](data:{img.get('mime_type','image/png')};base64,{img.get('data_base64','')})"
+                                )
+                            except Exception:
+                                pass
                         # Inject the result block RIGHT BEFORE the cfaction block so it flows naturally.
                         injected = "\n".join(py_block_parts)
                         ai_response_text = (ai_response_text[: m.start()].rstrip() + injected + ai_response_text[m.end():]).strip()
@@ -2659,15 +2676,7 @@ GENERATED_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _sanitize_filename(name: str, ext: str = "") -> str:
-    # Split off extension to preserve a literal dot.
-    stem = name or "file"
-    extpart = ""
-    if "." in stem:
-        stem, dot, extpart = stem.rpartition(".")
-        extpart = f".{extpart}"
-    base = "".join(c if (c.isalnum() or c in ("-", "_", " ")) else "_" for c in stem).strip()
-    base = base.replace(" ", "_")[:80] or "file"
-    return f"{base}{extpart}{ext}"
+    return _cf_sanitize_filename(name, ext)
 
 
 async def _analyze_pdf(data: bytes) -> str:
@@ -2896,21 +2905,9 @@ async def _persist_generated(info: Dict[str, Any]) -> Dict[str, str]:
 
 
 async def _build_docx(user_id: str, title: str, sections: List[Dict[str, Any]]) -> Dict[str, str]:
-    from docx import Document
-    doc = Document()
-    doc.add_heading(title or "Document", 0)
-    for sec in sections or []:
-        h = (sec.get("heading") or "").strip()
-        c = (sec.get("content") or "").strip()
-        if h:
-            doc.add_heading(h, 1)
-        if c:
-            for para in c.split("\n\n"):
-                doc.add_paragraph(para)
-    buf = io.BytesIO()
-    doc.save(buf)
+    blob = _cf_build_docx_bytes(title or "Document", sections or [])
     info = _store_generated(
-        buf.getvalue(),
+        blob,
         f"{title or 'document'}.docx",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         user_id,
@@ -2919,56 +2916,15 @@ async def _build_docx(user_id: str, title: str, sections: List[Dict[str, Any]]) 
 
 
 async def _build_pdf(user_id: str, title: str, sections: List[Dict[str, Any]]) -> Dict[str, str]:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-    from reportlab.lib.units import cm
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, title=title or "Document")
-    styles = getSampleStyleSheet()
-    flow = [Paragraph(title or "Document", styles["Title"]), Spacer(1, 0.6 * cm)]
-    for sec in sections or []:
-        h = (sec.get("heading") or "").strip()
-        c = (sec.get("content") or "").strip()
-        if h:
-            flow.append(Paragraph(h, styles["Heading1"]))
-            flow.append(Spacer(1, 0.2 * cm))
-        if c:
-            for para in c.split("\n\n"):
-                flow.append(Paragraph(para.replace("\n", "<br/>"), styles["BodyText"]))
-                flow.append(Spacer(1, 0.2 * cm))
-    doc.build(flow)
-    info = _store_generated(buf.getvalue(), f"{title or 'document'}.pdf", "application/pdf", user_id)
+    blob = _cf_build_pdf_bytes(title or "Document", sections or [])
+    info = _store_generated(blob, f"{title or 'document'}.pdf", "application/pdf", user_id)
     return await _persist_generated(info)
 
 
 async def _build_xlsx(user_id: str, title: str, sheets: List[Dict[str, Any]]) -> Dict[str, str]:
-    """sheets = [{"name": "Feuille1", "headers": ["A","B"], "rows": [[1,2]], "formulas": {"C2": "=A2+B2"}}]"""
-    import xlsxwriter
-    buf = io.BytesIO()
-    wb = xlsxwriter.Workbook(buf, {"in_memory": True})
-    header_fmt = wb.add_format({"bold": True, "bg_color": "#E4FF00", "border": 1})
-    for idx, sh in enumerate(sheets or [{"name": "Feuille1", "rows": []}]):
-        ws = wb.add_worksheet(sh.get("name") or f"Feuille{idx + 1}")
-        row_offset = 0
-        headers = sh.get("headers") or []
-        if headers:
-            for c, h in enumerate(headers):
-                ws.write(0, c, h, header_fmt)
-            row_offset = 1
-        for r_i, row in enumerate(sh.get("rows") or []):
-            for c_i, val in enumerate(row):
-                ws.write(row_offset + r_i, c_i, val)
-        for cell, formula in (sh.get("formulas") or {}).items():
-            try:
-                ws.write_formula(cell, formula)
-            except Exception:
-                pass
-        if headers:
-            ws.autofilter(0, 0, row_offset + len(sh.get("rows") or []) - 1, len(headers) - 1)
-    wb.close()
+    blob = _cf_build_xlsx_bytes(sheets or [])
     info = _store_generated(
-        buf.getvalue(),
+        blob,
         f"{title or 'classeur'}.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         user_id,
@@ -2977,28 +2933,9 @@ async def _build_xlsx(user_id: str, title: str, sheets: List[Dict[str, Any]]) ->
 
 
 async def _build_pptx(user_id: str, title: str, slides: List[Dict[str, Any]]) -> Dict[str, str]:
-    """slides = [{"title": "...", "content": "bullet 1\nbullet 2"}, ...]"""
-    from pptx import Presentation
-    prs = Presentation()
-    # Title slide
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = title or "Présentation"
-    for s in slides or []:
-        layout = prs.slide_layouts[1]
-        sl = prs.slides.add_slide(layout)
-        sl.shapes.title.text = s.get("title") or ""
-        body = sl.placeholders[1]
-        tf = body.text_frame
-        content = s.get("content") or ""
-        lines = content.split("\n")
-        tf.text = lines[0] if lines else ""
-        for extra in lines[1:]:
-            p = tf.add_paragraph()
-            p.text = extra
-    buf = io.BytesIO()
-    prs.save(buf)
+    blob = _cf_build_pptx_bytes(title or "Présentation", slides or [])
     info = _store_generated(
-        buf.getvalue(),
+        blob,
         f"{title or 'presentation'}.pptx",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         user_id,
@@ -3041,84 +2978,8 @@ async def _build_image(user_id: str, prompt: str) -> Dict[str, str]:
 
 
 async def _run_python_sandbox(code: str, timeout_sec: int = 10) -> Dict[str, Any]:
-    """Exécute du code Python dans un sous-processus avec timeout dur.
-
-    Retourne { stdout, stderr, exit_code, timed_out, duration_ms }.
-    Bibliothèques disponibles : numpy, pandas, matplotlib, sympy, requests, bs4,
-    openpyxl, python-docx, pptx, reportlab, pypdf, httpx, PIL, yaml.
-    """
-    import asyncio as _asyncio
-    import tempfile as _tempfile
-    import time as _time
-    import shutil as _shutil
-    import sys as _sys
-
-    code = (code or "").strip()
-    if not code:
-        return {"stdout": "", "stderr": "Aucun code fourni.", "exit_code": -1, "timed_out": False, "duration_ms": 0}
-
-    # Safety preamble — restreint certains appels dangereux en soft-mode.
-    preamble = (
-        "import sys, os\n"
-        "os.environ.pop('EMERGENT_LLM_KEY', None)\n"
-        "os.environ.pop('RESEND_API_KEY', None)\n"
-        "os.environ.pop('MONGO_URL', None)\n"
-        "os.environ.pop('DB_NAME', None)\n"
-        "os.environ.pop('OLLAMA_BASE_URL', None)\n"
-        "sys.setrecursionlimit(1000)\n"
-    )
-    tmp_dir = _tempfile.mkdtemp(prefix="cfsandbox_")
-    script_path = os.path.join(tmp_dir, "user_script.py")
-    try:
-        with open(script_path, "w", encoding="utf-8") as f:
-            f.write(preamble + "\n# --- user code ---\n" + code)
-
-        start = _time.monotonic()
-        try:
-            proc = await _asyncio.create_subprocess_exec(
-                _sys.executable, script_path,
-                stdout=_asyncio.subprocess.PIPE,
-                stderr=_asyncio.subprocess.PIPE,
-                cwd=tmp_dir,
-                env={
-                    "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin"),
-                    "HOME": tmp_dir,
-                    "LC_ALL": "C.UTF-8",
-                    "LANG": "C.UTF-8",
-                    "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
-                    "MPLBACKEND": "Agg",
-                },
-            )
-            try:
-                stdout_b, stderr_b = await _asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
-                timed_out = False
-            except _asyncio.TimeoutError:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-                try:
-                    stdout_b, stderr_b = await proc.communicate()
-                except Exception:
-                    stdout_b, stderr_b = b"", b""
-                timed_out = True
-            duration_ms = int((_time.monotonic() - start) * 1000)
-            stdout = (stdout_b or b"").decode("utf-8", errors="replace")[:8000]
-            stderr = (stderr_b or b"").decode("utf-8", errors="replace")[:4000]
-            return {
-                "stdout": stdout,
-                "stderr": stderr,
-                "exit_code": proc.returncode if proc.returncode is not None else -1,
-                "timed_out": timed_out,
-                "duration_ms": duration_ms,
-            }
-        except Exception as e:
-            return {"stdout": "", "stderr": f"Sandbox error: {e}", "exit_code": -1, "timed_out": False, "duration_ms": 0}
-    finally:
-        try:
-            _shutil.rmtree(tmp_dir, ignore_errors=True)
-        except Exception:
-            pass
+    """Exécute du code Python dans le sandbox. Délègue à cfaction_engine.run_python_sandbox."""
+    return await _cf_run_python_sandbox(code, timeout_sec=timeout_sec)
 
 
 class RunPythonInput(BaseModel):
