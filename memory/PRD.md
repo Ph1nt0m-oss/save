@@ -2,6 +2,21 @@
 
 ## Statut : VERSION P2+ — STABLE & PRODUCTION-READY (Mai 2026)
 
+### 3 Mai 2026 — Session 41bis — Markdown chat + bouton Exécuter + matplotlib inline + refactor cfaction_engine
+- **Rendu Markdown riche dans le chat** : nouveau composant `MessageContent.jsx` basé sur `react-markdown` + `remark-gfm` + `react-syntax-highlighter` (thème oneDark Prism) — tableaux, listes, blockquotes, liens, titres h1/h2/h3.
+- **Bouton "Exécuter" + "Copier" sur chaque bloc de code** :
+  - Sur les blocs ``` ```python ``` ```, bouton vert `Exécuter` (data-testid=code-run-btn) qui POST `/api/sandbox/python` et affiche inline `stdout / stderr / exit_code / duration_ms / images` (data-testid=code-run-output).
+  - Bouton `Copier` (data-testid=code-copy-btn) pour tous les langages, avec feedback "Copié" pendant 1.6s.
+  - Le chat devient **un mini Jupyter notebook gratuit**.
+- **Capture automatique matplotlib** : le sandbox Python injecte un preamble qui patche `plt.show()` et enregistre toutes les figures dans `_figs_/*.png` avant cleanup. Les PNG sont retournés dans `images: [{filename, mime_type, data_base64}]` (cap à 6). Le parser `cfaction run_python` les inline en markdown `![figure N](data:image/png;base64,...)` dans la réponse AI.
+- **System prompt renforcé** : l'IA est maintenant instruite de **TOUJOURS** utiliser `run_python` pour les demandes de graphique/courbe/visualisation (plus jamais de `/mnt/...` fantaisiste). Exécution proactive également pour les maths non triviales, simulations, tirages aléatoires.
+- **Refactor server.py → cfaction_engine.py** (P2 du backlog) :
+  - Nouveau module `/app/backend/cfaction_engine.py` (372 lignes) avec fonctions **pures** : `sanitize_filename`, `analyze_{pdf,docx,xlsx,pptx,sqlite}`, `build_{docx,pdf,xlsx,pptx}_bytes`, `run_python_sandbox`.
+  - `server.py` passe de 4660 → 4458 lignes (-203). Les wrappers `_build_*` et `_run_python_sandbox` délèguent au module pur.
+  - Pas de rupture d'API externe — tous les endpoints existants fonctionnent à l'identique.
+- **Nouvelles dépendances frontend** : `react-markdown`, `remark-gfm`, `react-syntax-highlighter`.
+- **Tests** : backend 17/17 ✅ (10 régressions iter41 + 7 nouveaux matplotlib/refactor), frontend 100% ✅ sur critères d'acceptance (bloc code, copier, exécuter, output).
+
 ### 3 Mai 2026 — Session 41 — Sandbox Python + mémoire chat sans limite + Live Preview + tutoriel IA
 - **Mémoire conversationnelle : ZÉRO limite** (signature CodeForge) — `server.py` L2378-2391 & L2417-2429 : suppression du `.limit(21)` et du slicing. On remonte TOUTE l'historique Mongo (`find(...).sort('timestamp', 1).to_list(None)`). Vérifié : l'IA retient un prénom à travers N messages.
 - **Langue dynamique assouplie** — le prompt système interpole le `lang_label` du frontend ; `language='en'` → réponse en anglais. Plus de forçage FR.

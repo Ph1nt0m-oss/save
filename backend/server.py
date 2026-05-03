@@ -2375,8 +2375,11 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             f"Si l'utilisateur demande d'**exécuter** / **lancer** / **tester** / **essayer** du code Python (ou dit « montre-moi le résultat », « qu'est-ce que ça affiche », etc.), "
             f"tu peux TERMINER ta réponse par un bloc `cfaction` avec `type=run_python` : "
             f"`{{\"type\":\"run_python\",\"title\":\"<description courte>\",\"content\":\"<code python complet, utilise print() pour afficher les résultats>\"}}`. "
-            f"Le serveur exécutera ce code dans un sandbox sécurisé (timeout 10s, modules scientifiques disponibles : numpy, pandas, matplotlib, requests…) et affichera le résultat dans le chat. "
+            f"Le serveur exécutera ce code dans un sandbox sécurisé (timeout 10s, modules scientifiques disponibles : numpy, pandas, matplotlib, sympy, requests, bs4, openpyxl, python-docx, pptx, reportlab, pypdf, PIL, yaml…) et affichera le résultat dans le chat. "
             f"N'utilise PAS d'input() ni d'appels système dangereux. Affiche les résultats avec `print()`.\n"
+            f"**IMPORTANT — GRAPHIQUES MATPLOTLIB** : quand l'utilisateur demande un **graphique / courbe / histogramme / diagramme / plot / figure**, utilise TOUJOURS le bloc `run_python` avec matplotlib (`import matplotlib.pyplot as plt`). "
+            f"Termine ton code par `plt.show()` — le serveur capturera automatiquement la figure en image PNG base64 qui s'affichera inline dans le chat. N'écris JAMAIS `![...](/mnt/...)` ou des chemins locaux ; utilise UNIQUEMENT le bloc run_python qui produit une vraie image exécutée.\n"
+            f"**EXÉCUTION PROACTIVE** : pour toute question mathématique non triviale (statistiques, équations, conversions, calculs exacts), pour toute demande d'analyse de données ou de visualisation, et pour toute demande qui bénéficierait d'un résultat concret (tirages aléatoires, simulations, conversion d'unités…), privilégie `run_python` plutôt qu'un résultat calculé « de tête ».\n"
         )
 
         if input.mode == 'offline':
