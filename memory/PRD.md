@@ -1,6 +1,27 @@
 # CodeForge AI - PRD
 
-## Statut : VERSION P2 — STABLE & PRODUCTION-READY (Mai 2026)
+## Statut : VERSION P2+ — STABLE & PRODUCTION-READY (Mai 2026)
+
+### 3 Mai 2026 — Session 41 — Sandbox Python + mémoire chat sans limite + Live Preview + tutoriel IA
+- **Mémoire conversationnelle : ZÉRO limite** (signature CodeForge) — `server.py` L2378-2391 & L2417-2429 : suppression du `.limit(21)` et du slicing. On remonte TOUTE l'historique Mongo (`find(...).sort('timestamp', 1).to_list(None)`). Vérifié : l'IA retient un prénom à travers N messages.
+- **Langue dynamique assouplie** — le prompt système interpole le `lang_label` du frontend ; `language='en'` → réponse en anglais. Plus de forçage FR.
+- **Sandbox Python opérationnel** :
+  - Nouvelle fonction `_run_python_sandbox()` (`server.py` L3043-3113) : `asyncio.create_subprocess_exec` avec `sys.executable`, timeout dur via `asyncio.wait_for` (1-30 s, défaut 10 s), env isolé (pop de EMERGENT_LLM_KEY, RESEND_API_KEY, MONGO_URL, DB_NAME, OLLAMA_BASE_URL), `MPLBACKEND=Agg`.
+  - Nouvel endpoint `POST /api/sandbox/python` (auth requise) → `{stdout, stderr, exit_code, timed_out, duration_ms}`.
+  - Intégration `cfaction type=run_python` : l'IA peut terminer sa réponse par `{"type":"run_python","content":"..."}`, le backend l'exécute et **injecte inline** le résultat formaté (`▶️ Exécution Python (sandbox) :` + code-fence stdout + stderr + durée) avant de supprimer le bloc `cfaction`.
+  - Modules installés : `matplotlib, sympy, beautifulsoup4, lxml, pytz, python-dateutil` (en plus des existants `numpy, pandas, requests, openpyxl, python-docx, pptx, reportlab, pypdf, httpx, PIL, yaml`).
+- **Live Preview des projets** :
+  - Nouvelle page `/preview/:projectId` (`ProjectPreview.js`) — iframe sandbox (`allow-scripts allow-forms allow-popups allow-same-origin`), 3 tailles responsive (desktop / tablet / mobile), bouton refresh, bouton "ouvrir dans un onglet".
+  - Dashboard sidebar → menu contextuel projet → nouveau bouton **"Aperçu Live"** (`data-testid=project-ctx-preview`), caché pour projets `type=chat`.
+  - Fix bug backend (découvert par le testing agent) : `get_project_preview` crashait en 500 quand `project.generated_code=None` → remplacé `project.get('generated_code', {})` par `project.get('generated_code') or {}` + dict-guard sur `.get('files')`.
+- **Autofill login renforcé** (3e itération) — `Login.js` ajoute `readOnly` initial sur email+password + `onFocus={e.target.removeAttribute('readonly')}` → Chrome ne peut plus auto-remplir les champs avant interaction utilisateur. Combiné avec noms randomisés (`pwd_xxxxxx`), `data-lpignore`, `data-1p-ignore`, `data-bwignore`, honeypots cachés.
+- **Tutoriel `AMÉLIORER_LES_IA.md`** (13 Ko, 10 sections) :
+  - Pour débutants sans expérience : guide no-code pour améliorer les prompts, le contexte, les rôles, le sandbox, les pièces jointes.
+  - 9 modèles de prompts prêts à copier-coller.
+  - Exposé publiquement à `/AMELIORER_LES_IA.md` (frontend CRA static) + copie dans `/app/`.
+  - Bouton "Améliorer les IA" ajouté au header Dashboard (`data-testid=dashboard-improve-ai-btn`) → ouvre le .md dans un nouvel onglet.
+- **Ménage disque** : suppression des builds desktop/output (2.6 Go) avant installation matplotlib/sympy. `requirements.txt` mis à jour.
+- **Tests** : `/app/backend/tests/test_iter41_sandbox_chat.py` (10 cas pytest : sandbox, chat, mémoire, langue, preview). Backend 10/10 ✅ | Frontend 100% ✅.
 
 ### 3 Mai 2026 — Session 40 — Chat full-modal : Excel/PowerPoint/code files + Python stack complet + FR strict + zéro limite
 - **Python stack étendu** : `openpyxl`, `python-pptx`, `xlsxwriter`, `pypdf`, `python-docx`, `reportlab`, `Pillow`, `PyYAML` installés → `requirements.txt` gelé.
