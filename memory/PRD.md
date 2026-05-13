@@ -2,6 +2,21 @@
 
 ## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
 
+### 13 Mai 2026 — Session 44 (suite 2) — Live Preview iframe + Cloner + Partage public viral + Détection Ollama + Arabe étendu
+- **🖼️ Live Preview iframe inline** dans le Dashboard : dès qu'un projet web avec `generated_code` est sélectionné, un panneau `live-preview-panel` apparaît sous le header, avec iframe sandboxée (`allow-scripts allow-forms allow-popups allow-same-origin`), boutons "Ouvrir dans un onglet" et "✕ fermer", badge "Public" si partagé.
+- **🧬 `POST /api/projects/{id}/duplicate`** : clone un projet (nouveau `project_id`, nom suffixé "(copie)", reset `is_public/share_slug`). Bouton "Cloner ce projet" ajouté au menu contextuel Dashboard (`project-ctx-duplicate`, icône `Copy` ambre).
+- **🌐 Partage public viral** :
+  - `POST /api/projects/{id}/share {enable: bool}` → génère/désactive un slug ASCII unique. Renvoie URL absolue (utilise `FRONTEND_URL` ou `REACT_APP_BACKEND_URL` côté backend).
+  - `GET /api/share/{slug}` (PUBLIC, sans auth) → renvoie metadata + files. Champs sensibles (`user_id`, `ai_source`) projection-exclus.
+  - `GET /api/share/{slug}/preview` (PUBLIC) → HTML rendu sandbox.
+  - Route frontend `/share/:slug` → composant `SharedPreview.jsx` : bandeau sticky avec nom/desc + CTA jaune "Crée la tienne" → boucle virale.
+  - Menu contextuel : "Partager publiquement" / "Désactiver le partage" (`project-ctx-public-share`, icône `Share2`). Slug + URL auto-copiés au presse-papier avec toast actionnable.
+- **🤖 Détection auto Ollama** : `GET /api/system/ollama-status` (public, sans auth) ping `localhost:11434/api/tags` avec timeout 1.5s. `ModelPicker.jsx` appelle cet endpoint au mount → grise/disable les modèles hors-ligne avec bandeau "⚠ Moteur d'IA local non détecté" quand Ollama inaccessible.
+- **🇸🇦 Arabe étendu** : bloc `ar` enrichi avec les clés Dashboard (`dashChat`, `dashCreate`, `dashWhatToDo`, `dashChatDescOn`, `dashCreateDescOn`, badges On/Off, hints, infos en/hors ligne, stats Landing). Fallback en anglais pour les clés résiduelles.
+- **🧪 Tests** : `testing_agent_v3` iter_44 → **11/11 GREEN** sur backend live. Regression file créé : `/app/backend/tests/test_iter44_new_endpoints.py`. Frontend validé visuellement (screenshot `/share/<slug>` parfait).
+- **Limites supprimées comme demandé** : la cascade itère sans `max_attempts` (8 modèles multi-providers). Toutes les nouvelles fonctionnalités sont sans cap (pas de quota duplicate, share, etc.).
+
+
 ### 13 Mai 2026 — Session 44 (suite) — Arabe + Bouton ZIP fusionné GitHub
 - **🇸🇦 Langue arabe ajoutée (16ème langue)** :
   - Bloc de traductions `ar` créé dans `LanguageContext.js` (translations communes + login + dashboard).
