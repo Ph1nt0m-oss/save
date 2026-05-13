@@ -89,7 +89,10 @@ async def push_to_github(file_path: str, content: str, branch: str = "main", ret
         logger.error("❌ GitHub non configuré")
         return False
 
-    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_NAME}/contents/{file_path}"
+    # URL-encode path segments (handles accents, spaces, parens, etc.) — keep "/" intact.
+    from urllib.parse import quote
+    safe_path = quote(file_path, safe="/")
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_NAME}/contents/{safe_path}"
 
     headers = {
         "Authorization": f"Bearer {GITHUB_CLIENT_SECRET}",
@@ -3853,9 +3856,12 @@ async def export_project_to_github(project_id: str, request: Request):
     if not files and not is_chat:
         raise HTTPException(status_code=400, detail="Aucun code à exporter.")
 
-    # Sanitize folder name (avoid GitHub-unsafe characters).
+    # Sanitize folder name — keep ASCII alphanumeric/hyphen/underscore only.
+    import unicodedata as _ud
     base = (project.get("name") or project_id)[:60]
-    safe = "".join(c if (c.isalnum() or c in ('-', '_')) else '-' for c in base).strip('-') or project_id
+    # Normalize accents (é → e), then keep only safe chars.
+    ascii_base = _ud.normalize("NFKD", base).encode("ascii", "ignore").decode("ascii")
+    safe = "".join(c if (c.isalnum() or c in ('-', '_')) else '-' for c in ascii_base).strip('-') or project_id
     folder = f"projects/{safe}-{project_id}"
 
     pushed = []
@@ -3877,8 +3883,8 @@ async def export_project_to_github(project_id: str, request: Request):
         f"_Exporté depuis CodeForge AI · ID `{project_id}`_\n"
     )
     try:
-        await push_to_github(f"{folder}/README.md", readme)
-        pushed.append("README.md")
+        ok_readme = await push_to_github(f"{folder}/README.md", readme)
+        (pushed if ok_readme else failed).append("README.md")
     except Exception:
         failed.append("README.md")
 
@@ -3892,14 +3898,15 @@ async def export_project_to_github(project_id: str, request: Request):
             for m in msgs
         )
         try:
-            await push_to_github(f"{folder}/chat-transcript.md", transcript or "(vide)")
-            pushed.append("chat-transcript.md")
+            ok_tx = await push_to_github(f"{folder}/chat-transcript.md", transcript or "(vide)")
+            (pushed if ok_tx else failed).append("chat-transcript.md")
         except Exception:
             failed.append("chat-transcript.md")
 
     repo_url = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO_NAME}/tree/main/{folder}"
+    all_failed = bool(failed) and not pushed
     return {
-        "success": True,
+        "success": not all_failed,
         "repository": f"{GITHUB_OWNER}/{GITHUB_REPO_NAME}",
         "folder": folder,
         "url": repo_url,

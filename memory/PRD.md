@@ -2,6 +2,25 @@
 
 ## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
 
+### 13 Mai 2026 — Session 44 (suite) — Arabe + Bouton ZIP fusionné GitHub
+- **🇸🇦 Langue arabe ajoutée (16ème langue)** :
+  - Bloc de traductions `ar` créé dans `LanguageContext.js` (translations communes + login + dashboard).
+  - Ajout `ar` dans `SUPPORTED_LANGS` (drapeau 🇸🇦, label `العربية`).
+  - Ajout `ar` dans `TRANSLATED_LANG_NAMES` pour les 16 langues × 16 langues : ex. "العربية (Arabic)" en anglais, "العربية (Arabe)" en français, etc.
+  - **Mode RTL automatique** : déjà supporté via `RTL_LANGS = ['ur','ar','he','fa']` dans `LanguageContext.useEffect`. Test live → `dir="rtl" lang="ar"` appliqué, layout entièrement inversé.
+- **🐙 Bouton ZIP → ZIP + GitHub** (header Dashboard `export-source-btn`) :
+  - Le bouton "ZIP" devient "**ZIP + GitHub**" et déclenche en parallèle (1) téléchargement local `.zip` (2) push automatique du projet sur le repo GitHub configuré (`projects/<slug>-<id>/`).
+  - Toast d'action : "Sauvegardé sur GitHub" avec bouton "Ouvrir" → lien direct vers le dossier sur github.com.
+  - Push GitHub silencieux en cas d'échec (le ZIP local reste prioritaire).
+  - **Bugs backend corrigés** :
+    - URL `/contents/{path}` désormais `urllib.parse.quote()`-encodée → résout les 404 sur chemins avec accents/espaces.
+    - Sanitization du dossier : ASCII-only via `unicodedata.NFKD` (ex. "réservation" → "reservation"), évite les caractères problématiques côté GitHub.
+    - `pushed/failed` correctement séparés (auparavant `pushed.append` se faisait même en cas d'échec).
+    - `.env` `GITHUB_REPO_NAME=save` (corrigé : était `codeforge-ai` mais le token n'a accès qu'au repo `Ph1nt0m-oss/save`).
+- **Test live** : `POST /api/export/github/proj_3685d73a6b6b` → `success:true`, 5 fichiers poussés (`index.html, style.css, app.js, manifest.json, README.md`), dossier visible sur https://github.com/Ph1nt0m-oss/save/tree/main/projects/Page-simple-de-reservation-avec-localStorage-proj_3685d73a6b6b ✅
+- **Cascade anti-budget** : confirmée **sans aucune limite de tentatives** — itère toute la chaîne (8 modèles, multi-providers) avant de remonter une erreur.
+
+
 ### 13 Mai 2026 — Session 44 — Cascade silencieuse multi-modèles + i18n langues localisées + neutralisation noms IA
 - **🚫 Plus jamais d'erreur "budget dépassé" visible** côté utilisateur :
   - Cascade multi-modèles implémentée dans `/api/chat/message` ET dans la génération de projets web. Si le modèle demandé renvoie un budget/quota/rate-limit/timeout/auth/overloaded/badrequest, le backend bascule **silencieusement** vers le modèle suivant de la chaîne sans afficher d'erreur à l'utilisateur.

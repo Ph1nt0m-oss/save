@@ -1301,6 +1301,16 @@ const translations = {
  chatPlaceholder: 'Stil et spørgsmål…', chatSend: 'Send',
  loginSignin: 'Log ind', loginSignup: 'Tilmeld', loginEmail: 'E-mail', loginPassword: 'Adgangskode', loginSubmit: 'Fortsæt',
  dashHello: 'Hej', dashYourCreations: 'Dine projekter', dashNewProject: 'Nyt projekt', dashTutorial: 'Vejledning',
+ },
+ ar: {
+ back: 'رجوع', next: 'التالي', previous: 'السابق', generate: 'إنشاء', loading: 'جارٍ التحميل...', error: 'خطأ',
+ success: 'نجاح', cancel: 'إلغاء', save: 'حفظ', delete: 'حذف', edit: 'تعديل', close: 'إغلاق', yes: 'نعم', no: 'لا',
+ chatPinBtn: 'تثبيت في الشريط الجانبي', chatPinned: 'تم تثبيت المحادثة.', chatPinEmpty: 'ابدأ محادثة أولًا.',
+ chatEmptyTitle: 'تفاعل مع الذكاء الاصطناعي', chatEmptyOnline: 'تحدث مع ذكاء اصطناعي قوي عبر الإنترنت.',
+ chatEmptyOffline: 'تحدث مع ذكاء اصطناعي محلي (يتطلب محرك ذكاء اصطناعي محلي).',
+ chatPlaceholder: 'اطرح سؤالاً…', chatSend: 'إرسال',
+ loginSignin: 'تسجيل الدخول', loginSignup: 'إنشاء حساب', loginEmail: 'البريد الإلكتروني', loginPassword: 'كلمة المرور', loginSubmit: 'متابعة',
+ dashHello: 'مرحبًا', dashYourCreations: 'مشاريعك', dashNewProject: 'مشروع جديد', dashTutorial: 'الدليل',
  }
 };
 
@@ -1308,21 +1318,22 @@ const translations = {
 // "NativeName (NameInCurrentUiLanguage)" in the language picker.
 // Outer key = UI language, inner key = language being labeled.
 export const TRANSLATED_LANG_NAMES = {
- fr: { fr:'Français', en:'Anglais', es:'Espagnol', pt:'Portugais', de:'Allemand', nl:'Néerlandais', ru:'Russe', zh:'Chinois (simplifié)', 'zh-TW':'Chinois (traditionnel)', hi:'Hindi', bn:'Bengali', ur:'Ourdou', ja:'Japonais', hr:'Croate', da:'Danois' },
- en: { fr:'French', en:'English', es:'Spanish', pt:'Portuguese', de:'German', nl:'Dutch', ru:'Russian', zh:'Chinese (Simplified)', 'zh-TW':'Chinese (Traditional)', hi:'Hindi', bn:'Bengali', ur:'Urdu', ja:'Japanese', hr:'Croatian', da:'Danish' },
- es: { fr:'Francés', en:'Inglés', es:'Español', pt:'Portugués', de:'Alemán', nl:'Neerlandés', ru:'Ruso', zh:'Chino (simplificado)', 'zh-TW':'Chino (tradicional)', hi:'Hindi', bn:'Bengalí', ur:'Urdu', ja:'Japonés', hr:'Croata', da:'Danés' },
- pt: { fr:'Francês', en:'Inglês', es:'Espanhol', pt:'Português', de:'Alemão', nl:'Neerlandês', ru:'Russo', zh:'Chinês (simplificado)', 'zh-TW':'Chinês (tradicional)', hi:'Hindi', bn:'Bengali', ur:'Urdu', ja:'Japonês', hr:'Croata', da:'Dinamarquês' },
- de: { fr:'Französisch', en:'Englisch', es:'Spanisch', pt:'Portugiesisch', de:'Deutsch', nl:'Niederländisch', ru:'Russisch', zh:'Chinesisch (Vereinfacht)', 'zh-TW':'Chinesisch (Traditionell)', hi:'Hindi', bn:'Bengalisch', ur:'Urdu', ja:'Japanisch', hr:'Kroatisch', da:'Dänisch' },
- nl: { fr:'Frans', en:'Engels', es:'Spaans', pt:'Portugees', de:'Duits', nl:'Nederlands', ru:'Russisch', zh:'Chinees (vereenvoudigd)', 'zh-TW':'Chinees (traditioneel)', hi:'Hindi', bn:'Bengaals', ur:'Urdu', ja:'Japans', hr:'Kroatisch', da:'Deens' },
- ru: { fr:'Французский', en:'Английский', es:'Испанский', pt:'Португальский', de:'Немецкий', nl:'Нидерландский', ru:'Русский', zh:'Китайский (упрощённый)', 'zh-TW':'Китайский (традиционный)', hi:'Хинди', bn:'Бенгальский', ur:'Урду', ja:'Японский', hr:'Хорватский', da:'Датский' },
- zh: { fr:'法语', en:'英语', es:'西班牙语', pt:'葡萄牙语', de:'德语', nl:'荷兰语', ru:'俄语', zh:'中文（简体）', 'zh-TW':'中文（繁体）', hi:'印地语', bn:'孟加拉语', ur:'乌尔都语', ja:'日语', hr:'克罗地亚语', da:'丹麦语' },
- 'zh-TW': { fr:'法語', en:'英語', es:'西班牙語', pt:'葡萄牙語', de:'德語', nl:'荷蘭語', ru:'俄語', zh:'中文（簡體）', 'zh-TW':'中文（繁體）', hi:'印地語', bn:'孟加拉語', ur:'烏爾都語', ja:'日語', hr:'克羅地亞語', da:'丹麥語' },
- hi: { fr:'फ़्रेंच', en:'अंग्रेज़ी', es:'स्पेनिश', pt:'पुर्तगाली', de:'जर्मन', nl:'डच', ru:'रूसी', zh:'चीनी (सरलीकृत)', 'zh-TW':'चीनी (पारंपरिक)', hi:'हिन्दी', bn:'बंगाली', ur:'उर्दू', ja:'जापानी', hr:'क्रोएशियाई', da:'डेनिश' },
- bn: { fr:'ফরাসি', en:'ইংরেজি', es:'স্প্যানিশ', pt:'পর্তুগিজ', de:'জার্মান', nl:'ডাচ', ru:'রুশ', zh:'চীনা (সরলীকৃত)', 'zh-TW':'চীনা (ঐতিহ্যবাহী)', hi:'হিন্দি', bn:'বাংলা', ur:'উর্দু', ja:'জাপানি', hr:'ক্রোয়েশীয়', da:'ডেনিশ' },
- ur: { fr:'فرانسیسی', en:'انگریزی', es:'ہسپانوی', pt:'پرتگالی', de:'جرمن', nl:'ڈچ', ru:'روسی', zh:'چینی (آسان)', 'zh-TW':'چینی (روایتی)', hi:'ہندی', bn:'بنگالی', ur:'اردو', ja:'جاپانی', hr:'کروشیائی', da:'ڈینش' },
- ja: { fr:'フランス語', en:'英語', es:'スペイン語', pt:'ポルトガル語', de:'ドイツ語', nl:'オランダ語', ru:'ロシア語', zh:'中国語（簡体）', 'zh-TW':'中国語（繁体）', hi:'ヒンディー語', bn:'ベンガル語', ur:'ウルドゥー語', ja:'日本語', hr:'クロアチア語', da:'デンマーク語' },
- hr: { fr:'francuski', en:'engleski', es:'španjolski', pt:'portugalski', de:'njemački', nl:'nizozemski', ru:'ruski', zh:'kineski (pojednostavljeni)', 'zh-TW':'kineski (tradicionalni)', hi:'hindski', bn:'bengalski', ur:'urdski', ja:'japanski', hr:'hrvatski', da:'danski' },
- da: { fr:'fransk', en:'engelsk', es:'spansk', pt:'portugisisk', de:'tysk', nl:'hollandsk', ru:'russisk', zh:'kinesisk (forenklet)', 'zh-TW':'kinesisk (traditionel)', hi:'hindi', bn:'bengali', ur:'urdu', ja:'japansk', hr:'kroatisk', da:'dansk' },
+ fr: { fr:'Français', en:'Anglais', es:'Espagnol', pt:'Portugais', de:'Allemand', nl:'Néerlandais', ru:'Russe', zh:'Chinois (simplifié)', 'zh-TW':'Chinois (traditionnel)', hi:'Hindi', bn:'Bengali', ur:'Ourdou', ja:'Japonais', hr:'Croate', da:'Danois', ar:'Arabe' },
+ en: { fr:'French', en:'English', es:'Spanish', pt:'Portuguese', de:'German', nl:'Dutch', ru:'Russian', zh:'Chinese (Simplified)', 'zh-TW':'Chinese (Traditional)', hi:'Hindi', bn:'Bengali', ur:'Urdu', ja:'Japanese', hr:'Croatian', da:'Danish', ar:'Arabic' },
+ es: { fr:'Francés', en:'Inglés', es:'Español', pt:'Portugués', de:'Alemán', nl:'Neerlandés', ru:'Ruso', zh:'Chino (simplificado)', 'zh-TW':'Chino (tradicional)', hi:'Hindi', bn:'Bengalí', ur:'Urdu', ja:'Japonés', hr:'Croata', da:'Danés', ar:'Árabe' },
+ pt: { fr:'Francês', en:'Inglês', es:'Espanhol', pt:'Português', de:'Alemão', nl:'Neerlandês', ru:'Russo', zh:'Chinês (simplificado)', 'zh-TW':'Chinês (tradicional)', hi:'Hindi', bn:'Bengali', ur:'Urdu', ja:'Japonês', hr:'Croata', da:'Dinamarquês', ar:'Árabe' },
+ de: { fr:'Französisch', en:'Englisch', es:'Spanisch', pt:'Portugiesisch', de:'Deutsch', nl:'Niederländisch', ru:'Russisch', zh:'Chinesisch (Vereinfacht)', 'zh-TW':'Chinesisch (Traditionell)', hi:'Hindi', bn:'Bengalisch', ur:'Urdu', ja:'Japanisch', hr:'Kroatisch', da:'Dänisch', ar:'Arabisch' },
+ nl: { fr:'Frans', en:'Engels', es:'Spaans', pt:'Portugees', de:'Duits', nl:'Nederlands', ru:'Russisch', zh:'Chinees (vereenvoudigd)', 'zh-TW':'Chinees (traditioneel)', hi:'Hindi', bn:'Bengaals', ur:'Urdu', ja:'Japans', hr:'Kroatisch', da:'Deens', ar:'Arabisch' },
+ ru: { fr:'Французский', en:'Английский', es:'Испанский', pt:'Португальский', de:'Немецкий', nl:'Нидерландский', ru:'Русский', zh:'Китайский (упрощённый)', 'zh-TW':'Китайский (традиционный)', hi:'Хинди', bn:'Бенгальский', ur:'Урду', ja:'Японский', hr:'Хорватский', da:'Датский', ar:'Арабский' },
+ zh: { fr:'法语', en:'英语', es:'西班牙语', pt:'葡萄牙语', de:'德语', nl:'荷兰语', ru:'俄语', zh:'中文（简体）', 'zh-TW':'中文（繁体）', hi:'印地语', bn:'孟加拉语', ur:'乌尔都语', ja:'日语', hr:'克罗地亚语', da:'丹麦语', ar:'阿拉伯语' },
+ 'zh-TW': { fr:'法語', en:'英語', es:'西班牙語', pt:'葡萄牙語', de:'德語', nl:'荷蘭語', ru:'俄語', zh:'中文（簡體）', 'zh-TW':'中文（繁體）', hi:'印地語', bn:'孟加拉語', ur:'烏爾都語', ja:'日語', hr:'克羅地亞語', da:'丹麥語', ar:'阿拉伯語' },
+ hi: { fr:'फ़्रेंच', en:'अंग्रेज़ी', es:'स्पेनिश', pt:'पुर्तगाली', de:'जर्मन', nl:'डच', ru:'रूसी', zh:'चीनी (सरलीकृत)', 'zh-TW':'चीनी (पारंपरिक)', hi:'हिन्दी', bn:'बंगाली', ur:'उर्दू', ja:'जापानी', hr:'क्रोएशियाई', da:'डेनिश', ar:'अरबी' },
+ bn: { fr:'ফরাসি', en:'ইংরেজি', es:'স্প্যানিশ', pt:'পর্তুগিজ', de:'জার্মান', nl:'ডাচ', ru:'রুশ', zh:'চীনা (সরলীকৃত)', 'zh-TW':'চীনা (ঐতিহ্যবাহী)', hi:'হিন্দি', bn:'বাংলা', ur:'উর্দু', ja:'জাপানি', hr:'ক্রোয়েশীয়', da:'ডেনিশ', ar:'আরবি' },
+ ur: { fr:'فرانسیسی', en:'انگریزی', es:'ہسپانوی', pt:'پرتگالی', de:'جرمن', nl:'ڈچ', ru:'روسی', zh:'چینی (آسان)', 'zh-TW':'چینی (روایتی)', hi:'ہندی', bn:'بنگالی', ur:'اردو', ja:'جاپانی', hr:'کروشیائی', da:'ڈینش', ar:'عربی' },
+ ja: { fr:'フランス語', en:'英語', es:'スペイン語', pt:'ポルトガル語', de:'ドイツ語', nl:'オランダ語', ru:'ロシア語', zh:'中国語（簡体）', 'zh-TW':'中国語（繁体）', hi:'ヒンディー語', bn:'ベンガル語', ur:'ウルドゥー語', ja:'日本語', hr:'クロアチア語', da:'デンマーク語', ar:'アラビア語' },
+ hr: { fr:'francuski', en:'engleski', es:'španjolski', pt:'portugalski', de:'njemački', nl:'nizozemski', ru:'ruski', zh:'kineski (pojednostavljeni)', 'zh-TW':'kineski (tradicionalni)', hi:'hindski', bn:'bengalski', ur:'urdski', ja:'japanski', hr:'hrvatski', da:'danski', ar:'arapski' },
+ da: { fr:'fransk', en:'engelsk', es:'spansk', pt:'portugisisk', de:'tysk', nl:'hollandsk', ru:'russisk', zh:'kinesisk (forenklet)', 'zh-TW':'kinesisk (traditionel)', hi:'hindi', bn:'bengali', ur:'urdu', ja:'japansk', hr:'kroatisk', da:'dansk', ar:'arabisk' },
+ ar: { fr:'فرنسي', en:'الإنجليزية', es:'الإسبانية', pt:'البرتغالية', de:'الألمانية', nl:'الهولندية', ru:'الروسية', zh:'الصينية (المبسطة)', 'zh-TW':'الصينية (التقليدية)', hi:'الهندية', bn:'البنغالية', ur:'الأردية', ja:'اليابانية', hr:'الكرواتية', da:'الدنماركية', ar:'العربية' },
 };
 
 // Supported languages — used by the dropdown selector.
@@ -1343,6 +1354,7 @@ export const SUPPORTED_LANGS = [
  { code: 'ja', label: '日本語', native: '日本語', flag: '🇯🇵' },
  { code: 'hr', label: 'Hrvatski', native: 'HR', flag: '🇭🇷' },
  { code: 'da', label: 'Dansk', native: 'DA', flag: '🇩🇰' },
+ { code: 'ar', label: 'العربية', native: 'AR', flag: '🇸🇦' },
 ];
 
 const LanguageContext = createContext();

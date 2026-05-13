@@ -332,17 +332,16 @@ export default function Dashboard() {
 
     try {
       if (exportType === 'source') {
-        // Download ZIP directly
+        // 1) Download ZIP locally.
         const response = await axios.post(
           `${API}/export/download`,
           { project_id: selectedProject.project_id, export_type: 'source' },
-          { 
+          {
             withCredentials: true,
             responseType: 'blob'
           }
         );
 
-        // Create download link
         const url = window.URL.createObjectURL(new Blob([response.data]));
         const link = document.createElement('a');
         link.href = url;
@@ -350,8 +349,39 @@ export default function Dashboard() {
         document.body.appendChild(link);
         link.click();
         link.remove();
-        
+        window.URL.revokeObjectURL(url);
+
         toast.success('Code source téléchargé !');
+
+        // 2) Also push to GitHub in the background — non-blocking, silent on failure.
+        (async () => {
+          const t1 = toast.loading('Sauvegarde sur GitHub…');
+          try {
+            const gh = await axios.post(
+              `${API}/export/github/${selectedProject.project_id}`,
+              {},
+              { withCredentials: true }
+            );
+            toast.dismiss(t1);
+            if (gh.data?.url) {
+              toast.success('Sauvegardé sur GitHub', {
+                description: gh.data.repository || '',
+                action: {
+                  label: 'Ouvrir',
+                  onClick: () => window.open(gh.data.url, '_blank'),
+                },
+                duration: 10000,
+              });
+            }
+          } catch (ghErr) {
+            toast.dismiss(t1);
+            // Silent: ZIP download already succeeded. Only show a discreet hint.
+            const detail = ghErr.response?.data?.detail || '';
+            if (detail && !/(non configuré|not configured)/i.test(detail)) {
+              toast.message('GitHub indisponible', { description: detail, duration: 5000 });
+            }
+          }
+        })();
       } else if (exportType === 'apk') {
         // Open mobile export page
         const exportUrl = `${BACKEND_URL}/api/export/mobile/${selectedProject.project_id}`;
@@ -633,10 +663,10 @@ export default function Dashboard() {
                 variant="outline"
                 data-testid="export-source-btn"
                 className="hidden sm:inline-flex border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 lg:px-3"
-                title="Source code (ZIP)"
+                title="Télécharger le code source (ZIP) + sauvegarde GitHub automatique"
               >
                 <Download className="w-4 h-4 lg:mr-1" />
-                <span className="hidden lg:inline">ZIP</span>
+                <span className="hidden lg:inline">ZIP + GitHub</span>
               </Button>
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
