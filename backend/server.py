@@ -175,6 +175,7 @@ class ChatMessageInput(BaseModel):
     project_id: Optional[str] = None
     mode: Optional[str] = "online"
     language: Optional[str] = "fr"
+    model: Optional[str] = None  # 'gpt-5.2' | 'claude-opus' | 'claude-sonnet' | 'gemini-3-pro' | 'gemma-3' (offline)
     attachments: Optional[List[ChatAttachment]] = None
 
 class Project(BaseModel):
@@ -1680,6 +1681,7 @@ async def ai_generate_complete_app(request: Request, data: dict):
     mode = data.get('mode', 'online')
     wizard_config = data.get('wizard_config', {})
     user_language = data.get('language', 'fr')
+    requested_model = (data.get('model') or '').lower()  # claude-sonnet | claude-opus | gpt-5.2 | gemini-3-pro
     # app_type reserved for future template routing; kept in wizard_config payload.
     _ = wizard_config.get('appType', 'web')
 
@@ -1826,7 +1828,17 @@ IMPORTANT:
             if not emergent_key:
                 raise ValueError("EMERGENT_LLM_KEY not configured")
             
-            # Initialize chat with the latest GPT-5.2 model.
+            # Routing modèle pour la création — Claude par défaut car excellent pour le code.
+            CREATE_MODEL_ROUTES = {
+                "gpt-5.2":         ("openai",    "gpt-5.2"),
+                "gpt-5":           ("openai",    "gpt-5"),
+                "claude-opus":     ("anthropic", "claude-opus-4-5-20251101"),
+                "claude-sonnet":   ("anthropic", "claude-sonnet-4-5-20250929"),
+                "claude-haiku":    ("anthropic", "claude-haiku-4-5-20251001"),
+                "gemini-3-pro":    ("gemini",    "gemini-3.1-pro-preview"),
+                "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
+            }
+            provider, model_id = CREATE_MODEL_ROUTES.get(requested_model, ("openai", "gpt-5.2"))
             chat = LlmChat(
                 api_key=emergent_key,
                 session_id=f"codeforge_{uuid.uuid4().hex[:8]}",
@@ -1854,15 +1866,15 @@ IMPORTANT:
                     "## SORTIE STRICTE\n"
                     "Réponds UNIQUEMENT en JSON valide selon le format demandé dans le prompt utilisateur. Pas de markdown autour, pas de commentaires, pas de prose hors JSON."
                 )
-            ).with_model("openai", "gpt-5.2")
+            ).with_model(provider, model_id)
             
             # Send generation request
             user_message = UserMessage(text=prompt)
             response = await chat.send_message(user_message)
             
             ai_text = response
-            ai_source = 'emergent_gpt5'
-            logger.info("Generation via Emergent GPT-5.2 successful")
+            ai_source = f'emergent:{provider}:{model_id}'
+            logger.info(f"Generation via {ai_source} successful")
         except Exception as e:
             logger.error(f"Emergent AI error: {e}")
             
@@ -2423,7 +2435,23 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             # Offline mode → Ollama only (conversational model). Inject recent
             # history into the prompt so the local model also keeps context.
             ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-            ollama_model = os.environ.get('OLLAMA_CHAT_MODEL') or os.environ.get('OLLAMA_MODEL', 'llama3.2')
+            # Per-request model selection — user can pick Gemma, Deepseek, Llama, etc.
+            OFFLINE_MODEL_ROUTES = {
+                'deepseek':     os.environ.get('OLLAMA_CHAT_MODEL') or 'deepseek-r1:7b',
+                'llama':        'llama3.2',
+                'llama3':       'llama3.2',
+                'gemma':        'gemma3:12b',     # Google Gemma 3 — équilibré
+                'gemma-12b':    'gemma3:12b',
+                'gemma-27b':    'gemma3:27b',     # Le plus puissant disponible localement
+                'gemma-4b':     'gemma3:4b',      # Léger pour petites machines
+                'qwen':         'qwen2.5:7b',
+                'mistral':      'mistral:7b',
+                'phi':          'phi3:medium',
+            }
+            requested = (input.model or '').lower()
+            ollama_model = OFFLINE_MODEL_ROUTES.get(requested) or (
+                os.environ.get('OLLAMA_CHAT_MODEL') or os.environ.get('OLLAMA_MODEL', 'llama3.2')
+            )
             try:
                 history_q = {"user_id": user_id}
                 if project_id_eff:
@@ -2453,8 +2481,8 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                     )
                     if response.status_code == 200:
                         ai_response_text = (response.json() or {}).get('response', '').strip()
-                        ai_source = 'ollama'
-                        logger.info("✅ Ollama (offline) chat response successful")
+                        ai_source = f'ollama:{ollama_model}'
+                        logger.info(f"✅ Ollama (offline) chat response via {ollama_model}")
             except Exception as ollama_error:
                 logger.info(f"Ollama offline unreachable: {ollama_error}")
         else:
@@ -2485,11 +2513,34 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
 
                 # Reuse the same session per user/project so the AI keeps short-term context.
                 session_id = f"codeforge_chat_{user_id}_{project_id_eff or 'noproj'}"
+
+                # Model routing — user can pick a model at runtime via input.model.
+                # Defaults to GPT-5.2 (provider 'openai') for online chats.
+                model_choice = (input.model or "gpt-5.2").lower()
+                MODEL_ROUTES = {
+                    "gpt-5.2":         ("openai",    "gpt-5.2"),
+                    "gpt-5.1":         ("openai",    "gpt-5.1"),
+                    "gpt-5":           ("openai",    "gpt-5"),
+                    "o3":              ("openai",    "o3"),
+                    "claude-opus":     ("anthropic", "claude-opus-4-5-20251101"),
+                    "claude-opus-4.5": ("anthropic", "claude-opus-4-5-20251101"),
+                    "claude-opus-4.6": ("anthropic", "claude-opus-4-6"),
+                    "claude-sonnet":   ("anthropic", "claude-sonnet-4-5-20250929"),
+                    "claude-sonnet-4.5": ("anthropic", "claude-sonnet-4-5-20250929"),
+                    "claude-sonnet-4.6": ("anthropic", "claude-sonnet-4-6"),
+                    "claude-haiku":    ("anthropic", "claude-haiku-4-5-20251001"),
+                    "gemini-3-pro":    ("gemini",    "gemini-3.1-pro-preview"),
+                    "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
+                    "gemini-2.5-pro":  ("gemini",    "gemini-2.5-pro"),
+                }
+                provider, model_id = MODEL_ROUTES.get(model_choice, ("openai", "gpt-5.2"))
+                ai_source = f"emergent:{provider}:{model_id}"
+
                 chat = LlmChat(
                     api_key=emergent_key,
                     session_id=session_id,
                     system_message=system_prompt,
-                ).with_model("openai", "gpt-5.2")
+                ).with_model(provider, model_id)
 
                 composed = (
                     f"### Historique récent de la conversation :\n{transcript}\n\n"
@@ -2514,8 +2565,8 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                             pass
                 user_message = UserMessage(text=composed, file_contents=image_contents) if image_contents else UserMessage(text=composed)
                 ai_response_text = (await chat.send_message(user_message) or '').strip()
-                ai_source = 'emergent_gpt5'
-                logger.info("✅ Emergent GPT-5.2 chat response successful")
+                # ai_source already set above based on chosen model
+                logger.info(f"✅ Chat response successful via {ai_source}")
             except Exception as emergent_error:
                 logger.warning(f"Emergent chat error: {emergent_error}")
 
@@ -2947,6 +2998,34 @@ async def _run_python_sandbox(code: str, timeout_sec: int = 10, session_id: Opti
 class SandboxFileInput(BaseModel):
     filename: str
     data_base64: str
+
+
+@api_router.get("/chat/models")
+async def list_chat_models(request: Request):
+    """Liste les modèles disponibles pour le sélecteur du chat.
+
+    Retourne : { online: [...], offline: [...] } où chaque modèle a
+    { id, name, provider, badge, description }.
+    """
+    await get_current_user(request)
+    online = [
+        {"id": "gpt-5.2",        "name": "Caly (GPT-5.2)",        "provider": "OpenAI",    "badge": "Défaut",       "description": "Conversation rapide, polyvalente, multilingue.", "color": "yellow"},
+        {"id": "claude-opus",    "name": "Claude Opus 4.5",       "provider": "Anthropic", "badge": "Thinking",     "description": "Raisonnement profond. Idéal pour les sujets complexes, analyses, écriture longue.", "color": "amber"},
+        {"id": "claude-sonnet",  "name": "Claude Sonnet 4.5",     "provider": "Anthropic", "badge": "Code",         "description": "Excellente pour le code et la réécriture. Rapide.", "color": "orange"},
+        {"id": "gemini-3-pro",   "name": "Gemini 3 Pro",          "provider": "Google",    "badge": "Multimodal",   "description": "Très bon en image + texte. Alternative Google.", "color": "blue"},
+        {"id": "gemini-3-flash", "name": "Gemini 3 Flash",        "provider": "Google",    "badge": "Ultra-rapide", "description": "Latence minimale, idéal pour rebondir vite.", "color": "cyan"},
+    ]
+    offline = [
+        {"id": "deepseek",   "name": "DeepSeek R1 (7B)",    "provider": "Ollama", "badge": "Code",       "description": "Excellent en code, raisonnement step-by-step.", "color": "sky"},
+        {"id": "gemma",      "name": "Gemma 3 (12B)",        "provider": "Ollama", "badge": "Équilibré",  "description": "Modèle Google open-source, polyvalent et bilingue.", "color": "indigo"},
+        {"id": "gemma-27b",  "name": "Gemma 3 (27B)",        "provider": "Ollama", "badge": "Puissant",   "description": "Le plus capable des Gemma — nécessite +24 Go RAM.", "color": "purple"},
+        {"id": "gemma-4b",   "name": "Gemma 3 (4B)",         "provider": "Ollama", "badge": "Léger",      "description": "Très léger, idéal pour machines modestes.", "color": "violet"},
+        {"id": "llama",      "name": "Llama 3.2",            "provider": "Ollama", "badge": "Généraliste","description": "Meta Llama, polyvalent.", "color": "emerald"},
+        {"id": "qwen",       "name": "Qwen 2.5 (7B)",        "provider": "Ollama", "badge": "Multilingue","description": "Très bon support multilingue (chinois, anglais, français).", "color": "teal"},
+        {"id": "mistral",    "name": "Mistral 7B",           "provider": "Ollama", "badge": "Européen",   "description": "Modèle français performant et léger.", "color": "rose"},
+        {"id": "phi",        "name": "Phi-3 Medium",         "provider": "Ollama", "badge": "Compact",    "description": "Microsoft Phi — petit mais étonnamment fort en math.", "color": "fuchsia"},
+    ]
+    return {"online": online, "offline": offline}
 
 
 class RunPythonInput(BaseModel):

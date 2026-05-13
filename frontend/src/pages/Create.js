@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import ModelPicker from '../components/ModelPicker';
 import axios from 'axios';
 import { 
   Send, Sparkles, Loader2, ArrowLeft, Download, 
@@ -32,6 +33,9 @@ export default function Create() {
   const [generatedCode, setGeneratedCode] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+  // Modèle IA sélectionné pour la création — Claude Sonnet par défaut car
+  // excellent en code, GPT-5.2 et Claude Opus en alternative.
+  const [selectedModel, setSelectedModel] = useState(mode === 'offline' ? 'gemma' : 'claude-sonnet');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -59,7 +63,7 @@ export default function Create() {
     try {
       const response = await axios.post(
         `${API}/ai/generate-complete-app`,
-        { description: userMessage, mode, language },
+        { description: userMessage, mode, language, model: selectedModel },
         { withCredentials: true }
       );
 
@@ -150,6 +154,7 @@ export default function Create() {
 
           {/* Boutons de Prévisualisation - TOUJOURS VISIBLES */}
           <div className="flex items-center gap-2">
+            <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
             <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-2">PRÉVISUALISATION:</span>
             
             <Button

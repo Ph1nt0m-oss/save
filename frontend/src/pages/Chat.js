@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import VoiceRecorder from '../components/VoiceRecorder';
 import AttachMenu from '../components/AttachMenu';
 import MessageContent from '../components/MessageContent';
+import ModelPicker from '../components/ModelPicker';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -54,6 +55,8 @@ export default function Chat() {
   // Persistent REPL session — shared across all code blocks in this chat.
   // Same projectId => same Python namespace across messages (Jupyter-style).
   const replSessionId = `repl_${user?.id || user?.email || 'anon'}_${project?.project_id || 'noproj'}`;
+  // Selected AI model — defaults differ for online vs offline.
+  const [selectedModel, setSelectedModel] = useState(mode === 'offline' ? 'gemma' : 'gpt-5.2');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -138,6 +141,7 @@ export default function Chat() {
           message: userMessage,
           mode,
           language,
+          model: selectedModel,
           project_id: project?.project_id,
           attachments: opts.attachments || [],
         },
@@ -241,6 +245,7 @@ export default function Chat() {
             </Button>
           )}
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+            <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
             <Button
               onClick={async () => {
                 try {
