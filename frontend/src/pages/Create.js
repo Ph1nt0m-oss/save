@@ -82,8 +82,32 @@ export default function Create() {
         content: response.data.explanation,
         timestamp: new Date(),
         hasCode: true,
+        ai_source: response.data.ai_source || `emergent:${selectedModel}`,
         previewUrl: response.data.preview_url || `${API}/preview/project/${response.data.project?.id}`
       }]);
+
+      // Build & Test pattern (Emergent-like) — kick off automatic preview + lightweight test.
+      try {
+        const pid = response.data.project?.id || response.data.project?.project_id;
+        if (pid) {
+          // 1) Smoke test: GET the preview HTML. If 200 + body length OK, the build is up.
+          const previewUrlEff = response.data.preview_url || `${API}/preview/project/${pid}`;
+          const r = await axios.get(previewUrlEff, { withCredentials: true, validateStatus: () => true });
+          const ok = r.status === 200 && typeof r.data === 'string' && r.data.length > 200;
+          const fileCount = response.data.code?.files ? Object.keys(response.data.code.files).length : 0;
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: ok
+              ? `✅ **Build & Test réussi** — ${fileCount} fichier${fileCount > 1 ? 's' : ''} générés, page de preview chargée correctement (${r.data.length} octets). Tu peux la voir live à droite ou cliquer sur **Aperçu Live** dans le menu projet.`
+              : `⚠️ **Build OK mais test preview KO** (status ${r.status}). Le code est généré, mais la page d'aperçu n'a pas répondu comme prévu. Va dans **Aperçu Live** pour voir manuellement.`,
+            timestamp: new Date(),
+            isStatusLine: true,
+          }]);
+        }
+      } catch (testErr) {
+        // Non-blocking
+        console.warn('Build&Test smoke failed:', testErr?.message);
+      }
 
       toast.success('Application générée !');
     } catch (error) {
@@ -154,7 +178,7 @@ export default function Create() {
 
           {/* Boutons de Prévisualisation - TOUJOURS VISIBLES */}
           <div className="flex items-center gap-2">
-            <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
+            <ModelPicker mode={mode} context="create" value={selectedModel} onChange={setSelectedModel} />
             <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Mono'] mr-2">PRÉVISUALISATION:</span>
             
             <Button

@@ -74,6 +74,8 @@ export default function Chat() {
           setMessages(r.data.map(m => ({
             ...m,
             download: m.download || null,
+            ai_source: m.ai_source || null,
+            model_id: m.model_id || null,
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
           })));
         }
@@ -152,6 +154,8 @@ export default function Chat() {
         role: 'assistant',
         content: response.data.ai_response.content,
         download: response.data.ai_response.download || null,
+        ai_source: response.data.ai_response.ai_source || null,
+        model_id: selectedModel,
         timestamp: new Date()
       }]);
       setPendingAtts([]);
@@ -339,9 +343,36 @@ export default function Chat() {
                         className="mt-3 max-w-full rounded-sm border border-white/10"
                       />
                     )}
-                    <p className="text-xs text-[#A1A1AA] mt-2">
-                      {msg.timestamp.toLocaleTimeString('fr-FR')}
-                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <p className="text-xs text-[#A1A1AA]">
+                        {msg.timestamp.toLocaleTimeString('fr-FR')}
+                      </p>
+                      {!isUser && msg.ai_source && (() => {
+                        const src = msg.ai_source || '';
+                        // Pretty label from ai_source 'emergent:openai:gpt-5.2' or 'ollama:gemma3:12b'
+                        let label = src;
+                        if (src.startsWith('emergent:')) {
+                          const parts = src.split(':');
+                          const prov = parts[1] || '';
+                          const mdl = parts.slice(2).join(':') || '';
+                          if (prov === 'anthropic') label = mdl.includes('opus') ? 'Claude Opus 4.5' : mdl.includes('sonnet') ? 'Claude Sonnet 4.5' : 'Claude';
+                          else if (prov === 'gemini') label = mdl.includes('flash') ? 'Gemini 3 Flash' : 'Gemini 3 Pro';
+                          else if (prov === 'openai') label = 'Caly (GPT-5.2)';
+                          else label = `${prov} / ${mdl}`;
+                        } else if (src.startsWith('ollama:')) {
+                          label = `Ollama · ${src.split(':').slice(1).join(':')}`;
+                        }
+                        return (
+                          <span
+                            data-testid="msg-ai-badge"
+                            title={`Modèle ayant répondu : ${src}`}
+                            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-[#71717A] border border-white/10 rounded-sm px-1.5 py-0.5"
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
                   {isUser && (
                     user?.picture ? (

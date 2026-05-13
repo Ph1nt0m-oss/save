@@ -1693,6 +1693,7 @@ async def ai_generate_complete_app(request: Request, data: dict):
         'nl': 'Dutch (Nederlands)', 'ru': 'Russian (Русский)',
         'zh': 'Simplified Chinese (中文 简体)', 'zh-TW': 'Traditional Chinese (中文 繁體)',
         'hi': 'Hindi (हिन्दी)', 'bn': 'Bengali (বাংলা)', 'ur': 'Urdu (اردو)',
+        'ja': 'Japanese (日本語)', 'hr': 'Croatian (Hrvatski)', 'da': 'Danish (Dansk)',
     }
     target_language = language_names.get(user_language, 'French')
     language_directive = (
@@ -2366,6 +2367,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
             'de': 'Deutsch', 'nl': 'Nederlands', 'ru': 'русский',
             'zh': '中文（简体）', 'zh-tw': '中文（繁體）',
             'hi': 'हिन्दी', 'bn': 'বাংলা', 'ur': 'اردو',
+            'ja': '日本語', 'hr': 'hrvatski', 'da': 'dansk',
         }
         lang_label = language_names.get(user_language, 'français')
         system_prompt = (
@@ -2459,7 +2461,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 # ZERO limite : on remonte TOUT l'historique de la conversation (signature CodeForge AI).
                 history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", 1)
                 history_docs_all = await history_cursor.to_list(length=None)
-                history_docs = history_docs_all[:-1] if history_docs_all else []  # drop the just-inserted message
+                history_docs = history_docs_all[:-1] if history_docs_all else []
                 transcript = "\n".join(
                     f"{('Utilisateur' if h.get('role') == 'user' else 'Caly')} : {h.get('content', '').strip()}"
                     for h in history_docs
@@ -2499,23 +2501,7 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 history_q = {"user_id": user_id}
                 if project_id_eff:
                     history_q["project_id"] = project_id_eff
-                # ZERO limite : on remonte TOUT l'historique de la conversation (signature CodeForge AI).
-                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1}).sort("timestamp", 1)
-                history_docs_all = await history_cursor.to_list(length=None)
-                history_docs = history_docs_all[:-1] if history_docs_all else []  # drop the message we just inserted
-                transcript = ""
-                if history_docs:
-                    lines = []
-                    for h in history_docs:
-                        speaker = "Utilisateur" if h.get("role") == "user" else "Caly"
-                        lines.append(f"{speaker} : {h.get('content', '').strip()}")
-                    transcript = "\n".join(lines)
-
-                # Reuse the same session per user/project so the AI keeps short-term context.
-                session_id = f"codeforge_chat_{user_id}_{project_id_eff or 'noproj'}"
-
                 # Model routing — user can pick a model at runtime via input.model.
-                # Defaults to GPT-5.2 (provider 'openai') for online chats.
                 model_choice = (input.model or "gpt-5.2").lower()
                 MODEL_ROUTES = {
                     "gpt-5.2":         ("openai",    "gpt-5.2"),
@@ -2536,6 +2522,33 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 provider, model_id = MODEL_ROUTES.get(model_choice, ("openai", "gpt-5.2"))
                 ai_source = f"emergent:{provider}:{model_id}"
 
+                # Track which model answered each historical message (with ai_source).
+                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1, "ai_source": 1}).sort("timestamp", 1)
+                history_docs_all = await history_cursor.to_list(length=None)
+                history_docs = history_docs_all[:-1] if history_docs_all else []
+                transcript = ""
+                if history_docs:
+                    lines = []
+                    for h in history_docs:
+                        speaker = "Utilisateur" if h.get("role") == "user" else "Caly"
+                        lines.append(f"{speaker} : {h.get('content', '').strip()}")
+                    transcript = "\n".join(lines)
+
+                # Detect a model switch between previous AI message and this one.
+                last_ai = next((h for h in reversed(history_docs) if h.get("role") == "assistant"), None)
+                last_source = (last_ai or {}).get("ai_source") if last_ai else None
+                model_switch_note = ""
+                if last_source and not last_source.startswith(f"emergent:{provider}:"):
+                    short_prev = last_source.replace("emergent:", "").replace("ollama:", "Ollama/")
+                    model_switch_note = (
+                        f"\n\n[CONTEXTE INTERNE — NE PAS RÉPÉTER À L'UTILISATEUR] "
+                        f"La réponse précédente a été produite par {short_prev}. Tu es maintenant {model_id}. "
+                        f"Reprends naturellement le fil — ne signale PAS le changement sauf si l'utilisateur le demande explicitement.\n"
+                    )
+
+                # Reuse the same session per user/project so the AI keeps short-term context.
+                session_id = f"codeforge_chat_{user_id}_{project_id_eff or 'noproj'}"
+
                 chat = LlmChat(
                     api_key=emergent_key,
                     session_id=session_id,
@@ -2546,6 +2559,8 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                     f"### Historique récent de la conversation :\n{transcript}\n\n"
                     f"### Nouveau message de l'utilisateur :\n{input.message}"
                 ) if transcript else input.message
+                if model_switch_note:
+                    composed = composed + model_switch_note
 
                 # Inline attached file excerpts (text) so the model reasons on them.
                 text_atts = [a for a in (input.attachments or []) if a.kind == 'text' and (a.content or '').strip()]
@@ -3002,30 +3017,127 @@ class SandboxFileInput(BaseModel):
 
 @api_router.get("/chat/models")
 async def list_chat_models(request: Request):
-    """Liste les modèles disponibles pour le sélecteur du chat.
+    """Liste les modèles disponibles pour le sélecteur, avec descriptions
+    contextuelles (chat vs création) pour aider l'utilisateur à choisir.
 
-    Retourne : { online: [...], offline: [...] } où chaque modèle a
-    { id, name, provider, badge, description }.
+    Le frontend passe `?context=chat` ou `?context=create` pour adapter le wording.
     """
     await get_current_user(request)
+    context = (request.query_params.get("context") or "chat").lower()
+    is_create = context == "create"
+
+    # Descriptions adaptées au contexte d'utilisation
     online = [
-        {"id": "gpt-5.2",        "name": "Caly (GPT-5.2)",        "provider": "OpenAI",    "badge": "Défaut",       "description": "Conversation rapide, polyvalente, multilingue.", "color": "yellow"},
-        {"id": "claude-opus",    "name": "Claude Opus 4.5",       "provider": "Anthropic", "badge": "Thinking",     "description": "Raisonnement profond. Idéal pour les sujets complexes, analyses, écriture longue.", "color": "amber"},
-        {"id": "claude-sonnet",  "name": "Claude Sonnet 4.5",     "provider": "Anthropic", "badge": "Code",         "description": "Excellente pour le code et la réécriture. Rapide.", "color": "orange"},
-        {"id": "gemini-3-pro",   "name": "Gemini 3 Pro",          "provider": "Google",    "badge": "Multimodal",   "description": "Très bon en image + texte. Alternative Google.", "color": "blue"},
-        {"id": "gemini-3-flash", "name": "Gemini 3 Flash",        "provider": "Google",    "badge": "Ultra-rapide", "description": "Latence minimale, idéal pour rebondir vite.", "color": "cyan"},
+        {
+            "id": "gpt-5.2", "name": "Caly (GPT-5.2)", "provider": "OpenAI", "badge": "Défaut", "color": "yellow",
+            "description": (
+                "Discussion généraliste : brainstorm, écriture, analyse, rebond rapide. Mémoire complète de la conversation."
+                if not is_create else
+                "Génère le code complet du projet (FastAPI + React + DB). Hypothèses intelligentes, README clair, prêt à exécuter."
+            ),
+            "good_for": (
+                ["Brainstormer", "Écrire un email/texte", "Analyser un fichier", "Conversation longue"]
+                if not is_create else
+                ["App complète", "Projet équilibré", "Site web standard"]
+            ),
+        },
+        {
+            "id": "claude-opus", "name": "Claude Opus 4.5", "provider": "Anthropic", "badge": "Thinking", "color": "amber",
+            "description": (
+                "Raisonne pas-à-pas avant de répondre. Idéale pour problèmes complexes, décisions importantes, longues analyses, dilemmes."
+                if not is_create else
+                "Architecte avant de coder. Meilleure pour projets multi-fichiers, logique métier complexe, sécurité."
+            ),
+            "good_for": (
+                ["Problèmes complexes", "Dilemmes", "Code review profond", "Recherche approfondie"]
+                if not is_create else
+                ["Architecture complexe", "Backend avec règles métier", "Apps multi-modules", "Logique sensible"]
+            ),
+        },
+        {
+            "id": "claude-sonnet", "name": "Claude Sonnet 4.5", "provider": "Anthropic", "badge": "Code", "color": "orange",
+            "description": (
+                "Excellente pour ÉCRIRE DU CODE dans le chat — clique sur ▶ Exécuter pour le lancer dans le sandbox Python. Pour générer un projet complet à télécharger, va plutôt dans Création."
+                if not is_create else
+                "Le PLUS RAPIDE pour générer un projet complet propre, exécutable, prêt à pousser sur GitHub. Recommandée par défaut."
+            ),
+            "good_for": (
+                ["Snippets de code", "Refactor", "Debug ligne par ligne", "Réécrire un texte"]
+                if not is_create else
+                ["App standard", "Site marketing", "Outil CRUD", "Recommandé par défaut"]
+            ),
+        },
+        {
+            "id": "gemini-3-pro", "name": "Gemini 3 Pro", "provider": "Google", "badge": "Multimodal", "color": "blue",
+            "description": (
+                "Le meilleur quand tu joins une IMAGE — décrit, analyse, extrait du texte (OCR), explique des schémas, identifie."
+                if not is_create else
+                "Plus créative visuellement. Idéale pour UI originales, design audacieux, identité visuelle marquée."
+            ),
+            "good_for": (
+                ["Analyser une image", "OCR (extraire texte image)", "Lire un schéma", "Décrire une photo"]
+                if not is_create else
+                ["UI design original", "Landing page", "Portfolio créatif", "App au look unique"]
+            ),
+        },
+        {
+            "id": "gemini-3-flash", "name": "Gemini 3 Flash", "provider": "Google", "badge": "Ultra-rapide", "color": "cyan",
+            "description": (
+                "Réponses en quelques secondes. Parfait pour ping-pong rapide, questions courtes, vérifications express."
+                if not is_create else
+                "Pour prototypes rapides et MVPs simples. Code moins poli mais livré en quelques secondes."
+            ),
+            "good_for": (
+                ["Question rapide", "Vérification express", "Définition", "Conversion d'unité"]
+                if not is_create else
+                ["Prototype rapide", "MVP simple", "Démo express", "Page unique"]
+            ),
+        },
     ]
     offline = [
-        {"id": "deepseek",   "name": "DeepSeek R1 (7B)",    "provider": "Ollama", "badge": "Code",       "description": "Excellent en code, raisonnement step-by-step.", "color": "sky"},
-        {"id": "gemma",      "name": "Gemma 3 (12B)",        "provider": "Ollama", "badge": "Équilibré",  "description": "Modèle Google open-source, polyvalent et bilingue.", "color": "indigo"},
-        {"id": "gemma-27b",  "name": "Gemma 3 (27B)",        "provider": "Ollama", "badge": "Puissant",   "description": "Le plus capable des Gemma — nécessite +24 Go RAM.", "color": "purple"},
-        {"id": "gemma-4b",   "name": "Gemma 3 (4B)",         "provider": "Ollama", "badge": "Léger",      "description": "Très léger, idéal pour machines modestes.", "color": "violet"},
-        {"id": "llama",      "name": "Llama 3.2",            "provider": "Ollama", "badge": "Généraliste","description": "Meta Llama, polyvalent.", "color": "emerald"},
-        {"id": "qwen",       "name": "Qwen 2.5 (7B)",        "provider": "Ollama", "badge": "Multilingue","description": "Très bon support multilingue (chinois, anglais, français).", "color": "teal"},
-        {"id": "mistral",    "name": "Mistral 7B",           "provider": "Ollama", "badge": "Européen",   "description": "Modèle français performant et léger.", "color": "rose"},
-        {"id": "phi",        "name": "Phi-3 Medium",         "provider": "Ollama", "badge": "Compact",    "description": "Microsoft Phi — petit mais étonnamment fort en math.", "color": "fuchsia"},
+        {
+            "id": "deepseek", "name": "DeepSeek R1 (7B)", "provider": "Ollama", "badge": "Code", "color": "sky",
+            "description": "Excellent en code et raisonnement step-by-step, totalement hors-ligne." if not is_create else "Génère du code propre hors-ligne. Lent mais privé.",
+            "good_for": ["Code", "Maths", "Logique"] if not is_create else ["App standard hors-ligne"],
+        },
+        {
+            "id": "gemma", "name": "Gemma 3 (12B)", "provider": "Ollama", "badge": "Équilibré", "color": "indigo",
+            "description": "Modèle Google open-source. Polyvalent, multilingue, conversation naturelle, sans rien envoyer en ligne.",
+            "good_for": ["Tout-terrain hors-ligne", "Multilingue", "Discussion privée"] if not is_create else ["Petites apps hors-ligne", "Privacy first"],
+        },
+        {
+            "id": "gemma-27b", "name": "Gemma 3 (27B)", "provider": "Ollama", "badge": "Puissant", "color": "purple",
+            "description": "Le plus capable des Gemma — exigeant en RAM (+24 Go). Qualité GPT-3.5 hors-ligne.",
+            "good_for": ["Tâches lourdes hors-ligne", "Analyse profonde"] if not is_create else ["App complète hors-ligne haut de gamme"],
+        },
+        {
+            "id": "gemma-4b", "name": "Gemma 3 (4B)", "provider": "Ollama", "badge": "Léger", "color": "violet",
+            "description": "Très léger (~3 Go RAM), idéal pour machines modestes et démarrage rapide.",
+            "good_for": ["Vieux laptop", "Tâches simples", "Test rapide"] if not is_create else ["Page statique", "MVP minimal"],
+        },
+        {
+            "id": "llama", "name": "Llama 3.2", "provider": "Ollama", "badge": "Généraliste", "color": "emerald",
+            "description": "Meta Llama — alternative équilibrée, communauté très active.",
+            "good_for": ["Discussion générale"] if not is_create else ["App standard"],
+        },
+        {
+            "id": "qwen", "name": "Qwen 2.5 (7B)", "provider": "Ollama", "badge": "Multilingue", "color": "teal",
+            "description": "Très bon support chinois + anglais + français. Top pour i18n.",
+            "good_for": ["Traduction", "Multilangue"] if not is_create else ["Site multilingue"],
+        },
+        {
+            "id": "mistral", "name": "Mistral 7B", "provider": "Ollama", "badge": "Européen", "color": "rose",
+            "description": "Modèle français performant, léger, respectueux du RGPD si tu héberges toi-même.",
+            "good_for": ["Français natif", "RGPD"] if not is_create else ["App RGPD-friendly"],
+        },
+        {
+            "id": "phi", "name": "Phi-3 Medium", "provider": "Ollama", "badge": "Compact", "color": "fuchsia",
+            "description": "Microsoft Phi — petit mais étonnamment fort en maths et code.",
+            "good_for": ["Maths", "Code"] if not is_create else ["Outils techniques"],
+        },
     ]
-    return {"online": online, "offline": offline}
+    return {"online": online, "offline": offline, "context": context}
+
 
 
 class RunPythonInput(BaseModel):

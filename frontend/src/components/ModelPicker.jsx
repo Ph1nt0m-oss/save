@@ -39,10 +39,11 @@ const COLOR_RING = {
  * Sélecteur de modèle d'IA — sidebar/dropdown.
  * Props :
  *   - mode: 'online' | 'offline'  → choisit la liste à afficher
+ *   - context: 'chat' | 'create' → adapte les descriptions au contexte
  *   - value: id du modèle actuellement sélectionné
  *   - onChange: (modelId) => void
  */
-export default function ModelPicker({ mode = 'online', value, onChange }) {
+export default function ModelPicker({ mode = 'online', context = 'chat', value, onChange }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState({ online: [], offline: [] });
@@ -51,12 +52,12 @@ export default function ModelPicker({ mode = 'online', value, onChange }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    axios.get(`${API}/chat/models`, { withCredentials: true })
+    axios.get(`${API}/chat/models?context=${context}`, { withCredentials: true })
       .then((r) => { if (!cancelled) setModels(r.data || { online: [], offline: [] }); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [context]);
 
   // Close on outside click
   useEffect(() => {
@@ -127,6 +128,15 @@ export default function ModelPicker({ mode = 'online', value, onChange }) {
                 <div className="text-[11px] text-[#A1A1AA] mt-0.5 pl-5">
                   {m.provider} · {m.description}
                 </div>
+                {Array.isArray(m.good_for) && m.good_for.length > 0 && (
+                  <div className="mt-1 pl-5 flex flex-wrap gap-1">
+                    {m.good_for.slice(0, 4).map((g, i) => (
+                      <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded-sm bg-white/[0.04] border ${ring}`}>
+                        {g}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </button>
             );
           })}

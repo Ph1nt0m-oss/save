@@ -1269,6 +1269,38 @@ const translations = {
     mic_no_text: '🎤 کوئی آواز نہیں ملی — واضح بولیں۔',
     mic_failed: '🎤 ٹرانسکرپشن ناکام۔ دوبارہ کوشش کریں۔',
     mic_voice_badge: 'آواز',
+  },
+  ja: {
+    back: '戻る', next: '次へ', previous: '前へ', generate: '生成', loading: '読み込み中...', error: 'エラー',
+    success: '成功', cancel: 'キャンセル', save: '保存', delete: '削除', edit: '編集', close: '閉じる', yes: 'はい', no: 'いいえ',
+    chatPinBtn: 'サイドバーに固定', chatPinned: '会話を固定しました。', chatPinEmpty: 'まず会話を始めましょう。',
+    chatEmptyTitle: 'AI対話', chatEmptyOnline: '強力なオンラインAI（GPT-5.2）と会話。',
+    chatEmptyOffline: 'ローカルAIと会話（Ollamaが必要）。',
+    chatPlaceholder: '質問をどうぞ…', chatSend: '送信',
+    loginSignin: 'ログイン', loginSignup: 'サインアップ', loginEmail: 'メールアドレス', loginPassword: 'パスワード',
+    loginSubmit: '続行',
+    dashHello: 'こんにちは', dashYourCreations: 'あなたのプロジェクト', dashNewProject: '新しいプロジェクト',
+    dashTutorial: 'チュートリアル',
+  },
+  hr: {
+    back: 'Natrag', next: 'Sljedeće', previous: 'Prethodno', generate: 'Generiraj', loading: 'Učitavanje...', error: 'Greška',
+    success: 'Uspjeh', cancel: 'Odustani', save: 'Spremi', delete: 'Izbriši', edit: 'Uredi', close: 'Zatvori', yes: 'Da', no: 'Ne',
+    chatPinBtn: 'Prikvači u traku', chatPinned: 'Razgovor prikvačen.', chatPinEmpty: 'Prvo započni razgovor.',
+    chatEmptyTitle: 'Razgovor s AI', chatEmptyOnline: 'Razgovaraj s moćnim AI-em online (GPT-5.2).',
+    chatEmptyOffline: 'Razgovaraj s lokalnim AI-em (potreban Ollama).',
+    chatPlaceholder: 'Postavi pitanje…', chatSend: 'Pošalji',
+    loginSignin: 'Prijava', loginSignup: 'Registracija', loginEmail: 'E-pošta', loginPassword: 'Lozinka', loginSubmit: 'Nastavi',
+    dashHello: 'Bok', dashYourCreations: 'Tvoji projekti', dashNewProject: 'Novi projekt', dashTutorial: 'Vodič',
+  },
+  da: {
+    back: 'Tilbage', next: 'Næste', previous: 'Forrige', generate: 'Generer', loading: 'Indlæser...', error: 'Fejl',
+    success: 'Succes', cancel: 'Annuller', save: 'Gem', delete: 'Slet', edit: 'Rediger', close: 'Luk', yes: 'Ja', no: 'Nej',
+    chatPinBtn: 'Fastgør til sidebar', chatPinned: 'Samtale fastgjort.', chatPinEmpty: 'Start en samtale først.',
+    chatEmptyTitle: 'AI-samtale', chatEmptyOnline: 'Chat med en kraftig online-AI (GPT-5.2).',
+    chatEmptyOffline: 'Chat med en lokal AI (kræver Ollama).',
+    chatPlaceholder: 'Stil et spørgsmål…', chatSend: 'Send',
+    loginSignin: 'Log ind', loginSignup: 'Tilmeld', loginEmail: 'E-mail', loginPassword: 'Adgangskode', loginSubmit: 'Fortsæt',
+    dashHello: 'Hej', dashYourCreations: 'Dine projekter', dashNewProject: 'Nyt projekt', dashTutorial: 'Vejledning',
   }
 };
 
@@ -1287,6 +1319,9 @@ export const SUPPORTED_LANGS = [
   { code: 'hi', label: 'हिन्दी', native: 'हिन्दी', flag: '🇮🇳' },
   { code: 'bn', label: 'বাংলা', native: 'বাংলা', flag: '🇧🇩' },
   { code: 'ur', label: 'اردو', native: 'اردو', flag: '🇵🇰' },
+  { code: 'ja', label: '日本語', native: '日本語', flag: '🇯🇵' },
+  { code: 'hr', label: 'Hrvatski', native: 'HR', flag: '🇭🇷' },
+  { code: 'da', label: 'Dansk',    native: 'DA', flag: '🇩🇰' },
 ];
 
 const LanguageContext = createContext();
