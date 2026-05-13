@@ -2,6 +2,23 @@
 
 ## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
 
+### 13 Mai 2026 — Session 44 — Cascade silencieuse multi-modèles + i18n langues localisées + neutralisation noms IA
+- **🚫 Plus jamais d'erreur "budget dépassé" visible** côté utilisateur :
+  - Cascade multi-modèles implémentée dans `/api/chat/message` ET dans la génération de projets web. Si le modèle demandé renvoie un budget/quota/rate-limit/timeout/auth/overloaded/badrequest, le backend bascule **silencieusement** vers le modèle suivant de la chaîne sans afficher d'erreur à l'utilisateur.
+  - Chaîne de fallback diversifiée (multi-providers pour contourner un cap par fournisseur) : modèle demandé → `claude-sonnet-4-5` → `gpt-5.2` → `gemini-3-flash` → `claude-haiku-4-5` → `gemini-2.5-pro` → `gpt-5` → `claude-opus-4-5`.
+  - Seul le log backend trace la cascade (`↪️  Silent fallback succeeded on attempt N`). Le frontend reçoit uniquement la réponse de l'IA qui a réussi.
+- **🌍 Sélecteur de langues "Nom natif (Traduction)"** :
+  - Nouvelle constante `TRANSLATED_LANG_NAMES[uiLang][langCode]` couvrant les 15 langues × 15 langues UI.
+  - `LanguageToggle.jsx` affiche désormais p.ex. "Deutsch (Allemand)" quand l'UI est en français, "Français (French)" en anglais, "日本語 (Japonais)" en français, etc.
+  - Pas de doublon "Français (Français)" pour la langue active grâce à comparaison normalisée (case + diacritiques).
+- **🤖 Noms d'IA neutralisés** dans Landing & Dashboard :
+  - Landing stats : "GPT-5.2" → **"Multi-IA"** (puisque le ModelPicker offre le choix dynamique).
+  - Filtres Dashboard : "Chat IA" / "Chat Ollama" / "Création Emergent" / "Création Ollama" → **"Chat en ligne"** / **"Chat hors-ligne"** / **"Création en ligne"** / **"Création hors-ligne"**.
+  - Tooltips ronds colorés : "Discussion avec l'IA en ligne (GPT-5.2)" → **"Discussion avec l'IA en ligne"** (idem hors-ligne).
+  - Toutes les traductions des 15 langues (`LanguageContext.js`) nettoyées des mentions "Ollama" et "(GPT-5.2)" — remplacées par "moteur d'IA local" / "in the cloud" / etc.
+- **Tests** : backend testé en live (login + chat/message via `gpt-5.2` et `claude-opus-4-6` → tous deux répondent normalement, logs OK). Frontend screenshot Landing + dropdown langues OK.
+
+
 ### 3 Mai 2026 — Session 42 — Auto-import chats + ronds colorés + copier lien + personnalité Caly + durcissement sécurité login
 - **Auto-création de projet pour chaque chat** : dès le 1er message utilisateur, un projet `type=chat` est créé automatiquement et apparaît dans la sidebar (`POST /api/chat/message` sans `project_id` crée le projet + retourne son id). Plus besoin du bouton "Pin to sidebar".
 - **Champ `ai_mode` ajouté au modèle Project** (`online` / `offline`), avec backfill safe dans `GET /api/projects` et `GET /api/projects/{id}` (gère les legacy sans `updated_at`).

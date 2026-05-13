@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { SUPPORTED_LANGS } from '../contexts/LanguageContext';
+import { SUPPORTED_LANGS, TRANSLATED_LANG_NAMES } from '../contexts/LanguageContext';
 
 export default function LanguageToggle({ className = '', placement = 'top' }) {
   const { language, setLanguage } = useLanguage();
@@ -18,6 +18,18 @@ export default function LanguageToggle({ className = '', placement = 'top' }) {
 
   const current = SUPPORTED_LANGS.find(l => l.code === language) || SUPPORTED_LANGS[1];
   const dropdownPos = placement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2';
+
+  // Display each language as "NativeName (NameInCurrentUiLanguage)".
+  // When the language IS the current UI language, we only show its native name
+  // (no parenthesis with the same translation).
+  const formatLangName = (lang) => {
+    const translated = TRANSLATED_LANG_NAMES[language]?.[lang.code];
+    if (!translated) return lang.label;
+    // Compare case-insensitively + ignore diacritics to avoid "Français (Français)".
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    if (norm(translated) === norm(lang.label)) return lang.label;
+    return `${lang.label} (${translated})`;
+  };
 
   return (
     <div ref={ref} className={`relative inline-block ${className}`}>
@@ -57,7 +69,7 @@ export default function LanguageToggle({ className = '', placement = 'top' }) {
             >
               <span className="flex items-center gap-2">
                 <span className="text-base leading-none">{lang.flag}</span>
-                <span>{lang.label}</span>
+                <span>{formatLangName(lang)}</span>
               </span>
               {language === lang.code && <Check className="w-3 h-3" />}
             </button>

@@ -114,7 +114,7 @@ export default function Landing() {
               <div className="text-[#A1A1AA] mt-1">{t('l_statUnlimited')}</div>
             </div>
             <div>
-              <div className="text-2xl sm:text-3xl font-bold text-[#00FF66]">GPT-5.2</div>
+              <div className="text-2xl sm:text-3xl font-bold text-[#00FF66]">Multi-IA</div>
               <div className="text-[#A1A1AA] mt-1">{t('l_statAI')}</div>
             </div>
             <div>

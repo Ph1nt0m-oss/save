@@ -416,10 +416,10 @@ export default function Dashboard() {
             }
             const filters = [
               { id: 'all',          label: 'Tout',      dot: 'bg-white' },
-              { id: 'chat-online',  label: 'Chat IA',   dot: 'bg-yellow-400' },
-              { id: 'chat-offline', label: 'Chat Ollama',   dot: 'bg-sky-400' },
-              { id: 'web-online',   label: 'Création Emergent', dot: 'bg-emerald-400' },
-              { id: 'web-offline',  label: 'Création Ollama',   dot: 'bg-violet-400' },
+              { id: 'chat-online',  label: 'Chat en ligne',   dot: 'bg-yellow-400' },
+              { id: 'chat-offline', label: 'Chat hors-ligne',  dot: 'bg-sky-400' },
+              { id: 'web-online',   label: 'Création en ligne', dot: 'bg-emerald-400' },
+              { id: 'web-offline',  label: 'Création hors-ligne',   dot: 'bg-violet-400' },
             ];
             return (
               <div className="flex flex-wrap gap-1 mb-2" data-testid="sidebar-filters">
@@ -512,10 +512,10 @@ export default function Dashboard() {
                       const t2 = project.project_type || 'web';
                       const m = project.ai_mode || 'online';
                       let bg = 'bg-[#A1A1AA]'; let title = 'Projet';
-                      if (t2 === 'chat' && m === 'online')  { bg = 'bg-yellow-400';  title = 'Discussion avec l’IA en ligne (GPT-5.2)'; }
-                      else if (t2 === 'chat' && m === 'offline') { bg = 'bg-sky-400';    title = 'Discussion avec Ollama (hors-ligne)'; }
-                      else if (t2 !== 'chat' && m === 'online')  { bg = 'bg-emerald-400';title = 'Création avec Emergent (en ligne)'; }
-                      else if (t2 !== 'chat' && m === 'offline') { bg = 'bg-violet-400'; title = 'Création avec Ollama (hors-ligne)'; }
+                      if (t2 === 'chat' && m === 'online')  { bg = 'bg-yellow-400';  title = 'Discussion avec l’IA en ligne'; }
+                      else if (t2 === 'chat' && m === 'offline') { bg = 'bg-sky-400';    title = 'Discussion avec l’IA hors-ligne'; }
+                      else if (t2 !== 'chat' && m === 'online')  { bg = 'bg-emerald-400';title = 'Création avec l’IA en ligne'; }
+                      else if (t2 !== 'chat' && m === 'offline') { bg = 'bg-violet-400'; title = 'Création avec l’IA hors-ligne'; }
                       return (
                         <span
                           data-testid={`project-dot-${project.project_id}`}
@@ -702,7 +702,7 @@ export default function Dashboard() {
                 </div>
               </motion.button>
 
-              {/* Bouton Chat hors ligne (Ollama) */}
+              {/* Bouton Chat hors ligne */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
@@ -721,7 +721,7 @@ export default function Dashboard() {
                 </div>
               </motion.button>
 
-              {/* Bouton Création hors ligne (Ollama) */}
+              {/* Bouton Création hors ligne */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}

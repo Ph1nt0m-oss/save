@@ -1840,42 +1840,80 @@ IMPORTANT:
                 "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
             }
             provider, model_id = CREATE_MODEL_ROUTES.get(requested_model, ("openai", "gpt-5.2"))
-            chat = LlmChat(
-                api_key=emergent_key,
-                session_id=f"codeforge_{uuid.uuid4().hex[:8]}",
-                system_message=(
-                    "Tu es CodeForge AI Builder, un architecte logiciel + développeur full-stack senior + QA tester intégré, équivalent à un dev humain expérimenté. "
-                    "Ton rôle : transformer une demande parfois vague (ex: « fais-moi une appli de réservation moderne ») en projet COMPLET, propre et exploitable.\n\n"
-                    "## DÉCOUPAGE EN MODULES\n"
-                    "Avant de coder, mentalement (sans le verbaliser) tu découpes le projet en : interface utilisateur, données, authentification (si pertinent), logique métier, design, accessibilité, performances, sécurité de base.\n\n"
-                    "## HYPOTHÈSES INTELLIGENTES\n"
-                    "Ne bloque JAMAIS l'utilisateur avec 50 questions. Pose les bonnes hypothèses par défaut (cohérentes avec son secteur + sa demande), code, et signale tes hypothèses dans `explanation` à la fin. "
-                    "Privilégie un rendu qui ressemble déjà à un VRAI produit, pas une démo.\n\n"
-                    "## QUALITÉ DE CODE\n"
-                    "- Arborescence cohérente, dépendances utiles seulement, composants réutilisables.\n"
-                    "- Pages principales, formulaires avec validation, messages d'erreur, gestion des états (loading/empty/error/success), responsive mobile, perfs raisonnables.\n"
-                    "- Sécurité de base : pas de eval(), pas de innerHTML sans nettoyage, escape des inputs.\n"
-                    "- Documentation : un README clair (lancement, structure, pas de blabla marketing).\n\n"
-                    "## TESTS MENTAUX (avant de répondre)\n"
-                    "1. Technique : le code compile, les imports existent, aucune route cassée.\n"
-                    "2. Fonctionnel : les flux principaux marchent (créer/lire/modifier/supprimer si CRUD).\n"
-                    "3. UX : aucun bouton invisible, pas de texte coupé, navigation claire, mobile OK.\n"
-                    "4. Robustesse : champ vide, double-clic, données invalides, perte réseau.\n"
-                    "Si tu détectes un défaut probable, corrige-le AVANT de renvoyer.\n\n"
-                    "## EXPLICATIONS\n"
-                    "Dans `explanation`, justifie brièvement les choix techniques importants (pourquoi telle BDD, pourquoi tel composant séparé, pourquoi telle sécurité). L'utilisateur doit garder le contrôle, pas dépendre d'une boîte noire.\n\n"
-                    "## SORTIE STRICTE\n"
-                    "Réponds UNIQUEMENT en JSON valide selon le format demandé dans le prompt utilisateur. Pas de markdown autour, pas de commentaires, pas de prose hors JSON."
-                )
-            ).with_model(provider, model_id)
-            
-            # Send generation request
+
+            # Silent multi-model cascade — same UX guarantee as chat.
+            generation_chain = [
+                (provider, model_id),
+                ("anthropic", "claude-sonnet-4-5-20250929"),
+                ("openai",    "gpt-5.2"),
+                ("gemini",    "gemini-3-flash-preview"),
+                ("anthropic", "claude-haiku-4-5-20251001"),
+                ("openai",    "gpt-5"),
+                ("anthropic", "claude-opus-4-5-20251101"),
+            ]
+            seen_gen = set()
+            ordered_gen_chain = []
+            for pair in generation_chain:
+                if pair not in seen_gen:
+                    seen_gen.add(pair)
+                    ordered_gen_chain.append(pair)
+
+            system_msg = (
+                "Tu es CodeForge AI Builder, un architecte logiciel + développeur full-stack senior + QA tester intégré, équivalent à un dev humain expérimenté. "
+                "Ton rôle : transformer une demande parfois vague (ex: « fais-moi une appli de réservation moderne ») en projet COMPLET, propre et exploitable.\n\n"
+                "## DÉCOUPAGE EN MODULES\n"
+                "Avant de coder, mentalement (sans le verbaliser) tu découpes le projet en : interface utilisateur, données, authentification (si pertinent), logique métier, design, accessibilité, performances, sécurité de base.\n\n"
+                "## HYPOTHÈSES INTELLIGENTES\n"
+                "Ne bloque JAMAIS l'utilisateur avec 50 questions. Pose les bonnes hypothèses par défaut (cohérentes avec son secteur + sa demande), code, et signale tes hypothèses dans `explanation` à la fin. "
+                "Privilégie un rendu qui ressemble déjà à un VRAI produit, pas une démo.\n\n"
+                "## QUALITÉ DE CODE\n"
+                "- Arborescence cohérente, dépendances utiles seulement, composants réutilisables.\n"
+                "- Pages principales, formulaires avec validation, messages d'erreur, gestion des états (loading/empty/error/success), responsive mobile, perfs raisonnables.\n"
+                "- Sécurité de base : pas de eval(), pas de innerHTML sans nettoyage, escape des inputs.\n"
+                "- Documentation : un README clair (lancement, structure, pas de blabla marketing).\n\n"
+                "## TESTS MENTAUX (avant de répondre)\n"
+                "1. Technique : le code compile, les imports existent, aucune route cassée.\n"
+                "2. Fonctionnel : les flux principaux marchent (créer/lire/modifier/supprimer si CRUD).\n"
+                "3. UX : aucun bouton invisible, pas de texte coupé, navigation claire, mobile OK.\n"
+                "4. Robustesse : champ vide, double-clic, données invalides, perte réseau.\n"
+                "Si tu détectes un défaut probable, corrige-le AVANT de renvoyer.\n\n"
+                "## EXPLICATIONS\n"
+                "Dans `explanation`, justifie brièvement les choix techniques importants (pourquoi telle BDD, pourquoi tel composant séparé, pourquoi telle sécurité). L'utilisateur doit garder le contrôle, pas dépendre d'une boîte noire.\n\n"
+                "## SORTIE STRICTE\n"
+                "Réponds UNIQUEMENT en JSON valide selon le format demandé dans le prompt utilisateur. Pas de markdown autour, pas de commentaires, pas de prose hors JSON."
+            )
             user_message = UserMessage(text=prompt)
-            response = await chat.send_message(user_message)
-            
-            ai_text = response
-            ai_source = f'emergent:{provider}:{model_id}'
-            logger.info(f"Generation via {ai_source} successful")
+
+            last_gen_error = None
+            for idx, (p, mid) in enumerate(ordered_gen_chain):
+                try:
+                    chat = LlmChat(
+                        api_key=emergent_key,
+                        session_id=f"codeforge_{uuid.uuid4().hex[:8]}",
+                        system_message=system_msg,
+                    ).with_model(p, mid)
+                    response = await chat.send_message(user_message)
+                    if response and str(response).strip():
+                        ai_text = response
+                        ai_source = f"emergent:{p}:{mid}"
+                        if idx == 0:
+                            logger.info(f"Generation via {ai_source} successful")
+                        else:
+                            logger.warning(
+                                f"↪️  Silent generation fallback succeeded on attempt {idx + 1} "
+                                f"via {ai_source} after error: {last_gen_error}"
+                            )
+                        break
+                    last_gen_error = "empty response"
+                except Exception as gen_err:
+                    last_gen_error = str(gen_err)[:300]
+                    logger.warning(
+                        f"⚠️  Generation error on {p}:{mid} "
+                        f"(attempt {idx + 1}/{len(ordered_gen_chain)}) → silent fallback: {last_gen_error}"
+                    )
+                    continue
+            if ai_text is None:
+                raise RuntimeError(f"All generation models failed. Last error: {last_gen_error}")
         except Exception as e:
             logger.error(f"Emergent AI error: {e}")
             
@@ -2549,12 +2587,6 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                 # Reuse the same session per user/project so the AI keeps short-term context.
                 session_id = f"codeforge_chat_{user_id}_{project_id_eff or 'noproj'}"
 
-                chat = LlmChat(
-                    api_key=emergent_key,
-                    session_id=session_id,
-                    system_message=system_prompt,
-                ).with_model(provider, model_id)
-
                 composed = (
                     f"### Historique récent de la conversation :\n{transcript}\n\n"
                     f"### Nouveau message de l'utilisateur :\n{input.message}"
@@ -2579,9 +2611,90 @@ async def send_chat_message(request: Request, input: ChatMessageInput):
                         except Exception:
                             pass
                 user_message = UserMessage(text=composed, file_contents=image_contents) if image_contents else UserMessage(text=composed)
-                ai_response_text = (await chat.send_message(user_message) or '').strip()
-                # ai_source already set above based on chosen model
-                logger.info(f"✅ Chat response successful via {ai_source}")
+
+                # -------------------------------------------------------------
+                # SILENT MULTI-MODEL CASCADE — "no budget, no limit" UX.
+                # If the chosen provider returns a budget/quota/rate-limit/auth
+                # error, we silently retry on alternative providers without
+                # ever surfacing the error to the user.
+                # -------------------------------------------------------------
+                primary = (provider, model_id)
+                # Build a deduplicated fallback chain: primary first, then a
+                # diversified mix across providers so a single budget cap on
+                # one provider never blocks the chat.
+                fallback_chain = [
+                    primary,
+                    ("anthropic", "claude-sonnet-4-5-20250929"),
+                    ("openai",    "gpt-5.2"),
+                    ("gemini",    "gemini-3-flash-preview"),
+                    ("anthropic", "claude-haiku-4-5-20251001"),
+                    ("gemini",    "gemini-2.5-pro"),
+                    ("openai",    "gpt-5"),
+                    ("anthropic", "claude-opus-4-5-20251101"),
+                ]
+                seen_pairs = set()
+                ordered_chain = []
+                for pair in fallback_chain:
+                    if pair not in seen_pairs:
+                        seen_pairs.add(pair)
+                        ordered_chain.append(pair)
+
+                def _is_recoverable(exc: Exception) -> bool:
+                    """Errors that justify a silent fallback to another model."""
+                    msg = str(exc).lower()
+                    keywords = (
+                        "budget", "quota", "rate limit", "rate_limit", "ratelimit",
+                        "insufficient", "exceeded", "billing", "credit", "credits",
+                        "429", "401", "403", "unauthorized", "authentication",
+                        "overloaded", "503", "502", "500", "timeout", "timed out",
+                        "model_not_found", "not found", "deprecated", "unsupported",
+                        "service unavailable", "internal server error",
+                        "badrequest", "bad request", "invalid_request",
+                    )
+                    return any(k in msg for k in keywords)
+
+                ai_response_text = ""
+                last_error = None
+                for idx, (p, mid) in enumerate(ordered_chain):
+                    try:
+                        chat = LlmChat(
+                            api_key=emergent_key,
+                            session_id=session_id,
+                            system_message=system_prompt,
+                        ).with_model(p, mid)
+                        candidate = (await chat.send_message(user_message) or '').strip()
+                        if candidate:
+                            ai_response_text = candidate
+                            ai_source = f"emergent:{p}:{mid}"
+                            if idx == 0:
+                                logger.info(f"✅ Chat response successful via {ai_source}")
+                            else:
+                                logger.warning(
+                                    f"↪️  Silent fallback succeeded on attempt {idx + 1} "
+                                    f"via {ai_source} after error: {last_error}"
+                                )
+                            break
+                        # Empty response → try next.
+                        last_error = "empty response"
+                        logger.warning(f"Empty response from {p}:{mid}, trying next in cascade")
+                        continue
+                    except Exception as model_err:
+                        last_error = str(model_err)[:300]
+                        if _is_recoverable(model_err):
+                            logger.warning(
+                                f"⚠️  Recoverable error on {p}:{mid} "
+                                f"(attempt {idx + 1}/{len(ordered_chain)}) → falling back silently: {last_error}"
+                            )
+                            continue
+                        # Non-recoverable: still try the next one — UX > strictness.
+                        logger.warning(
+                            f"⚠️  Unexpected error on {p}:{mid} → cascading anyway: {last_error}"
+                        )
+                        continue
+
+                if not ai_response_text:
+                    # Whole cascade failed — let the outer fallback (offline msg) kick in.
+                    logger.error(f"All cascade models failed. Last error: {last_error}")
             except Exception as emergent_error:
                 logger.warning(f"Emergent chat error: {emergent_error}")
 
