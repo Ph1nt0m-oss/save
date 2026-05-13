@@ -24,6 +24,7 @@ const Chat = lazy(() => import('./pages/Chat'));
 const GuidedWizard = lazy(() => import('./pages/GuidedWizard'));
 const Profile = lazy(() => import('./pages/Profile'));
 const ProjectPreview = lazy(() => import('./pages/ProjectPreview'));
+const SharedPreview = lazy(() => import('./pages/SharedPreview'));
 
 // Suspense fallback while a chunk is downloading
 const RouteFallback = () => (
@@ -143,6 +144,7 @@ function AppRouter() {
             </ProtectedRoute>
           }
         />
+        <Route path="/share/:slug" element={<SharedPreview />} />
       </Routes>
     </Suspense>
   );

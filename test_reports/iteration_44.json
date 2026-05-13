@@ -1,0 +1,42 @@
+{
+  "summary": "Iter 44 — backend-only validation of NEW endpoints (ollama-status, duplicate, share enable/disable, public /share/{slug} + preview, cascade-chat resilience, GitHub export to Ph1nt0m-oss/save). 11/11 pytest cases pass on the live preview URL with credentials test_dash_1777658375@gmail.com / Pass1234.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/projects", "issue": "ProjectCreate model does not accept generated_code even though Project model carries it; clients must POST then PUT in two calls. Minor DX inconsistency — not a blocker."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter44_new_endpoints.py",
+    "/app/test_reports/pytest/iter44_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Extend ProjectCreate to accept generated_code at creation time so seeding/import flows can be single-shot.",
+    "(Optional) server.py still 5049 lines — split into routers (projects, share, system) for maintainability."
+  ],
+  "critical_code_review_comments": [
+    "duplicate_project (server.py L3690): correctly resets share_slug=None and is_public=False on clone, generates new uuid, suffixes name with '(copie)' and truncates to 80 chars — clean.",
+    "toggle_project_share: when disabling, slug is NOT cleared in DB (only is_public flipped). Response correctly returns slug:null, but the document keeps the old share_slug, which is reused on re-enable. Acceptable behaviour (stable slugs across toggles) but worth documenting.",
+    "get_public_share strips user_id and ai_source via Mongo projection — sensitive fields properly hidden. Verified absent in payload.",
+    "get_public_share_preview returns 404 HTMLResponse correctly for unknown slugs; content-type text/html confirmed.",
+    "ollama_status uses a 1.5s httpx timeout and a broad except — fine for a probe endpoint, won't block UI.",
+    "Cascade chat with model='inexistant' transparently fell back to emergent:openai:gpt-5.2 — no 500 surfaced, ai_response.content='OK'. Silent cascade works as designed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter44_new_endpoints.py (new regression file, 11 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login OK, session_token returned.",
+  "seed_data_creation": "Tests auto-create a TEST_iter44_share_src project and a few duplicates, all deleted in their respective tests / test_zz_cleanup_seed. One short chat auto-project is created by the cascade test and deleted in-test. Nothing should remain in DB after the suite.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All new endpoints from iter_44 (duplicate / share toggle / public share + preview / ollama-status / GitHub export to Ph1nt0m-oss/save / cascade resilience) are GREEN against the live preview URL. Regression file /app/backend/tests/test_iter44_new_endpoints.py runs in ~9s and self-cleans. Frontend was not retested per request. Next agents can rely on POST /api/projects + PUT /api/projects/{id} as the canonical 2-step seeding pattern."
+}

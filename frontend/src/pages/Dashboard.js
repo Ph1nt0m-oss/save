@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -159,6 +159,63 @@ export default function Dashboard() {
       toast.error(err.response?.data?.detail || 'Suppression impossible');
     } finally {
       setDeleteTarget(null);
+    }
+  };
+
+  const duplicateProject = async (project) => {
+    setCtxMenu(null);
+    if (!project?.project_id) return;
+    try {
+      const r = await axios.post(
+        `${API}/projects/${project.project_id}/duplicate`,
+        {},
+        { withCredentials: true }
+      );
+      if (r.data?.project) {
+        setProjects(p => [r.data.project, ...p]);
+        toast.success(`Projet dupliqué : ${r.data.project.name}`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Duplication impossible');
+    }
+  };
+
+  const togglePublicShare = async (project) => {
+    setCtxMenu(null);
+    if (!project?.project_id) return;
+    const turningOn = !project.is_public;
+    try {
+      const r = await axios.post(
+        `${API}/projects/${project.project_id}/share`,
+        { enable: turningOn },
+        { withCredentials: true }
+      );
+      const updated = {
+        ...project,
+        is_public: r.data?.is_public ?? turningOn,
+        share_slug: r.data?.slug || null,
+      };
+      setProjects(p => p.map(pr => pr.project_id === project.project_id ? updated : pr));
+      if (selectedProject?.project_id === project.project_id) setSelectedProject(updated);
+      if (r.data?.is_public && r.data?.url) {
+        try {
+          const fullUrl = r.data.url.startsWith('http')
+            ? r.data.url
+            : `${window.location.origin}${r.data.url}`;
+          await navigator.clipboard.writeText(fullUrl);
+          toast.success('Lien public copié dans le presse-papier', {
+            description: fullUrl,
+            action: { label: 'Ouvrir', onClick: () => window.open(fullUrl, '_blank') },
+            duration: 9000,
+          });
+        } catch {
+          toast.success('Partage public activé', { description: r.data.url });
+        }
+      } else {
+        toast.success('Partage public désactivé');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Partage impossible');
     }
   };
 
@@ -676,6 +733,51 @@ export default function Dashboard() {
           </div>
         </header>
 
+        {/* Live Preview iframe — shown only when a web project with generated code is selected */}
+        {selectedProject && selectedProject.project_type !== 'chat' && selectedProject.generated_code && (
+          <div className="border-b border-white/10 bg-[#080808]" data-testid="live-preview-panel">
+            <div className="flex items-center justify-between px-4 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Eye className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span className="text-xs font-['Chivo'] font-bold text-white truncate">
+                  Aperçu live : {selectedProject.name}
+                </span>
+                {selectedProject.is_public && (
+                  <span className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] rounded-sm">
+                    Public
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.open(`${API}/preview/project/${selectedProject.project_id}`, '_blank')}
+                  data-testid="live-preview-open-new-tab"
+                  className="text-xs text-[#A1A1AA] hover:text-white transition-colors"
+                >
+                  Ouvrir dans un onglet ↗
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProject(null)}
+                  data-testid="live-preview-close"
+                  className="text-xs text-[#A1A1AA] hover:text-white transition-colors"
+                  title="Fermer l'aperçu"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <iframe
+              src={`${API}/preview/project/${selectedProject.project_id}`}
+              title={`Aperçu ${selectedProject.name}`}
+              data-testid="live-preview-iframe"
+              className="w-full h-[420px] bg-white border-0"
+              sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+            />
+          </div>
+        )}
+
         {/* 4 Main Buttons Center */}
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-5xl w-full">
@@ -844,6 +946,26 @@ export default function Dashboard() {
             <BookOpen className="w-4 h-4 text-purple-400" />
             <span>Pousser vers GitHub</span>
           </button>
+          <button
+            type="button"
+            onClick={() => duplicateProject(ctxMenu.project)}
+            data-testid="project-ctx-duplicate"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
+          >
+            <Copy className="w-4 h-4 text-amber-400" />
+            <span>Cloner ce projet</span>
+          </button>
+          {(ctxMenu.project?.project_type !== 'chat') && (
+            <button
+              type="button"
+              onClick={() => togglePublicShare(ctxMenu.project)}
+              data-testid="project-ctx-public-share"
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
+            >
+              <Share2 className="w-4 h-4 text-[#E4FF00]" />
+              <span>{ctxMenu.project?.is_public ? 'Désactiver le partage' : 'Partager publiquement'}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => askDelete(ctxMenu.project)}

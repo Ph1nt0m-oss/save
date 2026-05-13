@@ -1311,6 +1311,15 @@ const translations = {
  chatPlaceholder: 'اطرح سؤالاً…', chatSend: 'إرسال',
  loginSignin: 'تسجيل الدخول', loginSignup: 'إنشاء حساب', loginEmail: 'البريد الإلكتروني', loginPassword: 'كلمة المرور', loginSubmit: 'متابعة',
  dashHello: 'مرحبًا', dashYourCreations: 'مشاريعك', dashNewProject: 'مشروع جديد', dashTutorial: 'الدليل',
+ dashWhatToDo: 'ماذا تريد أن تفعل؟',
+ dashChat: 'دردشة', dashChatBadgeOn: 'ذكاء اصطناعي عبر الإنترنت', dashChatBadgeOff: 'ذكاء اصطناعي محلي',
+ dashChatDescOn: 'تحدث مع ذكاء اصطناعي قوي', dashChatDescOff: 'ذكاء اصطناعي محلي بدون إنترنت',
+ dashCreate: 'إنشاء', dashCreateBadgeOn: 'عبر الإنترنت', dashCreateBadgeOff: 'بدون اتصال',
+ dashCreateDescOn: 'أنشئ تطبيقات الجوال والويب وسطح المكتب', dashCreateDescOff: 'أنشئ التطبيقات بذكاء اصطناعي محلي',
+ dashInfoOnline: '💡 الوضع المتصل: ذكاء اصطناعي قوي من السحابة',
+ dashInfoOffline: '🔌 الوضع غير المتصل: يتطلب محرك ذكاء اصطناعي محلي مثبتًا',
+ dashEmptyHint: 'ابدأ بإنشاء مشروع جديد أو افتح الدردشة.',
+ l_signupBtn: 'إنشاء حساب', l_statUnlimited: 'إنشاء غير محدود', l_statAI: 'ذكاء اصطناعي متطور', l_statFormats: 'ويب، جوال، سطح المكتب',
  }
 };
 

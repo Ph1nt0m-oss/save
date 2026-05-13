@@ -47,6 +47,7 @@ export default function ModelPicker({ mode = 'online', context = 'chat', value, 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState({ online: [], offline: [] });
+  const [ollamaAvailable, setOllamaAvailable] = useState(true);
   const boxRef = useRef(null);
 
   useEffect(() => {
@@ -56,6 +57,10 @@ export default function ModelPicker({ mode = 'online', context = 'chat', value, 
       .then((r) => { if (!cancelled) setModels(r.data || { online: [], offline: [] }); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
+    // Ping Ollama once on mount (no auth required, safe public endpoint).
+    axios.get(`${API}/system/ollama-status`)
+      .then((r) => { if (!cancelled) setOllamaAvailable(!!r.data?.available); })
+      .catch(() => { if (!cancelled) setOllamaAvailable(false); });
     return () => { cancelled = true; };
   }, [context]);
 
@@ -102,20 +107,31 @@ export default function ModelPicker({ mode = 'online', context = 'chat', value, 
           data-testid="model-picker-menu"
         >
           <div className="px-3 py-2 border-b border-white/10 text-[10px] uppercase tracking-widest text-[#71717A]">
-            {mode === 'offline' ? 'Modèles hors-ligne (Ollama)' : 'Modèles en ligne (Emergent)'}
+            {mode === 'offline' ? 'Modèles hors-ligne' : 'Modèles en ligne'}
+            {mode === 'offline' && !ollamaAvailable && (
+              <span className="block normal-case tracking-normal text-amber-400/90 mt-1 text-[10px]">
+                ⚠ Moteur d'IA local non détecté — installe-le pour activer ces modèles.
+              </span>
+            )}
           </div>
           {list.map((m) => {
             const Mi = BADGE_ICONS[m.badge] || Cpu;
             const ring = COLOR_RING[m.color] || 'text-white';
             const isActive = m.id === value;
+            const isDisabled = mode === 'offline' && !ollamaAvailable;
             return (
               <button
                 key={m.id}
                 type="button"
-                onClick={() => { onChange?.(m.id); setOpen(false); }}
+                disabled={isDisabled}
+                onClick={() => { if (isDisabled) return; onChange?.(m.id); setOpen(false); }}
                 data-testid={`model-option-${m.id}`}
-                className={`w-full text-left px-3 py-2.5 hover:bg-white/[0.04] border-l-2 transition-colors ${
-                  isActive ? 'bg-white/[0.03] border-l-[#E4FF00]' : 'border-l-transparent'
+                className={`w-full text-left px-3 py-2.5 border-l-2 transition-colors ${
+                  isDisabled
+                    ? 'opacity-40 cursor-not-allowed border-l-transparent'
+                    : 'hover:bg-white/[0.04]'
+                } ${
+                  isActive && !isDisabled ? 'bg-white/[0.03] border-l-[#E4FF00]' : 'border-l-transparent'
                 }`}
               >
                 <div className="flex items-center gap-2">

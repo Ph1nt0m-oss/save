@@ -193,6 +193,8 @@ class Project(BaseModel):
     status: str = "created"
     generated_code: Optional[Dict[str, Any]] = None
     preview_image: Optional[str] = None  # data URI thumbnail for sidebar preview
+    is_public: Optional[bool] = False
+    share_slug: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -3683,6 +3685,159 @@ async def delete_project(request: Request, project_id: str):
     await db.chat_messages.delete_many({"project_id": project_id})
     
     return {"message": "Projet supprimé avec succès"}
+
+
+@api_router.post("/projects/{project_id}/duplicate")
+async def duplicate_project(request: Request, project_id: str):
+    """Clone a project — duplicates the document with a new project_id and
+    "(copie)" suffix. Chat history is NOT copied (a fresh thread starts on the
+    clone). Useful to experiment without breaking the original.
+    """
+    user_id = await get_current_user(request)
+    src = await db.projects.find_one({"project_id": project_id, "user_id": user_id}, {"_id": 0})
+    if not src:
+        raise HTTPException(status_code=404, detail="Projet non trouvé")
+
+    new_id = f"proj_{uuid.uuid4().hex[:12]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    clone = {
+        **src,
+        "project_id": new_id,
+        "name": f"{src.get('name', 'Projet')} (copie)"[:80],
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        # Drop legacy share metadata so the clone starts non-public.
+        "share_slug": None,
+        "is_public": False,
+    }
+    await db.projects.insert_one(clone)
+    clone.pop("_id", None)
+    return {"success": True, "project_id": new_id, "project": clone}
+
+
+def _make_slug(name: str) -> str:
+    """ASCII-safe URL slug."""
+    import unicodedata as _ud
+    import re as _re
+    base = _ud.normalize("NFKD", name or "").encode("ascii", "ignore").decode("ascii").lower()
+    base = _re.sub(r"[^a-z0-9]+", "-", base).strip("-")[:50] or "projet"
+    return f"{base}-{uuid.uuid4().hex[:6]}"
+
+
+@api_router.post("/projects/{project_id}/share")
+async def toggle_project_share(request: Request, project_id: str):
+    """Generate (or refresh) a public share URL for a project. Anyone with the
+    slug can view the live preview without authentication. Call again to disable.
+    Body (optional): {"enable": true|false}
+    """
+    user_id = await get_current_user(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    enable = body.get("enable") if isinstance(body, dict) else None
+
+    project = await db.projects.find_one({"project_id": project_id, "user_id": user_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Projet non trouvé")
+
+    if enable is False:
+        await db.projects.update_one(
+            {"project_id": project_id},
+            {"$set": {"is_public": False, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"is_public": False, "slug": None, "url": None}
+
+    slug = project.get("share_slug") or _make_slug(project.get("name") or project_id)
+    await db.projects.update_one(
+        {"project_id": project_id},
+        {"$set": {
+            "is_public": True,
+            "share_slug": slug,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    frontend_url = (
+        os.environ.get("FRONTEND_URL")
+        or os.environ.get("REACT_APP_BACKEND_URL")
+        or ""
+    )
+    public_url = f"{frontend_url.rstrip('/')}/share/{slug}" if frontend_url else f"/share/{slug}"
+    return {"is_public": True, "slug": slug, "url": public_url}
+
+
+@api_router.get("/share/{slug}")
+async def get_public_share(slug: str):
+    """PUBLIC — return the project metadata + generated files for a shared slug.
+    No auth required.
+    """
+    project = await db.projects.find_one(
+        {"share_slug": slug, "is_public": True},
+        {"_id": 0, "user_id": 0, "ai_source": 0},
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Projet non partagé ou introuvable")
+    return {
+        "name": project.get("name"),
+        "description": project.get("description"),
+        "project_type": project.get("project_type"),
+        "files": (project.get("generated_code") or {}).get("files", []),
+        "created_at": project.get("created_at"),
+    }
+
+
+@api_router.get("/share/{slug}/preview")
+async def get_public_share_preview(slug: str):
+    """PUBLIC — return the rendered HTML preview for a shared web project.
+    Same logic as `/preview/project/{id}` but slug-based and unauthenticated.
+    """
+    project = await db.projects.find_one(
+        {"share_slug": slug, "is_public": True}, {"_id": 0}
+    )
+    if not project:
+        return HTMLResponse("<h1>Projet introuvable</h1>", status_code=404)
+
+    files = (project.get("generated_code") or {}).get("files", []) or []
+    html_parts = [
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        f"<title>{project.get('name', 'Projet')} · CodeForge AI</title>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif}</style>"
+    ]
+    for f in files:
+        if f.get("path", "").endswith(".css"):
+            html_parts.append(f"<style>{f.get('content', '')}</style>")
+    html_parts.append("</head><body>")
+    for f in files:
+        if f.get("path", "").endswith(".html"):
+            content = f.get("content", "")
+            if "<body>" in content:
+                start = content.find("<body>") + 6
+                end = content.find("</body>")
+                content = content[start:end] if end > start else content
+            html_parts.append(content)
+    for f in files:
+        if f.get("path", "").endswith(".js"):
+            html_parts.append(f"<script>{f.get('content', '')}</script>")
+    html_parts.append("</body></html>")
+    return HTMLResponse("\n".join(html_parts))
+
+
+@api_router.get("/system/ollama-status")
+async def ollama_status():
+    """Light health check on the local Ollama instance. Public — used by the
+    ModelPicker to greyout offline models when the service is unreachable."""
+    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"{ollama_url}/api/tags")
+            if r.status_code == 200:
+                tags = r.json().get("models", []) or []
+                return {"available": True, "models": [t.get("name") for t in tags][:30]}
+    except Exception:
+        pass
+    return {"available": False, "models": []}
+
 
 # ==================== CODE GENERATION ROUTES ====================
 
