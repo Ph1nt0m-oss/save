@@ -694,7 +694,7 @@ export default function Dashboard() {
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
               <LanguageToggle placement="bottom" />
-              <MessageButton variant="icon" />
+              <TheftButton variant="labelled" />
             </div>
 
             {/* CENTER */}
@@ -746,7 +746,7 @@ export default function Dashboard() {
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <CreatorToolbar />
-                <TheftButton />
+                <MessageButton variant="icon" />
                 <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />
               </div>

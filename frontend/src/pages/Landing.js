@@ -61,7 +61,7 @@ export default function Landing() {
             >
               {t('l_navDiscover')}
             </button>
-            <MessageButton variant="icon" />
+            <TheftButton variant="labelled" />
           </div>
 
           <div className="justify-self-center flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -71,7 +71,7 @@ export default function Landing() {
 
           <div className="justify-self-end min-w-0 flex items-center gap-2">
             <CreatorToolbar />
-            <TheftButton />
+            <MessageButton variant="icon" />
             <LanguageToggle placement="bottom" />
           </div>
         </div>

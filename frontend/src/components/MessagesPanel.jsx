@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { X, Send, Trash2, ChevronLeft, Mail, User, Crown, Edit3, ShieldOff, UserX } from 'lucide-react';
+import { X, Send, Trash2, ChevronLeft, Mail, User, Crown, Edit3, Ban, ShieldCheck, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -125,8 +125,18 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
       const body = await withCreatorProof(API, axios, { target_key_id: selected });
       await axios.post(`${API}/devices/block`, body);
       toast.success(t('hist_blocked'));
-      setSelected(null);
-      setThread(null);
+      loadInbox();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('msg_op_failed'));
+    }
+  };
+
+  const unblockContact = async () => {
+    if (!selected) return;
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id: selected });
+      await axios.post(`${API}/devices/unblock`, body);
+      toast.success(t('hist_unblocked'));
       loadInbox();
     } catch (e) {
       toast.error(e?.response?.data?.detail || t('msg_op_failed'));
@@ -137,11 +147,14 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
     if (!selected) return;
     if (!window.confirm(t('msg_delete_contact_confirm'))) return;
     try {
-      // First wipe the thread, then revoke the device (full contact removal).
+      // "Supprimer le contact" : ne révoque PLUS le device — on efface
+      // simplement le fil de discussion côté créatrice. Le pseudo n'apparaît
+      // plus dans la liste tant que la personne ne renvoie pas de message.
+      // L'utilisateur peut toujours écrire à la créatrice (sauf s'il est
+      // déjà bloqué, auquel cas le combo Bloquer + Supprimer rend la
+      // récupération impossible sans débloquer manuellement).
       const tBody = await withCreatorProof(API, axios, { thread_key_id: selected });
       await axios.post(`${API}/messages/delete-thread`, tBody);
-      const rBody = await withCreatorProof(API, axios, { target_key_id: selected });
-      await axios.post(`${API}/devices/revoke`, rBody);
       toast.success(t('msg_contact_deleted'));
       setSelected(null);
       setThread(null);
@@ -244,14 +257,29 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
                 >
                   <Edit3 className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={blockContact}
-                  data-testid="block-contact-btn"
-                  title={t('hist_block')}
-                  className="text-[#A1A1AA] hover:text-red-400 transition p-1"
-                >
-                  <ShieldOff className="w-4 h-4" />
-                </button>
+                {(() => {
+                  const sel = threads.find((th) => th.thread_key_id === selected);
+                  const isBlocked = sel?.role === 'blocked';
+                  return isBlocked ? (
+                    <button
+                      onClick={unblockContact}
+                      data-testid="unblock-contact-btn"
+                      title={t('hist_unblock')}
+                      className="text-emerald-300 hover:text-emerald-200 transition p-1"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={blockContact}
+                      data-testid="block-contact-btn"
+                      title={t('hist_block')}
+                      className="text-[#A1A1AA] hover:text-red-400 transition p-1"
+                    >
+                      <Ban className="w-4 h-4" />
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={deleteContact}
                   data-testid="delete-contact-btn"

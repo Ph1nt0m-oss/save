@@ -1,0 +1,42 @@
+{
+  "summary": "Iter53 testing: 10/10 executable backend+static smoke tests PASS (4 skipped: 3 dedup + 1 gpt-5.2 502-ingress-timeout). The new /api/ai/generate-complete-app wrapper (asyncio.shield + _run_in_background) is verified end-to-end using emergentintegrations LlmChat with EMERGENT_LLM_KEY: claude-haiku returned 200 with `code.files` non-empty array in ~95s. gpt-5.2 itself returned 502 BadGateway from OpenAI upstream (cascade activates, falls through claude-sonnet/gpt-5/etc., but proxy ingress drops at 60s) — this is an external LLM provider hiccup, NOT a code defect (cf. backend logs ~19:56-20:01: 'litellm.BadGatewayError: BadGatewayError: OpenAIException - Error code: 502'). Contract endpoints /api/messages/delete-thread, /api/devices/block, /api/devices/unblock all reject unsigned payloads (422) and the deleteContact handler in MessagesPanel.jsx NO LONGER calls /devices/revoke (statically verified). Static UI: TheftButton labelled variant ships data-testid='theft-labelled-btn' with t('theft_short') ('Déclarer un vol' FR / 'Report theft' EN), Landing.js places it in the LEFT justify-self-start block, Dashboard.js places it on the LEFT next to LanguageToggle. MessagesPanel uses <Ban/> for block (data-testid='block-contact-btn') and <ShieldCheck/> for unblock (data-testid='unblock-contact-btn'); all block/unblock/rename/delete-contact/delete-thread buttons are inside `isCreator && selected` guard. Visual Playwright verification on Landing: TheftButton labelled rendered at x=454 with text 'Report theft' ✓. ONE FRONTEND BUG: MessageButton (icon variant) does NOT render on Landing for fresh anonymous visitors because of guard `if (!device.keyId) return null;` at MessageButton.jsx L37 — review requirement #2 explicitly demands the icon be visible on the Landing header before LanguageToggle.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/ai/generate-complete-app (model=gpt-5.2)", "issue": "OpenAI upstream returns 502 BadGateway intermittently; cascade fallback works but each retry costs ~60s and the request exceeds the 60s ingress timeout. Wrapper (asyncio.shield) means the project IS still persisted server-side. Validated via claude-haiku which completed in ~95s and returned a valid {code:{files:[...]}, project, preview_url, ai_source}."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "MessageButton", "issue": "Returns null when device.keyId is unset (line 37 of /app/frontend/src/components/MessageButton.jsx). On Landing page for a fresh anonymous visitor (no localStorage device identity), the button does NOT render — Playwright count=0. Review-request #2 says the icon must be visible on Landing 'à DROITE avant LanguageToggle'. After login/device-registration the button renders correctly. FIX OPTIONS: (a) drop the !device.keyId guard for variant=='icon' on public pages and let the click open MessagesPanel in a 'send-to-creator' guest mode, OR (b) only enforce the requirement on Dashboard (post-auth) — adjust the review spec accordingly.", "selector": "[data-testid='message-creator-icon-btn']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter53_smoke.py",
+    "/app/test_reports/pytest/iter53_results.xml"
+  ],
+  "action_items": [
+    "Decide MessageButton visibility policy for fresh visitors: either remove the !device.keyId guard so the icon shows on Landing (and degrade gracefully on click for guests), or update review requirement #2 to scope to authenticated headers only.",
+    "Monitor OpenAI gpt-5.2 502 rate: the cascade is functioning but currently the FIRST model (gpt-5.2) is failing and the proxy 60s timeout means clients see 502s even though backend completes in the background. Consider re-ordering the default cascade to start with claude-haiku/sonnet while gpt-5.2 upstream is unhealthy, OR exposing a polling endpoint so the frontend can resume after the proxy drop."
+  ],
+  "critical_code_review_comments": [
+    "MessageButton.jsx L37 — `if (!device.keyId) return null;` is the root cause of the Landing-page invisibility. Same guard applies for variant='icon' (header) and variant='inline'/'floating'. Recommend splitting the guard: render the icon always for variant=='icon' but skip the polling effect when keyId is null, and let MessagesPanel handle the guest case.",
+    "MessagesPanel.jsx deleteContact (L146-165) — correctly removed the /devices/revoke call as required by iter53. Only /messages/delete-thread is invoked. Comment block at L150-155 documents the intentional behaviour. ✓",
+    "MessagesPanel.jsx L260-282 — Ban / ShieldCheck conditional render based on `sel?.role === 'blocked'` is correct. Both icons imported from lucide-react (L3).",
+    "server.py L1808-2151 _ai_generate_complete_app_impl — uses emergentintegrations LlmChat with EMERGENT_LLM_KEY; cascade chain dedupes (line 1994-1999) and silently falls through on per-model errors; final fallback to generate_basic_template prevents 500s. Solid. Smoke verified.",
+    "server.py L4628-4658 devices/block — issues 'role: blocked' update + nonce wipe + session wipe + decision log. Correctly creates a stub `device_keys` doc when target unknown so future re-registrations stay blocked. ✓",
+    "server.py L5290-5295 messages/delete-thread — deletes by thread_key_id only (no per-user scoping). Acceptable because /messages/* are signature-gated to the creator and the thread_key_id is unique per peer device.",
+    "Landing.js L72-76 — MessageButton sits BETWEEN CreatorToolbar and LanguageToggle. Static position correct, but render is suppressed by MessageButton's own guard (see ui_bugs).",
+    "Dashboard.js L697 places TheftButton labelled IMMEDIATELY after LanguageToggle in the LEFT cluster. Review-request says 'à GAUCHE (à côté LanguageToggle)' — match ✓."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter53_smoke.py (new — 14 tests collected, 10 pass, 4 skipped)"],
+  "success_rate": {"backend": "100% (10/10 executed, 1 LLM-upstream skip)", "frontend": "static UI 100% (5/5); runtime UI 50% — TheftButton labelled visible & correctly placed; MessageButton missing on Landing for anonymous visitors"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — verified (login + /auth/me 200)",
+  "seed_data_creation": "claude-haiku generation test created 1 project + 1 preview in MongoDB (under test user, normal user data, no cleanup needed). No other DB mutations.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter53 backend smoke is GREEN. ONE pending frontend fix: MessageButton.jsx L37 guard `if (!device.keyId) return null;` hides the icon on Landing for fresh visitors. Once main agent decides the policy (always-render vs auth-gated), re-run test_iter53_smoke.py and repeat the Playwright Landing check: `await page.locator('[data-testid=\"message-creator-icon-btn\"]').count()` should be >= 1 on a fresh page load. The gpt-5.2 cascade issue is environmental (OpenAI upstream 502) — re-test in a few hours, or accept claude-haiku as the smoke proof. Test file /app/backend/tests/test_iter53_smoke.py is self-contained and idempotent.",
+  "rca of the issue": "MessageButton invisibility on Landing for anonymous visitors: MessageButton.jsx L37 returns null when device.keyId is undefined. The hook useDeviceIdentity only populates keyId after device registration (POST /api/devices/register on user opt-in). Therefore: anonymous visitor → no key → no MessageButton DOM node → fails review-#2. FIX: replace the early-return with a conditional disable+open-panel-in-guest-mode behaviour for variant=='icon', OR scope the requirement to authenticated headers only and accept the current behaviour on Landing. gpt-5.2 502: OpenAI provider returned `BadGatewayError: OpenAIException - Error code: 502` on 3 consecutive retries during the smoke window — fully external. Cascade in server.py L1985-2054 reacts as designed (silent fallback to claude-sonnet, gpt-5, gemini, claude-haiku, gpt-5, claude-opus) so functionality is preserved when the proxy timeout isn't an issue."
+}
