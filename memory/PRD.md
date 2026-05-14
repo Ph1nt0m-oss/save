@@ -17,6 +17,14 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-14 — Iter 56 (Polish 2)
+
+- **FeedbackButton (💡 jaune flottant)** visible pour TOUS sur Login/Landing (créatrice incluse). Caché uniquement sur `/dashboard` côté créatrice (qui a déjà `IdeasButton` dans le header).
+- **"Supprimer le mode créatrice"** désormais **par ligne** dans le panel AccountsButton (icône `ShieldOff` rouge) — plus de barre globale en bas. Self (« Toi » badge) ou autre créatrice : le bouton apparaît uniquement quand `row.role === 'creator'`. Password obligatoire (le sien, pas celui du target).
+- Backend `/api/accounts/remove-creator` étendu : `target_key_id` optionnel. Refuse si target non-creator (400) ou password incorrect (403). Log `remove_creator_self` ou `remove_creator_other` dans `account_history`.
+
+**Tests** : iter56 backend 8/8 PASS · Frontend FeedbackButton sur /login visible, modal ouvre, soumission vide OK.
+
 ### 2026-02-14 — Iter 55 (Polish: WebAuthn fallback + Feedback unified + Message grouping)
 
 **Réorganisation header** :
