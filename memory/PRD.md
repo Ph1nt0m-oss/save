@@ -17,25 +17,24 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-02-14 — Iter 45 (current)
-- **Logique canWrite revue** : `public` → tout le monde écrit ; `guest` → personne n'écrit ; `private` → creator+approved seulement ; `creator` → creator seulement
-- **Vue Créateur / Vue Invité** (`viewMode` localStorage, broadcast event) — le créateur peut prévisualiser l'app comme un invité (canWrite=false, UI admin masquée)
-- **Banner persistant** "Tu prévisualises comme un invité" en haut
-- **Toolbar `CreatorToolbar`** regroupe : SiteModeBadge + bouton Historique des décisions + bouton View Mode toggle
-- **DeviceManager nettoyé** : suppression de l'onglet Historique (déplacé dans CreatorToolbar)
-- **Profil → "Ma clé d'appareil"** affichée pour tous SAUF le créateur (les non-créateurs ne voyaient pas leur JWK sur mobile)
-- **One-device-at-a-time** : `/api/auth/login` détecte un autre appareil actif → HTTP 202 `{request_id}` + ouverture d'une demande d'approbation côté 1er appareil (collection `session_requests`, TTL 10 min, géoloc IP pour @gmail.com uniquement)
-- **`SessionRequestNotifier`** modal global : le 1er appareil voit la demande avec label appareil + localisation (Gmail) → Approuver / Refuser
-- **WebAuthn "Déclarer un vol"** : 4 endpoints (`/webauthn/register-options|verify|declare-theft-options|verify`) + composants `BiometricEnrollButton` (DeviceManager) + `TheftRecoveryDialog` (Login)
-  - Le créateur enrôle son empreinte digitale via un platform authenticator
-  - N'importe quel appareil peut "Déclarer un vol" → si empreinte valide → révoque tous les autres créateurs + promeut l'appareil courant
-- **DB cleanup** : suppression de toutes les `device_keys` SAUF `dev_a797438afc28c67923881d46ae2971c1` (créateur conservé)
-- **Mobile zoom-out** : `body { min-width: 320px; overflow-x: hidden }` + `clamp` font-size en mobile
-- **Backend testing** : 15/16 cases pass (iter_45.json)
+### 2026-02-14 — Iter 46 (current)
+- **Bug fix**: "session expired" sur le 2e appareil après approbation → `/auth/session-request-status` est maintenant **idempotent** (persiste le token sur la demande, ne supprime plus, retourne `{status:"expired"}` au lieu de 404 pour les demandes inconnues). Frontend force aussi `axios.defaults.headers.Authorization` AVANT navigate.
+- **Labels d'appareils lisibles** : `Galaxy S21`, `iPhone`, `Mac · Chrome` au lieu de la chaîne UA brute (via `/app/frontend/src/lib/deviceLabel.js` avec mapping Samsung).
+- **Bannière d'attente enrichie** sur le 2e appareil pendant l'approbation : affiche label de l'appareil + email + hint explicatif (style cohérent avec la modale du 1er appareil).
+- **`/devices/revoke` + `/devices/disconnect`** suppriment maintenant la ligne dans `device_keys` (audit conservé dans `device_decisions`) → la liste "Appareils enregistrés" reste propre.
+- **WebAuthn theft-verify** supprime aussi les anciens créateurs (au lieu de les marquer 'revoked').
+- **Nouveau bouton "Envoyer ma clé au créateur"** dans Profile (non-créateurs uniquement) → endpoint `POST /api/devices/send-to-creator` (vérifie la signature ECDSA, log `request_access`, met le device en pending).
+- **View toggle déplacé** : retiré côté créateur (CreatorToolbar), maintenant visible UNIQUEMENT pour les invités → toggle "Vue utilisateur / Vue créateur RO" pour leur permettre de prévisualiser l'UI admin.
+- **Banner de preview** mis à jour pour viser les invités (pas le créateur).
+- **Historique en side-panel vertical** plein écran (au lieu d'une modale centrée) → scroll vertical infini.
+- **`canWrite`** revu : ne dépend plus de la `viewMode` du créateur (le créateur a toujours `canWrite` selon site_mode) ; pour les invités, `viewMode === 'guest'` force `canWrite=false` (preview RO).
+- **Backend testing** : 11/11 (iter_46.json) — flow d'approbation + cleanup vérifiés.
 
-### Iter 44 (précédent)
-- DeviceManager : masquage de l'appareil courant + onglet Historique (déplacé en iter 45)
-- 16 langues, RTL Arabic, neutralisation des noms d'IA
+### Iter 45
+- WebAuthn "Déclarer un vol", 4-tier site mode, view-mode toggle créateur (déprécié en iter 46), cleanup DB initial.
+
+### Iter 44
+- DeviceManager : masquage du device courant + onglet Historique (déplacé dans CreatorToolbar en iter 45, puis side-panel en iter 46).
 
 ## Backlog (priorisé)
 
