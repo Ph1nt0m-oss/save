@@ -17,16 +17,29 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-02-14 — Iter 48 (current)
-- **Fix CRITIQUE #3** : Approval flow conditionnel sur `site_mode` → en mode `public` ou `guest`, plusieurs appareils peuvent se connecter sur le même email SANS approbation (l'utilisateur ne devait pas être bloqué en public). L'approbation ne se déclenche qu'en `private` ou `creator`.
-- **#1 "Annulé" → "Refusé"** dans les badges d'historique (action revoke). Le bouton à côté de chaque ligne devient **"Annuler"** (icône Undo2) au lieu de "Révoquer" (trash) — il appelle le nouvel endpoint `/devices/decisions/undo`.
-- **Nouvel endpoint `POST /api/devices/decisions/undo`** (créateur uniquement) : annule une décision en remettant l'appareil en `pending`, avec snapshot complet pour les actions destructives (revoke/disconnect recréent la ligne dans `device_keys` depuis le snapshot stocké sur la décision).
-- **`_log_decision`** étendu : snapshot du `public_key_jwk` + label sur les actions revoke/disconnect → permet une vraie restauration.
-- **#2 Profile mobile** : `min-h-[100dvh]` + `pb-32` avec `safe-area-inset-bottom` (iOS notch) ; section "Ma clé d'appareil" déplacée tout en bas du tab Info (après "Tes données RGPD") comme demandé. `touch-action: pan-x` sur le code pour que le swipe horizontal ne bloque pas le scroll vertical de la page.
-- **Backend testing** : 12/12 pass (iter_48.json), aucun bug critique.
+### 2026-02-14 — Iter 49 (current)
+**Backend (15/15 tests passing)** :
+- **Restauré** : Gmail one-device-at-a-time **indépendamment de site_mode** (le bug précédent a été corrigé en iter 46 via idempotency, donc OK de réactiver).
+- **`PUT /system/site-mode`** : accepte `guest_view` (forçage de vue pour les invités) ; déconnecte les sessions affectées au switch :
+  - `creator` → toutes sessions non-créateur supprimées
+  - `private` → sessions non-(creator/approved) supprimées
+- **`/devices/verify`** retourne `kick_reason` (`kick_creator_only`, `kick_private`, `kick_blocked`, `kick_revoked`, `null`)
+- **Nouveau role `blocked`** + endpoints `/devices/block` (créateur) et `/devices/unblock`
+- **`/devices/send-to-creator`** → 403 si bloqué avec message dédié "Votre demande a été formulée de nombreuses fois…"
+- **`_log_decision`** filtré : ne persiste QUE `approve`/`revoke`/`promote` (filtrage demandé)
+- **`/auth/register`** : `pseudo` requis (3-30 char), unique (index partial), `Créatrice` réservé
 
-### Iter 47
-- 8 corrections : Revoke par ligne, Annulé/Refusé, Clear history, Export TXT, Profile mobile, Send to creator, mask History pour non-créateurs, fix session mobile.
+**Frontend** :
+- **SiteLockedOverlay** adapté avec `kickReason` + messages localisés + bouton "Voir en mode invité" (uniquement en mode private)
+- **CreatorToolbar** : history filtrée à 3 actions, badges **vert** (Accepté), **rouge** (Refusé), **orange** (Créateur) ; boutons **Bloquer** (renforcé après 2 refus) et **Débloquer** + bouton **Annuler** (undo)
+- **SiteModeBadge** : sous-options pour le mode `guest` (libre / forcer user / forcer creator)
+- **Profile** : clé d'appareil avec `break-all` (wrapping multiligne propre, plus de scroll horizontal)
+- **Login** : champ pseudo requis dans l'inscription, validation 3-30 chars
+- **Translations** ajoutées (FR+EN) : `kick_*`, `signup_pseudo_*`, `hist_block/unblock/blocked/unblocked`, `sm_guest_view_*`, `dec_promote` ("Créateur" au lieu de "Promu créateur")
+
+**Différé (Phase C, ~3-4h chaque)** :
+- Système de messagerie privée bidirectionnelle créateur ↔ utilisateur (depuis page de connexion même en privé)
+- Générations IA en arrière-plan (refactor major : nécessite background tasks + polling pour reprise après reconnexion)
 
 ### Iter 46
 - "session expired" idempotency, labels d'appareils lisibles, bannière d'attente enrichie, suppression "Appareils enregistrés" sur revoke/disconnect, "Envoyer au créateur" + side-panel historique.
