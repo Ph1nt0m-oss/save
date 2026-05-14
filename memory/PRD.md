@@ -17,24 +17,23 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-02-14 — Iter 46 (current)
-- **Bug fix**: "session expired" sur le 2e appareil après approbation → `/auth/session-request-status` est maintenant **idempotent** (persiste le token sur la demande, ne supprime plus, retourne `{status:"expired"}` au lieu de 404 pour les demandes inconnues). Frontend force aussi `axios.defaults.headers.Authorization` AVANT navigate.
-- **Labels d'appareils lisibles** : `Galaxy S21`, `iPhone`, `Mac · Chrome` au lieu de la chaîne UA brute (via `/app/frontend/src/lib/deviceLabel.js` avec mapping Samsung).
-- **Bannière d'attente enrichie** sur le 2e appareil pendant l'approbation : affiche label de l'appareil + email + hint explicatif (style cohérent avec la modale du 1er appareil).
-- **`/devices/revoke` + `/devices/disconnect`** suppriment maintenant la ligne dans `device_keys` (audit conservé dans `device_decisions`) → la liste "Appareils enregistrés" reste propre.
-- **WebAuthn theft-verify** supprime aussi les anciens créateurs (au lieu de les marquer 'revoked').
-- **Nouveau bouton "Envoyer ma clé au créateur"** dans Profile (non-créateurs uniquement) → endpoint `POST /api/devices/send-to-creator` (vérifie la signature ECDSA, log `request_access`, met le device en pending).
-- **View toggle déplacé** : retiré côté créateur (CreatorToolbar), maintenant visible UNIQUEMENT pour les invités → toggle "Vue utilisateur / Vue créateur RO" pour leur permettre de prévisualiser l'UI admin.
-- **Banner de preview** mis à jour pour viser les invités (pas le créateur).
-- **Historique en side-panel vertical** plein écran (au lieu d'une modale centrée) → scroll vertical infini.
-- **`canWrite`** revu : ne dépend plus de la `viewMode` du créateur (le créateur a toujours `canWrite` selon site_mode) ; pour les invités, `viewMode === 'guest'` force `canWrite=false` (preview RO).
-- **Backend testing** : 11/11 (iter_46.json) — flow d'approbation + cleanup vérifiés.
+### 2026-02-14 — Iter 47 (current)
+- **#1 Bouton "Révoquer" sur chaque ligne d'historique** → CreatorToolbar history side-panel.
+- **#2 "Révoqué" → "Annulé"** dans toutes les langues (FR + EN), `dec_revoke` + `role_revoked` mis à jour.
+- **#3 Bouton "Vider l'historique"** + endpoint `POST /api/devices/decisions/clear` (créateur uniquement) — supprime `device_decisions` sans toucher aux états réels.
+- **#4 Bouton "Exporter"** côté frontend → génère un .txt téléchargé `codeforge-history-YYYY-MM-DD.txt` avec toutes les entrées (clé complète + action + label).
+- **#5 Profile mobile fixé** : `overflow-hidden` → `overflow-x-hidden pb-16` ; section "Ma clé d'appareil" déplacée AVANT "Mot de passe oublié" (accessible sans scroll infini) ; layout stack mobile (clé sur sa ligne, boutons en dessous).
+- **#6 "Envoyer au créateur"** déjà fonctionnel via `/api/devices/send-to-creator` (côté toolbar Profile, non-créateurs uniquement).
+- **#7 Bouton Historique masqué pour non-créateurs** : `isCreatorDevice && (...)` dans CreatorToolbar.
+- **#8 Fix "session expirée" sur mobile** : poll → si `approved` → vérifier `/auth/me` avec le nouveau token AVANT navigate ; remplacement de `navigate()` par `window.location.replace('/dashboard')` (force re-bootstrap propre de l'AuthProvider, contourne tous les edge-cases mobile Safari).
+- **`/devices/revoke` idempotent** : accepte un target déjà supprimé (retourne `{success:true, existed:false}`) — nécessaire pour la révocation depuis l'historique.
+- **Backend testing** : 12/12 pass (iter_47.json), aucun bug critique.
+
+### Iter 46
+- "session expired" idempotency, labels d'appareils lisibles, bannière d'attente enrichie, suppression "Appareils enregistrés" sur revoke/disconnect, "Envoyer au créateur" + side-panel historique.
 
 ### Iter 45
-- WebAuthn "Déclarer un vol", 4-tier site mode, view-mode toggle créateur (déprécié en iter 46), cleanup DB initial.
-
-### Iter 44
-- DeviceManager : masquage du device courant + onglet Historique (déplacé dans CreatorToolbar en iter 45, puis side-panel en iter 46).
+- WebAuthn "Déclarer un vol", 4-tier site mode, view-mode toggle, cleanup DB initial.
 
 ## Backlog (priorisé)
 
