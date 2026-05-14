@@ -2,6 +2,23 @@
 
 ## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
 
+### 14 Mai 2026 — Session 44 (suite 6) — SSE temps réel + erreurs login spécifiques + tutoriel slides 7+8 dans 14 langues
+- **🔔 Notification temps réel (SSE)** :
+  - Nouvel endpoint `GET /api/devices/pending-stream/{key_id}/{nonce}/{signature}` — flux Server-Sent Events, auth via path-args (EventSource ne peut envoyer ni header ni body). Push immédiat puis keep-alive toutes les 5s, n'envoie `pending_count` que sur changement.
+  - Hook `useDeviceIdentity` étendu : pour les créateurs, ouvre une `EventSource` qui met à jour `pendingCount` en temps réel. Fallback silencieux au polling initial.
+  - Auto-fermeture de la connexion si le device est révoqué (event `closed`).
+  - Test live : event initial `pending_count: 0` + keep-alive confirmés ✅.
+- **🔐 Erreurs login spécifiques** :
+  - `404 "Aucun compte avec cet email"` si l'email n'existe pas.
+  - `401 "Mot de passe incorrect"` si l'email existe mais le mot de passe est faux.
+  - Plus de message générique "Email ou mot de passe incorrect" (qui masque l'origine du problème).
+- **📚 Tutoriel slides 7+8 traduits dans les 14 langues manquantes** :
+  - `d_t7/d_b7` (Identité d'appareil + 4 modes) et `d_t8/d_b8` (Prêt à essayer ?) injectés via `_inject_tutorial.py` dans : es, pt, de, nl, ru, zh, zh-TW, hi, bn, ur, ja, hr, da, ar.
+  - Lint ✅.
+- **🔑 Récupération créateur** : DB `device_keys` vidée → ton prochain rechargement de la page (Landing ou Login) sur ton navigateur actuel = automatiquement promu créateur. Sauvegarde immédiatement ta clé d'appareil dans Mon profil → "Autres identifiants" → bouton copier.
+- **📧 Resend (info)** : la clé Resend actuellement configurée est en mode test — elle ne peut envoyer qu'à `16.axelblaze.10@gmail.com`. Pour activer les envois à tous les emails, il faut **vérifier un domaine** sur resend.com/domains (action utilisateur côté Resend dashboard, ~5 min). En attendant, le bouton "Lien de vérification" est affiché directement dans l'UI quand l'envoi échoue (déjà câblé via `verification_link` dans la réponse).
+
+
 ### 14 Mai 2026 — Session 44 (suite 5) — i18n complète des 70 nouveaux libellés × 16 langues = 1120 traductions
 - **Injection automatique via script** `_inject_translations.py` : 70 clés (`sm_*`, `dm_*`, `role_*`, `nb_*`, `sl_*`, `um_*`, `ro_*`, `lp_*`, `mp_*`) ajoutées proprement dans chaque bloc langue, marquées par un commentaire `// ── Session-44 injected translations ──`. Idempotent : ré-exécutable sans duplication.
 - **Composants entièrement i18n** :

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Response, Request, UploadFile, File
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
@@ -958,13 +958,20 @@ async def login(payload: LoginRequest, response: Response, request: Request):
         raise HTTPException(status_code=429, detail="Trop de tentatives. Réessaie dans 15 minutes.")
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
-    if not user or not verify_password(payload.password, user.get("password_hash", "")):
+    if not user:
         await db.login_attempts.insert_one({
             "identifier": identifier,
             "ts": datetime.now(timezone.utc).isoformat(),
         })
-        await log_auth_error("login_invalid_credentials", f"email={email}", request=request)
-        raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
+        await log_auth_error("login_unknown_email", f"email={email}", request=request)
+        raise HTTPException(status_code=404, detail="Aucun compte avec cet email")
+    if not verify_password(payload.password, user.get("password_hash", "")):
+        await db.login_attempts.insert_one({
+            "identifier": identifier,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
+        await log_auth_error("login_wrong_password", f"email={email}", request=request)
+        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
 
     if not user.get("verified"):
         raise HTTPException(
@@ -4054,6 +4061,42 @@ async def devices_pending_count(payload: CreatorOnlyIn):
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     count = await db.device_keys.count_documents({"role": "pending"})
     return {"pending_count": count}
+
+
+@api_router.get("/devices/pending-stream/{key_id}/{nonce}/{signature}")
+async def devices_pending_stream(key_id: str, nonce: str, signature: str):
+    """Creator-only SSE stream — emits `{pending_count}` every 5s, plus an
+    immediate first event. Auth via path-args because EventSource cannot set
+    custom headers/bodies. The nonce is consumed on first call (single-use),
+    after that we trust the connection (it dies on creator-revoke anyway)."""
+    await _require_creator_signature(key_id, nonce, signature)
+
+    async def gen():
+        # Emit one immediately so the badge updates without lag.
+        last = -1
+        try:
+            while True:
+                # Re-check the device is still 'creator' on every tick. If
+                # they got revoked, we close the stream.
+                dev = await _device_by_key(key_id)
+                if not dev or dev.get("role") != "creator":
+                    yield "event: closed\ndata: revoked\n\n"
+                    return
+                count = await db.device_keys.count_documents({"role": "pending"})
+                if count != last:
+                    yield f"data: {{\"pending_count\": {count}}}\n\n"
+                    last = count
+                else:
+                    yield ": keepalive\n\n"
+                await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
 
 
 class DeviceTargetIn(CreatorOnlyIn):

@@ -766,8 +766,8 @@ const translations = {
  d_b5: 'Mira tu app corriendo inmediatamente, como si ya estuviera desplegada. Web, móvil (PWA) o escritorio — tú eliges.',
  d_t6: '5️⃣ Modo Sin Conexión',
  d_b6: '¿Sin conexión? Con un motor de IA local instalado, genera apps sin enviar datos a internet. 100% privado, 100% gratis.',
- d_t7: '¿Listo para probarlo?',
- d_b7: 'Crea tu cuenta en 30 segundos — solo email y contraseña. Sin tarjeta, sin anuncios, sin cuotas.',
+ d_t7: '6️⃣ Identidad de dispositivo y modos del sitio',
+ d_b7: 'En la primera carga, tu navegador genera una clave criptográfica única almacenada en un área segura (no extraíble). Esta clave funciona como la firma de tu dispositivo. En la página de inicio y la página de inicio de sesión, una insignia muestra el modo del sitio: Público (todos), Privado (solo dispositivos aprobados), Creador (solo dispositivos del creador) o Invitado (solo lectura). Solo los dispositivos creadores pueden cambiar este modo. Encontrarás tu clave en "Otros identificadores" para compartirla con el creador y que te añada en modo privado.',
  mic_voice_send: 'Mensaje de voz — habla y envía', mic_voice_text: 'Voz a texto — habla y revisa',
  mic_unsupported: '🎤 Micrófono no compatible con este navegador.',
  mic_permission: '🎤 Permite el acceso al micrófono para usar esta función.',
@@ -847,6 +847,9 @@ const translations = {
  mp_online: 'Modelos en línea',
  mp_offline: 'Modelos sin conexión',
  mp_no_ollama: '⚠ Motor de IA local no detectado — instálalo para activar estos modelos.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: '¿Listo para probar?',
+ d_b8: 'Crea tu cuenta en 30 segundos — solo necesitas un email y una contraseña. Sin tarjeta, sin anuncios, sin cuotas.',
 },
 
  // ========== DEUTSCH ==========
@@ -914,8 +917,8 @@ const translations = {
  d_b5: 'Sieh deine App sofort laufen, als wäre sie schon bereitgestellt. Web, Mobile (PWA) oder Desktop — deine Wahl.',
  d_t6: '5️⃣ Offline-Modus',
  d_b6: 'Kein Internet? Mit einer lokalen KI auf deinem PC erzeugst du Apps, ohne Daten zu senden. 100% privat, 100% kostenlos.',
- d_t7: 'Bereit zum Ausprobieren?',
- d_b7: 'Erstelle dein Konto in 30 Sekunden — nur E-Mail und Passwort. Keine Karte, keine Werbung, keine Quoten.',
+ d_t7: '6️⃣ Geräteidentität & Site-Modi',
+ d_b7: 'Beim ersten Laden generiert dein Browser einen einzigartigen kryptografischen Schlüssel, der in einem sicheren Bereich gespeichert wird (nicht extrahierbar). Dieser Schlüssel dient als Signatur deines Geräts. Auf der Startseite und der Login-Seite zeigt ein Abzeichen den Site-Modus: Öffentlich (alle), Privat (nur genehmigte Geräte), Ersteller (nur Ersteller-Geräte) oder Gast (nur Lesen). Nur Ersteller-Geräte können diesen Modus ändern. Du findest deinen Schlüssel in "Andere Geräte", um ihn mit dem Ersteller zu teilen — er kann dich im privaten Modus hinzufügen.',
  mic_voice_send: 'Sprachnachricht — sprechen & senden', mic_voice_text: 'Sprache zu Text — sprechen & prüfen',
  mic_unsupported: '🎤 Mikrofon in diesem Browser nicht unterstützt.',
  mic_permission: '🎤 Bitte erlaube den Zugriff auf das Mikrofon.',
@@ -995,6 +998,9 @@ const translations = {
  mp_online: 'Online-Modelle',
  mp_offline: 'Offline-Modelle',
  mp_no_ollama: '⚠ Lokale KI nicht erkannt — installiere sie, um diese Modelle zu aktivieren.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'Bereit zum Ausprobieren?',
+ d_b8: 'Erstelle dein Konto in 30 Sekunden — nur E-Mail und Passwort nötig. Keine Karte, keine Werbung, keine Quoten.',
 },
 
  // ========== NEDERLANDS ==========
@@ -1062,8 +1068,8 @@ const translations = {
  d_b5: 'Zie je app meteen draaien, alsof hij al online staat. Web, mobiel (PWA) of desktop — jouw keuze.',
  d_t6: '5️⃣ Offline Modus',
  d_b6: 'Geen internet? Met een lokale AI op je PC genereer je apps zonder data te versturen. 100% privé, 100% gratis.',
- d_t7: 'Klaar om te proberen?',
- d_b7: 'Maak je account in 30 seconden — alleen e-mail en wachtwoord. Geen kaart, geen reclame, geen quota.',
+ d_t7: '6️⃣ Apparaatidentiteit & site-modi',
+ d_b7: 'Bij de eerste keer laden genereert je browser een unieke cryptografische sleutel die wordt opgeslagen in een veilig gebied (niet exporteerbaar). Deze sleutel fungeert als de handtekening van je apparaat. Op de startpagina en de inlogpagina toont een badge de site-modus: Openbaar (iedereen), Privé (alleen goedgekeurde apparaten), Maker (alleen maker-apparaten) of Gast (alleen-lezen). Alleen maker-apparaten kunnen deze modus wijzigen. Je vindt je sleutel in "Andere identiteiten" om hem met de maker te delen — hij kan je in privé-modus toevoegen.',
  mic_voice_send: 'Spraakbericht — spreek & verzend', mic_voice_text: 'Spraak naar tekst — spreek & controleer',
  mic_unsupported: '🎤 Microfoon niet ondersteund in deze browser.',
  mic_permission: '🎤 Geef toestemming voor de microfoon.',
@@ -1143,6 +1149,9 @@ const translations = {
  mp_online: 'Online-modellen',
  mp_offline: 'Offline-modellen',
  mp_no_ollama: '⚠ Lokale AI niet gevonden — installeer hem om deze modellen te activeren.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'Klaar om te proberen?',
+ d_b8: 'Maak je account aan in 30 seconden — alleen een e-mailadres en wachtwoord nodig. Geen kaart, geen reclame, geen quota.',
 },
 
  // ========== РУССКИЙ ==========
@@ -1205,7 +1214,7 @@ const translations = {
  d_t4: '3️⃣ Чат с ИИ', d_b4: 'Просите изменения на естественном языке: «добавь тёмную тему», «сделай кнопку зелёной». 🎙️ Доступны два микрофона: один отправляет голосовое сообщение мгновенно (красная точка), другой переводит вашу речь в текстовое поле для проверки перед отправкой.',
  d_t5: '4️⃣ Мгновенный предпросмотр', d_b5: 'Посмотрите, как приложение работает, словно оно уже развёрнуто. Веб, мобильное (PWA) или десктоп — на выбор.',
  d_t6: '5️⃣ Оффлайн-режим', d_b6: 'Нет интернета? С на вашем ПК создавайте приложения без передачи данных. 100% приватно, 100% бесплатно.',
- d_t7: 'Готовы попробовать?', d_b7: 'Создайте аккаунт за 30 секунд — только email и пароль. Без карты, без рекламы, без квот.',
+ d_t7: '6️⃣ Идентификация устройства и режимы сайта', d_b7: 'При первой загрузке ваш браузер генерирует уникальный криптографический ключ, хранящийся в защищённой области (не извлекаемый). Этот ключ служит подписью вашего устройства. На главной и странице входа значок показывает режим сайта: Публичный (все), Приватный (только одобренные устройства), Создатель (только устройства создателя) или Гость (только чтение). Только устройства создателя могут менять этот режим. Найдите ваш ключ в «Другие идентификаторы», чтобы передать его создателю — он сможет добавить вас в приватный режим.',
  mic_voice_send: 'Голосовое сообщение — говори и отправь', mic_voice_text: 'Голос в текст — говори и проверь',
  mic_unsupported: '🎤 Микрофон не поддерживается в этом браузере.',
  mic_permission: '🎤 Разрешите доступ к микрофону.',
@@ -1285,6 +1294,9 @@ const translations = {
  mp_online: 'Онлайн-модели',
  mp_offline: 'Офлайн-модели',
  mp_no_ollama: '⚠ Локальный ИИ не обнаружен — установите его для активации этих моделей.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'Готовы попробовать?',
+ d_b8: 'Создайте аккаунт за 30 секунд — нужны только email и пароль. Без карты, без рекламы, без квот.',
 },
 
  // ========== 中文 简体 (Chinese Simplified) ==========
@@ -1347,7 +1359,7 @@ const translations = {
  d_t4: '3️⃣ 与 AI 对话', d_b4: '用自然语言提出修改："加暗黑模式"、"按钮改成绿色"。🎙️ 提供两个麦克风：一个直接发送语音消息（红点），另一个把你的语音转写到文本框，便于发送前检查。',
  d_t5: '4️⃣ 即时预览', d_b5: '立即看到应用运行，就像已经部署一样。Web、移动 (PWA) 或桌面 — 任你选择。',
  d_t6: '5️⃣ 离线模式', d_b6: '没有网络？在你的电脑上安装 ，本地生成应用，不上传任何数据。100% 私密，100% 免费。',
- d_t7: '准备好试试了吗？', d_b7: '30 秒创建账户 — 只需邮箱和密码。无需信用卡、无广告、无配额。',
+ d_t7: '6️⃣ 设备身份和站点模式', d_b7: '首次加载时，您的浏览器会生成一个唯一的加密密钥，存储在安全区域中（不可提取）。此密钥作为您设备的签名。在首页和登录页面，徽章显示站点模式：公开（所有人）、私有（仅已批准的设备）、创建者（仅创建者设备）或访客（只读）。只有创建者设备可以更改此模式。您可以在"其他身份"中找到您的密钥并与创建者分享 — 他们可以将您添加到私有模式。',
  mic_voice_send: '语音消息 — 说话即发送', mic_voice_text: '语音转文字 — 说话后查看',
  mic_unsupported: '🎤 此浏览器不支持麦克风。',
  mic_permission: '🎤 请允许使用麦克风。',
@@ -1427,6 +1439,9 @@ const translations = {
  mp_online: '在线模型',
  mp_offline: '离线模型',
  mp_no_ollama: '⚠ 未检测到本地 AI 引擎 — 安装它以启用这些模型。',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: '准备好试试了吗？',
+ d_b8: '30 秒创建您的账户 — 只需邮箱和密码。无需信用卡、无广告、无配额。',
 },
 
  // ========== 中文 繁體 (Chinese Traditional) ==========
@@ -1489,7 +1504,7 @@ const translations = {
  d_t4: '3️⃣ 與 AI 對話', d_b4: '用自然語言提出修改：「加深色模式」、「按鈕改成綠色」。🎙️ 提供兩個麥克風：一個直接傳送語音訊息（紅點），另一個把你的語音轉寫到文字框，便於傳送前檢查。',
  d_t5: '4️⃣ 即時預覽', d_b5: '立即看到應用運行，就像已經部署一樣。Web、行動 (PWA) 或桌面 — 任你選擇。',
  d_t6: '5️⃣ 離線模式', d_b6: '沒有網路？在你的電腦上安裝 ，本機產生應用，不上傳任何資料。100% 私密、100% 免費。',
- d_t7: '準備好試試了嗎？', d_b7: '30 秒建立帳戶 — 只需電子郵件和密碼。無需信用卡、無廣告、無配額。',
+ d_t7: '6️⃣ 裝置身份與網站模式', d_b7: '首次載入時，您的瀏覽器會產生一個唯一的加密金鑰，儲存在安全區域中（不可提取）。此金鑰作為您裝置的簽章。在首頁和登入頁面，徽章顯示網站模式：公開（所有人）、私有（僅已核准的裝置）、建立者（僅建立者裝置）或訪客（唯讀）。只有建立者裝置可以變更此模式。您可以在「其他身份」中找到您的金鑰並與建立者分享 — 他們可以將您新增到私有模式。',
  mic_voice_send: '語音訊息 — 說話即傳送', mic_voice_text: '語音轉文字 — 說話後檢查',
  mic_unsupported: '🎤 此瀏覽器不支援麥克風。',
  mic_permission: '🎤 請允許使用麥克風。',
@@ -1569,6 +1584,9 @@ const translations = {
  mp_online: '線上模型',
  mp_offline: '離線模型',
  mp_no_ollama: '⚠ 未偵測到本地 AI 引擎 — 安裝它以啟用這些模型。',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: '準備好試試了嗎？',
+ d_b8: '30 秒建立您的帳戶 — 只需電子郵件和密碼。無需信用卡、無廣告、無配額。',
 },
 
  // ========== हिन्दी (Hindi) ==========
@@ -1631,7 +1649,7 @@ const translations = {
  d_t4: '3️⃣ AI से चैट', d_b4: 'सरल भाषा में बदलाव माँगें: "डार्क मोड जोड़ें", "बटन हरा करें"। 🎙️ दो माइक्रोफोन उपलब्ध: एक तुरंत वॉइस संदेश भेजता है (लाल बिंदु), दूसरा आपकी आवाज़ को टेक्स्ट फ़ील्ड में लिखता है ताकि भेजने से पहले जांच सकें।',
  d_t5: '4️⃣ तत्काल पूर्वावलोकन', d_b5: 'अपनी ऐप तुरंत चलते देखें, मानो पहले से डिप्लॉय हो चुकी हो। वेब, मोबाइल (PWA) या डेस्कटॉप — आपकी पसंद।',
  d_t6: '5️⃣ ऑफ़लाइन मोड', d_b6: 'इंटरनेट नहीं है? अपने PC पर लगाकर बिना डेटा भेजे ऐप्स बनाएं। 100% निजी, 100% मुफ़्त।',
- d_t7: 'आज़माने के लिए तैयार?', d_b7: '30 सेकंड में अकाउंट बनाएं — सिर्फ़ ईमेल और पासवर्ड। कोई कार्ड नहीं, कोई विज्ञापन नहीं, कोई कोटा नहीं।',
+ d_t7: '6️⃣ डिवाइस पहचान और साइट मोड', d_b7: 'पहले लोड पर, आपका ब्राउज़र एक अद्वितीय क्रिप्टोग्राफिक कुंजी उत्पन्न करता है जो एक सुरक्षित क्षेत्र में संग्रहीत होती है (निकाली नहीं जा सकती)। यह कुंजी आपके डिवाइस के हस्ताक्षर के रूप में कार्य करती है। होम और लॉगिन पेज पर, एक बैज साइट मोड दिखाता है: सार्वजनिक (सभी), निजी (केवल अनुमोदित डिवाइस), क्रिएटर (केवल क्रिएटर डिवाइस), या अतिथि (केवल पढ़ने)। केवल क्रिएटर डिवाइस यह मोड बदल सकते हैं। आप अपनी कुंजी "अन्य पहचान" में पा सकते हैं — क्रिएटर को साझा करें और निजी मोड में जोड़ा जा सकता है।',
  mic_voice_send: 'वॉइस संदेश — बोलें और भेजें', mic_voice_text: 'आवाज़ से टेक्स्ट — बोलें और जांचें',
  mic_unsupported: '🎤 इस ब्राउज़र में माइक्रोफ़ोन समर्थित नहीं है।',
  mic_permission: '🎤 कृपया माइक्रोफ़ोन की अनुमति दें।',
@@ -1711,6 +1729,9 @@ const translations = {
  mp_online: 'ऑनलाइन मॉडल',
  mp_offline: 'ऑफ़लाइन मॉडल',
  mp_no_ollama: '⚠ स्थानीय AI इंजन नहीं मिला — इन मॉडल को सक्षम करने के लिए इसे स्थापित करें।',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'आज़माने के लिए तैयार हैं?',
+ d_b8: 'अपना खाता 30 सेकंड में बनाएं — बस एक ईमेल और पासवर्ड चाहिए। कोई कार्ड, कोई विज्ञापन, कोई कोटा नहीं।',
 },
 
  // ========== বাংলা (Bengali) ==========
@@ -1773,7 +1794,7 @@ const translations = {
  d_t4: '3️⃣ AI-এর সাথে চ্যাট', d_b4: 'সাধারণ ভাষায় পরিবর্তন চান: "ডার্ক মোড যোগ করুন", "বোতাম সবুজ করুন"। 🎙️ দুটি মাইক্রোফোন আছে: একটি তাৎক্ষণিকভাবে ভয়েস বার্তা পাঠায় (লাল বিন্দু), অন্যটি আপনার ভাষণ টেক্সট ফিল্ডে রূপান্তর করে যাতে পাঠানোর আগে দেখতে পারেন।',
  d_t5: '4️⃣ তাৎক্ষণিক পূর্বরূপ', d_b5: 'অ্যাপটি অবিলম্বে চলতে দেখুন, যেন এটি ইতিমধ্যেই স্থাপন করা হয়েছে। ওয়েব, মোবাইল (PWA) বা ডেস্কটপ — আপনার পছন্দ।',
  d_t6: '5️⃣ অফলাইন মোড', d_b6: 'ইন্টারনেট নেই? আপনার পিসিতে লাগিয়ে ডেটা না পাঠিয়ে অ্যাপ তৈরি করুন। 100% ব্যক্তিগত, 100% বিনামূল্যে।',
- d_t7: 'চেষ্টা করতে প্রস্তুত?', d_b7: '30 সেকেন্ডে অ্যাকাউন্ট তৈরি করুন — শুধু ইমেইল এবং পাসওয়ার্ড। কার্ড নেই, বিজ্ঞাপন নেই, কোটা নেই।',
+ d_t7: '6️⃣ ডিভাইস পরিচয় ও সাইট মোড', d_b7: 'প্রথম লোডে, আপনার ব্রাউজার একটি অনন্য ক্রিপ্টোগ্রাফিক কী তৈরি করে যা একটি নিরাপদ এলাকায় সংরক্ষিত হয় (এক্সট্র্যাক্ট করা যায় না)। এই কী আপনার ডিভাইসের স্বাক্ষর হিসেবে কাজ করে। হোম এবং লগইন পৃষ্ঠায়, একটি ব্যাজ সাইট মোড দেখায়: পাবলিক (সবাই), প্রাইভেট (শুধু অনুমোদিত ডিভাইস), নির্মাতা (শুধু নির্মাতার ডিভাইস), বা অতিথি (কেবল-পঠন)। শুধু নির্মাতার ডিভাইস এই মোড পরিবর্তন করতে পারে। আপনি "অন্যান্য পরিচয়"-এ আপনার কী খুঁজে পাবেন — নির্মাতাকে শেয়ার করুন।',
  mic_voice_send: 'ভয়েস বার্তা — বলুন এবং পাঠান', mic_voice_text: 'ভয়েস টু টেক্সট — বলুন এবং দেখুন',
  mic_unsupported: '🎤 এই ব্রাউজারে মাইক্রোফোন সমর্থিত নয়।',
  mic_permission: '🎤 অনুগ্রহ করে মাইক্রোফোনের অনুমতি দিন।',
@@ -1853,6 +1874,9 @@ const translations = {
  mp_online: 'অনলাইন মডেল',
  mp_offline: 'অফলাইন মডেল',
  mp_no_ollama: '⚠ স্থানীয় AI ইঞ্জিন সনাক্ত হয়নি — এই মডেলগুলি সক্ষম করতে এটি ইনস্টল করুন।',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'চেষ্টা করতে প্রস্তুত?',
+ d_b8: '৩০ সেকেন্ডে আপনার অ্যাকাউন্ট তৈরি করুন — শুধু একটি ইমেল এবং পাসওয়ার্ড প্রয়োজন। কোনো কার্ড, কোনো বিজ্ঞাপন, কোনো কোটা নেই।',
 },
 
  // ========== Português ==========
@@ -1915,7 +1939,7 @@ const translations = {
  d_t4: '3️⃣ Conversa com a IA', d_b4: 'Pede alterações em linguagem natural: «adiciona modo escuro», «põe o botão verde». 🎙️ Há dois microfones: um envia uma mensagem de voz instantaneamente (ponto vermelho), o outro transcreve a tua voz no campo de texto para reveres antes de enviar.',
  d_t5: '4️⃣ Pré-visualização instantânea', d_b5: 'Vê a tua app a correr imediatamente, como se já estivesse implantada. Web, mobile (PWA) ou desktop — à escolha.',
  d_t6: '5️⃣ Modo Offline', d_b6: 'Sem internet? Com o instalado no teu PC, gera apps sem enviar dados. 100% privado, 100% gratuito.',
- d_t7: 'Pronto para experimentar?', d_b7: 'Cria a tua conta em 30 segundos — apenas email e palavra-passe. Sem cartão, sem anúncios, sem quotas.',
+ d_t7: '6️⃣ Identidade do dispositivo e modos do site', d_b7: 'No primeiro carregamento, o teu navegador gera uma chave criptográfica única armazenada numa área segura (não extraível). Esta chave funciona como a assinatura do teu dispositivo. Na página inicial e na página de login, uma insígnia mostra o modo do site: Público (todos), Privado (apenas dispositivos aprovados), Criador (apenas dispositivos criadores) ou Convidado (apenas leitura). Apenas dispositivos criadores podem alterar este modo. Encontras a tua chave em "Outros identificadores" para a partilhares com o criador — ele pode adicionar-te em modo privado.',
  mic_voice_send: 'Mensagem de voz — fala e envia', mic_voice_text: 'Voz para texto — fala e revê',
  mic_unsupported: '🎤 Microfone não suportado neste navegador.',
  mic_permission: '🎤 Permite o acesso ao microfone.',
@@ -1995,6 +2019,9 @@ const translations = {
  mp_online: 'Modelos online',
  mp_offline: 'Modelos offline',
  mp_no_ollama: '⚠ Motor de IA local não detetado — instala-o para ativar estes modelos.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'Pronto para experimentar?',
+ d_b8: 'Cria a tua conta em 30 segundos — só precisas de um email e uma senha. Sem cartão, sem anúncios, sem quotas.',
 },
 
  // ========== اردو (Urdu) — RTL ==========
@@ -2057,7 +2084,7 @@ const translations = {
  d_t4: '3️⃣ AI کے ساتھ گفتگو', d_b4: 'فطری زبان میں تبدیلیاں مانگیں: "ڈارک موڈ شامل کریں"، "بٹن سبز کریں"۔ 🎙️ دو مائیکروفون دستیاب: ایک فوراً صوتی پیغام بھیجتا ہے (سرخ نقطہ)، دوسرا آپ کی آواز کو متن میں منتقل کرتا ہے تاکہ بھیجنے سے پہلے دیکھ سکیں۔',
  d_t5: '4️⃣ فوری پیش نظارہ', d_b5: 'اپنی ایپ کو فوراً چلتے ہوئے دیکھیں، گویا یہ پہلے ہی تعینات ہو۔ ویب، موبائل (PWA) یا ڈیسک ٹاپ — آپ کا انتخاب۔',
  d_t6: '5️⃣ آف لائن موڈ', d_b6: 'انٹرنیٹ نہیں؟ اپنے PC پر انسٹال کر کے ڈیٹا بھیجے بغیر ایپس بنائیں۔ 100% نجی، 100% مفت۔',
- d_t7: 'آزمانے کے لیے تیار؟', d_b7: '30 سیکنڈ میں اکاؤنٹ بنائیں — صرف ای میل اور پاس ورڈ۔ کارڈ نہیں، اشتہار نہیں، کوٹا نہیں۔',
+ d_t7: '6️⃣ آلے کی شناخت اور سائٹ موڈز', d_b7: 'پہلی بار لوڈ ہونے پر، آپ کا براؤزر ایک منفرد کرپٹوگرافک کلید بناتا ہے جو ایک محفوظ علاقے میں محفوظ ہوتی ہے (نکالی نہیں جا سکتی)۔ یہ کلید آپ کے آلے کے دستخط کے طور پر کام کرتی ہے۔ ہوم اور لاگ ان صفحے پر، ایک بیج سائٹ موڈ دکھاتا ہے: عام (سب)، نجی (صرف منظور شدہ آلات)، تخلیق کار (صرف تخلیق کار کے آلات)، یا مہمان (صرف پڑھنا)۔ صرف تخلیق کار کے آلات یہ موڈ تبدیل کر سکتے ہیں۔ آپ اپنی کلید "دیگر شناختیں" میں پا سکتے ہیں — تخلیق کار کے ساتھ شیئر کریں۔',
  mic_voice_send: 'صوتی پیغام — بولیں اور بھیجیں', mic_voice_text: 'آواز سے متن — بولیں اور جانچیں',
  mic_unsupported: '🎤 اس براؤزر میں مائیکروفون سپورٹ نہیں ہے۔',
  mic_permission: '🎤 براہ کرم مائیکروفون کی اجازت دیں۔',
@@ -2137,6 +2164,9 @@ const translations = {
  mp_online: 'آن لائن ماڈلز',
  mp_offline: 'آف لائن ماڈلز',
  mp_no_ollama: '⚠ مقامی AI انجن کا پتہ نہیں چلا — ان ماڈلز کو فعال کرنے کے لیے اسے انسٹال کریں۔',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'آزمائش کے لیے تیار ہیں؟',
+ d_b8: 'اپنا اکاؤنٹ 30 سیکنڈ میں بنائیں — صرف ای میل اور پاس ورڈ کی ضرورت ہے۔ کوئی کارڈ نہیں، کوئی اشتہار نہیں، کوئی کوٹہ نہیں۔',
 },
  ja: {
  back: '戻る', next: '次へ', previous: '前へ', generate: '生成', loading: '読み込み中...', error: 'エラー',
@@ -2221,6 +2251,11 @@ const translations = {
  mp_online: 'オンラインモデル',
  mp_offline: 'オフラインモデル',
  mp_no_ollama: '⚠ ローカル AI エンジンが検出されません — これらのモデルを有効にするにはインストールしてください。',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t7: '6️⃣ デバイスIDとサイトモード',
+ d_b7: '初回読み込み時、ブラウザは一意の暗号鍵を生成し、安全な領域に保存します（抽出不可）。このキーはデバイスの署名として機能します。ホームとログインページでバッジがサイトモードを表示します：パブリック（全員）、プライベート（承認済みデバイスのみ）、クリエイター（クリエイターデバイスのみ）、ゲスト（読み取り専用）。クリエイターデバイスのみこのモードを変更できます。「その他のID」でキーを確認し、クリエイターに共有してプライベートモードに追加してもらえます。',
+ d_t8: '試してみる準備はできましたか？',
+ d_b8: '30秒でアカウントを作成 — メールとパスワードだけで OK。カード不要、広告なし、制限なし。',
 },
  hr: {
  back: 'Natrag', next: 'Sljedeće', previous: 'Prethodno', generate: 'Generiraj', loading: 'Učitavanje...', error: 'Greška',
@@ -2303,6 +2338,11 @@ const translations = {
  mp_online: 'Online modeli',
  mp_offline: 'Offline modeli',
  mp_no_ollama: '⚠ Lokalni AI motor nije pronađen — instaliraj ga za omogućavanje ovih modela.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t7: '6️⃣ Identitet uređaja i načini stranice',
+ d_b7: 'Pri prvom učitavanju, tvoj preglednik generira jedinstveni kriptografski ključ pohranjen u sigurnom području (nije moguće izvući). Ovaj ključ djeluje kao potpis tvog uređaja. Na početnoj i stranici za prijavu, značka prikazuje način stranice: Javno (svi), Privatno (samo odobreni uređaji), Kreator (samo kreatorovi uređaji) ili Gost (samo za čitanje). Samo kreatorovi uređaji mogu mijenjati ovaj način. Ključ ćeš pronaći u "Drugi identifikatori" za dijeljenje s kreatorom — može te dodati u privatni način.',
+ d_t8: 'Spreman za isprobati?',
+ d_b8: 'Stvori račun u 30 sekundi — treba ti samo email i lozinka. Bez kartice, bez reklama, bez kvota.',
 },
  da: {
  back: 'Tilbage', next: 'Næste', previous: 'Forrige', generate: 'Generer', loading: 'Indlæser...', error: 'Fejl',
@@ -2385,6 +2425,11 @@ const translations = {
  mp_online: 'Online-modeller',
  mp_offline: 'Offline-modeller',
  mp_no_ollama: '⚠ Lokal AI-motor ikke fundet — installer den for at aktivere disse modeller.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t7: '6️⃣ Enhedsidentitet og sitetilstande',
+ d_b7: 'Ved første indlæsning genererer din browser en unik kryptografisk nøgle gemt i et sikkert område (kan ikke udtrækkes). Denne nøgle fungerer som din enheds signatur. På hjem- og login-siden viser et mærke sitetilstanden: Offentlig (alle), Privat (kun godkendte enheder), Skaber (kun skaber-enheder) eller Gæst (skrivebeskyttet). Kun skaber-enheder kan ændre denne tilstand. Du finder din nøgle i "Andre identifikatorer" for at dele med skaberen — han kan tilføje dig i privat tilstand.',
+ d_t8: 'Klar til at prøve?',
+ d_b8: 'Opret din konto på 30 sekunder — du har kun brug for en e-mail og adgangskode. Intet kort, ingen annoncer, ingen kvoter.',
 },
  ar: {
  // Common
@@ -2629,8 +2674,8 @@ const translations = {
  d_b5: 'شاهد تطبيقك يعمل فورًا، كأنه منشور بالفعل. ويب أو جوال (PWA) أو سطح المكتب — حسب اختيارك.',
  d_t6: '5️⃣ الوضع بدون اتصال',
  d_b6: 'لا يوجد اتصال؟ مع محرك ذكاء اصطناعي محلي مثبّت على جهازك، تنشئ التطبيقات دون إرسال أي بيانات إلى الإنترنت. خصوصية كاملة 100%، مجاني 100%.',
- d_t7: 'هل أنت مستعد للتجربة؟',
- d_b7: 'أنشئ حسابك في 30 ثانية — كل ما تحتاجه بريد إلكتروني وكلمة مرور. لا بطاقة، لا إعلانات، لا حصص.',
+ d_t7: '6️⃣ هوية الجهاز وأوضاع الموقع',
+ d_b7: 'عند التحميل الأول، يُولِّد متصفحك مفتاحًا تشفيريًا فريدًا يُخزَّن في منطقة آمنة (لا يمكن استخراجه). يعمل هذا المفتاح كتوقيع لجهازك. في الصفحة الرئيسية وصفحة تسجيل الدخول، تعرض شارة وضع الموقع: عام (الجميع)، خاص (فقط الأجهزة المعتمدة)، المُنشئ (فقط أجهزة المُنشئ)، أو ضيف (للقراءة فقط). فقط أجهزة المُنشئ يمكنها تغيير هذا الوضع. ستجد مفتاحك في "مُعرّفات أخرى" لمشاركته مع المُنشئ — يمكنه إضافتك في الوضع الخاص.',
 
  // Voice / microphones
  mic_voice_send: 'رسالة صوتية — تحدث وأرسل',
@@ -2733,6 +2778,9 @@ const translations = {
  mp_online: 'النماذج عبر الإنترنت',
  mp_offline: 'النماذج دون اتصال',
  mp_no_ollama: '⚠ لم يتم اكتشاف محرك ذكاء اصطناعي محلي — قم بتثبيته لتفعيل هذه النماذج.',
+ // ── Session-44 tutorial slides 7+8 ────────────────────
+ d_t8: 'هل أنت مستعد للتجربة؟',
+ d_b8: 'أنشئ حسابك في 30 ثانية — كل ما تحتاجه بريد إلكتروني وكلمة مرور. لا بطاقة، لا إعلانات، لا حصص.',
 }
 };
 
