@@ -293,9 +293,13 @@ export default function Login() {
 
         if (data.email_sent) {
           toast.success("Lien de confirmation envoyé par email ! Vérifie ta boîte (et tes spams). Tu as 5 minutes.", { duration: 6000 });
+          // iter59: ALSO show the link as backup in case the mail never arrives
+          if (data.verification_link) {
+            setDemoLink(data.verification_link);
+          }
         } else if (data.verification_link) {
           setDemoLink(data.verification_link);
-          toast.info("Email indisponible — clique sur le lien ci-dessous pour confirmer.");
+          toast.warning("Email indisponible. Clique sur le lien de confirmation ci-dessous (ou copie-le dans ton navigateur).", { duration: 9000 });
         }
 
         // Kick off polling so the original tab auto-unlocks the moment
@@ -381,10 +385,12 @@ export default function Login() {
         stopWaiting();
         if (data.email_sent) {
           toast.success("Nouveau lien envoyé par email ! 5 minutes.");
-          setDemoLink(null);
+          // iter59: keep showing link as backup
+          if (data.verification_link) setDemoLink(data.verification_link);
+          else setDemoLink(null);
         } else if (data.verification_link) {
           setDemoLink(data.verification_link);
-          toast.info("Nouveau lien généré (mode démo).");
+          toast.warning("Nouveau lien généré. L'e-mail n'a pas pu être envoyé — utilise le lien ci-dessous.", { duration: 9000 });
         }
         startWaiting(data.verification_token, waitingFor.email, data.expires_in_seconds);
       } else {

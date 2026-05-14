@@ -522,7 +522,7 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
     resend_key = os.environ.get("RESEND_API_KEY")
     if not resend_key:
         return False
-    sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
+    sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
     # Replies to the magic-link email are silently forwarded to a
     # catch-all inbox. The recipient sees the From as CodeForge AI, but
     # if they hit "Reply" their mail client uses Reply-To. They never see
@@ -682,7 +682,7 @@ async def register(payload: RegisterRequest, request: Request):
 
     response = {
         "message": "Compte créé ! Vérifie ton email pour confirmer." if sent
-        else "Compte créé ! Clique sur le lien ci-dessous pour confirmer (mode démo — aucun email envoyé).",
+        else "Compte créé ! Ton e-mail n'a pas pu être envoyé automatiquement — voici le lien de confirmation à coller dans ton navigateur.",
         "email": email,
         "email_sent": sent,
         # The frontend uses this to poll /auth/verification-status and unlock
@@ -690,11 +690,12 @@ async def register(payload: RegisterRequest, request: Request):
         # (possibly in another tab from their email client).
         "verification_token": token,
         "expires_in_seconds": 5 * 60,
+        # iter59: ALWAYS expose the verification link so the frontend can
+        # offer a "copy / open" fallback in case the e-mail never arrives
+        # (Resend sandbox, spam folder, typo etc.). This is safe — the link
+        # already requires the single-use token to do anything.
+        "verification_link": verify_url,
     }
-    if not sent:
-        # Demo mode: expose the link so the user can click it without
-        # configuring an email provider. Aligned with the existing SMS demo.
-        response["verification_link"] = verify_url
     return response
 
 
@@ -831,14 +832,14 @@ async def resend_verification(payload: ResendRequest, request: Request):
     sent = await send_verification_email(email, verify_url)
     resp = {
         "message": "Nouveau lien envoyé ! Tu as 5 minutes." if sent
-        else "Nouveau lien généré (mode démo — aucun email envoyé).",
+        else "Nouveau lien généré. L'e-mail n'a pas pu être envoyé automatiquement — utilise le lien ci-dessous.",
         "email": email,
         "email_sent": sent,
         "verification_token": token,
         "expires_in_seconds": 5 * 60,
+        # iter59: always expose the link as a copy/open fallback
+        "verification_link": verify_url,
     }
-    if not sent:
-        resp["verification_link"] = verify_url
     return resp
 
 
@@ -1299,7 +1300,7 @@ async def send_reset_email(to_email: str, reset_url: str) -> bool:
     resend_key = os.environ.get("RESEND_API_KEY")
     if not resend_key:
         return False
-    sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
+    sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
     reply_to = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -1591,7 +1592,7 @@ async def submit_feedback(payload: FeedbackRequest, request: Request):
     admin = os.environ.get("FEEDBACK_INBOX_EMAIL", "elsa.barroca2@gmail.com")
     if resend_key:
         try:
-            sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
+            sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
             # Build HTML attachments preview (URLs + filenames, no email exposure)
             atts_html = ""
             email_attachments = []
@@ -7194,7 +7195,7 @@ async def auth_theft_email_request(payload: TheftEmailIn):
         resend_key = os.environ.get("RESEND_API_KEY")
         if resend_key:
             try:
-                sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
+                sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     await client.post(
                         "https://api.resend.com/emails",

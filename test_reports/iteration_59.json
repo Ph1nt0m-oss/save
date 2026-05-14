@@ -1,0 +1,37 @@
+{
+  "summary": "Iter59 backend validation — EMAIL_FROM rebranded to 'CodeForge AI <no-reply@resend.dev>' and verification_link is now ALWAYS exposed in /api/auth/register and /api/auth/resend-verification responses (backup for Resend sandbox). 8/8 pytest cases pass. Backend logs confirm Resend returns 403 for non-whitelisted recipients (expected sandbox behavior) AND ✅ 200 OK for 16.axelblaze.10@gmail.com (real send works). Smoke regressions on /api/system/site-mode, /api/accounts/delete-all (iter57 signature gate), /api/ideas/send anonymous (iter55) all green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/resend-verification-email", "issue": "Endpoint path mentioned in iter59 ticket does not exist — actual route is /api/auth/resend-verification (no -email suffix). Test was adjusted; main agent may want to align doc/ticket wording or add an alias if frontend expects -email."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter59_email_fallback.py",
+    "/app/test_reports/pytest/iter59_results.xml"
+  ],
+  "action_items": [
+    "Clarify endpoint name: ticket says /auth/resend-verification-email but code exposes /auth/resend-verification — verify Login.js calls the correct one.",
+    "(optional) Add explicit JSON 422 → 403 normalization on /api/accounts/delete-all if you want a cleaner 'forbidden' UX when payload is empty (currently pydantic returns 422)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 7341 lines — well past 700-line threshold. Strongly recommend splitting auth/email/accounts into modules; iter59 patch surface (4 EMAIL_FROM fallbacks duplicated) is a direct symptom of this.",
+    "EMAIL_FROM fallback string is duplicated in 4 places (L525, L1303, L1595, L7198). Extract to a module-level constant DEFAULT_EMAIL_FROM = os.environ.get('EMAIL_FROM', 'CodeForge AI <no-reply@resend.dev>') computed once at import.",
+    "verification_link is exposed in API responses even on success (email_sent=true). This is fine because the token is single-use, but you may want to log a security-relevant event when the link is consumed via copy-paste vs email click to detect anomalies."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter59_email_fallback.py (new — 8 pytest cases)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (not requested)"},
+  "test_credentials": "Used fresh per-test emails (test_iter59_<ts>@example.com). Resend-whitelisted email 16.axelblaze.10@gmail.com used for real-send branch.",
+  "seed_data_creation": "Created ~3 throwaway accounts with test_iter59_*@example.com (unverified, will expire/be cleaned via existing TTL).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter59 validated: (1) EMAIL_FROM env value is 'CodeForge AI <no-reply@resend.dev>'; grep 'no-reply@resend.dev' /app/backend/server.py = 4 hard-coded fallbacks (≥4 ✓). (2) POST /api/auth/register with fresh email returns 200 + email_sent=false + verification_link='https://<frontend>/verify-email?token=...' + French message 'Compte créé ! Ton e-mail n'a pas pu être envoyé automatiquement…'. (3) POST /api/auth/resend-verification (NOTE: real path, no -email suffix) returns 200 + verification_link always. (4) Backend logs confirm '✅ Password reset email sent to 16.axelblaze.10@gmail.com' → Resend send path works for whitelisted recipient. (5) /api/accounts/delete-all: empty body → 422 (pydantic), bogus signed payload → 403. (6) /api/ideas/send anonymous → 200. (7) /api/system/site-mode → 200. Frontend Login.js demoLink display not runtime-tested (only static grep in iter57 scope) — main agent can self-verify via UI.",
+  "rca of the issue": "Not a bug fix iteration — iter59 was a hardening change. Root cause of original email delivery problem: Resend account is in sandbox mode → only 16.axelblaze.10@gmail.com is whitelisted, so all other recipients get 403. Mitigation in iter59: (a) switch EMAIL_FROM to no-reply@resend.dev (their shared verified domain) so the sender side is no longer the failing piece; (b) ALWAYS surface verification_link in the API response so the user/frontend has a copy-paste fallback regardless of email_sent status. Confirmed working end-to-end via direct curl + pytest."
+}
