@@ -538,8 +538,9 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
 class RegisterRequest(BaseModel):
     email: str
     password: str
-    name: Optional[str] = None
-    frontend_url: Optional[str] = None  # origin from which the user will click the link
+    name: Optional[str] = None       # display name (legacy)
+    pseudo: Optional[str] = None     # required, unique nickname — see /auth/register
+    frontend_url: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -558,6 +559,20 @@ async def register(payload: RegisterRequest, request: Request):
     if len(payload.password) < 6:
         raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 6 caractères")
 
+    # Pseudo — required, unique, "Créatrice" reserved for the creator.
+    pseudo_raw = (payload.pseudo or payload.name or "").strip()
+    if not pseudo_raw or len(pseudo_raw) < 3:
+        raise HTTPException(status_code=400, detail="Le pseudo est requis (3 caractères minimum).")
+    if len(pseudo_raw) > 30:
+        raise HTTPException(status_code=400, detail="Le pseudo est trop long (30 max).")
+    if pseudo_raw.lower() == "créatrice" or pseudo_raw.lower() == "creatrice":
+        raise HTTPException(status_code=409, detail="Ce pseudo est réservé.")
+    # Uniqueness check (case-insensitive).
+    if await db.users.find_one(
+        {"pseudo_lower": pseudo_raw.lower(), "verified": True}, {"_id": 0, "user_id": 1},
+    ):
+        raise HTTPException(status_code=409, detail="Ce pseudo est déjà pris.")
+
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing and existing.get("verified"):
         raise HTTPException(status_code=409, detail="Un compte existe déjà avec cet email. Connecte-toi.")
@@ -573,6 +588,8 @@ async def register(payload: RegisterRequest, request: Request):
             {"$set": {
                 "password_hash": password_hash,
                 "name": payload.name or existing.get("name") or email.split("@")[0],
+                "pseudo": pseudo_raw,
+                "pseudo_lower": pseudo_raw.lower(),
                 "updated_at": now.isoformat(),
             }},
         )
@@ -583,6 +600,8 @@ async def register(payload: RegisterRequest, request: Request):
             "email": email,
             "password_hash": password_hash,
             "name": payload.name or email.split("@")[0],
+            "pseudo": pseudo_raw,
+            "pseudo_lower": pseudo_raw.lower(),
             "verified": False,
             "auth_type": "email",
             "created_at": now.isoformat(),
@@ -987,13 +1006,12 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     now = datetime.now(timezone.utc)
 
     # --- One-device-at-a-time approval flow ---------------------------------
-    # Triggered ONLY in `private` or `creator` site modes. In `public` mode
-    # the site is open to anyone, so two devices using the same email is
-    # fine — no approval needed. In `guest` mode users can't write anyway,
-    # so no point in gating.
-    site_mode = await _get_site_mode()
+    # If another active session exists for this account on a DIFFERENT device,
+    # block the login and queue a pending session request. The currently-
+    # connected device must approve from its UI. This applies regardless of
+    # site_mode — the email account itself is the unit of trust.
     requesting_key_id = (payload.device_key_id or "").strip() or None
-    if requesting_key_id and site_mode in ("private", "creator"):
+    if requesting_key_id:
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},
@@ -3942,24 +3960,25 @@ async def _log_decision(
     target_label: str = None,
     snapshot: dict = None,
 ):
-    """Append an audit record to `device_decisions` so the creator can keep
-    track of past actions even after the live state changes.
+    """Append an audit record to `device_decisions`.
 
-    For destructive actions (revoke/disconnect) we also snapshot the device's
-    public_key_jwk so the "Undo" action can fully recreate the entry.
-    Bounded to last 500 entries to keep storage in check."""
+    NOTE: only persists the 3 actions the user wants to see in the History
+    panel — approve (=> "Accepté"), revoke (=> "Refusé"), promote (=> "Créateur").
+    The destructive snapshot is kept so the "Annuler" button can fully
+    restore the device. Other actions (request_access, add_by_key, disconnect,
+    undo, register, block, unblock) are NOT logged."""
+    if action not in ("approve", "revoke", "promote"):
+        return
     row = {
-        "action": action,              # 'approve' | 'revoke' | 'disconnect' | 'promote' | 'add_by_key' | 'request_access' | 'register'
+        "action": action,
         "target_key_id": target_key_id,
         "target_label": target_label,
         "by_key_id": by_key_id,
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     if snapshot:
-        # Strip mongo internals — store only what we need to recreate.
         row["snapshot"] = {k: v for k, v in snapshot.items() if k != "_id"}
     await db.device_decisions.insert_one(row)
-    # Bound the collection (delete oldest beyond 500).
     total = await db.device_decisions.count_documents({})
     if total > 500:
         olds = await db.device_decisions.find({}, {"_id": 1}).sort("ts", 1).limit(total - 500).to_list(length=total - 500)
@@ -4084,19 +4103,27 @@ async def device_verify(payload: DeviceVerifyIn):
     role = dev.get("role")
     effective_role = role
     can_access = True
-    if role == "revoked":
+    kick_reason = None  # localized message key — frontend translates
+    if role == "blocked":
         can_access = False
+        kick_reason = "kick_blocked"
+    elif role == "revoked":
+        can_access = False
+        kick_reason = "kick_revoked"
     elif site_mode == "private":
-        # Anyone with a registered device can BROWSE in guest mode, but only
-        # creator/approved get write privileges.
         if role not in ("creator", "approved"):
+            # In private, non-approved devices are kicked AS WRITERS but can
+            # still browse read-only via the explicit "Guest view" link the
+            # frontend shows in the kick overlay.
+            can_access = False
             effective_role = "guest"
+            kick_reason = "kick_private"
     elif site_mode == "creator":
-        # Strict: only creator devices may use the site.
         if role != "creator":
             can_access = False
+            kick_reason = "kick_creator_only"
     elif site_mode == "guest":
-        # Everyone allowed, but UI enforces read-only for non-authenticated.
+        # Whole site is read-only. Everyone allowed.
         if role not in ("creator", "approved"):
             effective_role = "guest"
 
@@ -4106,15 +4133,19 @@ async def device_verify(payload: DeviceVerifyIn):
         "effective_role": effective_role,
         "can_access": can_access,
         "site_mode": site_mode,
+        "kick_reason": kick_reason,
     }
 
 
 @api_router.get("/system/site-mode")
 async def get_site_mode_public():
-    """Public — anyone can read the current site mode (used by the Landing/Login
-    to gate access)."""
-    mode = await _get_site_mode()
-    return {"mode": mode}
+    """Public — anyone can read the current site mode + (in guest mode)
+    the optional view-forcing setting set by the creator."""
+    doc = await db.site_config.find_one({"_id": "site_mode"}, {"_id": 0, "mode": 1, "guest_view": 1})
+    return {
+        "mode": (doc or {}).get("mode") or "public",
+        "guest_view": (doc or {}).get("guest_view"),
+    }
 
 
 class SiteModeSetIn(BaseModel):
@@ -4122,20 +4153,56 @@ class SiteModeSetIn(BaseModel):
     key_id: str
     nonce: str
     signature: str
+    guest_view: Optional[str] = None  # 'creator' | 'user' | None (free)
 
 
 @api_router.put("/system/site-mode")
 async def set_site_mode(payload: SiteModeSetIn):
-    """Creator-only. Toggle site mode."""
+    """Creator-only. Toggle site mode AND kick devices that no longer have
+    access under the new mode (their next /devices/verify poll will return
+    can_access=False with a localized kick_reason).
+
+    On switching to:
+      - 'creator' → all non-creator user_sessions are deleted (full lockout)
+      - 'private' → non-(creator|approved) user_sessions are deleted
+      - 'public'  → nothing forced
+      - 'guest'   → nothing forced (everyone goes read-only via UI)
+    """
     if payload.mode not in VALID_SITE_MODES:
         raise HTTPException(status_code=400, detail="Mode invalide.")
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+
+    # Optional sub-view forcing for guest mode. The client may send
+    #   {mode:"guest", guest_view:"creator"|"user"|null}
+    # to lock visitors into a specific view; null = visitor's choice.
+    guest_view = getattr(payload, 'guest_view', None)
+
     await db.site_config.update_one(
         {"_id": "site_mode"},
-        {"$set": {"mode": payload.mode, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {
+            "mode": payload.mode,
+            "guest_view": guest_view if payload.mode == "guest" else None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
         upsert=True,
     )
-    return {"mode": payload.mode}
+
+    # Kick affected sessions.
+    if payload.mode == "creator":
+        # Find all device_keys that are NOT creator and delete their sessions.
+        non_creator = await db.device_keys.find(
+            {"role": {"$ne": "creator"}}, {"_id": 0, "key_id": 1},
+        ).to_list(length=1000)
+        for d in non_creator:
+            await db.user_sessions.delete_many({"device_key_id": d["key_id"]})
+    elif payload.mode == "private":
+        non_approved = await db.device_keys.find(
+            {"role": {"$nin": ["creator", "approved"]}}, {"_id": 0, "key_id": 1},
+        ).to_list(length=1000)
+        for d in non_approved:
+            await db.user_sessions.delete_many({"device_key_id": d["key_id"]})
+
+    return {"mode": payload.mode, "guest_view": guest_view}
 
 
 class CreatorOnlyIn(BaseModel):
@@ -4442,31 +4509,82 @@ class SendToCreatorIn(BaseModel):
 @api_router.post("/devices/send-to-creator")
 async def devices_send_to_creator(payload: SendToCreatorIn):
     """Anyone with a valid registered device can use this to nudge the creator.
-    Verifies the caller actually owns the key (sig over nonce). Tags the
-    requester's device as 'pending' so it shows up in the creator's pending
-    queue (and the notification bell badge ticks)."""
+    Blocked devices get a specific localized error. Otherwise the device's
+    role becomes (or stays) 'pending' so the creator sees them in the queue."""
     dev = await _device_by_key(payload.key_id)
     if not dev:
         raise HTTPException(status_code=404, detail="Appareil inconnu.")
+    if dev.get("role") == "blocked":
+        # Specific, user-visible message — fragment used by the frontend.
+        raise HTTPException(
+            status_code=403,
+            detail="Votre demande a été formulée de nombreuses fois. Veuillez contacter le créateur.",
+        )
     if not await _consume_nonce(payload.key_id, payload.nonce):
         raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
     if not verify_signature(dev.get("public_key_jwk") or {}, payload.nonce, payload.signature):
         raise HTTPException(status_code=403, detail="Signature invalide.")
-    # If already creator or already pending — idempotent.
     if dev.get("role") in ("creator", "approved", "pending"):
-        # Already visible. Refresh last_seen so it bubbles up.
         await db.device_keys.update_one(
             {"key_id": payload.key_id},
             {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
         )
     else:
-        # 'revoked' → put back to 'pending' so the creator can re-decide.
         await db.device_keys.update_one(
             {"key_id": payload.key_id},
             {"$set": {"role": "pending", "last_seen_at": datetime.now(timezone.utc).isoformat()}},
         )
-    await _log_decision("request_access", payload.key_id, payload.key_id, dev.get("label"))
+    # NOTE: request_access is intentionally NOT logged in device_decisions —
+    # the creator's history only shows approve/revoke/promote per spec.
     return {"sent": True, "role": dev.get("role")}
+
+
+@api_router.post("/devices/block")
+async def devices_block(payload: DeviceTargetIn):
+    """Creator-only — hard-block a device. Blocked devices can never make
+    /devices/send-to-creator calls anymore. Their `role` becomes 'blocked'
+    (instead of being deleted, so the block survives unblock+reapprove)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    if payload.target_key_id == payload.key_id:
+        raise HTTPException(status_code=400, detail="Tu ne peux pas te bloquer toi-même.")
+    target = await _device_by_key(payload.target_key_id)
+    target_label = (target or {}).get("label")
+    if target:
+        await db.device_keys.update_one(
+            {"key_id": payload.target_key_id},
+            {"$set": {"role": "blocked", "blocked_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    else:
+        # Recreate a minimal "blocked" shell so future re-registrations
+        # under the same key_id stay blocked.
+        await db.device_keys.insert_one({
+            "key_id": payload.target_key_id,
+            "public_key_jwk": {},
+            "label": target_label,
+            "role": "blocked",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "blocked_at": datetime.now(timezone.utc).isoformat(),
+        })
+    await db.device_nonces.delete_many({"key_id": payload.target_key_id})
+    await db.user_sessions.delete_many({"device_key_id": payload.target_key_id})
+    # Block is shown as "Refusé" in the history (same intent), with snapshot.
+    await _log_decision("revoke", payload.target_key_id, payload.key_id, target_label, snapshot=target)
+    return {"success": True, "blocked": True}
+
+
+@api_router.post("/devices/unblock")
+async def devices_unblock(payload: DeviceTargetIn):
+    """Creator-only — unblock a previously-blocked device. The device's role
+    becomes 'pending' so the creator can decide again."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    target = await _device_by_key(payload.target_key_id)
+    if not target or target.get("role") != "blocked":
+        raise HTTPException(status_code=404, detail="Appareil non bloqué.")
+    await db.device_keys.update_one(
+        {"key_id": payload.target_key_id},
+        {"$set": {"role": "pending"}, "$unset": {"blocked_at": ""}},
+    )
+    return {"success": True}
 
 
 # ==========================================================================
@@ -5966,6 +6084,14 @@ async def ensure_indexes():
     """Create MongoDB indexes used by the email/password auth flow."""
     try:
         await db.users.create_index("email", unique=True, sparse=True)
+        await db.users.create_index(
+            "pseudo_lower",
+            unique=True,
+            partialFilterExpression={
+                "verified": True,
+                "pseudo_lower": {"$type": "string"},
+            },
+        )
         await db.email_verifications.create_index("token", unique=True)
         await db.email_verifications.create_index("user_id")
         await db.user_sessions.create_index("session_token", unique=True)

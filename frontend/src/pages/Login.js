@@ -246,10 +246,17 @@ export default function Login() {
 
     try {
       if (mode === 'signup') {
+        const pseudoTrimmed = name.trim();
+        if (!pseudoTrimmed || pseudoTrimmed.length < 3) {
+          toast.error('Le pseudo est requis (3 caractères minimum).');
+          setSubmitting(false);
+          return;
+        }
         const { data } = await axios.post(`${API}/auth/register`, {
           email: email.trim(),
           password,
-          name: name.trim() || undefined,
+          name: pseudoTrimmed,
+          pseudo: pseudoTrimmed,
           frontend_url: window.location.origin,
         });
         /* email non persisté (sécurité) */
@@ -629,7 +636,9 @@ export default function Login() {
                 <input type="password" name="password" tabIndex={-1} autoComplete="current-password" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
                 {mode === 'signup' && (
                   <div>
-                    <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">{t('loginName')}</label>
+                    <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">
+                      {t('signup_pseudo_label')} <span className="text-red-400">*</span>
+                    </label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
                       <input
@@ -637,10 +646,14 @@ export default function Login() {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         data-testid="signup-name-input"
-                        placeholder="Ton nom"
+                        required
+                        minLength={3}
+                        maxLength={30}
+                        placeholder={t('signup_pseudo_placeholder')}
                         className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
                       />
                     </div>
+                    <p className="text-[10px] text-[#71717A] mt-1">{t('signup_pseudo_hint')}</p>
                   </div>
                 )}
 

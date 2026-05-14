@@ -1,0 +1,61 @@
+{
+  "summary": "Iter49 backend-only validation. 15/15 pytest cases PASS in 9.58s against the live preview URL. Verified ALL iter49 changes: (1) /auth/login one-device-at-a-time gate RESTORED for public mode (2nd device on same email → 202 session_pending_approval regardless of site_mode); (2) GET /system/site-mode now returns {mode, guest_view} (guest_view null when not in guest mode); (3) PUT /system/site-mode accepts optional guest_view and persists it ONLY when mode='guest' (forced null otherwise); mode='creator' deletes ALL non-creator user_sessions (including 'approved'); mode='private' deletes non-(creator|approved) user_sessions (approved sessions preserved); (4) /devices/verify now returns kick_reason field (null in public for valid device; 'kick_creator_only' for non-creator when site_mode='creator'); (5) NEW /devices/block sets role='blocked' on existing device AND creates a 'blocked' shell row if the device didn't exist (preemptive block); (6) /devices/send-to-creator from a blocked device returns 403 with the exact French message 'Votre demande a été formulée de nombreuses fois. Veuillez contacter le créateur.' — the blocked check correctly fires BEFORE the nonce consume, so the dummy-nonce path is tested; (7) NEW /devices/unblock restores role to 'pending' and unsets blocked_at; (8) _log_decision filter — after /devices/send-to-creator NO 'request_access' row is appended, after /devices/approve exactly ONE 'approve' row IS appended; (9) RegisterRequest pseudo validation: missing → 400 ('Le pseudo est requis'); too short ('Cr') → 400; 'Créatrice'/'creatrice' → 409 ('Ce pseudo est réservé'); duplicate verified pseudo → 409. The partial unique index on pseudo_lower ({verified:true, pseudo_lower:{$type:'string'}}) correctly enforces uniqueness only for verified accounts. Final state verified via mongosh: site_mode={mode:'public', guest_view:null}, kept creator dev_a797... untouched with role='creator', 0 leftover TEST_iter49 rows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /devices/block",
+        "issue": "When creating a 'blocked' shell row for an unknown device, `public_key_jwk` is stored as {} — a legitimate JWK shape. If the same key_id later attempts to register the SAME public_key_jwk via /devices/register, the existing 'blocked' row will be overwritten? Worth verifying: looking at /devices/register flow, the block survives unblock+reapprove per the spec, but a fresh registration with the same key_id might wipe blocked_at. Suggest /devices/register reject or preserve role when an existing 'blocked' row matches."
+      },
+      {
+        "endpoint": "POST /devices/send-to-creator (blocked branch)",
+        "issue": "The blocked-check fires BEFORE nonce/signature validation, which is intentional for UX (no signature required to receive the block-notice), but it ALSO means any caller who knows a blocked key_id can probe the system to confirm it is blocked. Low impact (key_id is already exposed elsewhere), but worth noting."
+      },
+      {
+        "endpoint": "POST /auth/register",
+        "issue": "Pseudo collision check uses `verified: true` — a malicious actor could register an unverified account with someone else's pseudo, then if the victim later tries to register with that pseudo before the squatter verifies (5 min TTL), it'll work. The current 5-min TTL bounds the squat, but consider rejecting pseudo collisions even on unverified rows OR auto-deleting unverified rows when a fresh registration claims the same pseudo."
+      },
+      {
+        "endpoint": "general",
+        "issue": "Carry-over: server.py is now 6151 lines (was 6025 in iter48, +126 for iter49). Still recommend extracting /devices/* and /system/* into their own routers."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter49_pseudo_kick_block.py",
+    "/app/test_reports/pytest/iter49_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Decide whether /devices/register should preserve 'blocked' role for shell rows when the same key_id later registers a real public_key_jwk.",
+    "(Optional) Tighten pseudo uniqueness to also cover unverified rows (or wipe unverified row on collision).",
+    "(Optional) Cache _get_site_mode() (already noted in iter48) — still relevant since the gate is now hit on EVERY login attempt that supplies a device_key_id."
+  ],
+  "critical_code_review_comments": [
+    "/auth/login (server.py L1008-1070) — the one-device gate is now UNCONDITIONAL (no more site_mode check). The $nin: [None, requesting_key_id] query correctly excludes both legacy sessions (no device_key_id) and the same-device re-login case. Spec-correct.",
+    "/system/site-mode PUT (server.py L4159-4205) — correctly nulls guest_view when mode != 'guest'. Kick logic uses two separate find/delete loops; could be merged into a single aggregation or a $in delete but the cardinality is bounded (length=1000). Safe but not maximally efficient.",
+    "/devices/verify (server.py L4082-4137) — kick_reason ordering: blocked > revoked > site-mode-driven. Correct precedence: device-level state (blocked/revoked) takes priority over mode-level kicks. Note that 'guest' mode never sets kick_reason (everyone allowed, with effective_role downgraded to 'guest') — matches the read-only intent.",
+    "/devices/block (server.py L4542-4572) — calls _log_decision with action='revoke' so the History panel shows 'Refusé' (per the iter49 spec comment). The snapshot is captured BEFORE the role flip so the audit trail keeps the original device label/jwk. Self-block protection (target == caller) returns 400.",
+    "/devices/unblock (server.py L4575-4587) — uses $unset on blocked_at. Returns 404 if role != 'blocked' (correct — can't unblock something that isn't blocked).",
+    "/devices/send-to-creator (server.py L4509-4539) — blocked check fires FIRST (before nonce consume), which lets the frontend render the localized message without burning a nonce. Spec-correct, see minor issue about probe exposure.",
+    "_log_decision (server.py L3956-3985) — action whitelist is now ('approve','revoke','promote'). Other actions become silent no-ops. Bounded at 500 rows. The 'block' action reuses 'revoke' so the history stays unified — clever, but means a creator looking at audit logs can't distinguish a hard block from a regular revoke without the snapshot's role context.",
+    "RegisterRequest pseudo validation (server.py L562-574) — order is good: empty/short → 400, too long → 400, reserved → 409, duplicate → 409. The case-insensitive reserved check covers both 'Créatrice' and 'creatrice'. The partial unique index (L6087-6094) correctly only applies to verified rows with a string pseudo_lower, so pre-existing pre-iter49 users without pseudo_lower won't conflict."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter49_pseudo_kick_block.py (new — 15 tests, 9.58s, self-cleaning, restores site_mode=public+guest_view=null on teardown, deletes all TEST_iter49 rows)"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 from /app/memory/test_credentials.md. Used as-is.",
+  "seed_data_creation": "Test suite registers ~12 ephemeral ECDSA P-256 device keys labelled TEST_iter49_* (one temp_creator promoted to role='creator' via direct DB write; two pairs of devices for kick-logic A/B tests; verify pub+kickcre devices; block target; unblock target; logfilter target; one fake key_id for the preemptive-block shell test). Two ephemeral verified users (TEST_iter49_uniq_a/b) are created for the pseudo-uniqueness test and cleaned up by email regex. All cleanup happens in a module-scoped fixture teardown (device_keys, device_nonces, user_sessions, users, email_verifications). site_mode is reset to {mode:'public', guest_view:null} both at teardown AND in a final test (test_zz_final_site_mode_is_public). Verified post-run via mongosh.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter49 spec items verified GREEN. Regression file is /app/backend/tests/test_iter49_pseudo_kick_block.py — 9.58s, self-cleans, safe to re-run. CRITICAL: this suite temporarily switches site_mode to 'creator', 'private', 'guest' during tests but ALWAYS restores to {mode:'public', guest_view:null} (final fixture + zz_final test). The test_login_2nd_device_gated_in_public_mode test is the canary for the iter49 one-device-at-a-time restoration — if it ever returns 200 instead of 202 in public mode, iter48's site_mode gate has regressed in. The blocked-device send-to-creator test uses dummy nonce/signature strings because the blocked check fires before nonce consume — if that ordering ever changes, the test needs to call get_nonce()/sign_nonce(). Iter47/48 regression suites still expected to pass (they restore site_mode to public independently, so no cross-pollution).",
+  "rca of the issue": "No bugs. All 10 iter49 spec items work as specified: (1) login gate restored unconditionally; (2) site-mode PUT kicks per-mode rules with correct precedence; (3) verify exposes kick_reason; (4) blocked role + shell-row creation; (5) block-specific localized 403; (6) _log_decision filter narrowed to approve/revoke/promote only; (7) pseudo required + reserved + unique; (8) GET site-mode exposes guest_view. 15/15 tests pass in 9.58s. site_mode restored to public+null at end."
+}

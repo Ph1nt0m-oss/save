@@ -64,8 +64,11 @@ export default function useDeviceIdentity() {
         role: result.role || null,
         effectiveRole: effective,
         siteMode: result.site_mode || 'public',
+        guestView: result.guest_view || null,
         canAccess: !!result.can_access,
+        kickReason: result.kick_reason || null,
         pendingCount,
+        viewMode: readViewMode(),
         error: null,
       });
     } catch (e) {

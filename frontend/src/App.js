@@ -25,7 +25,18 @@ import useDeviceIdentity from './hooks/useDeviceIdentity';
 // and the current device is not a creator. Sits above every page.
 function GlobalSiteLock() {
   const device = useDeviceIdentity();
-  return <SiteLockedOverlay siteMode={device.siteMode} role={device.role} onRetry={() => device.refresh()} />;
+  // In guest-preview view we suppress the lock so creators / approved devs
+  // can preview as a guest would (still read-only via canWrite).
+  if (device.viewMode === 'guest') return null;
+  return (
+    <SiteLockedOverlay
+      siteMode={device.siteMode}
+      role={device.role}
+      kickReason={device.kickReason}
+      hasAccount={false}
+      onRetry={() => device.refresh()}
+    />
+  );
 }
 
 // Authenticated/heavy routes — lazy-loaded to shrink initial bundle

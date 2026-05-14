@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw, Undo2 } from 'lucide-react';
+import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw, Undo2, ShieldOff, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import SiteModeBadge from './SiteModeBadge';
 import useDeviceIdentity, { setStoredViewMode } from '../hooks/useDeviceIdentity';
@@ -12,11 +12,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const ACTION_META = {
   approve:        { tk: 'dec_approve',        color: 'text-emerald-300 border-emerald-400/40 bg-emerald-400/10' },
   revoke:         { tk: 'dec_revoke',         color: 'text-red-300 border-red-400/40 bg-red-400/10' },
-  disconnect:     { tk: 'dec_disconnect',     color: 'text-amber-300 border-amber-400/40 bg-amber-400/10' },
-  promote:        { tk: 'dec_promote',        color: 'text-[#E4FF00] border-[#E4FF00]/40 bg-[#E4FF00]/10' },
-  add_by_key:     { tk: 'dec_add_by_key',     color: 'text-sky-300 border-sky-400/40 bg-sky-400/10' },
-  request_access: { tk: 'dec_request_access', color: 'text-purple-300 border-purple-400/40 bg-purple-400/10' },
-  undo:           { tk: 'dec_undo',           color: 'text-amber-300 border-amber-400/40 bg-amber-400/10' },
+  promote:        { tk: 'dec_promote',        color: 'text-amber-300 border-amber-400/40 bg-amber-400/10' },
 };
 
 function downloadText(filename, content) {
@@ -72,6 +68,28 @@ export default function CreatorToolbar() {
     }
   };
 
+  const blockFromHistory = async (target_key_id) => {
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id });
+      await axios.post(`${API}/devices/block`, body);
+      toast.success(t('hist_blocked'));
+      loadDecisions();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('dm_op_failed'));
+    }
+  };
+
+  const unblockFromHistory = async (target_key_id) => {
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id });
+      await axios.post(`${API}/devices/unblock`, body);
+      toast.success(t('hist_unblocked'));
+      loadDecisions();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('dm_op_failed'));
+    }
+  };
+
   const clearHistory = async () => {
     if (!window.confirm(t('hist_clear_confirm'))) return;
     try {
@@ -99,11 +117,7 @@ export default function CreatorToolbar() {
     const labelMap = {
       approve: 'ACCEPTÉ',
       revoke: 'REFUSÉ',
-      disconnect: 'DÉCONNECTÉ',
-      promote: 'PROMU CRÉATEUR',
-      add_by_key: 'AJOUTÉ PAR CLÉ',
-      request_access: "DEMANDE D'ACCÈS",
-      undo: 'ANNULATION',
+      promote: 'CRÉATEUR',
     };
     const body = decisions.map((d) => {
       const action = labelMap[d.action] || d.action.toUpperCase();
@@ -117,6 +131,17 @@ export default function CreatorToolbar() {
 
   const isCreatorDevice = device.role === 'creator';
   const inGuestView = device.viewMode === 'guest';
+  // If creator forced a specific guest_view, sync localStorage so the
+  // visitor's view toggle reflects that locked state. Non-creator devices
+  // also lose the ability to toggle.
+  React.useEffect(() => {
+    if (device.siteMode === 'guest' && device.guestView) {
+      const targetMode = device.guestView === 'creator' ? 'guest' : 'creator';
+      setStoredViewMode(targetMode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [device.siteMode, device.guestView]);
+  const viewLocked = device.siteMode === 'guest' && !!device.guestView;
 
   return (
     <div className="inline-flex items-center gap-1.5 sm:gap-2 flex-wrap" data-testid="creator-toolbar">
@@ -124,6 +149,7 @@ export default function CreatorToolbar() {
         role={device.role}
         siteMode={device.siteMode}
         viewMode={device.viewMode}
+        guestView={device.guestView}
         onChange={() => device.refresh()}
       />
 
@@ -140,7 +166,7 @@ export default function CreatorToolbar() {
         </button>
       )}
 
-      {!isCreatorDevice && (
+      {!isCreatorDevice && !viewLocked && (
         <button
           type="button"
           onClick={() => setStoredViewMode(inGuestView ? 'creator' : 'guest')}
@@ -230,6 +256,11 @@ export default function CreatorToolbar() {
               )}
               {decisions.map((dec, i) => {
                 const meta = ACTION_META[dec.action] || { tk: 'dm_op_done', color: 'text-white border-white/20 bg-white/5' };
+                // Count how many "revoke" entries this same key has → after
+                // 2+ refusals show the BLOCK button prominently.
+                const refusedCount = decisions.filter(
+                  (x) => x.target_key_id === dec.target_key_id && x.action === 'revoke',
+                ).length;
                 return (
                   <div
                     key={`${dec.target_key_id}-${dec.ts}-${i}`}
@@ -243,15 +274,48 @@ export default function CreatorToolbar() {
                       <div className="text-[10px] text-[#71717A]">
                         {new Date(dec.ts).toLocaleString()}
                       </div>
-                      <button
-                        onClick={() => undoFromHistory(dec.target_key_id, dec.ts)}
-                        data-testid={`history-undo-${dec.target_key_id}`}
-                        title={t('hist_undo')}
-                        className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-amber-400/40 text-amber-300 hover:bg-amber-400/20 rounded-sm transition"
-                      >
-                        <Undo2 className="w-3 h-3" />
-                        {t('hist_undo')}
-                      </button>
+                      <div className="ml-auto flex items-center gap-1">
+                        {dec.action === 'revoke' && refusedCount >= 2 && (
+                          <button
+                            onClick={() => blockFromHistory(dec.target_key_id)}
+                            data-testid={`history-block-${dec.target_key_id}`}
+                            title={t('hist_block')}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-red-500/60 text-red-200 hover:bg-red-500/30 rounded-sm transition"
+                          >
+                            <ShieldOff className="w-3 h-3" />
+                            {t('hist_block')}
+                          </button>
+                        )}
+                        {dec.action === 'revoke' && refusedCount < 2 && (
+                          <button
+                            onClick={() => blockFromHistory(dec.target_key_id)}
+                            data-testid={`history-block-${dec.target_key_id}`}
+                            title={t('hist_block')}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-red-400/30 text-red-300/70 hover:bg-red-400/10 hover:text-red-200 rounded-sm transition"
+                          >
+                            <ShieldOff className="w-3 h-3" />
+                            {t('hist_block')}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => unblockFromHistory(dec.target_key_id)}
+                          data-testid={`history-unblock-${dec.target_key_id}`}
+                          title={t('hist_unblock')}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-emerald-400/30 text-emerald-300/70 hover:bg-emerald-400/10 hover:text-emerald-200 rounded-sm transition"
+                        >
+                          <ShieldCheck className="w-3 h-3" />
+                          {t('hist_unblock')}
+                        </button>
+                        <button
+                          onClick={() => undoFromHistory(dec.target_key_id, dec.ts)}
+                          data-testid={`history-undo-${dec.target_key_id}`}
+                          title={t('hist_undo')}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-amber-400/40 text-amber-300 hover:bg-amber-400/20 rounded-sm transition"
+                        >
+                          <Undo2 className="w-3 h-3" />
+                          {t('hist_undo')}
+                        </button>
+                      </div>
                     </div>
                     {dec.target_label && (
                       <div className="text-xs text-white truncate">{dec.target_label}</div>

@@ -12,7 +12,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  * - If `role === 'creator'`: interactive dropdown that PUTs /system/site-mode.
  * - Otherwise: read-only badge showing current mode.
  */
-export default function SiteModeBadge({ role, siteMode, viewMode, onChange, className = '' }) {
+export default function SiteModeBadge({ role, siteMode, viewMode, guestView, onChange, className = '' }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -26,14 +26,14 @@ export default function SiteModeBadge({ role, siteMode, viewMode, onChange, clas
 
   const current = MODES.find((m) => m.id === siteMode) || MODES[0];
   const Icon = current.icon;
-  // In guest preview view, even creators see the read-only badge.
   const isCreator = role === 'creator' && viewMode !== 'guest';
 
-  const setMode = async (mode) => {
-    if (!isCreator || saving || mode === siteMode) { setOpen(false); return; }
+  const setMode = async (mode, gview = null) => {
+    if (!isCreator || saving) { setOpen(false); return; }
+    if (mode === siteMode && (mode !== 'guest' || gview === guestView)) { setOpen(false); return; }
     setSaving(true);
     try {
-      const body = await withCreatorProof(API, axios, { mode });
+      const body = await withCreatorProof(API, axios, { mode, guest_view: gview });
       const r = await axios.put(`${API}/system/site-mode`, body);
       const resolvedMode = r.data?.mode || mode;
       const resolved = MODES.find((m) => m.id === resolvedMode);
@@ -127,7 +127,7 @@ export default function SiteModeBadge({ role, siteMode, viewMode, onChange, clas
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setMode(m.id)}
+                onClick={() => setMode(m.id, m.id === 'guest' ? guestView : null)}
                 disabled={saving}
                 data-testid={`site-mode-option-${m.id}`}
                 className={`w-full text-left px-3 py-2 text-xs hover:bg-white/[0.05] flex items-start gap-2 ${
@@ -143,6 +143,35 @@ export default function SiteModeBadge({ role, siteMode, viewMode, onChange, clas
               </button>
             );
           })}
+          {/* Guest sub-views: pick which view visitors see (or leave free). */}
+          {siteMode === 'guest' && (
+            <div className="border-t border-white/10 mt-1 pt-1 px-3 py-2 space-y-1.5" data-testid="guest-view-options">
+              <div className="text-[10px] uppercase tracking-widest text-[#71717A]">{t('sm_guest_view_lock')}</div>
+              {[
+                { id: null,       labelKey: 'sm_guest_view_free' },
+                { id: 'user',     labelKey: 'sm_guest_view_force_user' },
+                { id: 'creator',  labelKey: 'sm_guest_view_force_creator' },
+              ].map((opt) => {
+                const sel = (guestView || null) === opt.id;
+                return (
+                  <button
+                    key={String(opt.id)}
+                    type="button"
+                    onClick={() => setMode('guest', opt.id)}
+                    disabled={saving}
+                    data-testid={`guest-view-opt-${opt.id || 'free'}`}
+                    className={`w-full text-left text-[11px] px-2 py-1 rounded-sm transition flex items-center gap-2 ${
+                      sel ? 'bg-[#E4FF00]/15 text-[#E4FF00]' : 'text-white hover:bg-white/[0.05]'
+                    }`}
+                  >
+                    {sel && <Check className="w-3 h-3 flex-shrink-0" />}
+                    {!sel && <span className="w-3 h-3 inline-block flex-shrink-0" />}
+                    {t(opt.labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

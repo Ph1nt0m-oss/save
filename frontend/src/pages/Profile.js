@@ -438,8 +438,7 @@ export default function Profile() {
                   <div className="mb-2">
                     <code
                       data-testid="profile-device-share-code"
-                      className="block w-full text-[11px] text-emerald-300 bg-black/40 px-2 py-2 rounded-sm overflow-x-auto whitespace-nowrap border border-white/10 mb-2"
-                      style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+                      className="block w-full text-[11px] text-emerald-300 bg-black/40 px-2 py-2 rounded-sm break-all border border-white/10 mb-2 font-mono leading-relaxed"
                     >
                       {deviceShareCode}
                     </code>
