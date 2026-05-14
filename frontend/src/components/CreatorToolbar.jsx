@@ -153,18 +153,8 @@ export default function CreatorToolbar() {
         onChange={() => device.refresh()}
       />
 
-      {isCreatorDevice && (
-        <button
-          type="button"
-          onClick={() => setHistoryOpen(true)}
-          data-testid="open-history-btn"
-          title={t('dm_history')}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:text-white hover:bg-white/[0.08] transition-colors"
-        >
-          <History className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">{t('dm_history')}</span>
-        </button>
-      )}
+      {/* History panel removed in iter57: the right-side panel is now
+          reserved for the Messages drawer. */}
 
       {!isCreatorDevice && !viewLocked && (
         <button

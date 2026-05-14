@@ -6702,6 +6702,33 @@ async def accounts_delete_user_project(payload: _TargetCreatorSigIn):
     return {"success": True, "matched": r.matched_count}
 
 
+@api_router.post("/accounts/delete-one")
+async def accounts_delete_one(payload: _TargetCreatorSigIn):
+    """Creator-only — fully delete an account (device_key + cascade)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    target_key_id = payload.target_key_id
+    if target_key_id == payload.key_id:
+        raise HTTPException(status_code=400, detail="Impossible de supprimer ton propre compte ici.")
+    target = await db.device_keys.find_one({"key_id": target_key_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+    # Cascade: keep messages/projects for audit but mark the device_key gone.
+    await db.device_keys.delete_one({"key_id": target_key_id})
+    if target.get("email"):
+        await db.user_sessions.delete_many({"email": target["email"]})
+    await _log_account_event("delete_account", target_key_id, target.get("label"))
+    return {"success": True}
+
+
+@api_router.post("/accounts/delete-all")
+async def accounts_delete_all(payload: _CreatorSigIn):
+    """Creator-only — delete EVERY other account. Self preserved."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    r = await db.device_keys.delete_many({"key_id": {"$ne": payload.key_id}})
+    await _log_account_event("delete_all_accounts", payload.key_id, extra={"deleted": r.deleted_count})
+    return {"success": True, "deleted": r.deleted_count}
+
+
 @api_router.post("/accounts/remove-creator")
 async def accounts_remove_creator(payload: _CreatorSigIn):
     """Creator-only — demote a creator device back to 'approved'.

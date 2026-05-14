@@ -169,13 +169,13 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm p-2 sm:p-4"
+      className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm"
       onClick={onClose}
       data-testid="messages-panel"
     >
-      <div
+      <aside
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl h-[85vh] sm:h-[80vh] bg-[#0A0A0A] border border-white/15 rounded-sm flex overflow-hidden"
+        className="absolute top-0 right-0 bottom-0 w-full sm:w-[460px] md:w-[540px] bg-[#0A0A0A] border-l border-white/15 shadow-[-20px_0_60px_rgba(0,0,0,0.6)] flex overflow-hidden"
       >
         {/* Inbox (creator) */}
         {isCreator && (
@@ -380,7 +380,7 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
             </div>
           )}
         </section>
-      </div>
+      </aside>
     </div>
   );
 }

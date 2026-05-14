@@ -36,13 +36,20 @@ export default function AccountsButton({ onVisitAccount }) {
   const { t } = useLanguage();
   const isCreator = device.role === 'creator' && device.viewMode !== 'guest';
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState('list'); // 'list' | 'history'
   const [accounts, setAccounts] = useState([]);
-  const [history, setHistory] = useState([]);
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [excluding, setExcluding] = useState(null); // {target, label}
   const [removing, setRemoving] = useState(false);
+  // Local-only "view-cleared" filter (per creator device). Stores the
+  // key_ids we want to hide without touching the DB. Restored via Reset.
+  const [hidden, setHidden] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('codeforge_accounts_hidden') || '[]')); } catch (_) { return new Set(); }
+  });
+  const persistHidden = (set) => {
+    setHidden(new Set(set));
+    try { localStorage.setItem('codeforge_accounts_hidden', JSON.stringify([...set])); } catch (_) {}
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,19 +62,9 @@ export default function AccountsButton({ onVisitAccount }) {
     } finally { setLoading(false); }
   }, []);
 
-  const loadHistory = useCallback(async () => {
-    try {
-      const body = await withCreatorProof(API, axios, {});
-      const r = await axios.post(`${API}/accounts/history`, body);
-      setHistory(r.data?.history || []);
-    } catch (_) {}
-  }, []);
-
   useEffect(() => {
-    if (!open) return;
-    if (tab === 'list') load();
-    if (tab === 'history') loadHistory();
-  }, [open, tab, load, loadHistory]);
+    if (open) load();
+  }, [open, load]);
 
   if (!isCreator) return null;
 
@@ -98,6 +95,41 @@ export default function AccountsButton({ onVisitAccount }) {
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Erreur');
     }
+  };
+
+  const deleteOne = async (a) => {
+    if (!window.confirm(t('acc_delete_confirm').replace('{pseudo}', a.display || a.pseudo || ''))) return;
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id: a.key_id });
+      await axios.post(`${API}/accounts/delete-one`, body);
+      toast.success(t('acc_delete_done'));
+      await load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Erreur');
+    }
+  };
+
+  const deleteAll = async () => {
+    if (!window.confirm(t('acc_delete_all_confirm'))) return;
+    try {
+      const body = await withCreatorProof(API, axios, {});
+      const r = await axios.post(`${API}/accounts/delete-all`, body);
+      toast.success(t('acc_delete_done') + ` (${r.data?.deleted || 0})`);
+      await load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Erreur');
+    }
+  };
+
+  const clearView = () => {
+    const next = new Set([...accounts.filter((a) => a.key_id !== device.keyId).map((a) => a.key_id)]);
+    persistHidden(next);
+    toast.success(t('acc_clear_view_done'));
+  };
+
+  const resetView = () => {
+    persistHidden(new Set());
+    toast.success(t('acc_reset_view_done'));
   };
 
   const ban = async (a) => {
@@ -147,6 +179,7 @@ export default function AccountsButton({ onVisitAccount }) {
   };
 
   const filtered = (accounts || []).filter((a) => {
+    if (hidden.has(a.key_id)) return false;
     if (!filter) return true;
     const q = filter.toLowerCase();
     return ((a.display || '').toLowerCase().includes(q) ||
@@ -172,21 +205,12 @@ export default function AccountsButton({ onVisitAccount }) {
             <header className="px-3 py-3 border-b border-white/10 flex items-center gap-2 flex-shrink-0 flex-wrap">
               <Users className="w-4 h-4 text-[#E4FF00]" />
               <h2 className="text-sm font-['Chivo'] font-bold text-white">{t('acc_title')}</h2>
-              <div className="ml-2 flex items-center gap-1">
-                <button onClick={() => setTab('list')} className={`px-2 py-1 text-[11px] rounded-sm border ${tab === 'list' ? 'border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10' : 'border-white/10 text-[#A1A1AA]'}`} data-testid="accounts-tab-list">
-                  {t('acc_short')}
-                </button>
-                <button onClick={() => setTab('history')} className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-sm border ${tab === 'history' ? 'border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10' : 'border-white/10 text-[#A1A1AA]'}`} data-testid="accounts-tab-history">
-                  <HistoryIcon className="w-3 h-3" />{t('acc_history_title')}
-                </button>
-              </div>
               <button onClick={() => setOpen(false)} className="ml-auto text-[#A1A1AA] hover:text-white" aria-label="Close">
                 <X className="w-4 h-4" />
               </button>
             </header>
 
-            {tab === 'list' && (
-              <>
+            <>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-shrink-0">
                   <Search className="w-3.5 h-3.5 text-[#71717A]" />
                   <input
@@ -252,35 +276,36 @@ export default function AccountsButton({ onVisitAccount }) {
                             <ShieldOff className="w-3.5 h-3.5" />
                           </button>
                         )}
+                        {!isSelf && (
+                          <button
+                            title={t('acc_delete_btn')}
+                            onClick={() => deleteOne(a)}
+                            data-testid={`acc-delete-${a.key_id}`}
+                            className="p-1.5 border border-red-500/60 hover:bg-red-500/20 text-red-200 rounded-sm transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   )})}
                 </div>
-              </>
-            )}
-
-            {tab === 'history' && (
-              <>
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-shrink-0 flex-wrap">
-                  <button onClick={loadHistory} className="text-[11px] px-2 py-1 border border-white/15 text-[#A1A1AA] hover:text-white rounded-sm">⟳</button>
-                  <button onClick={exportHistory} disabled={!history.length} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 border border-sky-400/40 text-sky-300 hover:bg-sky-400/10 rounded-sm transition disabled:opacity-40"><Download className="w-3 h-3" />{t('acc_history_export')}</button>
-                  <button onClick={clearHistory} disabled={!history.length} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 border border-red-400/40 text-red-300 hover:bg-red-400/10 rounded-sm transition disabled:opacity-40 ml-auto"><Trash2 className="w-3 h-3" />{t('acc_history_clear')}</button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                  {history.length === 0 && <div className="text-xs text-[#A1A1AA] py-4 text-center">{t('acc_history_empty')}</div>}
-                  {history.map((h) => (
-                    <div key={h.event_id} className="bg-black/30 border border-white/10 rounded-sm p-2 text-xs">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="uppercase tracking-widest text-[9px] px-1.5 py-0.5 border border-white/15 rounded-sm text-white">{h.event}</span>
-                        <span className="text-[10px] text-[#71717A]">{new Date(h.ts).toLocaleString()}</span>
-                      </div>
-                      {h.target_label && <div className="text-white truncate mt-1">{h.target_label}</div>}
-                      <code className="block text-[10px] text-[#71717A] break-all">{h.target_key_id}</code>
-                    </div>
-                  ))}
+                {/* Bottom bar: clear-view (local-only) + delete-all (DB-level) */}
+                <div className="border-t border-white/10 px-3 py-2 flex items-center gap-2 flex-wrap flex-shrink-0">
+                  {hidden.size > 0 ? (
+                    <button onClick={resetView} data-testid="acc-reset-view" className="inline-flex items-center gap-1 text-[11px] px-2 py-1.5 border border-white/15 text-[#A1A1AA] hover:text-white rounded-sm transition">
+                      {t('acc_reset_view_btn')} ({hidden.size})
+                    </button>
+                  ) : (
+                    <button onClick={clearView} disabled={filtered.length === 0} data-testid="acc-clear-view" className="inline-flex items-center gap-1 text-[11px] px-2 py-1.5 border border-white/15 text-[#A1A1AA] hover:text-white rounded-sm transition disabled:opacity-40">
+                      {t('acc_clear_view_btn')}
+                    </button>
+                  )}
+                  <button onClick={deleteAll} data-testid="acc-delete-all" className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-1.5 border border-red-500/60 text-red-200 hover:bg-red-500/20 rounded-sm font-['Chivo'] font-bold transition">
+                    <Trash2 className="w-3 h-3" />{t('acc_delete_all_btn')}
+                  </button>
                 </div>
               </>
-            )}
           </div>
         </div>
       )}
