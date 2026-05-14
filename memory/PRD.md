@@ -17,17 +17,16 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-02-14 — Iter 47 (current)
-- **#1 Bouton "Révoquer" sur chaque ligne d'historique** → CreatorToolbar history side-panel.
-- **#2 "Révoqué" → "Annulé"** dans toutes les langues (FR + EN), `dec_revoke` + `role_revoked` mis à jour.
-- **#3 Bouton "Vider l'historique"** + endpoint `POST /api/devices/decisions/clear` (créateur uniquement) — supprime `device_decisions` sans toucher aux états réels.
-- **#4 Bouton "Exporter"** côté frontend → génère un .txt téléchargé `codeforge-history-YYYY-MM-DD.txt` avec toutes les entrées (clé complète + action + label).
-- **#5 Profile mobile fixé** : `overflow-hidden` → `overflow-x-hidden pb-16` ; section "Ma clé d'appareil" déplacée AVANT "Mot de passe oublié" (accessible sans scroll infini) ; layout stack mobile (clé sur sa ligne, boutons en dessous).
-- **#6 "Envoyer au créateur"** déjà fonctionnel via `/api/devices/send-to-creator` (côté toolbar Profile, non-créateurs uniquement).
-- **#7 Bouton Historique masqué pour non-créateurs** : `isCreatorDevice && (...)` dans CreatorToolbar.
-- **#8 Fix "session expirée" sur mobile** : poll → si `approved` → vérifier `/auth/me` avec le nouveau token AVANT navigate ; remplacement de `navigate()` par `window.location.replace('/dashboard')` (force re-bootstrap propre de l'AuthProvider, contourne tous les edge-cases mobile Safari).
-- **`/devices/revoke` idempotent** : accepte un target déjà supprimé (retourne `{success:true, existed:false}`) — nécessaire pour la révocation depuis l'historique.
-- **Backend testing** : 12/12 pass (iter_47.json), aucun bug critique.
+### 2026-02-14 — Iter 48 (current)
+- **Fix CRITIQUE #3** : Approval flow conditionnel sur `site_mode` → en mode `public` ou `guest`, plusieurs appareils peuvent se connecter sur le même email SANS approbation (l'utilisateur ne devait pas être bloqué en public). L'approbation ne se déclenche qu'en `private` ou `creator`.
+- **#1 "Annulé" → "Refusé"** dans les badges d'historique (action revoke). Le bouton à côté de chaque ligne devient **"Annuler"** (icône Undo2) au lieu de "Révoquer" (trash) — il appelle le nouvel endpoint `/devices/decisions/undo`.
+- **Nouvel endpoint `POST /api/devices/decisions/undo`** (créateur uniquement) : annule une décision en remettant l'appareil en `pending`, avec snapshot complet pour les actions destructives (revoke/disconnect recréent la ligne dans `device_keys` depuis le snapshot stocké sur la décision).
+- **`_log_decision`** étendu : snapshot du `public_key_jwk` + label sur les actions revoke/disconnect → permet une vraie restauration.
+- **#2 Profile mobile** : `min-h-[100dvh]` + `pb-32` avec `safe-area-inset-bottom` (iOS notch) ; section "Ma clé d'appareil" déplacée tout en bas du tab Info (après "Tes données RGPD") comme demandé. `touch-action: pan-x` sur le code pour que le swipe horizontal ne bloque pas le scroll vertical de la page.
+- **Backend testing** : 12/12 pass (iter_48.json), aucun bug critique.
+
+### Iter 47
+- 8 corrections : Revoke par ligne, Annulé/Refusé, Clear history, Export TXT, Profile mobile, Send to creator, mask History pour non-créateurs, fix session mobile.
 
 ### Iter 46
 - "session expired" idempotency, labels d'appareils lisibles, bannière d'attente enrichie, suppression "Appareils enregistrés" sur revoke/disconnect, "Envoyer au créateur" + side-panel historique.
