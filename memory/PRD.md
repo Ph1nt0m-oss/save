@@ -17,29 +17,27 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-02-14 — Iter 49 (current)
-**Backend (15/15 tests passing)** :
-- **Restauré** : Gmail one-device-at-a-time **indépendamment de site_mode** (le bug précédent a été corrigé en iter 46 via idempotency, donc OK de réactiver).
-- **`PUT /system/site-mode`** : accepte `guest_view` (forçage de vue pour les invités) ; déconnecte les sessions affectées au switch :
-  - `creator` → toutes sessions non-créateur supprimées
-  - `private` → sessions non-(creator/approved) supprimées
-- **`/devices/verify`** retourne `kick_reason` (`kick_creator_only`, `kick_private`, `kick_blocked`, `kick_revoked`, `null`)
-- **Nouveau role `blocked`** + endpoints `/devices/block` (créateur) et `/devices/unblock`
-- **`/devices/send-to-creator`** → 403 si bloqué avec message dédié "Votre demande a été formulée de nombreuses fois…"
-- **`_log_decision`** filtré : ne persiste QUE `approve`/`revoke`/`promote` (filtrage demandé)
-- **`/auth/register`** : `pseudo` requis (3-30 char), unique (index partial), `Créatrice` réservé
+### 2026-02-14 — Iter 50 (current)
+**Backend (19/19 tests passing)** :
+- **Cache `_get_site_mode()`** : in-memory 30s, invalidé sur PUT `/system/site-mode`.
+- **Cool-down `/devices/send-to-creator`** : 1 nudge / 10 min / clé d'appareil (429 si trop tôt).
+- **Système de messagerie privée bidirectionnelle** (créateur ↔ utilisateurs) :
+  - Collection `messages` + endpoints `/messages/send`, `/messages/inbox`, `/messages/thread`, `/messages/unread-count`, `/messages/delete-thread`
+  - Cool-down 30s par appareil sur `/messages/send` (exempté pour le créateur — il peut répondre rapidement à plusieurs utilisateurs)
+  - Limite 2000 chars/message, 100 threads dans l'inbox, 500 messages/thread
+  - Marquage de lecture automatique sur `/messages/thread`
+  - Blocage : appareils `blocked` reçoivent le même message localisé
 
 **Frontend** :
-- **SiteLockedOverlay** adapté avec `kickReason` + messages localisés + bouton "Voir en mode invité" (uniquement en mode private)
-- **CreatorToolbar** : history filtrée à 3 actions, badges **vert** (Accepté), **rouge** (Refusé), **orange** (Créateur) ; boutons **Bloquer** (renforcé après 2 refus) et **Débloquer** + bouton **Annuler** (undo)
-- **SiteModeBadge** : sous-options pour le mode `guest` (libre / forcer user / forcer creator)
-- **Profile** : clé d'appareil avec `break-all` (wrapping multiligne propre, plus de scroll horizontal)
-- **Login** : champ pseudo requis dans l'inscription, validation 3-30 chars
-- **Translations** ajoutées (FR+EN) : `kick_*`, `signup_pseudo_*`, `hist_block/unblock/blocked/unblocked`, `sm_guest_view_*`, `dec_promote` ("Créateur" au lieu de "Promu créateur")
+- **`MessagesPanel`** : UI bi-mode (inbox + conversation côté créateur, thread unique côté utilisateur). Auto-refresh 4s. Composer avec Ctrl+Enter.
+- **`MessageButton`** : variantes `floating` (FAB bouton flottant jaune, visible partout avec badge unread rouge) et `inline` (lien sur Login).
+- **`/login`** : lien "Envoyer un message au créateur" même en mode privé/créateur (sans être connecté).
 
-**Différé (Phase C, ~3-4h chaque)** :
-- Système de messagerie privée bidirectionnelle créateur ↔ utilisateur (depuis page de connexion même en privé)
-- Générations IA en arrière-plan (refactor major : nécessite background tasks + polling pour reprise après reconnexion)
+### Iter 49
+- Gmail one-device approval restauré, kick instantané sur switch site_mode, rôle `blocked`, /devices/block & unblock, historique filtré (Accepté/Refusé/Créateur), pseudo unique requis, view-mode dans guest sub-options.
+
+### Iter 48
+- Approval flow conditionnel sur site_mode (annulé en iter 49), "Annulé"→"Refusé", bouton Annuler (undo), Profile mobile scroll.
 
 ### Iter 46
 - "session expired" idempotency, labels d'appareils lisibles, bannière d'attente enrichie, suppression "Appareils enregistrés" sur revoke/disconnect, "Envoyer au créateur" + side-panel historique.

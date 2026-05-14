@@ -5016,8 +5016,10 @@ async def messages_send(payload: MessageSendIn):
             detail="Votre demande a été formulée de nombreuses fois. Veuillez contacter le créateur.",
         )
     # Cool-down (anti-flood, much shorter than send-to-creator's nudge cooldown).
+    # Exempt the creator so they can reply to several users in quick succession.
     last_msg_iso = sender.get("last_message_at")
-    if last_msg_iso:
+    is_creator_sender_quick = sender.get("role") == "creator"
+    if last_msg_iso and not is_creator_sender_quick:
         try:
             last_msg = datetime.fromisoformat(last_msg_iso)
             elapsed = (datetime.now(timezone.utc) - last_msg).total_seconds()
@@ -5100,7 +5102,6 @@ async def messages_inbox(payload: MessagesInboxIn):
         {"$limit": 100},
     ]
     rows = await db.messages.aggregate(pipeline).to_list(length=100)
-    # Enrich with device label/role.
     out = []
     for r in rows:
         dev = await _device_by_key(r["_id"]) or {}
@@ -5111,6 +5112,7 @@ async def messages_inbox(payload: MessagesInboxIn):
             "last_ts": r["last_ts"],
             "last_content": r["last_content"][:140],
             "last_is_from_creator": r["last_is_from_creator"],
+            "last_sender_label": r.get("last_sender_label"),
             "unread": r["unread"],
             "total": r["total"],
         })
