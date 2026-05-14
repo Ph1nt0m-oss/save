@@ -94,7 +94,7 @@ export default function Chat() {
   const sendMessage = async (e) => {
     if (e?.preventDefault) e.preventDefault();
     if (!canWrite) {
-      toast.error("Mode lecture seule — connecte-toi avec un compte approuvé pour écrire", { id: 'read-only' });
+      toast.error(t('ro_toast_write'), { id: 'read-only' });
       return;
     }
     const text = input.trim();
@@ -426,7 +426,7 @@ export default function Chat() {
               className="mb-2 px-3 py-2 bg-white/[0.04] border border-amber-400/30 rounded-sm text-xs text-amber-200 flex items-center gap-2"
             >
               <Lock className="w-3 h-3 flex-shrink-0" />
-              <span>Mode lecture seule — connecte-toi avec un compte approuvé par le créateur pour écrire.</span>
+              <span>{t('ro_chat_banner')}</span>
             </div>
           )}
           {pendingAtts.length > 0 && (
@@ -460,7 +460,7 @@ export default function Chat() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={canWrite ? t('chatPlaceholder') : 'Lecture seule — connexion requise pour écrire'}
+              placeholder={canWrite ? t('chatPlaceholder') : t('ro_chat_placeholder')}
               disabled={isLoading || !canWrite}
               rows={1}
               data-testid="chat-input"

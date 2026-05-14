@@ -53,7 +53,7 @@ export default function Create() {
     const userMessage = (overrideText ?? input).trim();
     if (!userMessage || isGenerating) return;
     if (!canWrite) {
-      toast.error("Mode lecture seule — connecte-toi avec un compte approuvé pour générer", { id: 'read-only' });
+      toast.error(t('ro_toast_generate'), { id: 'read-only' });
       return;
     }
 

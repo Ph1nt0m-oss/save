@@ -1,5 +1,6 @@
 import React from 'react';
 import { Crown, KeyRound, RefreshCw } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 /**
  * Full-screen overlay shown when the site is locked to creator-only mode
@@ -7,6 +8,7 @@ import { Crown, KeyRound, RefreshCw } from 'lucide-react';
  * except getting promoted (which requires possession of the creator's key).
  */
 export default function SiteLockedOverlay({ siteMode, role, onRetry }) {
+  const { t } = useLanguage();
   // Only show when access is strictly denied (creator-only mode + non-creator)
   if (siteMode !== 'creator' || role === 'creator') return null;
 
@@ -20,15 +22,14 @@ export default function SiteLockedOverlay({ siteMode, role, onRetry }) {
           <Crown className="w-8 h-8 text-[#E4FF00]" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-['Chivo'] font-bold text-white">Site verrouillé · Mode Créateur</h1>
+          <h1 className="text-2xl font-['Chivo'] font-bold text-white">{t('sl_title')}</h1>
           <p className="text-sm text-[#A1A1AA]">
-            Seuls les appareils marqués comme « créateur » peuvent accéder au site en ce moment.
-            Si tu penses que c'est une erreur, contacte le créateur pour qu'il t'autorise.
+            {t('sl_body')}
           </p>
         </div>
         <div className="flex items-center justify-center gap-2 text-xs text-[#71717A] bg-white/[0.03] border border-white/10 rounded-sm p-3">
           <KeyRound className="w-3.5 h-3.5 text-[#E4FF00]" />
-          <span>Ton identifiant d'appareil est enregistré et peut être ajouté par le créateur.</span>
+          <span>{t('sl_hint')}</span>
         </div>
         <button
           type="button"
@@ -37,7 +38,7 @@ export default function SiteLockedOverlay({ siteMode, role, onRetry }) {
           className="inline-flex items-center gap-2 px-4 py-2 border border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm transition"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          Réessayer
+          {t('sl_retry')}
         </button>
       </div>
     </div>

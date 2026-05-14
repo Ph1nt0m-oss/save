@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Globe, Lock, Crown, EyeOff, Check, ChevronDown } from 'lucide-react';import { toast } from 'sonner';
+import { Globe, Lock, Crown, EyeOff, Check, ChevronDown } from 'lucide-react';
+import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const MODES = [
-  { id: 'public',  label: 'Public',   icon: Globe,  hint: "Tout le monde peut accéder au site." },
-  { id: 'private', label: 'Privé',    icon: Lock,   hint: "Seuls les appareils approuvés." },
-  { id: 'creator', label: 'Créateur', icon: Crown,  hint: "Seuls les appareils créateurs." },
-  { id: 'guest',   label: 'Invité',   icon: EyeOff, hint: "Lecture seule pour les visiteurs." },
-];
 
 /**
  * 4-state site mode toggle.
@@ -18,8 +13,16 @@ const MODES = [
  * - Otherwise: read-only badge showing current mode.
  */
 export default function SiteModeBadge({ role, siteMode, onChange, className = '' }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const MODES = [
+    { id: 'public',  icon: Globe,  labelKey: 'sm_public',  hintKey: 'sm_public_hint'  },
+    { id: 'private', icon: Lock,   labelKey: 'sm_private', hintKey: 'sm_private_hint' },
+    { id: 'creator', icon: Crown,  labelKey: 'sm_creator', hintKey: 'sm_creator_hint' },
+    { id: 'guest',   icon: EyeOff, labelKey: 'sm_guest',   hintKey: 'sm_guest_hint'   },
+  ];
 
   const current = MODES.find((m) => m.id === siteMode) || MODES[0];
   const Icon = current.icon;
@@ -31,10 +34,13 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
     try {
       const body = await withCreatorProof(API, axios, { mode });
       const r = await axios.put(`${API}/system/site-mode`, body);
-      toast.success(`Mode du site : ${MODES.find((m) => m.id === r.data?.mode)?.label || mode}`);
-      onChange?.(r.data?.mode || mode);
+      const resolvedMode = r.data?.mode || mode;
+      const resolved = MODES.find((m) => m.id === resolvedMode);
+      const label = resolved ? t(resolved.labelKey) : resolvedMode;
+      toast.success(t('sm_changed_to').replace('{mode}', label));
+      onChange?.(resolvedMode);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Changement de mode impossible');
+      toast.error(e?.response?.data?.detail || t('sm_change_failed'));
     } finally {
       setSaving(false);
       setOpen(false);
@@ -52,12 +58,12 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
           type="button"
           onClick={() => setOpen((o) => !o)}
           className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:bg-white/[0.06] transition-colors"
-          title="Mode du site — seul le créateur peut le changer"
+          title={t('sm_tooltip')}
           data-testid="site-mode-readonly-toggle"
         >
           <Lock className="w-3 h-3" />
           <Icon className="w-3.5 h-3.5" />
-          <span>{current.label}</span>
+          <span>{t(current.labelKey)}</span>
           <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
         {open && (
@@ -66,7 +72,7 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
             className="absolute right-0 mt-1.5 w-56 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.6)] z-50 py-1"
           >
             <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-[#71717A] border-b border-white/10">
-              Réservé au créateur
+              {t('sm_creator_only_label')}
             </div>
             {MODES.map((m) => {
               const Mi = m.icon;
@@ -81,8 +87,8 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
                 >
                   <Mi className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                   <div className="min-w-0">
-                    <div className="font-['Chivo'] font-bold">{m.label}</div>
-                    <div className="text-[10px] text-[#A1A1AA]">{m.hint}</div>
+                    <div className="font-['Chivo'] font-bold">{t(m.labelKey)}</div>
+                    <div className="text-[10px] text-[#A1A1AA]">{t(m.hintKey)}</div>
                   </div>
                   {active && <Check className="w-3 h-3 ml-auto flex-shrink-0" />}
                 </div>
@@ -105,7 +111,7 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
       >
         <Crown className="w-3.5 h-3.5" />
         <Icon className="w-3.5 h-3.5" />
-        <span>{current.label}</span>
+        <span>{t(current.labelKey)}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -129,8 +135,8 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
               >
                 <Mi className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0">
-                  <div className="font-['Chivo'] font-bold">{m.label}</div>
-                  <div className="text-[10px] text-[#A1A1AA]">{m.hint}</div>
+                  <div className="font-['Chivo'] font-bold">{t(m.labelKey)}</div>
+                  <div className="text-[10px] text-[#A1A1AA]">{t(m.hintKey)}</div>
                 </div>
                 {active && <Check className="w-3 h-3 ml-auto flex-shrink-0" />}
               </button>

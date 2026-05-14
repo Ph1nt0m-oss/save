@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { Cpu, ChevronDown, Loader2, Sparkles, Brain, Code, Zap, Globe } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -44,6 +45,7 @@ const COLOR_RING = {
  *   - onChange: (modelId) => void
  */
 export default function ModelPicker({ mode = 'online', context = 'chat', value, onChange }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState({ online: [], offline: [] });

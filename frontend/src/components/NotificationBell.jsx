@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Bell } from 'lucide-react';
 import DeviceManager from './DeviceManager';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import { useLanguage } from '../contexts/LanguageContext';
 
 /**
  * Bell with a red counter — only visible to creator devices when pending
@@ -9,11 +10,17 @@ import useDeviceIdentity from '../hooks/useDeviceIdentity';
  */
 export default function NotificationBell({ className = '' }) {
   const device = useDeviceIdentity();
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
   if (device.role !== 'creator') return null;
 
   const count = device.pendingCount || 0;
+  const title = count === 0
+    ? t('nb_none')
+    : count === 1
+      ? t('nb_pending_one')
+      : t('nb_pending_many').replace('{n}', String(count));
   return (
     <>
       <button
@@ -21,7 +28,7 @@ export default function NotificationBell({ className = '' }) {
         onClick={() => { setOpen(true); }}
         data-testid="notification-bell"
         className={`relative inline-flex items-center justify-center w-9 h-9 rounded-sm border border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06] transition-colors ${className}`}
-        title={count > 0 ? `${count} appareil(s) en attente d'approbation` : 'Aucun appareil en attente'}
+        title={title}
       >
         <Bell className="w-4 h-4" />
         {count > 0 && (

@@ -2,6 +2,23 @@
 
 ## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
 
+### 14 Mai 2026 — Session 44 (suite 5) — i18n complète des 70 nouveaux libellés × 16 langues = 1120 traductions
+- **Injection automatique via script** `_inject_translations.py` : 70 clés (`sm_*`, `dm_*`, `role_*`, `nb_*`, `sl_*`, `um_*`, `ro_*`, `lp_*`, `mp_*`) ajoutées proprement dans chaque bloc langue, marquées par un commentaire `// ── Session-44 injected translations ──`. Idempotent : ré-exécutable sans duplication.
+- **Composants entièrement i18n** :
+  - `SiteModeBadge.jsx` : labels, hints, tooltip, header "Réservé au créateur", toast de changement de mode et toast d'erreur. **Tous les 4 modes (Public/Privé/Créateur/Invité) localisés avec hints détaillés**.
+  - `DeviceManager.jsx` : titre, "Ma clé d'appareil" + hint, "Ajouter par clé" + placeholder + bouton, "Appareils enregistrés", "Actualiser", "Chargement…", labels de rôles (Créateur/Approuvé/En attente/Révoqué), "moi", "Vu : ...", "Jamais connecté", boutons Approuver/Créateur/Déconnecter/Supprimer, modal de promotion (titre + hint + password placeholder + Annuler/Confirmer), tous les toasts.
+  - `NotificationBell.jsx` : tooltip dynamique avec pluralisation correcte (`nb_pending_one` vs `nb_pending_many` avec `{n}`).
+  - `SiteLockedOverlay.jsx` : titre, body, hint, bouton "Réessayer".
+  - `UserMenu.jsx` : "Mon profil & paramètres", "Autres identifiants", badge "créateur", "Déconnexion".
+  - `Chat.js` : bandeau lecture seule, placeholder lecture seule, toast d'erreur.
+  - `Create.js` : toast d'erreur génération en lecture seule.
+  - `Dashboard.js` : toast `requireWrite()` lecture seule.
+  - `ModelPicker.jsx` : "Modèles en ligne / hors-ligne", message "⚠ Moteur d'IA local non détecté".
+- **Tests visuels** : screenshots confirmés en **arabe (RTL)** ET **japonais** — les 4 modes affichent leurs labels et hints traduits + layout RTL correct en arabe.
+- **Lint global ✅** : tous les fichiers React + LanguageContext.js compilent sans erreur.
+- **Volume total** : 70 clés × 16 langues = **1120 nouvelles entrées de traduction** (en plus des ~140 d'arabe étendu en session précédente).
+
+
 ### 14 Mai 2026 — Session 44 (suite 4) — Gating UI complet + cloche notifications + dropdown 4-modes informatif
 - **🔒 Mode 'privé' → downgrade silencieux en 'guest'** :
   - Backend `/devices/verify` renvoie maintenant `effective_role`. En mode privé, les `pending`/inconnus reçoivent `effective_role='guest'` + `can_access=true` (peuvent BROWSER en lecture seule).

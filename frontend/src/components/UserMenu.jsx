@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import DeviceManager from './DeviceManager';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -42,6 +43,7 @@ function initials(name) {
 
 export default function UserMenu({ user, onLogout }) {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [stats, setStats] = useState(null);
   const [deviceManagerOpen, setDeviceManagerOpen] = useState(false);
   const device = useDeviceIdentity();
@@ -149,7 +151,7 @@ export default function UserMenu({ user, onLogout }) {
           className="px-3 py-2 cursor-pointer text-white hover:!bg-white/5 focus:bg-white/5"
         >
           <Settings className="w-4 h-4 mr-2" />
-          Mon profil & paramètres
+          {t('um_profile')}
         </DropdownMenuItem>
 
         <DropdownMenuItem
@@ -158,9 +160,9 @@ export default function UserMenu({ user, onLogout }) {
           className="px-3 py-2 cursor-pointer text-white hover:!bg-white/5 focus:bg-white/5"
         >
           <KeyRound className="w-4 h-4 mr-2" />
-          Autres identifiants
+          {t('um_devices')}
           {device.role === 'creator' && (
-            <span className="ml-auto text-[10px] uppercase tracking-widest text-[#E4FF00]">créateur</span>
+            <span className="ml-auto text-[10px] uppercase tracking-widest text-[#E4FF00]">{t('um_creator_badge')}</span>
           )}
         </DropdownMenuItem>
 
@@ -170,7 +172,7 @@ export default function UserMenu({ user, onLogout }) {
           className="px-3 py-2 cursor-pointer text-red-400 hover:!bg-red-500/10 hover:!text-red-400 focus:bg-red-500/10 focus:text-red-400"
         >
           <LogOut className="w-4 h-4 mr-2" />
-          Déconnexion
+          {t('um_logout')}
         </DropdownMenuItem>
       </DropdownMenuContent>
       <DeviceManager

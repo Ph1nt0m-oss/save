@@ -36,7 +36,7 @@ export default function Dashboard() {
   const canWrite = device.canWrite;
   const requireWrite = (action) => {
     if (canWrite) return true;
-    toast.error("Mode lecture seule — connecte-toi avec un compte approuvé pour écrire", { id: 'read-only' });
+    toast.error(t('ro_toast_write'), { id: 'read-only' });
     return false;
   };
   
