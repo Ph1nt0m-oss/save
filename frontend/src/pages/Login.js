@@ -10,6 +10,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from '../components/LanguageToggle';
 import CreatorToolbar from '../components/CreatorToolbar';
 import TheftRecoveryDialog from '../components/TheftRecoveryDialog';
+import MessageButton from '../components/MessageButton';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { rememberEmailForDevice, recallEmailForDevice } from '../lib/deviceIdentity';
 import { detectDeviceLabel } from '../lib/deviceLabel';
@@ -897,7 +898,8 @@ export default function Login() {
             <span>·</span>
             <CreatorToolbar />
           </div>
-          <div className="mt-3">
+          <div className="mt-3 flex flex-col items-center gap-2">
+            <MessageButton variant="inline" />
             <button
               type="button"
               onClick={() => setTheftOpen(true)}

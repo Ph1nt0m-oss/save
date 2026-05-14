@@ -1,0 +1,63 @@
+{
+  "summary": "Iter50 backend-only validation. 19/19 pytest cases PASS in 9.29s against the live preview URL. Verified ALL iter50 spec items: (1) GET /system/site-mode is served via an in-memory 30s cache, and PUT /system/site-mode invalidates that cache (next GET reflects new mode immediately — tested public→private→public round-trip). (2) /devices/send-to-creator now enforces a 10-minute per-device cool-down: first nudge returns 200 {sent:true}, immediate second call returns 429 with the message 'Tu as déjà envoyé une demande récemment…'. (3) NEW /messages/* endpoints fully validated: /messages/send (404 on unknown key_id, 400 on empty/>2000 content, 200 with valid signature for non-creator → stores doc with thread_key_id=sender, is_from_creator=false, read_by_user=true, read_by_creator=false; 30s anti-flood cooldown returns 429; creator without target_key_id → 400 'target_key_id requis'; creator WITH target_key_id → 200 and doc has thread_key_id=target, is_from_creator=true; blocked role → 403 with exact French message 'Votre demande a été formulée de nombreuses fois. Veuillez contacter le créateur.'). /messages/inbox: 403 for non-creator caller; creator-signed → 200 with threads array (each row has thread_key_id/label/role/last_ts/last_content/last_is_from_creator/unread/total). After /messages/thread by creator with thread_key_id, all incoming user messages in that thread are marked read_by_creator=true and the next inbox row shows unread=0. /messages/thread for a non-creator caller IGNORES any supplied thread_key_id and returns ONLY the caller's own thread (thread_key_id == caller.key_id); cross-thread leakage prevented. /messages/unread-count: creator returns total unread across all threads; non-creator returns count of unread creator replies in their own thread (cross-user replies do NOT count). /messages/delete-thread: 403 for non-creator; creator → deletes all messages in the supplied thread (deleted count matches pre-count). Final state verified via mongosh: site_mode={mode:'public', guest_view:null}, kept creator dev_a797438afc28c67923881d46ae2971c1 untouched (role='creator', label='PC Windows · Firefox'), 0 leftover TEST_iter50 rows, messages collection empty.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /messages/send (creator branch)",
+        "issue": "The order of validation is: content (empty/length) → device lookup → blocked check → cooldown → nonce/sig → is_creator_sender check → target_key_id required. This means a creator sending an empty message gets 400 'Message vide' rather than the more specific 'target_key_id requis'. Not a bug — just worth noting the precedence. The cooldown also applies to the creator on /messages/send, so the creator cannot send two replies within 30 seconds — that may surprise a creator answering multiple users in rapid succession. Consider exempting role=='creator' from the message cooldown."
+      },
+      {
+        "endpoint": "POST /messages/inbox",
+        "issue": "Aggregation `$limit: 100` is fine for now, but no `last_sender_label` is exposed in the response even though it's projected by the aggregation ($first). Frontend may want it to render the user's pseudo/label next to the last message preview. Currently it's dropped in the projection loop."
+      },
+      {
+        "endpoint": "POST /messages/thread",
+        "issue": "When a non-creator caller supplies a `thread_key_id` of someone else's thread, the server silently ignores it and substitutes their own. That's correct security-wise, but no warning is returned. A 400 might be friendlier UX so the client can't think it's reading another user's thread."
+      },
+      {
+        "endpoint": "POST /messages/unread-count",
+        "issue": "Uses MessagesThreadIn which carries an optional thread_key_id field — never read for this endpoint. Cosmetic; consider a dedicated input model to avoid confusion."
+      },
+      {
+        "endpoint": "general",
+        "issue": "Carry-over: server.py is now 6425 lines (was 6151 in iter49, +274 for iter50). /messages/* (224 lines) is a clean candidate for extraction into its own router module."
+      },
+      {
+        "endpoint": "_get_site_mode cache",
+        "issue": "The cache is a module-global tuple — perfect for a single worker. If the backend is ever scaled to multiple uvicorn workers, each worker keeps its own 30s cache and PUT /system/site-mode only invalidates the worker that handled the PUT. Other workers continue serving stale mode for up to 30s. Acceptable for the current single-worker supervisor setup, but worth documenting for future horizontal scaling."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter50_messaging.py",
+    "/app/test_reports/pytest/iter50_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Exempt creator from /messages/send 30s cooldown so they can reply to multiple users quickly.",
+    "(Optional) Expose `last_sender_label` in /messages/inbox response rows.",
+    "(Optional) Use a dedicated input model for /messages/unread-count.",
+    "(Optional) Document the per-worker cache caveat in /system/site-mode (or move cache to Redis/Mongo with a TTL doc when multi-worker)."
+  ],
+  "critical_code_review_comments": [
+    "_get_site_mode() (server.py L3948-3964) — clean implementation: module-global tuple cache, 30s window, monotonic clock (immune to wall-clock drift). _invalidate_site_mode_cache() simply nulls the tuple. PUT /system/site-mode (L4207) correctly invalidates right after the upsert. Good.",
+    "/messages/send (server.py L4994-5068) — Order of checks is well thought out: cheap content validation first (rejects garbage early), then device lookup, then blocked check (mirrors send-to-creator semantics), then cooldown (30s configurable via MESSAGE_COOLDOWN_SECONDS=30), then nonce consume + sig verify, then is_creator_sender branching. The is_creator_sender path correctly requires target_key_id AND validates the target exists (404 if not). Storage doc includes read_by_creator=is_creator_sender and read_by_user=!is_creator_sender — clean dual-flag for unread counts both ways. last_message_at is only updated on a SUCCESSFUL send (after the insert), which means failed sends (bad sig, bad nonce, etc.) do NOT consume the cooldown — that's good UX.",
+    "/messages/inbox (server.py L5077-5117) — Aggregation pipeline: sort by ts desc → group by thread_key_id → first(ts/content/is_from_creator/sender_label) → sum unread (only is_from_creator=False AND read_by_creator=False) → re-sort by last_ts desc → limit 100. Correct. Then enriches with device label+role via per-row find. N+1 query — if there are many threads, this could be slow. Consider a $lookup. Currently bounded at 100 threads × 1 device_keys lookup = fine.",
+    "/messages/thread (server.py L5127-5162) — Creator branch requires explicit thread_key_id (400 if missing) and marks incoming user msgs read. Non-creator branch FORCES thread_key_id = caller.key_id, which means a non-creator can NEVER read another user's thread, even by supplying that user's key_id. Solid security boundary.",
+    "/messages/unread-count (server.py L5165-5185) — Creator: count_documents on global filter (is_from_creator=False AND read_by_creator=False). Non-creator: count_documents on thread-scoped filter. Correct. Reuses MessagesThreadIn model (thread_key_id ignored) — see minor.",
+    "/messages/delete-thread (server.py L5195-5200) — Single line: delete_many on thread_key_id. Returns count. No cap. Consider a safety check that the thread actually belongs to a known device_keys row, but creator is trusted so probably fine.",
+    "/devices/send-to-creator cooldown (server.py L4541-4554) — last_nudge_at parsing wraps with broad try/except to gracefully handle corrupt data (re-raises HTTPException 429, swallows ValueError/TypeError). The 10-min window is hardcoded — could be a module constant for symmetry with MESSAGE_COOLDOWN_SECONDS.",
+    "MAX_MESSAGE_LEN = 2000 (server.py L4981) — module-level const. Tested at boundary: 2001 chars → 400. 2000 chars → 200 (implied by `>` not `>=`)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter50_messaging.py (new — 19 tests, 9.29s, self-cleaning; restores site_mode=public+guest_view=null on teardown; deletes all TEST_iter50_* devices, their messages, and any TEST_iter50_ prefixed message_ids)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 from /app/memory/test_credentials.md (not used in this iter — the messaging APIs are device-signed, not session-authed).",
+  "seed_data_creation": "Test suite registers ~6 ephemeral ECDSA P-256 device keys labelled TEST_iter50_* (tmpcreator promoted to role='creator' via direct DB write; user_a; user_b; blocked target; nudge target; flood target). Inserts ~5 ephemeral message docs with message_id prefix 'TEST_iter50_' for read/unread-count/delete-thread scenarios (bypasses /messages/send cooldown). All cleanup happens in a module-scoped teardown fixture: nukes devices by label regex AND by collected key_id list, nukes messages by from_key_id/thread_key_id IN list, restores site_mode={mode:'public', guest_view:null}. Verified post-run via mongosh: 0 leftover devices, 0 leftover messages, kept creator dev_a797... preserved.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter50 spec items verified GREEN. Regression file is /app/backend/tests/test_iter50_messaging.py — 9.29s, self-cleans, safe to re-run. CRITICAL: this suite (a) temporarily flips site_mode public→private→public (restored at teardown and via test_zz_final_site_mode_public), (b) sets one TEST device to role='blocked' to verify the localized 403, (c) inserts message docs directly into Mongo for inbox/thread/unread-count/delete-thread tests (to bypass the 30s cooldown). Iter47/48/49 regression suites still expected to pass — they each restore site_mode independently and use distinct TEST_iter47/48/49 label prefixes so no cross-pollution. Note: the /messages/send 30s cooldown means re-running the suite immediately is fine because each test uses a fresh device. If you ever want to test creator-send-twice, currently the creator IS subject to the cooldown (see action_items).",
+  "rca of the issue": "No bugs. All 16 spec items from the review request work as specified: (1) cache 30s + invalidation on PUT — verified; (2) send-to-creator 10-min cooldown 429 — verified; (3) /messages/send unknown key 404 — verified; (4) /messages/send valid → 200 {sent, message_id} — verified; (5) back-to-back same device → 429 — verified; (6) creator without target_key_id → 400 — verified; (7) creator with target → 200 + is_from_creator=true — verified; (8) empty content → 400 — verified; (9) >2000 chars → 400 — verified; (10) blocked → 403 with exact French message — verified; (11) inbox without creator sig → 403 — verified; (12) inbox creator → 200 with proper row schema — verified; (13) creator reads thread → unread→0 — verified; (14) non-creator thread returns only own — verified; (15) unread-count creator/user semantics — verified; (16) delete-thread creator-only — verified. 19/19 tests pass in 9.29s. Final state restored to public+null."
+}

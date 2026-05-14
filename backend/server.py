@@ -36,6 +36,7 @@ import io
 import base64
 import logging
 import asyncio
+import time
 import secrets
 import bcrypt
 
@@ -3945,8 +3946,25 @@ VALID_DEVICE_ROLES = {"creator", "approved", "pending", "revoked"}
 
 
 async def _get_site_mode() -> str:
+    """Returns the current site_mode. Cached in-memory for 30 seconds to
+    avoid hitting Mongo on every /auth/login + /devices/verify call. The
+    cache is bypassed by /system/site-mode PUT which invalidates it."""
+    global _site_mode_cache
+    now = time.monotonic()
+    if _site_mode_cache and now - _site_mode_cache[0] < 30.0:
+        return _site_mode_cache[1]
     doc = await db.site_config.find_one({"_id": "site_mode"}, {"_id": 0, "mode": 1})
-    return (doc or {}).get("mode") or "public"
+    mode = (doc or {}).get("mode") or "public"
+    _site_mode_cache = (now, mode)
+    return mode
+
+
+def _invalidate_site_mode_cache():
+    global _site_mode_cache
+    _site_mode_cache = None
+
+
+_site_mode_cache = None  # (timestamp, mode) | None
 
 
 async def _device_by_key(key_id: str) -> Optional[dict]:
@@ -4186,6 +4204,7 @@ async def set_site_mode(payload: SiteModeSetIn):
         }},
         upsert=True,
     )
+    _invalidate_site_mode_cache()
 
     # Kick affected sessions.
     if payload.mode == "creator":
@@ -4509,33 +4528,45 @@ class SendToCreatorIn(BaseModel):
 @api_router.post("/devices/send-to-creator")
 async def devices_send_to_creator(payload: SendToCreatorIn):
     """Anyone with a valid registered device can use this to nudge the creator.
-    Blocked devices get a specific localized error. Otherwise the device's
-    role becomes (or stays) 'pending' so the creator sees them in the queue."""
+    Blocked devices get a specific localized error. Cool-down: 1 successful
+    nudge per device every 10 minutes (anti-spam) — surfaces as a 429."""
     dev = await _device_by_key(payload.key_id)
     if not dev:
         raise HTTPException(status_code=404, detail="Appareil inconnu.")
     if dev.get("role") == "blocked":
-        # Specific, user-visible message — fragment used by the frontend.
         raise HTTPException(
             status_code=403,
             detail="Votre demande a été formulée de nombreuses fois. Veuillez contacter le créateur.",
         )
+    # Cool-down check.
+    last_at_iso = dev.get("last_nudge_at")
+    if last_at_iso:
+        try:
+            last_at = datetime.fromisoformat(last_at_iso)
+            if (datetime.now(timezone.utc) - last_at) < timedelta(minutes=10):
+                raise HTTPException(
+                    status_code=429,
+                    detail="Tu as déjà envoyé une demande récemment. Réessaie dans quelques minutes.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     if not await _consume_nonce(payload.key_id, payload.nonce):
         raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
     if not verify_signature(dev.get("public_key_jwk") or {}, payload.nonce, payload.signature):
         raise HTTPException(status_code=403, detail="Signature invalide.")
+    now_iso = datetime.now(timezone.utc).isoformat()
     if dev.get("role") in ("creator", "approved", "pending"):
         await db.device_keys.update_one(
             {"key_id": payload.key_id},
-            {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {"last_seen_at": now_iso, "last_nudge_at": now_iso}},
         )
     else:
         await db.device_keys.update_one(
             {"key_id": payload.key_id},
-            {"$set": {"role": "pending", "last_seen_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {"role": "pending", "last_seen_at": now_iso, "last_nudge_at": now_iso}},
         )
-    # NOTE: request_access is intentionally NOT logged in device_decisions —
-    # the creator's history only shows approve/revoke/promote per spec.
     return {"sent": True, "role": dev.get("role")}
 
 
@@ -4930,6 +4961,247 @@ async def webauthn_has_enrollment():
 
 # ==========================================================================
 # END pending sessions + WebAuthn
+# ==========================================================================
+
+
+# ==========================================================================
+# PRIVATE MESSAGING — creator ↔ user direct messages.
+#
+# Threads are keyed by the NON-creator device's key_id. Each message belongs
+# to exactly one thread and has a direction (is_from_creator). The creator
+# can see all threads + reply to any of them. A non-creator device sees only
+# its own thread.
+#
+# Auth is the same ECDSA signature scheme as the rest of the device API.
+# Anyone with a valid registered device can /send (subject to a cool-down).
+# Reading the inbox/thread requires creator proof for the creator view, or
+# the requester's own signature for their personal thread.
+# ==========================================================================
+
+MAX_MESSAGE_LEN = 2000
+MESSAGE_COOLDOWN_SECONDS = 30  # per-device anti-flood on /messages/send
+
+
+class MessageSendIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    content: str
+    # When the sender IS the creator, they must supply the target thread.
+    target_key_id: Optional[str] = None
+
+
+@api_router.post("/messages/send")
+async def messages_send(payload: MessageSendIn):
+    """Send a message in a thread.
+
+    If the sender is the creator, `target_key_id` must be supplied — the
+    message lands in that thread as is_from_creator=True.
+
+    If the sender is anything else, the thread IS the sender's own key_id and
+    is_from_creator=False. Blocked devices are rejected with the same
+    localized message as /devices/send-to-creator. Per-device cooldown of
+    30 seconds applies to prevent flooding."""
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Message vide.")
+    if len(content) > MAX_MESSAGE_LEN:
+        raise HTTPException(status_code=400, detail=f"Message trop long ({MAX_MESSAGE_LEN} max).")
+    sender = await _device_by_key(payload.key_id)
+    if not sender:
+        raise HTTPException(status_code=404, detail="Appareil inconnu.")
+    if sender.get("role") == "blocked":
+        raise HTTPException(
+            status_code=403,
+            detail="Votre demande a été formulée de nombreuses fois. Veuillez contacter le créateur.",
+        )
+    # Cool-down (anti-flood, much shorter than send-to-creator's nudge cooldown).
+    last_msg_iso = sender.get("last_message_at")
+    if last_msg_iso:
+        try:
+            last_msg = datetime.fromisoformat(last_msg_iso)
+            elapsed = (datetime.now(timezone.utc) - last_msg).total_seconds()
+            if elapsed < MESSAGE_COOLDOWN_SECONDS:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Patiente {int(MESSAGE_COOLDOWN_SECONDS - elapsed)}s avant d'envoyer un autre message.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    if not await _consume_nonce(payload.key_id, payload.nonce):
+        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
+    if not verify_signature(sender.get("public_key_jwk") or {}, payload.nonce, payload.signature):
+        raise HTTPException(status_code=403, detail="Signature invalide.")
+
+    is_creator_sender = sender.get("role") == "creator"
+    if is_creator_sender:
+        if not payload.target_key_id:
+            raise HTTPException(status_code=400, detail="target_key_id requis pour les créateurs.")
+        thread_key_id = payload.target_key_id
+        target = await _device_by_key(thread_key_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Destinataire inconnu.")
+    else:
+        thread_key_id = payload.key_id
+
+    now = datetime.now(timezone.utc)
+    msg_id = f"msg_{uuid.uuid4().hex[:16]}"
+    sender_label = sender.get("label") or sender.get("pseudo") or None
+    await db.messages.insert_one({
+        "message_id": msg_id,
+        "thread_key_id": thread_key_id,
+        "from_key_id": payload.key_id,
+        "is_from_creator": bool(is_creator_sender),
+        "content": content,
+        "sender_label": sender_label,
+        "ts": now.isoformat(),
+        "read_by_creator": bool(is_creator_sender),
+        "read_by_user": not bool(is_creator_sender),
+    })
+    await db.device_keys.update_one(
+        {"key_id": payload.key_id},
+        {"$set": {"last_message_at": now.isoformat()}},
+    )
+    return {"sent": True, "message_id": msg_id, "ts": now.isoformat()}
+
+
+class MessagesInboxIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+
+
+@api_router.post("/messages/inbox")
+async def messages_inbox(payload: MessagesInboxIn):
+    """Creator-only — return one row per thread with last message + unread count."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    pipeline = [
+        {"$sort": {"ts": -1}},
+        {"$group": {
+            "_id": "$thread_key_id",
+            "last_ts": {"$first": "$ts"},
+            "last_content": {"$first": "$content"},
+            "last_is_from_creator": {"$first": "$is_from_creator"},
+            "last_sender_label": {"$first": "$sender_label"},
+            "unread": {
+                "$sum": {
+                    "$cond": [{"$and": [
+                        {"$eq": ["$is_from_creator", False]},
+                        {"$eq": ["$read_by_creator", False]},
+                    ]}, 1, 0]
+                }
+            },
+            "total": {"$sum": 1},
+        }},
+        {"$sort": {"last_ts": -1}},
+        {"$limit": 100},
+    ]
+    rows = await db.messages.aggregate(pipeline).to_list(length=100)
+    # Enrich with device label/role.
+    out = []
+    for r in rows:
+        dev = await _device_by_key(r["_id"]) or {}
+        out.append({
+            "thread_key_id": r["_id"],
+            "label": dev.get("label"),
+            "role": dev.get("role"),
+            "last_ts": r["last_ts"],
+            "last_content": r["last_content"][:140],
+            "last_is_from_creator": r["last_is_from_creator"],
+            "unread": r["unread"],
+            "total": r["total"],
+        })
+    return {"threads": out}
+
+
+class MessagesThreadIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    thread_key_id: Optional[str] = None  # if creator, target thread; else ignored
+
+
+@api_router.post("/messages/thread")
+async def messages_thread(payload: MessagesThreadIn):
+    """Return the full thread.
+
+    - If the caller is the creator and supplies a `thread_key_id`, returns
+      that thread (and marks all incoming messages as read_by_creator).
+    - If the caller is NOT the creator, returns their own thread (where
+      thread_key_id == caller's key_id) and marks creator replies as
+      read_by_user."""
+    sender = await _device_by_key(payload.key_id)
+    if not sender:
+        raise HTTPException(status_code=404, detail="Appareil inconnu.")
+    if not await _consume_nonce(payload.key_id, payload.nonce):
+        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
+    if not verify_signature(sender.get("public_key_jwk") or {}, payload.nonce, payload.signature):
+        raise HTTPException(status_code=403, detail="Signature invalide.")
+    is_creator_caller = sender.get("role") == "creator"
+    if is_creator_caller:
+        thread_key_id = payload.thread_key_id
+        if not thread_key_id:
+            raise HTTPException(status_code=400, detail="thread_key_id requis.")
+        await db.messages.update_many(
+            {"thread_key_id": thread_key_id, "is_from_creator": False, "read_by_creator": False},
+            {"$set": {"read_by_creator": True}},
+        )
+    else:
+        thread_key_id = payload.key_id
+        await db.messages.update_many(
+            {"thread_key_id": thread_key_id, "is_from_creator": True, "read_by_user": False},
+            {"$set": {"read_by_user": True}},
+        )
+    rows = await db.messages.find(
+        {"thread_key_id": thread_key_id},
+        {"_id": 0},
+    ).sort("ts", 1).to_list(length=500)
+    return {"thread_key_id": thread_key_id, "messages": rows}
+
+
+@api_router.post("/messages/unread-count")
+async def messages_unread_count(payload: MessagesThreadIn):
+    """Return how many unread messages exist for the caller.
+    - Creator → total unread received from all users.
+    - Anyone else → unread creator replies in their own thread."""
+    sender = await _device_by_key(payload.key_id)
+    if not sender:
+        raise HTTPException(status_code=404, detail="Appareil inconnu.")
+    if not await _consume_nonce(payload.key_id, payload.nonce):
+        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
+    if not verify_signature(sender.get("public_key_jwk") or {}, payload.nonce, payload.signature):
+        raise HTTPException(status_code=403, detail="Signature invalide.")
+    if sender.get("role") == "creator":
+        n = await db.messages.count_documents({"is_from_creator": False, "read_by_creator": False})
+    else:
+        n = await db.messages.count_documents({
+            "thread_key_id": payload.key_id,
+            "is_from_creator": True,
+            "read_by_user": False,
+        })
+    return {"unread": n}
+
+
+class MessagesDeleteIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    thread_key_id: str
+
+
+@api_router.post("/messages/delete-thread")
+async def messages_delete_thread(payload: MessagesDeleteIn):
+    """Creator-only — delete an entire thread."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    res = await db.messages.delete_many({"thread_key_id": payload.thread_key_id})
+    return {"deleted": res.deleted_count}
+
+
+# ==========================================================================
+# END messaging
 # ==========================================================================
 
 
@@ -6100,6 +6372,8 @@ async def ensure_indexes():
         await db.password_resets.create_index("email")
         await db.password_reset_tokens.create_index("token", unique=True)
         await db.password_reset_tokens.create_index("user_id")
+        await db.messages.create_index("thread_key_id")
+        await db.messages.create_index("ts")
         logger.info("✅ MongoDB indexes ready")
     except Exception as e:
         logger.warning(f"Index creation warning: {e}")
