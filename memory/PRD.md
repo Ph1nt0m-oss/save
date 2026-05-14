@@ -17,6 +17,17 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-14 — Iter 52 (Header buttons + background generation + UX polish)
+
+**Implémentations** :
+- **Boutons header global** : `MessageButton` (icon variant, badge unread) ajouté à gauche du logo dans Landing (entre Discover et logo) et dans Dashboard (à côté du LanguageToggle). `TheftButton` (icône ShieldAlert) ajouté à droite dans Landing et Dashboard. Plus visibles que l'ancienne version inline tout en bas.
+- **Messages personnalisés de déconnexion** : `kick_creator_only_body` = "La personne qui a créé ce site souhaite être en privé." et `kick_private_body` = "La personne qui a créé ce site procède à quelques modifications avec ses personnes de confiance. Merci de retenter votre connexion ultérieurement." Le SiteLockedOverlay reçoit désormais explicitement `kickReason` depuis useDeviceIdentity.
+- **Continuité génération en arrière-plan** : `/api/chat/message`, `/api/ai/generate-complete-app` et `/api/ai/generate-code` enveloppés par `_run_in_background` (`asyncio.shield(asyncio.create_task(coro))`). Si le client se déconnecte (ex: kick après site-mode change), la génération continue et persiste son résultat en DB. L'utilisateur retrouve la réponse au prochain `/chat/history`.
+- **Hide site-mode badge non-créateurs** : `SiteModeBadge` retourne désormais `null` inconditionnellement pour `role !== 'creator'` — le sélecteur Public/Privé/Créatrice/Invité n'est plus jamais affiché aux visiteurs.
+- **Sécurité après deny** : `SessionRequestNotifier` propose désormais un toast actionnable "Changer mon mot de passe" après le refus d'une demande de session.
+
+**Test status** : iter52 smoke 8/8 PASS (backend). Frontend manuellement validé (Landing fresh visitor : badge caché, boutons message + theft visibles).
+
 ### 2026-02-14 — Iter 51 (DEFINITIVE mobile session fix)
 
 **Root cause identifié** (troubleshoot agent) : courses parallèles entre les polls `setInterval(2500ms)` combinées à la propagation d'écriture Mongo causaient :

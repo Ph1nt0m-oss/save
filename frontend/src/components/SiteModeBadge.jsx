@@ -49,12 +49,14 @@ export default function SiteModeBadge({ role, siteMode, viewMode, guestView, onC
   };
 
   if (!isCreator) {
-    // Non-creator devices only see the site-mode badge when they have
-    // explicitly opted into the "preview as creator" view AND the current
-    // site mode is not "creator-only" (which would already kick them out).
-    // In all other cases, the selector is completely hidden.
-    if (viewMode !== 'creator' || siteMode === 'creator') return null;
+    // Non-creator devices never see the site-mode selector — neither as a
+    // dropdown nor as a read-only badge. The whole control is creator-only
+    // per the product spec (request from creator on 2026-02-13). This also
+    // prevents the noisy "Public" badge appearing on first paint for fresh
+    // visitors who have not yet established a device identity.
+    return null;
 
+    // (legacy read-only branch kept commented for reference)
     // Read-only — but still informative. Clicking opens the same dropdown
     // with all 4 modes visible (so users can read the hints), but every
     // option is disabled. Locked icon on the trigger makes the gating
