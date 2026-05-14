@@ -74,8 +74,9 @@ export default function Login() {
   const [demoLink, setDemoLink] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [idleNotice, setIdleNotice] = useState(false);
-  const [authError, setAuthError] = useState(''); // inline red error (wrong password, etc.)
-  const [pendingApproval, setPendingApproval] = useState(null); // {request_id, email} when 2nd-device flow active
+  const [authError, setAuthError] = useState('');
+  const [pendingApproval, setPendingApproval] = useState(null);
+  const [sessionUiState, setSessionUiState] = useState(null); // 'pending' | 'denied' | 'expired'
   const [theftOpen, setTheftOpen] = useState(false);
 
   // Verification polling state (active between /register and the user
@@ -172,9 +173,13 @@ export default function Login() {
             delete axios.defaults.headers.common.Authorization;
             toast.error(t('sess_retry_needed'));
           }
-        } else if (status === 'denied' || status === 'expired') {
+        } else if (status === 'denied') {
           stop();
-          toast.error(t('sess_denied'));
+          setSessionUiState('denied');
+          setPendingApproval(null);
+        } else if (status === 'expired') {
+          stop();
+          setSessionUiState('expired');
           setPendingApproval(null);
         }
       } catch (_) { /* keep polling */ }
@@ -618,7 +623,7 @@ export default function Login() {
                       {t('sess_pending_title')}
                     </div>
                     <p className="text-xs text-amber-100/80 leading-relaxed">
-                      {t('sess_pending_body')}
+                      {t('sess_in_progress_body')}
                     </p>
                   </div>
                   <button
@@ -645,9 +650,48 @@ export default function Login() {
                     <span className="text-amber-50 truncate font-['IBM_Plex_Mono']">{pendingApproval.email}</span>
                   </div>
                 </div>
-                <p className="text-[11px] text-amber-100/60 italic leading-relaxed">
-                  {t('sess_pending_hint')}
+              </div>
+            )}
+
+            {sessionUiState === 'denied' && (
+              <div
+                data-testid="session-denied-banner"
+                className="mb-3 p-4 bg-red-400/10 border border-red-400/40 rounded-sm space-y-2"
+              >
+                <div className="text-sm font-['Chivo'] font-bold text-red-200">
+                  {t('sess_denied_title')}
+                </div>
+                <p className="text-xs text-red-100/80 leading-relaxed">
+                  {t('sess_denied_body')}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setSessionUiState(null)}
+                  className="text-xs underline text-red-200 hover:text-white"
+                >
+                  {t('dm_cancel')}
+                </button>
+              </div>
+            )}
+
+            {sessionUiState === 'expired' && (
+              <div
+                data-testid="session-expired-banner"
+                className="mb-3 p-4 bg-orange-400/10 border border-orange-400/40 rounded-sm space-y-2"
+              >
+                <div className="text-sm font-['Chivo'] font-bold text-orange-200">
+                  {t('sess_expired_title')}
+                </div>
+                <p className="text-xs text-orange-100/80 leading-relaxed">
+                  {t('sess_expired_body')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSessionUiState(null)}
+                  className="text-xs underline text-orange-200 hover:text-white"
+                >
+                  {t('dm_cancel')}
+                </button>
               </div>
             )}
 

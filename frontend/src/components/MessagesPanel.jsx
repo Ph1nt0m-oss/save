@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { X, Send, Trash2, ChevronLeft, Mail, User, Crown } from 'lucide-react';
+import { X, Send, Trash2, ChevronLeft, Mail, User, Crown, Edit3, ShieldOff, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -101,6 +101,56 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
     }
   };
 
+  const renameContact = async () => {
+    if (!selected) return;
+    const currentLabel = threads.find((th) => th.thread_key_id === selected)?.label || '';
+    const next = window.prompt(t('msg_rename_prompt'), currentLabel);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed) return;
+    try {
+      const body = await withCreatorProof(API, axios, { thread_key_id: selected, new_label: trimmed });
+      await axios.post(`${API}/messages/rename-contact`, body);
+      toast.success(t('msg_renamed'));
+      loadInbox();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('msg_op_failed'));
+    }
+  };
+
+  const blockContact = async () => {
+    if (!selected) return;
+    if (!window.confirm(t('msg_block_confirm'))) return;
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id: selected });
+      await axios.post(`${API}/devices/block`, body);
+      toast.success(t('hist_blocked'));
+      setSelected(null);
+      setThread(null);
+      loadInbox();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('msg_op_failed'));
+    }
+  };
+
+  const deleteContact = async () => {
+    if (!selected) return;
+    if (!window.confirm(t('msg_delete_contact_confirm'))) return;
+    try {
+      // First wipe the thread, then revoke the device (full contact removal).
+      const tBody = await withCreatorProof(API, axios, { thread_key_id: selected });
+      await axios.post(`${API}/messages/delete-thread`, tBody);
+      const rBody = await withCreatorProof(API, axios, { target_key_id: selected });
+      await axios.post(`${API}/devices/revoke`, rBody);
+      toast.success(t('msg_contact_deleted'));
+      setSelected(null);
+      setThread(null);
+      loadInbox();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('msg_op_failed'));
+    }
+  };
+
   if (!open) return null;
   const showInbox = isCreator && !selected;
 
@@ -185,14 +235,40 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
               </h3>
             </div>
             {isCreator && selected && (
-              <button
-                onClick={deleteThread}
-                className="ml-auto text-[#A1A1AA] hover:text-red-400 transition p-1"
-                title={t('msg_delete_thread')}
-                data-testid="delete-thread-btn"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  onClick={renameContact}
+                  data-testid="rename-contact-btn"
+                  title={t('msg_rename')}
+                  className="text-[#A1A1AA] hover:text-[#E4FF00] transition p-1"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={blockContact}
+                  data-testid="block-contact-btn"
+                  title={t('hist_block')}
+                  className="text-[#A1A1AA] hover:text-red-400 transition p-1"
+                >
+                  <ShieldOff className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={deleteContact}
+                  data-testid="delete-contact-btn"
+                  title={t('msg_delete_contact')}
+                  className="text-[#A1A1AA] hover:text-red-400 transition p-1"
+                >
+                  <UserX className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={deleteThread}
+                  data-testid="delete-thread-btn"
+                  title={t('msg_delete_thread')}
+                  className="text-[#A1A1AA] hover:text-red-400 transition p-1"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             )}
             <button
               onClick={onClose}

@@ -117,7 +117,7 @@ export default function CreatorToolbar() {
     const labelMap = {
       approve: 'ACCEPTÉ',
       revoke: 'REFUSÉ',
-      promote: 'CRÉATEUR',
+      promote: 'CRÉATRICE',
     };
     const body = decisions.map((d) => {
       const action = labelMap[d.action] || d.action.toUpperCase();

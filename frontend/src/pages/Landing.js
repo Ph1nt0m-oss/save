@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { Sparkles, Code, Smartphone, Monitor, Globe, Zap, Lock, Infinity } from 'lucide-react';
 import LanguageToggle from '../components/LanguageToggle';
 import CreatorToolbar from '../components/CreatorToolbar';
+import MessageButton from '../components/MessageButton';
+import TheftButton from '../components/TheftButton';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 

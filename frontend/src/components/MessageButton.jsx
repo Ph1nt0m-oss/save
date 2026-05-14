@@ -8,15 +8,13 @@ import MessagesPanel from './MessagesPanel';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
- * Floating message button — pollable badge for unread count.
+ * Header button — pollable badge for unread message count.
  *
- *  - Visible everywhere except inside the messages panel itself.
- *  - On click: opens the MessagesPanel (creator or user variant based on
- *    the device's role).
- *  - The user-side variant is also surfaced as a link on /login so visitors
- *    can write to the creator even when locked out of the site.
+ *  - `inline`: compact text + icon, used in headers.
+ *  - `icon`: just the bell-style icon with badge — used in app headers.
+ *  - `floating`: legacy FAB (kept for now but not mounted globally).
  */
-export default function MessageButton({ variant = 'floating' }) {
+export default function MessageButton({ variant = 'icon' }) {
   const device = useDeviceIdentity();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -37,6 +35,33 @@ export default function MessageButton({ variant = 'floating' }) {
   }, [device.keyId]);
 
   if (!device.keyId) return null;
+
+  if (variant === 'icon') {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          data-testid="message-creator-icon-btn"
+          title="Messages"
+          className="relative inline-flex items-center justify-center w-9 h-9 rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:text-[#E4FF00] hover:border-[#E4FF00]/40 transition-colors"
+        >
+          <MessageCircle className="w-4 h-4" />
+          {unread > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-[#E4FF00] text-[#050505] text-[9px] font-bold rounded-full inline-flex items-center justify-center px-1">
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </button>
+        <MessagesPanel
+          open={open}
+          onClose={() => setOpen(false)}
+          isCreator={device.role === 'creator'}
+          currentKeyId={device.keyId}
+        />
+      </>
+    );
+  }
 
   if (variant === 'inline') {
     return (

@@ -566,7 +566,7 @@ async def register(payload: RegisterRequest, request: Request):
         raise HTTPException(status_code=400, detail="Le pseudo est requis (3 caractères minimum).")
     if len(pseudo_raw) > 30:
         raise HTTPException(status_code=400, detail="Le pseudo est trop long (30 max).")
-    if pseudo_raw.lower() == "créatrice" or pseudo_raw.lower() == "creatrice":
+    if pseudo_raw.lower() in ("créatrice", "creatrice", "créateur", "createur"):
         raise HTTPException(status_code=409, detail="Ce pseudo est réservé.")
     # Uniqueness check (case-insensitive).
     if await db.users.find_one(
@@ -5201,6 +5201,35 @@ class MessagesDeleteIn(BaseModel):
     nonce: str
     signature: str
     thread_key_id: str
+
+
+class MessagesRenameIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    thread_key_id: str
+    new_label: str
+
+
+@api_router.post("/messages/rename-contact")
+async def messages_rename_contact(payload: MessagesRenameIn):
+    """Creator-only — rename the displayed label of a contact (the pseudo
+    shown in the inbox + above the conversation). Stored on the device_keys
+    row; the user themselves still sees their own pseudo unchanged."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    new_label = (payload.new_label or "").strip()
+    if not new_label:
+        raise HTTPException(status_code=400, detail="Nom requis.")
+    if len(new_label) > 40:
+        raise HTTPException(status_code=400, detail="Nom trop long (40 max).")
+    target = await _device_by_key(payload.thread_key_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Destinataire inconnu.")
+    await db.device_keys.update_one(
+        {"key_id": payload.thread_key_id},
+        {"$set": {"label": new_label}},
+    )
+    return {"success": True, "label": new_label}
 
 
 @api_router.post("/messages/delete-thread")
