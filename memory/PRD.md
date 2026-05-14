@@ -17,6 +17,19 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-14 — Iter 53 (Layout swap + Block icons + Delete logic)
+
+**UX rework header** :
+- `TheftButton` déplacé à GAUCHE de chaque header avec label « Déclarer un vol » / « Report theft » (variant `labelled`).
+- `MessageButton` déplacé à DROITE, à côté de `NotificationBell` dans Dashboard, et à côté de `LanguageToggle` dans Landing.
+- `MessageButton` icon variant rend désormais le bouton immédiatement, même si `device.keyId` n'est pas encore disponible (badge unread polling attend simplement la clé). Plus de "trou" à l'affichage initial.
+
+**MessagesPanel (côté créatrice uniquement)** :
+- Icône **Block** = `Ban` (cercle barré 🚫), icône **Unblock** = `ShieldCheck`. Les deux sont affichés de façon conditionnelle selon `thread.role === 'blocked'`.
+- `deleteContact` ne révoque PLUS le device (n'appelle plus `/devices/revoke`). Seul `/messages/delete-thread` est invoqué : le pseudo disparaît de la liste côté créatrice mais l'utilisateur peut toujours envoyer un nouveau message qui réintroduira le thread. Combo `Bloquer + Supprimer` = pseudo invisible côté créatrice ET utilisateur muet (sauf si la créatrice débloque manuellement via l'historique des décisions).
+
+**Tests** : iter53 backend 10/10 PASS (4 skipped, 1 gpt-5.2 502 upstream OpenAI hors notre code). Génération en ligne validée end-to-end via Emergent claude-haiku → 200 avec `code.files`.
+
 ### 2026-02-14 — Iter 52 (Header buttons + background generation + UX polish)
 
 **Implémentations** :

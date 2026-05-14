@@ -34,7 +34,12 @@ export default function MessageButton({ variant = 'icon' }) {
     return () => { cancelled = true; clearInterval(id); };
   }, [device.keyId]);
 
-  if (!device.keyId) return null;
+  // For the legacy floating + inline variants we still hide the button until
+  // the device identity is ready (those variants assume an authenticated UX).
+  // The header icon variant renders immediately so visitors never see a
+  // "missing" button while the device key is being provisioned in the
+  // background.
+  if (variant !== 'icon' && !device.keyId) return null;
 
   if (variant === 'icon') {
     return (
