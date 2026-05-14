@@ -17,6 +17,26 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-14 — Iter 59 (Email no-reply définitif + fallback toujours exposé)
+
+**🔧 Correction définitive** :
+
+1. **Sender « no-reply »** :
+   - `EMAIL_FROM` = `CodeForge AI <no-reply@resend.dev>` (Resend accepte ce local-part sur leur domaine partagé — testé OK).
+   - Les 4 fallbacks codés en dur dans `server.py` (register, resend-verification, forgot-password, theft-email) tous alignés.
+   - Le destinataire voit désormais **« CodeForge AI » avec l'adresse `no-reply@resend.dev`** (et plus `onboarding@resend.dev`).
+
+2. **Fallback verification_link toujours présent** :
+   - `/api/auth/register` retourne TOUJOURS `verification_link` dans la réponse, même quand `email_sent=true`.
+   - `/api/auth/resend-verification` idem.
+   - Frontend Login.js : affiche le bloc « Lien direct » même quand l'e-mail est marqué envoyé → l'utilisateur peut copier-coller le lien si l'e-mail tarde / atterrit en spam / est refusé par Resend (sandbox).
+   - Messages FR adaptés : « Ton e-mail n'a pas pu être envoyé automatiquement — voici le lien de confirmation à coller dans ton navigateur. »
+
+**Limitation héritée (non bloquante)** :
+Resend reste en sandbox → seul `16.axelblaze.10@gmail.com` reçoit réellement les e-mails. Tous les autres voient le lien dans l'UI grâce au fallback. Pour débloquer l'envoi à tout le monde : vérifier un domaine perso sur Resend (DNS SPF/DKIM/DMARC).
+
+**Tests** : iter59 backend 8/8 PASS · Resend ✅ 200 OK confirmé sur `16.axelblaze.10@gmail.com`.
+
 ### 2026-02-14 — Iter 57 (Delete accounts + Right-side messaging)
 
 - **`/api/accounts/delete-one`** : creator + target_key_id → suppression complète du device_key (400 si self, 404 si introuvable, 403 si non-creator). User sessions purged.
