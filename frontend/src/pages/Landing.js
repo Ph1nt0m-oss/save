@@ -6,13 +6,11 @@ import LanguageToggle from '../components/LanguageToggle';
 import CreatorToolbar from '../components/CreatorToolbar';
 import MessageButton from '../components/MessageButton';
 import TheftButton from '../components/TheftButton';
-import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export default function Landing() {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const device = useDeviceIdentity();
   const goLogin = () => navigate('/login');
   const goDiscover = () => navigate('/discover');
 
@@ -55,7 +53,7 @@ export default function Landing() {
         className="relative z-30 border-b border-white/10 backdrop-blur-md"
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 grid grid-cols-3 items-center gap-2">
-          <div className="justify-self-start">
+          <div className="justify-self-start flex items-center gap-2">
             <button
               onClick={goDiscover}
               data-testid="nav-discover-btn"
@@ -63,6 +61,7 @@ export default function Landing() {
             >
               {t('l_navDiscover')}
             </button>
+            <MessageButton variant="icon" />
           </div>
 
           <div className="justify-self-center flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -72,6 +71,7 @@ export default function Landing() {
 
           <div className="justify-self-end min-w-0 flex items-center gap-2">
             <CreatorToolbar />
+            <TheftButton />
             <LanguageToggle placement="bottom" />
           </div>
         </div>

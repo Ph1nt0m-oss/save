@@ -49,6 +49,12 @@ export default function SiteModeBadge({ role, siteMode, viewMode, guestView, onC
   };
 
   if (!isCreator) {
+    // Non-creator devices only see the site-mode badge when they have
+    // explicitly opted into the "preview as creator" view AND the current
+    // site mode is not "creator-only" (which would already kick them out).
+    // In all other cases, the selector is completely hidden.
+    if (viewMode !== 'creator' || siteMode === 'creator') return null;
+
     // Read-only — but still informative. Clicking opens the same dropdown
     // with all 4 modes visible (so users can read the hints), but every
     // option is disabled. Locked icon on the trigger makes the gating

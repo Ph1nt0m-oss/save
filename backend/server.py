@@ -56,6 +56,38 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# ==================== BACKGROUND TASK REGISTRY ====================
+# Long-running generations (chat, complete-app, code) are detached from the
+# request lifecycle: when the client disconnects, the work continues to
+# completion and the result is persisted to MongoDB. The client picks it up
+# on next reconnect by reading chat_messages / projects from the DB.
+#
+# We use `asyncio.shield(task)` to immune the task from the request's
+# CancelledError, and we keep a strong reference in `_BG_TASKS` so the GC
+# does not drop it mid-flight.
+_BG_TASKS: set = set()
+
+def _register_bg(task: "asyncio.Task") -> "asyncio.Task":
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+    return task
+
+async def _run_in_background(coro):
+    """Schedule `coro` so it runs to completion even if the awaiting client
+    disconnects. Returns the coroutine's result while the connection lasts;
+    if the request is cancelled, the underlying task keeps executing and
+    persisting its side-effects to the database."""
+    task = _register_bg(asyncio.create_task(coro))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # Client gone — the task keeps running. We re-raise so the framework
+        # cleans up the request properly, but the side-effects (DB writes)
+        # will still complete in the background.
+        logger.info("Client disconnected during long generation — task continues in background.")
+        raise
+
+
 # ==================== GITHUB CONFIG ====================
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")  # PAT TOKEN recommandé
@@ -1775,9 +1807,16 @@ async def metrics():
 
 @api_router.post("/ai/generate-complete-app")
 async def ai_generate_complete_app(request: Request, data: dict):
-    """Generate complete application like Emergent - React + Backend"""
+    """Generate complete application like Emergent - React + Backend.
+
+    Heavy LLM work is detached via `_run_in_background` so the generation
+    completes (and the project is persisted) even if the client disconnects.
+    """
     user_id = await get_current_user(request)
-    
+    return await _run_in_background(_ai_generate_complete_app_impl(user_id, data))
+
+
+async def _ai_generate_complete_app_impl(user_id: str, data: dict):
     description = data.get('description', '')
     mode = data.get('mode', 'online')
     wizard_config = data.get('wizard_config', {})
@@ -2376,11 +2415,18 @@ Créé avec ❤️ par CodeForge AI"""
 
 @api_router.post("/ai/generate-code")
 async def ai_generate_code(request: Request, prompt_data: dict):
-    """Generate code using Ollama (local, free, unlimited)"""
+    """Generate code using Ollama (local, free, unlimited).
+
+    Detached via `_run_in_background` so a long generation survives the
+    client disconnecting.
+    """
     # Require authentication — we don't use the user_id here but we want
     # to reject anonymous calls.
     await get_current_user(request)
-    
+    return await _run_in_background(_ai_generate_code_impl(prompt_data))
+
+
+async def _ai_generate_code_impl(prompt_data: dict):
     prompt = prompt_data.get('prompt', '')
     existing_files = prompt_data.get('existing_files', [])
     
@@ -2458,9 +2504,18 @@ Important: Code propre, commenté, et fonctionnel."""
 
 @api_router.post("/chat/message")
 async def send_chat_message(request: Request, input: ChatMessageInput):
-    """Send message to AI (Chat mode with simple responses)"""
+    """Send message to AI (Chat mode with simple responses).
+
+    The heavy LLM call + persistence is run via `_run_in_background`, so if
+    the client disconnects mid-flight (e.g. site mode change kicks the
+    session), the task continues to completion and the answer is saved to
+    the chat history. The user picks it up automatically on next reconnect.
+    """
     user_id = await get_current_user(request)
-    
+    return await _run_in_background(_send_chat_message_impl(user_id, input))
+
+
+async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
     try:
         # Auto-create a "chat" project if none specified, so the conversation
         # is visible in the sidebar from the very first message.

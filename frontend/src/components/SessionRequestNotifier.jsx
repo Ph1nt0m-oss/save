@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Smartphone, MapPin, Check, X, ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Smartphone, MapPin, Check, X, ShieldAlert, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,11 +12,13 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  * Modal that pops up whenever an authenticated user has pending session
  * requests on their account (from another device). Polls every 3s. Once
  * shown, the connected user can Approve (allow the new device) or Deny
- * (which the spec frames as "report violation").
+ * (which the spec frames as "report violation"). On deny we also propose
+ * a password change for extra security on the original account.
  */
 export default function SessionRequestNotifier() {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [busyId, setBusyId] = useState(null);
 
@@ -39,7 +42,19 @@ export default function SessionRequestNotifier() {
     try {
       await axios.post(`${API}/auth/session-decide`, { request_id, decision }, { withCredentials: true });
       setRequests((rs) => rs.filter((r) => r.request_id !== request_id));
-      toast.success(decision === 'approve' ? t('sess_approved') : t('sess_denied'));
+      if (decision === 'approve') {
+        toast.success(t('sess_approved'));
+      } else {
+        // On denial, suggest a password change for extra security on the
+        // original account — actionable toast routes to the Profile page.
+        toast.warning(t('sess_denied_pwd_suggest'), {
+          duration: 9000,
+          action: {
+            label: t('sess_change_pwd_cta'),
+            onClick: () => navigate('/profile?section=security'),
+          },
+        });
+      }
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Erreur');
     } finally {

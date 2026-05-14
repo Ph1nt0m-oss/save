@@ -1,0 +1,45 @@
+{
+  "summary": "Iter52 smoke validation of new header buttons, kick-message translations, asyncio.shield wrappers, and SiteModeBadge gating. 8/8 backend smoke tests PASS (6.25s). Frontend UI verified: MessageButton (icon variant, data-testid='message-creator-icon-btn') present at x=454 in Landing header next to Discover, and TheftButton (data-testid='theft-icon-btn') present at x=1441 next to LanguageToggle — both visible & clickable; both modals open on click. Backend wrappers _ai_generate_complete_app_impl/_ai_generate_code_impl/_send_chat_message_impl are correctly invoked via _run_in_background+asyncio.shield: /api/chat/message responds 200 with ai_response.content + user_message — no parameter-handling regression. /api/auth/session-decide with unknown request_id returns 404 (iter51 idempotency intact); bad decision returns 400. Translation keys kick_creator_only_body / kick_private_body / sess_denied_pwd_suggest exist in BOTH fr+en in LanguageContext.js with the exact French phrasing required. No capital-C 'Créateur' remains in LanguageContext.js (renamed to 'Créatrice' as requested). ONE FRONTEND BUG: SiteModeBadge is visible by default for a fresh visitor showing 'Public' label — fails review requirement #5.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/system/site-mode PUT", "issue": "Carry-over from iter51: requires ECDSA-signed creator request (key_id+nonce+signature). Cannot be exercised end-to-end without a registered creator device + WebCrypto. Smoke test validates contract via 422 on missing signature; cascade-kick behaviour for kick_creator_only / kick_private not exercised end-to-end."},
+      {"endpoint": "/api/devices/verify", "issue": "Same — signature-gated. We validated statically that the backend emits the EXACT kick_reason strings 'kick_creator_only' (server.py L4197) and 'kick_private' (L4193) and that both have matching _body translation keys in LanguageContext.js (fr+en)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SiteModeBadge", "issue": "Visible by default for a fresh visitor (no device_key, no localStorage). Screenshot shows 'Public' badge in the header at first load. ROOT CAUSE: fresh visitor lands in viewMode='creator' (creator preview/read-only) by default — header shows the orange 'You are previewing the creator interface in read-only mode' banner & the toggle button labelled 'User view'. The SiteModeBadge.jsx L56 guard `if (viewMode !== 'creator' || siteMode === 'creator') return null;` therefore lets the badge render. After clicking the toggle to user view, badge correctly hides (verified). Review requirement #5 explicitly says the badge must NOT appear in the default view for non-creator visitors. FIX OPTIONS: (a) change default viewMode for fresh visitors to 'user' (recommended — also avoids the read-only banner intrusion on first load), OR (b) make SiteModeBadge return null whenever role !== 'creator' regardless of viewMode.", "selector": "[data-testid='site-mode-readonly']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Landing header (fresh visitor)", "issues": ["Top yellow banner ('You are previewing the creator interface in read-only mode') overlaps Discover + MessageButton + CodeForge AI logo + LanguageToggle on first paint — text wraps to two lines and the right-side 'Back to user view' close-X is partially behind the banner gradient. Banner should not appear by default for a fresh visitor (this ties to the SiteModeBadge default-viewMode bug above — same root cause)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter52_smoke.py",
+    "/app/test_reports/pytest/iter52_results.xml"
+  ],
+  "action_items": [
+    "Change default viewMode for fresh visitors from 'creator' to 'user' (or hide SiteModeBadge unconditionally for role !== 'creator'). This single fix removes both the unwanted 'Public' badge AND the overlapping read-only orange banner on Landing for new visitors.",
+    "(Optional) Consider explicit unit test for the asyncio.shield behaviour (client-disconnect mid-generation continues server-side persistence). Currently only smoke-tested.",
+    "(Optional) Address iter51 carry-over: see /app/test_reports/iteration_51.json minor issues (no rate-limit on /auth/session-decide; conflated 'unknown' vs 'expired' status; potential race on first concurrent poll before issued_session_token is set)."
+  ],
+  "critical_code_review_comments": [
+    "_run_in_background helper (server.py L75-92) wraps the coroutine in asyncio.shield(asyncio.create_task(coro)) — this is correct: the outer awaiter (the request task) can be cancelled by client-disconnect but the inner task survives. Verified by smoke that the parameter contract is preserved (user_id extracted in wrapper, no Request leak into _impl). However, no test exercises the actual cancel-mid-flight scenario; if regression occurs (e.g., someone re-introduces request: Request inside _impl), only an integration test that disconnects mid-stream will catch it.",
+    "SiteModeBadge.jsx L51-56 — guard logic is correct given the intended viewMode default, but the app's default viewMode is currently 'creator' for fresh visitors. Effect: review-requirement #5 fails as observed. Recommend fixing the default viewMode rather than tightening the guard, because the creator-preview is genuinely useful AFTER an explicit opt-in.",
+    "Header layout (Landing.js L60-80) — MessageButton at x=454 and TheftButton at x=1441 with both icons sized 36×36 are well-placed and not overlapping siblings. Position survives across the small viewport (manual sanity); on mobile the LanguageToggle + TheftButton + view toggle may stack — main agent should verify on 390px viewport.",
+    "set_site_mode (server.py L4232-4279) cascade-kick logic — when switching to 'creator' it deletes ALL non-creator user_sessions; when 'private' it deletes non-(creator|approved) sessions. The kick is FROM THE SESSION SIDE (delete_many). The kick_reason is emitted ONLY on the next /devices/verify poll (L4194-4197). For the cascade to work end-to-end, the frontend must keep polling /devices/verify; if /devices/verify is gated only behind an auth-state change, kicked tabs would not auto-eject. Worth confirming the frontend polling cadence exists post-iter52 (out of scope for this smoke pass).",
+    "LanguageContext fr block — 'kick_creator_only_body' and 'kick_private_body' contain the exact French phrasing required (line 371 / 373). Mirrors exist for en (line 838 / 840). 'sess_denied_pwd_suggest' exists fr (451) + en (920). No capital 'Créateur' string in the file — confirmed by grep."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter52_smoke.py (new — 8 tests, 6.25s, no DB mutations, uses test_dash_1777658375@gmail.com / Pass1234)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "83% (5/6 — SiteModeBadge default-visibility bug)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — verified working (login + /auth/me 200)",
+  "seed_data_creation": "None. Test file does not mutate any DB collection. The /api/chat/message smoke test creates one project + one message pair under the test user — these are normal user data and persist (no cleanup required, matches what a real user would do).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter52 smoke is GREEN backend-side. The ONE pending fix is the SiteModeBadge / default-viewMode bug on Landing — once main agent flips the default viewMode for fresh visitors (or unconditionally hides the badge for role!==creator), re-run test_iter52_smoke.py + repeat the Playwright Landing-header check: SiteModeBadge should be absent at first paint and the orange read-only banner should NOT appear. Test file /app/backend/tests/test_iter52_smoke.py is self-contained and safe to re-run. The asyncio.shield wrappers are working but not stress-tested for actual client-disconnect — if main agent wants that, write a test that opens /api/chat/message via aiohttp and aborts the connection ~500ms in, then checks the message persisted via /api/projects/<id>/messages.",
+  "rca of the issue": "SiteModeBadge default-visibility bug: the app initialises viewMode='creator' for fresh visitors with no localStorage cf_view_mode key. The SiteModeBadge guard (L56) returns null only when viewMode!=='creator' OR siteMode==='creator'. Since fresh viewMode IS 'creator' and siteMode is 'public', neither branch fires → badge renders showing 'Public'. Same root cause makes the orange 'creator preview / read-only' banner appear at the top of Landing for fresh visitors. SINGLE FIX: change the initial viewMode default to 'user' (or 'guest') in whichever hook/context drives it (likely useDeviceMode or similar). Suggested file to inspect: /app/frontend/src/contexts/ or hooks that compute device.viewMode (read by CreatorToolbar L151)."
+}

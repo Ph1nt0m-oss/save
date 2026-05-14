@@ -22,6 +22,8 @@ import LanguageToggle from '../components/LanguageToggle';
 import CreatorToolbar from '../components/CreatorToolbar';
 import NotificationBell from '../components/NotificationBell';
 import SiteLockedOverlay from '../components/SiteLockedOverlay';
+import MessageButton from '../components/MessageButton';
+import TheftButton from '../components/TheftButton';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -477,7 +479,7 @@ export default function Dashboard() {
 
   return (
     <div className="h-screen bg-[#050505] text-white flex overflow-hidden">
-      <SiteLockedOverlay siteMode={device.siteMode} role={device.role} onRetry={() => device.refresh()} />
+      <SiteLockedOverlay siteMode={device.siteMode} role={device.role} kickReason={device.kickReason} onRetry={() => device.refresh()} />
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* Sidebar - Projects */}
       <motion.aside
@@ -692,6 +694,7 @@ export default function Dashboard() {
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
               <LanguageToggle placement="bottom" />
+              <MessageButton variant="icon" />
             </div>
 
             {/* CENTER */}
@@ -743,6 +746,7 @@ export default function Dashboard() {
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <CreatorToolbar />
+                <TheftButton />
                 <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />
               </div>
