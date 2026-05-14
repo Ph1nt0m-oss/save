@@ -522,7 +522,7 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
     resend_key = os.environ.get("RESEND_API_KEY")
     if not resend_key:
         return False
-    sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+    sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
     # Replies to the magic-link email are silently forwarded to a
     # catch-all inbox. The recipient sees the From as CodeForge AI, but
     # if they hit "Reply" their mail client uses Reply-To. They never see
@@ -1299,7 +1299,7 @@ async def send_reset_email(to_email: str, reset_url: str) -> bool:
     resend_key = os.environ.get("RESEND_API_KEY")
     if not resend_key:
         return False
-    sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+    sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
     reply_to = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -1591,7 +1591,7 @@ async def submit_feedback(payload: FeedbackRequest, request: Request):
     admin = os.environ.get("FEEDBACK_INBOX_EMAIL", "elsa.barroca2@gmail.com")
     if resend_key:
         try:
-            sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+            sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
             # Build HTML attachments preview (URLs + filenames, no email exposure)
             atts_html = ""
             email_attachments = []
@@ -7194,7 +7194,7 @@ async def auth_theft_email_request(payload: TheftEmailIn):
         resend_key = os.environ.get("RESEND_API_KEY")
         if resend_key:
             try:
-                sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+                sender = os.environ.get("EMAIL_FROM", "CodeForge AI no-reply <onboarding@resend.dev>")
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     await client.post(
                         "https://api.resend.com/emails",
