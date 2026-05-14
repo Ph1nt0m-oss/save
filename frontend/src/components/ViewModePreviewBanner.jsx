@@ -10,7 +10,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 export default function ViewModePreviewBanner() {
   const device = useDeviceIdentity();
   const { t } = useLanguage();
-  if (device.role !== 'creator' || device.viewMode !== 'guest') return null;
+  // Show only when a non-creator visitor has chosen "creator preview" mode.
+  if (device.role === 'creator' || device.viewMode !== 'guest') return null;
 
   return (
     <div
@@ -26,7 +27,7 @@ export default function ViewModePreviewBanner() {
           data-testid="exit-guest-preview"
           className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-400/40 hover:bg-amber-400/20 rounded-sm transition"
         >
-          {t('vm_back_to_creator')}
+          {t('vm_back_to_user')}
           <X className="w-3 h-3" />
         </button>
       </div>

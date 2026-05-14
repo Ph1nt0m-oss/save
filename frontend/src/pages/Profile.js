@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Lock, Mail, Download, Trash2, Loader2, AlertTriangle, User as UserIcon, Settings as SettingsIcon, Users as UsersIcon, Plus, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { exportPublicKeyShareCode } from '../lib/deviceIdentity';
+import { exportPublicKeyShareCode, withCreatorProof } from '../lib/deviceIdentity';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -77,6 +77,19 @@ export default function Profile() {
       setTimeout(() => setKeyCopied(false), 1500);
       toast.success(t('prof_key_copied'));
     } catch (_) { toast.error(t('dm_copy_failed')); }
+  };
+
+  const [sendingToCreator, setSendingToCreator] = useState(false);
+  const sendKeyToCreator = async () => {
+    if (sendingToCreator) return;
+    setSendingToCreator(true);
+    try {
+      const body = await withCreatorProof(API, axios, {});
+      await axios.post(`${API}/devices/send-to-creator`, body);
+      toast.success(t('prof_send_success'));
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('prof_send_failed'));
+    } finally { setSendingToCreator(false); }
   };
 
   const [tab, setTab] = useState('info'); // 'info' | 'password' | 'email' | 'prefs' | 'accounts' | 'danger'
@@ -406,7 +419,7 @@ export default function Profile() {
                 )}
               </div>
 
-              {device.role !== 'creator' && deviceShareCode && (
+              {deviceShareCode && (
                 <div className="mt-6 pt-6 border-t border-white/10" data-testid="profile-device-key-section">
                   <h3 className="font-['Chivo'] font-bold text-white mb-2">{t('prof_my_device_key')}</h3>
                   <div className="flex items-center gap-2 mb-2">
@@ -425,7 +438,18 @@ export default function Profile() {
                       {keyCopied ? t('prof_key_copied') : t('prof_copy_key')}
                     </button>
                   </div>
-                  <p className="text-xs text-[#A1A1AA]">{t('prof_my_device_key_hint')}</p>
+                  <p className="text-xs text-[#A1A1AA] mb-3">{t('prof_my_device_key_hint')}</p>
+                  {device.role !== 'creator' && (
+                    <button
+                      onClick={sendKeyToCreator}
+                      disabled={sendingToCreator}
+                      data-testid="profile-send-to-creator"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#E4FF00]/15 hover:bg-[#E4FF00]/25 border border-[#E4FF00]/40 text-[#E4FF00] text-sm font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-60"
+                    >
+                      {sendingToCreator ? <Loader2 className="w-4 h-4 animate-spin" /> : <UsersIcon className="w-4 h-4" />}
+                      {t('prof_send_to_creator')}
+                    </button>
+                  )}
                 </div>
               )}
 

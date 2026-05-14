@@ -164,7 +164,7 @@ export async function attestDevice(API, axios) {
       // Register (no-op if already known)
       await axios.post(`${API}/devices/register`, {
         public_key_jwk: publicJwk,
-        label: navigator.userAgent.split(' ').slice(-2).join(' ').slice(0, 60),
+        label: (await import('./deviceLabel')).detectDeviceLabel(),
       }).catch(() => {});
 
       const ch = await axios.post(`${API}/devices/challenge`, { key_id: keyId });

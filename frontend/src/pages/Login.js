@@ -12,6 +12,7 @@ import CreatorToolbar from '../components/CreatorToolbar';
 import TheftRecoveryDialog from '../components/TheftRecoveryDialog';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { rememberEmailForDevice, recallEmailForDevice } from '../lib/deviceIdentity';
+import { detectDeviceLabel } from '../lib/deviceLabel';
 
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -102,27 +103,42 @@ export default function Login() {
   useEffect(() => {
     if (!pendingApproval?.request_id) return;
     let cancelled = false;
+    let navigated = false;
     const tick = async () => {
+      if (navigated) return;
       try {
         const r = await axios.post(`${API}/auth/session-request-status`, {
           request_id: pendingApproval.request_id,
-        });
-        if (cancelled) return;
+        }, { withCredentials: true });
+        if (cancelled || navigated) return;
         const status = r.data?.status;
         if (status === 'approved') {
-          // Server has set the cookie + returned the user. Hydrate auth + go.
+          navigated = true;
+          // Persist Bearer FIRST so any subsequent /api call has it.
           if (r.data?.session_token) {
             try { localStorage.setItem('session_token', r.data.session_token); } catch (_) {}
+            // Belt-and-braces: also set the default header right now so the
+            // very next request (Dashboard's /api/projects) is authenticated
+            // even before the interceptor reads localStorage.
+            axios.defaults.headers.common.Authorization = `Bearer ${r.data.session_token}`;
           }
           rememberEmailForDevice(r.data?.email || pendingApproval.email);
           rememberAccount(r.data);
           setUser(r.data);
           toast.success(t('sess_approved'));
           setPendingApproval(null);
-          navigate('/dashboard', { replace: true, state: { user: r.data } });
+          // Tiny delay so React commits setUser before the route change.
+          setTimeout(() => {
+            navigate('/dashboard', { replace: true, state: { user: r.data } });
+          }, 50);
         } else if (status === 'denied' || status === 'expired') {
+          navigated = true;
           toast.error(t('sess_denied'));
           setPendingApproval(null);
+        } else if (status === 'pending') {
+          // Update the waiting-banner details if the server included device
+          // info (location, label) for the request. (Not yet returned by the
+          // status endpoint — placeholder for future enrichment.)
         }
       } catch (_) { /* keep polling */ }
     };
@@ -236,7 +252,7 @@ export default function Login() {
         }
       } else {
         const cachedKeyId = (typeof localStorage !== 'undefined' ? localStorage.getItem('codeforge_device_key_id') : null) || null;
-        const deviceLabel = navigator.userAgent.split(' ').slice(-2).join(' ').slice(0, 60);
+        const deviceLabel = detectDeviceLabel();
         let data;
         try {
           const res = await axios.post(`${API}/auth/login`, {
@@ -548,21 +564,45 @@ export default function Login() {
             {pendingApproval && (
               <div
                 data-testid="session-pending-banner"
-                className="mb-3 p-3 bg-amber-400/10 border border-amber-400/40 rounded-sm text-amber-200 text-xs flex items-start gap-2"
+                className="mb-3 p-4 bg-amber-400/10 border border-amber-400/40 rounded-sm space-y-3"
               >
-                <Loader2 className="w-4 h-4 animate-spin flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <div className="font-['Chivo'] font-bold mb-1">{t('sess_pending_title')}</div>
-                  <p className="text-amber-100/80 leading-relaxed">{t('sess_pending_body')}</p>
+                <div className="flex items-start gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-amber-300 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-['Chivo'] font-bold text-amber-200 mb-1">
+                      {t('sess_pending_title')}
+                    </div>
+                    <p className="text-xs text-amber-100/80 leading-relaxed">
+                      {t('sess_pending_body')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPendingApproval(null)}
+                    className="text-amber-200 hover:text-white flex-shrink-0"
+                    data-testid="session-pending-cancel"
+                    aria-label={t('dm_cancel')}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPendingApproval(null)}
-                  className="text-amber-200 hover:text-white"
-                  data-testid="session-pending-cancel"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="bg-black/30 border border-amber-400/20 rounded-sm p-2.5 space-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-widest text-amber-100/60 w-24 flex-shrink-0">
+                      {t('sess_device_label')}
+                    </span>
+                    <span className="text-amber-50 truncate">{detectDeviceLabel()}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-widest text-amber-100/60 w-24 flex-shrink-0">
+                      Email
+                    </span>
+                    <span className="text-amber-50 truncate font-['IBM_Plex_Mono']">{pendingApproval.email}</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-amber-100/60 italic leading-relaxed">
+                  {t('sess_pending_hint')}
+                </p>
               </div>
             )}
 

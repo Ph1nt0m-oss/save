@@ -1,0 +1,56 @@
+{
+  "summary": "Iter46 — backend-only validation of all 10 spec items. 11/11 pytest cases pass on the live preview URL. Verified: login backwards compat (no device_key_id), login persists device_key_id, different-device login returns HTTP 202 with session_pending_approval + request_id, /auth/session-request-status is idempotent (same session_token across repeat polls after approval) and returns {status:'expired'} for unknown ids (NOT 404), /devices/revoke and /devices/disconnect hard-delete from device_keys (audit kept in device_decisions), /devices/send-to-creator works with valid sig (creates request_access entry + moves revoked→pending), returns 403 on bad sig, 404 on unknown key. Kept creator key dev_a797438afc28c67923881d46ae2971c1 is intact (never touched).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login pending-approval branch",
+        "issue": "Returns HTTP 202 via FastAPI HTTPException, which wraps the actual payload under r.json()['detail']['request_id']. This works but is non-idiomatic — most clients would expect a flat body for a 202. Frontend already unwraps correctly so functional impact = 0."
+      },
+      {
+        "endpoint": "POST /api/auth/session-request-status",
+        "issue": "Idempotent approved branch pushes the request 'expires_at' out by 15 min on first successful poll (server.py L4435) so repeat polls keep working. After the requesting device has navigated, the row stays in session_requests for 15 more minutes until natural cleanup. Not a leak but worth a cleanup sweeper longer-term."
+      },
+      {
+        "endpoint": "POST /api/devices/send-to-creator",
+        "issue": "Idempotent for already-creator/approved/pending devices (only refreshes last_seen). The 'request_access' decision is still logged every call — could spam device_decisions if a malicious client calls in a loop. _consume_nonce + signature verification gate it but the rate is unbounded. Consider per-key_id rate-limit (1/min) on this endpoint."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter46_session_devices.py",
+    "/app/test_reports/pytest/iter46_results.xml"
+  ],
+  "action_items": [
+    "(Optional, hardening) Add a per-key_id rate-limit on /devices/send-to-creator (e.g. 1 call/min) to prevent device_decisions table spam by a malicious holder of a registered key.",
+    "(Optional, observability) Add a background sweep to delete session_requests with status in ('approved','denied','expired') older than 1h — currently they linger indefinitely after expires_at."
+  ],
+  "critical_code_review_comments": [
+    "login (server.py L946) — pending-approval correctly raises HTTPException(202, detail={code, request_id, message}). Confirmed end-to-end via test_pending_login_returns_202_with_request_id.",
+    "session-request-status (L4383) — idempotency works as designed: issued_session_token persisted on the request doc (L4431) and returned on every subsequent poll. Unknown request_id correctly returns {status:'expired'} with HTTP 200 (L4397). Both verified.",
+    "devices/revoke (L4218) and devices/disconnect (L4237) — both call db.device_keys.delete_one (L4230, L4250) and preserve the audit trail in device_decisions via _log_decision. Hard-delete confirmed in tests.",
+    "devices/send-to-creator (L4340) — order of checks is correct: device existence first (404), nonce consumption second (403), signature verification third (403). For 'revoked' role, sets back to 'pending'; for other roles, only refreshes last_seen_at. Confirmed via test_send_to_creator_valid_signature_logs_request.",
+    "_consume_nonce (L3954) is correctly atomic (delete_one returns deleted_count) — replay-attack-resistant.",
+    "Maintainability: server.py is still 5923 lines. Recommend splitting /devices/* and /auth/* into separate routers (carry-over from iter45 review).",
+    "POST /auth/session-request-status uses POST with a body of just {request_id} — could be GET with a query param. Minor REST nit, not a bug.",
+    "send-to-creator returns dev.get('role') which is the PRE-update role (e.g. 'revoked' when it was just flipped to 'pending'). Slightly misleading to the client. Should return the new role after the update."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter46_session_devices.py (new — 11 tests, self-cleaning, runs in ~5.5s)"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (from /app/memory/test_credentials.md). Used directly.",
+  "seed_data_creation": "Test suite registers ~6 ephemeral ECDSA P-256 device key pairs labelled TEST_iter46_*. All cleaned up in the module-scoped 'cleanup' fixture teardown (device_keys, device_nonces, user_sessions). One temp_creator key is set to role='creator' via direct DB write to test revoke/disconnect, then deleted on teardown. Kept creator key dev_a797438afc28c67923881d46ae2971c1 verified intact post-suite.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter46 spec items verified GREEN. Regression file is /app/backend/tests/test_iter46_session_devices.py — runs in 5.5s, self-cleans, safe to re-run. To sign as creator for revoke/disconnect tests, the suite registers a fresh ECDSA P-256 keypair and promotes it to role='creator' via direct DB write (the kept creator's private key is unknown, so we can't sign with it). The kept-creator invariant is preserved (verified by test_kept_creator_key_intact). DB has 3 device_keys remaining post-run: the kept creator + 2 unrelated stray pending keys from iter45 — not iter46's responsibility.",
+  "rca of the issue": "No bugs found — all 10 spec items from iter46 work as designed. The iter45 minor finding (stale pending keys) carries over but is environmental, not a code defect."
+}

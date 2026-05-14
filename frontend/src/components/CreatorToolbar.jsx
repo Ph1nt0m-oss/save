@@ -10,17 +10,20 @@ import { useLanguage } from '../contexts/LanguageContext';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const ACTION_META = {
-  approve:    { tk: 'dec_approve',    color: 'text-emerald-300 border-emerald-400/40 bg-emerald-400/10' },
-  revoke:     { tk: 'dec_revoke',     color: 'text-red-300 border-red-400/40 bg-red-400/10' },
-  disconnect: { tk: 'dec_disconnect', color: 'text-amber-300 border-amber-400/40 bg-amber-400/10' },
-  promote:    { tk: 'dec_promote',    color: 'text-[#E4FF00] border-[#E4FF00]/40 bg-[#E4FF00]/10' },
-  add_by_key: { tk: 'dec_add_by_key', color: 'text-sky-300 border-sky-400/40 bg-sky-400/10' },
+  approve:        { tk: 'dec_approve',        color: 'text-emerald-300 border-emerald-400/40 bg-emerald-400/10' },
+  revoke:         { tk: 'dec_revoke',         color: 'text-red-300 border-red-400/40 bg-red-400/10' },
+  disconnect:     { tk: 'dec_disconnect',     color: 'text-amber-300 border-amber-400/40 bg-amber-400/10' },
+  promote:        { tk: 'dec_promote',        color: 'text-[#E4FF00] border-[#E4FF00]/40 bg-[#E4FF00]/10' },
+  add_by_key:     { tk: 'dec_add_by_key',     color: 'text-sky-300 border-sky-400/40 bg-sky-400/10' },
+  request_access: { tk: 'dec_request_access', color: 'text-purple-300 border-purple-400/40 bg-purple-400/10' },
 };
 
 /**
- * Top-bar toolbar grouping the site-mode toggle, the decisions history
- * button and the view-mode toggle. Designed to live in headers next to
- * the user menu.
+ * Top-bar toolbar. Two distinct layouts:
+ *  - Creator devices: SiteMode dropdown + History side-panel button.
+ *  - Non-creator devices ("guests"): SiteMode read-only badge + a view-mode
+ *    toggle ("user view" ↔ "creator preview, read-only") so they can peek
+ *    at the admin surface (used as a tutorial). Free to flip anytime.
  */
 export default function CreatorToolbar() {
   const { t } = useLanguage();
@@ -54,8 +57,7 @@ export default function CreatorToolbar() {
         onChange={() => device.refresh()}
       />
 
-      {/* History button — visible only to the actual creator device, but
-          also visible in guest-preview-view (so creator can come back). */}
+      {/* History side-panel button — creator only */}
       {isCreatorDevice && (
         <button
           type="button"
@@ -69,13 +71,13 @@ export default function CreatorToolbar() {
         </button>
       )}
 
-      {/* View-mode toggle — only for creator devices */}
-      {isCreatorDevice && (
+      {/* Guest-facing view-mode toggle: only for non-creator devices. */}
+      {!isCreatorDevice && (
         <button
           type="button"
           onClick={() => setStoredViewMode(inGuestView ? 'creator' : 'guest')}
           data-testid="view-mode-toggle"
-          title={inGuestView ? t('vm_back_to_creator') : t('vm_preview_as_guest')}
+          title={inGuestView ? t('vm_back_to_user') : t('vm_preview_as_creator')}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm border transition-colors ${
             inGuestView
               ? 'bg-amber-400/10 border-amber-400/40 text-amber-300 hover:bg-amber-400/20'
@@ -83,34 +85,51 @@ export default function CreatorToolbar() {
           }`}
         >
           {inGuestView ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-          <span className="hidden sm:inline">{inGuestView ? t('vm_guest_view') : t('vm_creator_view')}</span>
+          <span className="hidden sm:inline">{inGuestView ? t('vm_preview_label') : t('vm_user_label')}</span>
         </button>
       )}
 
       {historyOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-          onClick={() => setHistoryOpen(false)}
-          data-testid="history-modal"
-        >
+        <>
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="max-w-xl w-full max-h-[80vh] overflow-y-auto bg-[#0A0A0A] border border-white/15 rounded-sm p-5 space-y-3"
+            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+            onClick={() => setHistoryOpen(false)}
+            data-testid="history-backdrop"
+          />
+          <aside
+            data-testid="history-panel"
+            className="fixed top-0 right-0 bottom-0 z-[61] w-full sm:w-[420px] bg-[#0A0A0A] border-l border-white/15 shadow-[-20px_0_60px_rgba(0,0,0,0.6)] flex flex-col"
           >
-            <div className="flex items-center justify-between">
+            <header className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <History className="w-5 h-5 text-[#E4FF00]" />
-                <h2 className="text-lg font-['Chivo'] font-bold text-white">{t('dm_history')}</h2>
+                <h2 className="text-base font-['Chivo'] font-bold text-white">{t('dm_history')}</h2>
+                {decisions.length > 0 && (
+                  <span className="text-[10px] uppercase tracking-widest text-[#71717A]">
+                    ({decisions.length})
+                  </span>
+                )}
               </div>
-              <button onClick={() => setHistoryOpen(false)} data-testid="history-close" className="text-[#A1A1AA] hover:text-white">
+              <button
+                onClick={() => setHistoryOpen(false)}
+                data-testid="history-close"
+                className="text-[#A1A1AA] hover:text-white"
+                aria-label="Close"
+              >
                 <X className="w-5 h-5" />
               </button>
-            </div>
-            {loadingHist && <div className="text-xs text-[#A1A1AA]">{t('dm_loading')}</div>}
-            {!loadingHist && decisions.length === 0 && (
-              <div className="text-xs text-[#A1A1AA]" data-testid="history-empty">{t('dm_history_empty')}</div>
-            )}
-            <div className="space-y-1.5">
+            </header>
+            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+              {loadingHist && (
+                <div className="text-xs text-[#A1A1AA] px-2 py-3" data-testid="history-loading">
+                  {t('dm_loading')}
+                </div>
+              )}
+              {!loadingHist && decisions.length === 0 && (
+                <div className="text-xs text-[#A1A1AA] px-2 py-3" data-testid="history-empty">
+                  {t('dm_history_empty')}
+                </div>
+              )}
               {decisions.map((dec, i) => {
                 const meta = ACTION_META[dec.action] || { tk: 'dm_op_done', color: 'text-white border-white/20 bg-white/5' };
                 return (
@@ -135,8 +154,8 @@ export default function CreatorToolbar() {
                 );
               })}
             </div>
-          </div>
-        </div>
+          </aside>
+        </>
       )}
     </div>
   );

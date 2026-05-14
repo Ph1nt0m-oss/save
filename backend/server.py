@@ -4217,32 +4217,37 @@ async def devices_approve(payload: DeviceTargetIn):
 
 @api_router.post("/devices/revoke")
 async def devices_revoke(payload: DeviceTargetIn):
-    """Creator hard-revokes a device — they cannot authenticate again."""
+    """Creator hard-revokes a device — they cannot authenticate again. The
+    revoke also REMOVES the device from `device_keys` so it doesn't clutter
+    the registered-devices list. The audit trail in `device_decisions`
+    remembers what happened."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     if payload.target_key_id == payload.key_id:
         raise HTTPException(status_code=400, detail="Tu ne peux pas révoquer ton propre appareil créateur.")
     target = await _device_by_key(payload.target_key_id)
-    res = await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"role": "revoked", "revoked_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    if res.matched_count == 0:
+    if not target:
         raise HTTPException(status_code=404, detail="Appareil introuvable.")
+    await db.device_keys.delete_one({"key_id": payload.target_key_id})
+    await db.device_nonces.delete_many({"key_id": payload.target_key_id})
+    await db.user_sessions.delete_many({"device_key_id": payload.target_key_id})
     await _log_decision("revoke", payload.target_key_id, payload.key_id, (target or {}).get("label"))
     return {"success": True}
 
 
 @api_router.post("/devices/disconnect")
 async def devices_disconnect(payload: DeviceTargetIn):
-    """Creator force-disconnects a device by bumping its `session_epoch`.
-    All previously issued nonces become invalid (`/verify` will refuse)."""
+    """Creator force-disconnects a device. Like /revoke this REMOVES the
+    device from `device_keys` so the active list stays clean; the audit
+    record lives on in `device_decisions`."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    if payload.target_key_id == payload.key_id:
+        raise HTTPException(status_code=400, detail="Tu ne peux pas te déconnecter toi-même via cette action.")
     target = await _device_by_key(payload.target_key_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
     await db.device_nonces.delete_many({"key_id": payload.target_key_id})
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"disconnected_at": datetime.now(timezone.utc).isoformat()}},
-    )
+    await db.user_sessions.delete_many({"device_key_id": payload.target_key_id})
+    await db.device_keys.delete_one({"key_id": payload.target_key_id})
     await _log_decision("disconnect", payload.target_key_id, payload.key_id, (target or {}).get("label"))
     return {"success": True}
 
@@ -4321,6 +4326,47 @@ async def devices_add_by_key(payload: AddByKeyIn):
     return {"key_id": target_id, "role": role}
 
 
+# Non-creator can ping the creator with a request to be added. We just log
+# the request in `device_decisions` so the creator sees it in their History
+# panel (and the regular "pending" entry in device_keys, which they already
+# see). No private data exchanged — the requester's key_id was already known
+# to the server from their /devices/register call on first visit.
+class SendToCreatorIn(BaseModel):
+    key_id: str  # the requester (any registered, non-creator device)
+    nonce: str
+    signature: str
+
+
+@api_router.post("/devices/send-to-creator")
+async def devices_send_to_creator(payload: SendToCreatorIn):
+    """Anyone with a valid registered device can use this to nudge the creator.
+    Verifies the caller actually owns the key (sig over nonce). Tags the
+    requester's device as 'pending' so it shows up in the creator's pending
+    queue (and the notification bell badge ticks)."""
+    dev = await _device_by_key(payload.key_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail="Appareil inconnu.")
+    if not await _consume_nonce(payload.key_id, payload.nonce):
+        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
+    if not verify_signature(dev.get("public_key_jwk") or {}, payload.nonce, payload.signature):
+        raise HTTPException(status_code=403, detail="Signature invalide.")
+    # If already creator or already pending — idempotent.
+    if dev.get("role") in ("creator", "approved", "pending"):
+        # Already visible. Refresh last_seen so it bubbles up.
+        await db.device_keys.update_one(
+            {"key_id": payload.key_id},
+            {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    else:
+        # 'revoked' → put back to 'pending' so the creator can re-decide.
+        await db.device_keys.update_one(
+            {"key_id": payload.key_id},
+            {"$set": {"role": "pending", "last_seen_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    await _log_decision("request_access", payload.key_id, payload.key_id, dev.get("label"))
+    return {"sent": True, "role": dev.get("role")}
+
+
 # ==========================================================================
 # END device-bound identity
 # ==========================================================================
@@ -4337,11 +4383,18 @@ class SessionRequestStatusIn(BaseModel):
 @api_router.post("/auth/session-request-status")
 async def session_request_status(payload: SessionRequestStatusIn, response: Response):
     """Polled by the requesting device until the connected device decides
-    (approve/deny) or the request expires (10 min)."""
+    (approve/deny) or the request expires (15 min).
+
+    Idempotent: once approved, the session token is persisted on the request
+    and returned on every subsequent poll until the requesting device clears
+    it. This avoids race conditions where two parallel polls of the same
+    approved request would have one return 'approved+token' and the other
+    return 404."""
     now = datetime.now(timezone.utc)
     req = await db.session_requests.find_one({"request_id": payload.request_id}, {"_id": 0})
     if not req:
-        raise HTTPException(status_code=404, detail="Demande introuvable.")
+        # Could be: deleted/expired old; OR brand new request lookup race.
+        return {"status": "expired"}
     # Expire on read.
     if req["status"] == "pending" and req.get("expires_at") and req["expires_at"] < now.isoformat():
         await db.session_requests.update_one(
@@ -4350,26 +4403,38 @@ async def session_request_status(payload: SessionRequestStatusIn, response: Resp
         )
         req["status"] = "expired"
 
-    if req["status"] != "approved":
+    if req["status"] in ("pending", "denied", "expired"):
         return {"status": req["status"]}
 
-    # Approved → issue a fresh session token for the requesting device, and
-    # consume the request (single-use).
+    # status == "approved" — issue/return a session token. We persist it on
+    # the request itself so concurrent or repeat polls all get the same value.
     user = await db.users.find_one({"user_id": req["user_id"]}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
-    session_token = secrets.token_urlsafe(32)
-    await db.user_sessions.insert_one({
-        "session_token": session_token,
-        "user_id": user["user_id"],
-        "device_key_id": req.get("requesting_key_id"),
-        "device_label": req.get("requesting_label"),
-        "auth_type": "email",
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(days=7)).isoformat(),
-    })
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
-    await db.session_requests.delete_one({"request_id": payload.request_id})
+
+    session_token = req.get("issued_session_token")
+    if not session_token:
+        session_token = secrets.token_urlsafe(32)
+        await db.user_sessions.insert_one({
+            "session_token": session_token,
+            "user_id": user["user_id"],
+            "device_key_id": req.get("requesting_key_id"),
+            "device_label": req.get("requesting_label"),
+            "auth_type": "email",
+            "created_at": now.isoformat(),
+            "expires_at": (now + timedelta(days=7)).isoformat(),
+        })
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
+        await db.session_requests.update_one(
+            {"request_id": payload.request_id},
+            {"$set": {
+                "issued_session_token": session_token,
+                "consumed_at": now.isoformat(),
+                # Push the soft-expiry out so repeated polls keep working long
+                # enough for the requesting device to navigate.
+                "expires_at": (now + timedelta(minutes=15)).isoformat(),
+            }},
+        )
 
     response.set_cookie(
         key="session_token", value=session_token,
@@ -4615,20 +4680,16 @@ async def webauthn_declare_theft_verify(payload: WebAuthnTheftVerifyIn):
     )
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    # Revoke all OTHER creators.
+    # Remove all OTHER creators (the audit trail in device_decisions remembers).
     other_creators = await db.device_keys.find(
         {"role": "creator", "key_id": {"$ne": payload.key_id}},
         {"_id": 0, "key_id": 1, "label": 1},
     ).to_list(length=50)
     for d in other_creators:
-        await db.device_keys.update_one(
-            {"key_id": d["key_id"]},
-            {"$set": {"role": "revoked", "revoked_at": now_iso, "revoked_reason": "theft"}},
-        )
+        await db.device_keys.delete_one({"key_id": d["key_id"]})
         await db.device_nonces.delete_many({"key_id": d["key_id"]})
-        await _log_decision("revoke", d["key_id"], payload.key_id, d.get("label"))
-        # Kill any active user_sessions tied to that device too.
         await db.user_sessions.delete_many({"device_key_id": d["key_id"]})
+        await _log_decision("revoke", d["key_id"], payload.key_id, d.get("label"))
 
     # Promote the requester.
     await db.device_keys.update_one(

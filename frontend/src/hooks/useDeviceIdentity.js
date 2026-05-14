@@ -115,15 +115,15 @@ export default function useDeviceIdentity() {
   }, [state.role]);
 
   // canWrite — rules per site_mode:
-  //  - 'public'  : everyone can write (creator, approved, pending, anonymous/guest)
+  //  - 'public'  : everyone can write (creator, approved, pending, anonymous)
   //  - 'guest'   : nobody can write (read-only preview for the whole site)
   //  - 'private' : only creator + approved can write
   //  - 'creator' : only creator can write (others are blocked by SiteLockedOverlay)
-  // Plus: if the creator switches to "guest view mode", they preview as a
-  // guest would — so writes are disabled in that preview.
+  // Plus: any NON-creator visitor who toggles "preview creator view" sees
+  // the admin surface in read-only mode — canWrite becomes false in that view.
   let canWrite;
-  if (state.viewMode === 'guest' && state.role === 'creator') {
-    canWrite = false;
+  if (state.viewMode === 'guest' && state.role !== 'creator') {
+    canWrite = false; // guest previewing creator UI → enforced read-only
   } else if (state.siteMode === 'public') {
     canWrite = true;
   } else if (state.siteMode === 'guest') {
@@ -136,9 +136,9 @@ export default function useDeviceIdentity() {
     canWrite = false;
   }
 
-  // isCreatorView — true ONLY when device is the creator AND not previewing
-  // as guest. Components use this to gate creator-only UI (notif bell, badges).
-  const isCreatorView = state.role === 'creator' && state.viewMode !== 'guest';
+  // isCreatorView — true only when the real creator device is viewing the
+  // app normally. Used to gate creator-only admin UI (notif bell etc.).
+  const isCreatorView = state.role === 'creator';
 
   return { ...state, canWrite, isCreatorView, refresh };
 }
