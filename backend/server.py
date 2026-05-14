@@ -512,61 +512,118 @@ def normalize_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
-async def send_verification_email(to_email: str, verify_url: str) -> bool:
-    """Send magic-link via Resend if RESEND_API_KEY is set, else return False.
+async def _send_via_smtp(to_email: str, subject: str, html: str, reply_to: Optional[str] = None) -> bool:
+    """Send an email via plain SMTP (gmail.com / outlook.com / any provider).
 
-    We intentionally keep this minimal: one provider (Resend) because the
-    user is frustrated with API keys. When the key is absent we fall back
-    to "demo mode" and return the link directly in the /register response.
+    Activated when SMTP_HOST + SMTP_USER + SMTP_PASSWORD env vars are set.
+    Compatible with Gmail App Passwords (smtp.gmail.com:587 STARTTLS) and
+    Outlook (smtp-mail.outlook.com:587). Use this instead of Resend when
+    you don't have a verified domain — the recipient sees the From header
+    we set, but the underlying mailbox is SMTP_USER.
     """
+    host = os.environ.get("SMTP_HOST")
+    user = os.environ.get("SMTP_USER")
+    password = os.environ.get("SMTP_PASSWORD")
+    if not (host and user and password):
+        return False
+    try:
+        import aiosmtplib
+        from email.message import EmailMessage
+        port = int(os.environ.get("SMTP_PORT", "587"))
+        use_tls = os.environ.get("SMTP_USE_TLS", "false").lower() in ("1", "true", "yes")
+        # default sender: "Display Name <user>" — display configurable.
+        display = os.environ.get("EMAIL_FROM_DISPLAY", "CodeForge AI")
+        sender = f"{display} <{user}>"
+        msg = EmailMessage()
+        msg["From"] = sender
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        if reply_to:
+            msg["Reply-To"] = reply_to
+        # plain-text fallback for spam filters
+        msg.set_content("Ce mail contient du HTML. Active l'affichage HTML dans ton client.")
+        msg.add_alternative(html, subtype="html")
+        await aiosmtplib.send(
+            msg,
+            hostname=host,
+            port=port,
+            username=user,
+            password=password,
+            start_tls=not use_tls,  # STARTTLS for port 587
+            use_tls=use_tls,        # implicit TLS for port 465
+            timeout=20.0,
+        )
+        logger.info(f"✅ SMTP email sent to {to_email} via {host}")
+        return True
+    except Exception as e:
+        logger.error(f"SMTP exception ({host}): {e}")
+        return False
+
+
+async def _send_via_resend(to_email: str, subject: str, html: str, reply_to: Optional[str] = None) -> bool:
+    """Send via Resend (only if RESEND_API_KEY is set)."""
     resend_key = os.environ.get("RESEND_API_KEY")
     if not resend_key:
         return False
     sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
-    # Replies to the magic-link email are silently forwarded to a
-    # catch-all inbox. The recipient sees the From as CodeForge AI, but
-    # if they hit "Reply" their mail client uses Reply-To. They never see
-    # the redirection. The owner of the catch-all simply ignores those.
-    reply_to = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {resend_key}",
-                    "Content-Type": "application/json",
-                },
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
                 json={
                     "from": sender,
                     "to": [to_email],
-                    "reply_to": reply_to,
-                    "subject": "Confirme ton compte CodeForge AI",
-                    "html": (
-                        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
-                        f"<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
-                        f"<p style='color:#E4E4E7'>Clique sur le bouton ci-dessous pour confirmer ton compte&nbsp;:</p>"
-                        f"<p style='margin:24px 0'><a href='{verify_url}' style='background:#E4FF00;color:#050505;"
-                        f"padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>"
-                        f"Confirmer mon compte</a></p>"
-                        f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur (Chrome, Safari, Firefox)&nbsp;:<br>"
-                        f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{verify_url}</span></p>"
-                        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 5 minutes.</p>"
-                        f"<p style='color:#A1A1AA;font-size:12px'>Astuce&nbsp;: si le bouton ouvre une page bloquée, copie-colle le lien dans ton navigateur principal (Chrome, Safari…).</p>"
-                        f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>"
-                        f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
-                        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
-                        f"</div>"
-                    ),
+                    "reply_to": reply_to or os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com"),
+                    "subject": subject,
+                    "html": html,
                 },
             )
             if resp.status_code in (200, 202):
-                logger.info(f"✅ Verification email sent to {to_email}")
+                logger.info(f"✅ Resend email sent to {to_email}")
                 return True
             logger.error(f"Resend API error {resp.status_code}: {resp.text[:200]}")
             return False
     except Exception as e:
         logger.error(f"Resend exception: {e}")
         return False
+
+
+async def _send_email(to_email: str, subject: str, html: str, reply_to: Optional[str] = None) -> bool:
+    """Unified send-email entrypoint.
+
+    Strategy: try SMTP first (production-grade, sends to anyone), fall back
+    to Resend (sandbox-limited, only verified recipients). Returns True iff
+    at least one transport accepted the message.
+    """
+    if await _send_via_smtp(to_email, subject, html, reply_to=reply_to):
+        return True
+    return await _send_via_resend(to_email, subject, html, reply_to=reply_to)
+
+
+async def send_verification_email(to_email: str, verify_url: str) -> bool:
+    """Send magic-link verification email — SMTP first then Resend."""
+    html = (
+        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
+        f"<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
+        f"<p style='color:#E4E4E7'>Clique sur le bouton ci-dessous pour confirmer ton compte&nbsp;:</p>"
+        f"<p style='margin:24px 0'><a href='{verify_url}' style='background:#E4FF00;color:#050505;"
+        f"padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>"
+        f"Confirmer mon compte</a></p>"
+        f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur (Chrome, Safari, Firefox)&nbsp;:<br>"
+        f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{verify_url}</span></p>"
+        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 5 minutes.</p>"
+        f"<p style='color:#A1A1AA;font-size:12px'>Astuce&nbsp;: si le bouton ouvre une page bloquée, copie-colle le lien dans ton navigateur principal (Chrome, Safari…).</p>"
+        f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>"
+        f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
+        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
+        f"</div>"
+    )
+    ok = await _send_email(to_email, "Confirme ton compte CodeForge AI", html)
+    if ok:
+        logger.info(f"✅ Verification email sent to {to_email}")
+    return ok
+
 
 
 class RegisterRequest(BaseModel):
@@ -1297,50 +1354,26 @@ async def send_reset_email(to_email: str, reset_url: str) -> bool:
     The user has already entered + confirmed the new password on the website.
     This email is the SECOND step: clicking the link applies the pending password.
     """
-    resend_key = os.environ.get("RESEND_API_KEY")
-    if not resend_key:
-        return False
-    sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
-    reply_to = os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com")
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {resend_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": sender,
-                    "to": [to_email],
-                    "reply_to": reply_to,
-                    "subject": "Confirme la réinitialisation de ton mot de passe CodeForge AI",
-                    "html": (
-                        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
-                        f"<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
-                        f"<p style='color:#E4E4E7'>Tu viens de demander à changer le mot de passe de ce compte.</p>"
-                        f"<p style='color:#E4E4E7'>Pour finaliser le changement, clique sur le bouton ci-dessous&nbsp;:</p>"
-                        f"<p style='margin:24px 0'><a href='{reset_url}' style='background:#E4FF00;color:#050505;"
-                        f"padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>"
-                        f"Veuillez cliquer ici pour confirmer la réinitialisation de votre mot de passe</a></p>"
-                        f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur&nbsp;:<br>"
-                        f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{reset_url}</span></p>"
-                        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 30 minutes. Tant que tu ne cliques pas, ton ancien mot de passe reste valide.</p>"
-                        f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email — ton mot de passe actuel reste inchangé.</p>"
-                        f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
-                        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
-                        f"</div>"
-                    ),
-                },
-            )
-            if resp.status_code in (200, 202):
-                logger.info(f"✅ Password reset email sent to {to_email}")
-                return True
-            logger.error(f"Resend reset error {resp.status_code}: {resp.text[:200]}")
-            return False
-    except Exception as e:
-        logger.error(f"Resend reset exception: {e}")
-        return False
+    html = (
+        f"<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
+        f"<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
+        f"<p style='color:#E4E4E7'>Tu viens de demander à changer le mot de passe de ce compte.</p>"
+        f"<p style='color:#E4E4E7'>Pour finaliser le changement, clique sur le bouton ci-dessous&nbsp;:</p>"
+        f"<p style='margin:24px 0'><a href='{reset_url}' style='background:#E4FF00;color:#050505;"
+        f"padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>"
+        f"Veuillez cliquer ici pour confirmer la réinitialisation de votre mot de passe</a></p>"
+        f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur&nbsp;:<br>"
+        f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{reset_url}</span></p>"
+        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 30 minutes. Tant que tu ne cliques pas, ton ancien mot de passe reste valide.</p>"
+        f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email — ton mot de passe actuel reste inchangé.</p>"
+        f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
+        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
+        f"</div>"
+    )
+    ok = await _send_email(to_email, "Confirme la réinitialisation de ton mot de passe CodeForge AI", html)
+    if ok:
+        logger.info(f"✅ Password reset email sent to {to_email}")
+    return ok
 
 
 def _clean_origin(u: str) -> str:
@@ -1588,56 +1621,33 @@ async def submit_feedback(payload: FeedbackRequest, request: Request):
 
     # Email to private inbox (best-effort, never block the response).
     # Sender email NOT included in the visible body to preserve user privacy.
-    resend_key = os.environ.get("RESEND_API_KEY")
     admin = os.environ.get("FEEDBACK_INBOX_EMAIL", "elsa.barroca2@gmail.com")
-    if resend_key:
-        try:
-            sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
-            # Build HTML attachments preview (URLs + filenames, no email exposure)
-            atts_html = ""
-            email_attachments = []
-            if atts:
-                items = []
-                for a in atts:
-                    if a.kind == 'url' and a.url:
-                        items.append(f"<li>🔗 <a href='{a.url}'>{a.url}</a></li>")
-                    elif a.kind == 'text' and a.text:
-                        snippet = (a.text[:200] + '…') if len(a.text) > 200 else a.text
-                        items.append(f"<li>📋 (presse-papier) <em>{snippet.replace('<','&lt;')}</em></li>")
-                    elif a.kind == 'file' and a.name:
-                        items.append(f"<li>📎 {a.name}</li>")
-                        # Attach to email if data_url provided.
-                        if a.data_url and ',' in a.data_url:
-                            try:
-                                b64 = a.data_url.split(',', 1)[1]
-                                email_attachments.append({"filename": a.name, "content": b64})
-                            except Exception:
-                                pass
-                if items:
-                    atts_html = "<p><b>Pièces jointes :</b></p><ul>" + "".join(items) + "</ul>"
-            body = {
-                "from": sender,
-                "to": [admin],
-                "subject": f"[CodeForge AI] Nouveau {feedback_type}",
-                "html": (
-                    f"<div style='font-family:system-ui,sans-serif'>"
-                    f"<p><b>Type :</b> {feedback_type}</p>"
-                    f"<p><b>Page :</b> {payload.page or '—'}</p>"
-                    f"<p><b>Message :</b></p><pre style='white-space:pre-wrap;background:#f4f4f5;padding:12px;border-radius:6px'>{(payload.message or '').replace('<','&lt;')}</pre>"
-                    f"{atts_html}"
-                    f"<hr><p style='color:#888;font-size:11px'>ID : {doc['feedback_id']} · {now} · expéditeur masqué</p></div>"
-                ),
-            }
-            if email_attachments:
-                body["attachments"] = email_attachments
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(
-                    "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                    json=body,
-                )
-        except Exception as e:
-            logger.warning(f"Feedback admin email failed: {e}")
+    try:
+        # Build HTML attachments preview (URLs + filenames, no email exposure)
+        atts_html = ""
+        if atts:
+            items = []
+            for a in atts:
+                if a.kind == 'url' and a.url:
+                    items.append(f"<li>🔗 <a href='{a.url}'>{a.url}</a></li>")
+                elif a.kind == 'text' and a.text:
+                    snippet = (a.text[:200] + '…') if len(a.text) > 200 else a.text
+                    items.append(f"<li>📋 (presse-papier) <em>{snippet.replace('<','&lt;')}</em></li>")
+                elif a.kind == 'file' and a.name:
+                    items.append(f"<li>📎 {a.name}</li>")
+            if items:
+                atts_html = "<p><b>Pièces jointes :</b></p><ul>" + "".join(items) + "</ul>"
+        html = (
+            f"<div style='font-family:system-ui,sans-serif'>"
+            f"<p><b>Type :</b> {feedback_type}</p>"
+            f"<p><b>Page :</b> {payload.page or '—'}</p>"
+            f"<p><b>Message :</b></p><pre style='white-space:pre-wrap;background:#f4f4f5;padding:12px;border-radius:6px'>{(payload.message or '').replace('<','&lt;')}</pre>"
+            f"{atts_html}"
+            f"<hr><p style='color:#888;font-size:11px'>ID : {doc['feedback_id']} · {now} · expéditeur masqué</p></div>"
+        )
+        await _send_email(admin, f"[CodeForge AI] Nouveau {feedback_type}", html)
+    except Exception as e:
+        logger.warning(f"Feedback admin email failed: {e}")
 
     return {"message": "Merci ! Ton retour a bien été envoyé.", "feedback_id": doc["feedback_id"]}
 
@@ -7191,34 +7201,22 @@ async def auth_theft_email_request(payload: TheftEmailIn):
         })
         frontend_base = _clean_origin(os.environ.get("FRONTEND_URL", "")) or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", "")) or ""
         link = f"{frontend_base}/theft-confirm?token={token}" if frontend_base else f"/theft-confirm?token={token}"
-        # Best-effort send via Resend — uses the same provider as verification.
-        resend_key = os.environ.get("RESEND_API_KEY")
-        if resend_key:
-            try:
-                sender = os.environ.get("EMAIL_FROM", "CodeForge AI <no-reply@resend.dev>")
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(
-                        "https://api.resend.com/emails",
-                        headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                        json={
-                            "from": sender,
-                            "to": [email],
-                            "subject": "CodeForge AI — Récupération en cas de vol",
-                            "html": (
-                                "<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
-                                "<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
-                                "<p style='color:#E4E4E7'>Tu reçois ce mail parce qu'une procédure de récupération en cas de vol a été demandée depuis un nouvel appareil.</p>"
-                                "<p style='color:#FF6B6B'><strong>Si ce n'est pas toi, ignore ce message.</strong></p>"
-                                "<p style='color:#E4E4E7'>Sinon, clique ci-dessous pour révoquer tous les anciens appareils enregistrés sous ton compte :</p>"
-                                f"<p style='margin:24px 0'><a href='{link}' style='background:#E4FF00;color:#050505;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>Confirmer la récupération</a></p>"
-                                f"<p style='color:#A1A1AA;font-size:12px'>Ou copie ce lien : <span style='color:#00D4FF;word-break:break-all'>{link}</span></p>"
-                                "<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 30 minutes.</p>"
-                                "</div>"
-                            ),
-                        },
-                    )
-            except Exception as e:
-                logger.warning(f"theft-email send failed: {e}")
+        # Best-effort send via the unified pipeline (SMTP → Resend).
+        try:
+            html = (
+                "<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
+                "<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
+                "<p style='color:#E4E4E7'>Tu reçois ce mail parce qu'une procédure de récupération en cas de vol a été demandée depuis un nouvel appareil.</p>"
+                "<p style='color:#FF6B6B'><strong>Si ce n'est pas toi, ignore ce message.</strong></p>"
+                "<p style='color:#E4E4E7'>Sinon, clique ci-dessous pour révoquer tous les anciens appareils enregistrés sous ton compte :</p>"
+                f"<p style='margin:24px 0'><a href='{link}' style='background:#E4FF00;color:#050505;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>Confirmer la récupération</a></p>"
+                f"<p style='color:#A1A1AA;font-size:12px'>Ou copie ce lien : <span style='color:#00D4FF;word-break:break-all'>{link}</span></p>"
+                "<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 30 minutes.</p>"
+                "</div>"
+            )
+            await _send_email(email, "CodeForge AI — Récupération en cas de vol", html)
+        except Exception as e:
+            logger.warning(f"theft-email send failed: {e}")
     # Always 200 — no enumeration leak.
     return {"success": True}
 
