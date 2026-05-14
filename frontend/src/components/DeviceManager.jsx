@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { X, Crown, Check, Trash2, Power, KeyRound, Copy, ShieldCheck, ShieldAlert, History, PlusSquare } from 'lucide-react';
+import { X, Crown, Check, Trash2, Power, KeyRound, Copy, ShieldCheck, ShieldAlert, PlusSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof, exportPublicKeyShareCode, parsePublicKeyShareCode } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
+import BiometricEnrollButton from './BiometricEnrollButton';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -12,14 +13,6 @@ const ROLE_META = {
   approved: { tk: 'role_approved', color: 'text-emerald-300 border-emerald-400/40 bg-emerald-400/10', icon: ShieldCheck },
   pending:  { tk: 'role_pending',  color: 'text-amber-300 border-amber-400/40 bg-amber-400/10', icon: ShieldAlert },
   revoked:  { tk: 'role_revoked',  color: 'text-red-300 border-red-400/40 bg-red-400/10', icon: ShieldAlert },
-};
-
-const ACTION_META = {
-  approve:    { tk: 'dec_approve',    color: 'text-emerald-300 border-emerald-400/40 bg-emerald-400/10', icon: Check },
-  revoke:     { tk: 'dec_revoke',     color: 'text-red-300 border-red-400/40 bg-red-400/10',             icon: Trash2 },
-  disconnect: { tk: 'dec_disconnect', color: 'text-amber-300 border-amber-400/40 bg-amber-400/10',       icon: Power },
-  promote:    { tk: 'dec_promote',    color: 'text-[#E4FF00] border-[#E4FF00]/40 bg-[#E4FF00]/10',       icon: Crown },
-  add_by_key: { tk: 'dec_add_by_key', color: 'text-sky-300 border-sky-400/40 bg-sky-400/10',             icon: PlusSquare },
 };
 
 /**
@@ -31,8 +24,6 @@ const ACTION_META = {
 export default function DeviceManager({ open, onClose, role, currentKeyId }) {
   const { t } = useLanguage();
   const [devices, setDevices] = useState([]);
-  const [decisions, setDecisions] = useState([]);
-  const [tab, setTab] = useState('devices'); // 'devices' | 'history'
   const [loading, setLoading] = useState(false);
   const [myShareCode, setMyShareCode] = useState('');
   const [pasteCode, setPasteCode] = useState('');
@@ -45,7 +36,6 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
     exportPublicKeyShareCode().then(setMyShareCode).catch(() => {});
     if (isCreator) {
       refreshList();
-      refreshDecisions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -61,21 +51,12 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
     } finally { setLoading(false); }
   };
 
-  const refreshDecisions = async () => {
-    try {
-      const body = await withCreatorProof(API, axios, {});
-      const r = await axios.post(`${API}/devices/decisions`, body);
-      setDecisions(r.data?.decisions || []);
-    } catch (_) { /* silently ignore */ }
-  };
-
   const callTarget = async (path, target_key_id, extra = {}) => {
     try {
       const body = await withCreatorProof(API, axios, { target_key_id, ...extra });
       await axios.post(`${API}${path}`, body);
       toast.success(t('dm_op_done'));
       refreshList();
-      refreshDecisions();
     } catch (e) {
       toast.error(e?.response?.data?.detail || t('dm_op_failed'));
     }
@@ -90,7 +71,6 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
       toast.success(`${t('dm_added')} (${r.data?.key_id?.slice(0, 12)}…)`);
       setPasteCode('');
       refreshList();
-      refreshDecisions();
     } catch (e) {
       toast.error(e?.response?.data?.detail || t('dm_add_failed'));
     }
@@ -108,7 +88,6 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
       setPromoteTarget(null);
       setPromotePwd('');
       refreshList();
-      refreshDecisions();
     } catch (e) {
       toast.error(e?.response?.data?.detail || t('dm_promote_failed'));
     }
@@ -190,146 +169,94 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
               </div>
             </section>
 
+            <section className="bg-white/[0.03] border border-white/10 rounded-sm p-3 space-y-2" data-testid="biometric-section">
+              <div className="text-xs uppercase tracking-widest text-[#71717A]">{t('theft_title')}</div>
+              <p className="text-[11px] text-[#A1A1AA] leading-relaxed">
+                {t('theft_body')}
+              </p>
+              <BiometricEnrollButton />
+            </section>
+
             <section>
               <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1 border border-white/10 rounded-sm overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setTab('devices')}
-                    data-testid="dm-tab-devices"
-                    className={`px-3 py-1.5 text-xs font-['Chivo'] font-bold transition-colors ${
-                      tab === 'devices' ? 'bg-[#E4FF00] text-[#050505]' : 'text-white hover:bg-white/[0.05]'
-                    }`}
-                  >
-                    {t('dm_registered_devices')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTab('history')}
-                    data-testid="dm-tab-history"
-                    className={`px-3 py-1.5 text-xs font-['Chivo'] font-bold transition-colors flex items-center gap-1 ${
-                      tab === 'history' ? 'bg-[#E4FF00] text-[#050505]' : 'text-white hover:bg-white/[0.05]'
-                    }`}
-                  >
-                    <History className="w-3 h-3" />
-                    {t('dm_history')}
-                    {decisions.length > 0 && (
-                      <span className="text-[10px] opacity-70">({decisions.length})</span>
-                    )}
-                  </button>
-                </div>
+                <h3 className="text-xs uppercase tracking-widest text-[#71717A]">
+                  {t('dm_registered_devices')}
+                </h3>
                 <button
-                  onClick={() => { refreshList(); refreshDecisions(); }}
+                  onClick={() => { refreshList(); }}
                   className="text-xs text-[#A1A1AA] hover:text-white"
                 >
                   {t('dm_refresh')}
                 </button>
               </div>
 
-              {tab === 'devices' && (
-                <>
-                  {loading && <div className="text-xs text-[#A1A1AA]">{t('dm_loading')}</div>}
-                  <div className="space-y-2">
-                    {devices
-                      .filter((d) => d.key_id !== currentKeyId)  /* hide own device from "other identifiers" list */
-                      .map((d) => {
-                        const meta = ROLE_META[d.role] || ROLE_META.pending;
-                        const Mi = meta.icon;
-                        return (
-                          <div
-                            key={d.key_id}
-                            data-testid={`device-row-${d.key_id}`}
-                            className="bg-black/30 border border-white/10 rounded-sm p-3 flex items-start gap-3"
-                          >
-                            <Mi className="w-4 h-4 text-[#A1A1AA] mt-0.5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm ${meta.color}`}>
-                                  {t(meta.tk)}
-                                </span>
-                                {d.label && <span className="text-xs text-white truncate">{d.label}</span>}
-                              </div>
-                              <code className="block text-[10px] text-[#71717A] truncate mt-1">{d.key_id}</code>
-                              <div className="text-[10px] text-[#71717A] mt-0.5">
-                                {d.last_seen_at ? t('dm_seen').replace('{when}', new Date(d.last_seen_at).toLocaleString()) : t('dm_never_seen')}
-                              </div>
-                            </div>
-                            <div className="flex flex-col gap-1 flex-shrink-0">
-                              {d.role === 'pending' && (
-                                <button
-                                  onClick={() => callTarget('/devices/approve', d.key_id)}
-                                  data-testid={`approve-${d.key_id}`}
-                                  className="px-2 py-1 text-[11px] border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-[#050505] rounded-sm transition"
-                                >
-                                  <Check className="w-3 h-3 inline mr-1" />{t('dm_approve')}
-                                </button>
-                              )}
-                              {d.role !== 'creator' && (
-                                <button
-                                  onClick={() => setPromoteTarget(d.key_id)}
-                                  data-testid={`promote-${d.key_id}`}
-                                  className="px-2 py-1 text-[11px] border border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] rounded-sm transition"
-                                >
-                                  <Crown className="w-3 h-3 inline mr-1" />{t('dm_promote')}
-                                </button>
-                              )}
-                              <button
-                                onClick={() => callTarget('/devices/disconnect', d.key_id)}
-                                data-testid={`disconnect-${d.key_id}`}
-                                className="px-2 py-1 text-[11px] border border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-[#050505] rounded-sm transition"
-                              >
-                                <Power className="w-3 h-3 inline mr-1" />{t('dm_disconnect')}
-                              </button>
-                              <button
-                                onClick={() => callTarget('/devices/revoke', d.key_id)}
-                                data-testid={`revoke-${d.key_id}`}
-                                className="px-2 py-1 text-[11px] border border-red-400 text-red-300 hover:bg-red-400 hover:text-white rounded-sm transition"
-                              >
-                                <Trash2 className="w-3 h-3 inline mr-1" />{t('dm_revoke')}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    {!loading && devices.filter((d) => d.key_id !== currentKeyId).length === 0 && (
-                      <div className="text-xs text-[#A1A1AA]">{t('dm_no_devices')}</div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {tab === 'history' && (
-                <div className="space-y-1.5" data-testid="dm-history-list">
-                  {decisions.length === 0 && (
-                    <div className="text-xs text-[#A1A1AA]">{t('dm_history_empty')}</div>
-                  )}
-                  {decisions.map((dec, i) => {
-                    const meta = ACTION_META[dec.action] || { tk: 'dm_op_done', color: 'text-white border-white/20 bg-white/5', icon: History };
+              {loading && <div className="text-xs text-[#A1A1AA]">{t('dm_loading')}</div>}
+              <div className="space-y-2">
+                {devices
+                  .filter((d) => d.key_id !== currentKeyId)
+                  .map((d) => {
+                    const meta = ROLE_META[d.role] || ROLE_META.pending;
                     const Mi = meta.icon;
                     return (
                       <div
-                        key={`${dec.target_key_id}-${dec.ts}-${i}`}
-                        data-testid={`dm-history-row`}
-                        className="bg-black/30 border border-white/10 rounded-sm p-2.5 flex items-center gap-3"
+                        key={d.key_id}
+                        data-testid={`device-row-${d.key_id}`}
+                        className="bg-black/30 border border-white/10 rounded-sm p-3 flex items-start gap-3"
                       >
-                        <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm ${meta.color}`}>
-                          <Mi className="w-3 h-3" />
-                          {t(meta.tk)}
-                        </span>
+                        <Mi className="w-4 h-4 text-[#A1A1AA] mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          {dec.target_label && (
-                            <div className="text-xs text-white truncate">{dec.target_label}</div>
-                          )}
-                          <code className="block text-[10px] text-[#71717A] truncate">{dec.target_key_id}</code>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm ${meta.color}`}>
+                              {t(meta.tk)}
+                            </span>
+                            {d.label && <span className="text-xs text-white truncate">{d.label}</span>}
+                          </div>
+                          <code className="block text-[10px] text-[#71717A] truncate mt-1">{d.key_id}</code>
+                          <div className="text-[10px] text-[#71717A] mt-0.5">
+                            {d.last_seen_at ? t('dm_seen').replace('{when}', new Date(d.last_seen_at).toLocaleString()) : t('dm_never_seen')}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-[#71717A] flex-shrink-0">
-                          {new Date(dec.ts).toLocaleString()}
+                        <div className="flex flex-col gap-1 flex-shrink-0">
+                          {d.role === 'pending' && (
+                            <button
+                              onClick={() => callTarget('/devices/approve', d.key_id)}
+                              data-testid={`approve-${d.key_id}`}
+                              className="px-2 py-1 text-[11px] border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-[#050505] rounded-sm transition"
+                            >
+                              <Check className="w-3 h-3 inline mr-1" />{t('dm_approve')}
+                            </button>
+                          )}
+                          {d.role !== 'creator' && (
+                            <button
+                              onClick={() => setPromoteTarget(d.key_id)}
+                              data-testid={`promote-${d.key_id}`}
+                              className="px-2 py-1 text-[11px] border border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] rounded-sm transition"
+                            >
+                              <Crown className="w-3 h-3 inline mr-1" />{t('dm_promote')}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => callTarget('/devices/disconnect', d.key_id)}
+                            data-testid={`disconnect-${d.key_id}`}
+                            className="px-2 py-1 text-[11px] border border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-[#050505] rounded-sm transition"
+                          >
+                            <Power className="w-3 h-3 inline mr-1" />{t('dm_disconnect')}
+                          </button>
+                          <button
+                            onClick={() => callTarget('/devices/revoke', d.key_id)}
+                            data-testid={`revoke-${d.key_id}`}
+                            className="px-2 py-1 text-[11px] border border-red-400 text-red-300 hover:bg-red-400 hover:text-white rounded-sm transition"
+                          >
+                            <Trash2 className="w-3 h-3 inline mr-1" />{t('dm_revoke')}
+                          </button>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-              )}
+                {!loading && devices.filter((d) => d.key_id !== currentKeyId).length === 0 && (
+                  <div className="text-xs text-[#A1A1AA]">{t('dm_no_devices')}</div>
+                )}
+              </div>
             </section>
           </>
         )}

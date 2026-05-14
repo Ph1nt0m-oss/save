@@ -19,7 +19,7 @@ import UserMenu from '../components/UserMenu';
 import FeatureHint from '../components/FeatureHint';
 import SwitchAccountModal from '../components/SwitchAccountModal';
 import LanguageToggle from '../components/LanguageToggle';
-import SiteModeBadge from '../components/SiteModeBadge';
+import CreatorToolbar from '../components/CreatorToolbar';
 import NotificationBell from '../components/NotificationBell';
 import SiteLockedOverlay from '../components/SiteLockedOverlay';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
@@ -742,7 +742,7 @@ export default function Dashboard() {
               </Button>
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
-                <SiteModeBadge role={device.role} siteMode={device.siteMode} onChange={() => device.refresh()} />
+                <CreatorToolbar />
                 <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />
               </div>

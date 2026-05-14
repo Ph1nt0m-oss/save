@@ -13,7 +13,7 @@ export default function NotificationBell({ className = '' }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
-  if (device.role !== 'creator') return null;
+  if (!device.isCreatorView) return null;
 
   const count = device.pendingCount || 0;
   const title = count === 0

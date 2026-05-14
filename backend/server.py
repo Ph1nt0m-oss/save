@@ -545,6 +545,8 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+    device_key_id: Optional[str] = None  # cryptographic device identifier (browser ECDSA)
+    device_label: Optional[str] = None   # human label (e.g. "iPhone 15 Pro")
 
 
 @api_router.post("/auth/register")
@@ -983,12 +985,78 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     await db.login_attempts.delete_many({"identifier": identifier})
 
     now = datetime.now(timezone.utc)
+
+    # --- One-device-at-a-time approval flow ---------------------------------
+    # If another active session exists for this account on a DIFFERENT device,
+    # block the login and queue a pending session request. The currently-
+    # connected device must approve from its UI.
+    requesting_key_id = (payload.device_key_id or "").strip() or None
+    if requesting_key_id:
+        active_other = await db.user_sessions.find_one({
+            "user_id": user["user_id"],
+            "expires_at": {"$gt": now.isoformat()},
+            "device_key_id": {"$nin": [None, requesting_key_id]},
+        }, {"_id": 0, "device_key_id": 1})
+        if active_other:
+            # Already an outstanding request for the same (user, device)?
+            existing_req = await db.session_requests.find_one({
+                "user_id": user["user_id"],
+                "requesting_key_id": requesting_key_id,
+                "status": "pending",
+            }, {"_id": 0})
+            if not existing_req:
+                # Approximate location for @gmail.com only (privacy: other
+                # providers don't get geo-resolution).
+                client_ip = (request.client.host if request.client else "") or ""
+                fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+                ip = fwd or client_ip
+                location = None
+                if email.endswith("@gmail.com") and ip and ip not in ("127.0.0.1", "::1"):
+                    try:
+                        async with httpx.AsyncClient(timeout=4.0) as client:
+                            r = await client.get(f"https://ipinfo.io/{ip}/json")
+                            if r.status_code == 200:
+                                j = r.json()
+                                city = j.get("city") or ""
+                                region = j.get("region") or ""
+                                country = j.get("country") or ""
+                                location = ", ".join([p for p in (city, region, country) if p]) or None
+                    except Exception:
+                        location = None
+                request_id = secrets.token_urlsafe(16)
+                await db.session_requests.insert_one({
+                    "request_id": request_id,
+                    "user_id": user["user_id"],
+                    "email": email,
+                    "requesting_key_id": requesting_key_id,
+                    "requesting_label": (payload.device_label or "")[:80] or None,
+                    "is_gmail": email.endswith("@gmail.com"),
+                    "location": location,
+                    "status": "pending",  # 'pending' | 'approved' | 'denied' | 'expired'
+                    "created_at": now.isoformat(),
+                    "expires_at": (now + timedelta(minutes=10)).isoformat(),
+                })
+                request_id_to_return = request_id
+            else:
+                request_id_to_return = existing_req["request_id"]
+            # 202 — login is on hold. Frontend polls /auth/session-request-status.
+            raise HTTPException(
+                status_code=202,
+                detail={
+                    "code": "session_pending_approval",
+                    "request_id": request_id_to_return,
+                    "message": "Connexion en attente d'approbation par l'appareil déjà connecté.",
+                },
+            )
+
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
 
     session_token = secrets.token_urlsafe(32)
     await db.user_sessions.insert_one({
         "session_token": session_token,
         "user_id": user["user_id"],
+        "device_key_id": requesting_key_id,
+        "device_label": (payload.device_label or "")[:80] or None,
         "auth_type": "email",
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=7)).isoformat(),
@@ -4255,6 +4323,332 @@ async def devices_add_by_key(payload: AddByKeyIn):
 
 # ==========================================================================
 # END device-bound identity
+# ==========================================================================
+
+
+# ==========================================================================
+# ONE-DEVICE-AT-A-TIME — pending session approval flow
+# ==========================================================================
+
+class SessionRequestStatusIn(BaseModel):
+    request_id: str
+
+
+@api_router.post("/auth/session-request-status")
+async def session_request_status(payload: SessionRequestStatusIn, response: Response):
+    """Polled by the requesting device until the connected device decides
+    (approve/deny) or the request expires (10 min)."""
+    now = datetime.now(timezone.utc)
+    req = await db.session_requests.find_one({"request_id": payload.request_id}, {"_id": 0})
+    if not req:
+        raise HTTPException(status_code=404, detail="Demande introuvable.")
+    # Expire on read.
+    if req["status"] == "pending" and req.get("expires_at") and req["expires_at"] < now.isoformat():
+        await db.session_requests.update_one(
+            {"request_id": payload.request_id},
+            {"$set": {"status": "expired"}},
+        )
+        req["status"] = "expired"
+
+    if req["status"] != "approved":
+        return {"status": req["status"]}
+
+    # Approved → issue a fresh session token for the requesting device, and
+    # consume the request (single-use).
+    user = await db.users.find_one({"user_id": req["user_id"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    session_token = secrets.token_urlsafe(32)
+    await db.user_sessions.insert_one({
+        "session_token": session_token,
+        "user_id": user["user_id"],
+        "device_key_id": req.get("requesting_key_id"),
+        "device_label": req.get("requesting_label"),
+        "auth_type": "email",
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=7)).isoformat(),
+    })
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
+    await db.session_requests.delete_one({"request_id": payload.request_id})
+
+    response.set_cookie(
+        key="session_token", value=session_token,
+        httponly=True, secure=True, samesite="none",
+        max_age=7 * 24 * 3600, path="/",
+    )
+    safe_user = {k: v for k, v in user.items() if k != "password_hash"}
+    return {"status": "approved", **safe_user, "session_token": session_token}
+
+
+@api_router.get("/auth/session-pending")
+async def list_pending_session_requests(request: Request):
+    """Listed by the currently-connected user — pending requests on their
+    account from other devices."""
+    user_id = await get_current_user(request)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = await db.session_requests.find(
+        {"user_id": user_id, "status": "pending", "expires_at": {"$gt": now_iso}},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(length=50)
+    return {"requests": rows}
+
+
+class SessionDecideIn(BaseModel):
+    request_id: str
+    decision: str  # 'approve' | 'deny'
+
+
+@api_router.post("/auth/session-decide")
+async def decide_session_request(payload: SessionDecideIn, request: Request):
+    """Currently-connected device approves or denies a pending request."""
+    if payload.decision not in ("approve", "deny"):
+        raise HTTPException(status_code=400, detail="Décision invalide.")
+    user_id = await get_current_user(request)
+    req = await db.session_requests.find_one(
+        {"request_id": payload.request_id, "user_id": user_id, "status": "pending"},
+        {"_id": 0},
+    )
+    if not req:
+        raise HTTPException(status_code=404, detail="Demande introuvable ou déjà traitée.")
+    new_status = "approved" if payload.decision == "approve" else "denied"
+    await db.session_requests.update_one(
+        {"request_id": payload.request_id},
+        {"$set": {
+            "status": new_status,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    return {"status": new_status}
+
+
+# ==========================================================================
+# WEBAUTHN — biometric "declare theft" recovery
+# ==========================================================================
+import webauthn  # noqa: E402
+from webauthn.helpers.structs import (  # noqa: E402
+    PublicKeyCredentialDescriptor,
+    UserVerificationRequirement,
+    AuthenticatorSelectionCriteria,
+    AuthenticatorAttachment,
+    ResidentKeyRequirement,
+)
+
+
+def _rp_id_from_origin(origin: str) -> str:
+    """Strip scheme + port from origin to derive the WebAuthn RP id."""
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(origin).hostname or ""
+        return host or "localhost"
+    except Exception:
+        return "localhost"
+
+
+class WebAuthnEnrollOptionsIn(BaseModel):
+    key_id: str           # device making the call (must be creator to enroll)
+    nonce: str
+    signature: str
+    origin: str           # window.location.origin
+
+
+@api_router.post("/webauthn/register-options")
+async def webauthn_register_options(payload: WebAuthnEnrollOptionsIn):
+    """Step 1 (creator-only): generate a challenge for biometric enrollment.
+    The browser will call navigator.credentials.create with these options.
+    Only platform authenticators (Touch ID / Face ID / Windows Hello / Android
+    fingerprint) are allowed."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    rp_id = _rp_id_from_origin(payload.origin)
+    user_handle = payload.key_id.encode("utf-8")[:64]
+
+    options = webauthn.generate_registration_options(
+        rp_id=rp_id,
+        rp_name="CodeForge AI",
+        user_id=user_handle,
+        user_name=f"creator:{payload.key_id}",
+        user_display_name="Creator",
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            authenticator_attachment=AuthenticatorAttachment.PLATFORM,
+            resident_key=ResidentKeyRequirement.PREFERRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+        timeout=60_000,
+    )
+    # Persist challenge + rp_id for the verify step.
+    await db.webauthn_challenges.insert_one({
+        "key_id": payload.key_id,
+        "challenge": webauthn.helpers.bytes_to_base64url(options.challenge),
+        "rp_id": rp_id,
+        "kind": "register",
+        "origin": payload.origin,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return json.loads(webauthn.helpers.options_to_json(options))
+
+
+class WebAuthnEnrollVerifyIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    origin: str
+    credential: Dict[str, Any]  # the navigator.credentials.create response
+
+
+@api_router.post("/webauthn/register-verify")
+async def webauthn_register_verify(payload: WebAuthnEnrollVerifyIn):
+    """Step 2 (creator-only): verify the browser's attestation and store
+    the platform credential for later 'declare theft' use."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    challenge_doc = await db.webauthn_challenges.find_one_and_delete(
+        {"key_id": payload.key_id, "kind": "register"},
+    )
+    if not challenge_doc:
+        raise HTTPException(status_code=400, detail="Aucun défi d'enrôlement actif.")
+    try:
+        verification = webauthn.verify_registration_response(
+            credential=payload.credential,
+            expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_doc["challenge"]),
+            expected_origin=payload.origin,
+            expected_rp_id=challenge_doc["rp_id"],
+            require_user_verification=True,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Vérification d'enrôlement échouée: {e}")
+
+    await db.webauthn_credentials.insert_one({
+        "credential_id": webauthn.helpers.bytes_to_base64url(verification.credential_id),
+        "public_key": webauthn.helpers.bytes_to_base64url(verification.credential_public_key),
+        "sign_count": verification.sign_count,
+        "owner_key_id": payload.key_id,  # the creator who enrolled this biometric
+        "rp_id": challenge_doc["rp_id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"enrolled": True}
+
+
+class WebAuthnTheftOptionsIn(BaseModel):
+    key_id: str  # device declaring the theft (NOT required to be creator)
+    origin: str
+
+
+@api_router.post("/webauthn/declare-theft-options")
+async def webauthn_declare_theft_options(payload: WebAuthnTheftOptionsIn):
+    """Public — anyone with a registered device can attempt to declare theft.
+    Returns a WebAuthn authentication challenge listing every enrolled
+    biometric credential as 'allowed'. The matching biometric on this device
+    must validate (USER_VERIFICATION required)."""
+    if not await _device_by_key(payload.key_id):
+        raise HTTPException(status_code=404, detail="Appareil inconnu.")
+    rp_id = _rp_id_from_origin(payload.origin)
+    creds = await db.webauthn_credentials.find({"rp_id": rp_id}, {"_id": 0}).to_list(length=20)
+    if not creds:
+        raise HTTPException(status_code=404, detail="Aucune biométrie enrôlée — le créateur doit d'abord enregistrer son empreinte depuis son appareil créateur.")
+
+    allow = [
+        PublicKeyCredentialDescriptor(id=webauthn.helpers.base64url_to_bytes(c["credential_id"]))
+        for c in creds
+    ]
+    options = webauthn.generate_authentication_options(
+        rp_id=rp_id,
+        allow_credentials=allow,
+        user_verification=UserVerificationRequirement.REQUIRED,
+        timeout=60_000,
+    )
+    await db.webauthn_challenges.insert_one({
+        "key_id": payload.key_id,
+        "challenge": webauthn.helpers.bytes_to_base64url(options.challenge),
+        "rp_id": rp_id,
+        "kind": "theft",
+        "origin": payload.origin,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return json.loads(webauthn.helpers.options_to_json(options))
+
+
+class WebAuthnTheftVerifyIn(BaseModel):
+    key_id: str
+    origin: str
+    credential: Dict[str, Any]
+
+
+@api_router.post("/webauthn/declare-theft-verify")
+async def webauthn_declare_theft_verify(payload: WebAuthnTheftVerifyIn):
+    """Verify the assertion. On success:
+      - Promote the calling device to 'creator' role.
+      - Revoke every OTHER creator device.
+      - Force-disconnect their sessions.
+    """
+    dev = await _device_by_key(payload.key_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail="Appareil inconnu.")
+    challenge_doc = await db.webauthn_challenges.find_one_and_delete(
+        {"key_id": payload.key_id, "kind": "theft"},
+    )
+    if not challenge_doc:
+        raise HTTPException(status_code=400, detail="Aucun défi de récupération actif.")
+
+    # Look up the credential by id supplied in the assertion.
+    raw_id = payload.credential.get("rawId") or payload.credential.get("id")
+    if not raw_id:
+        raise HTTPException(status_code=400, detail="Credential id manquant.")
+    cred_doc = await db.webauthn_credentials.find_one({"credential_id": raw_id}, {"_id": 0})
+    if not cred_doc:
+        raise HTTPException(status_code=404, detail="Credential inconnu.")
+
+    try:
+        verification = webauthn.verify_authentication_response(
+            credential=payload.credential,
+            expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_doc["challenge"]),
+            expected_rp_id=challenge_doc["rp_id"],
+            expected_origin=payload.origin,
+            credential_public_key=webauthn.helpers.base64url_to_bytes(cred_doc["public_key"]),
+            credential_current_sign_count=cred_doc.get("sign_count", 0),
+            require_user_verification=True,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Vérification biométrique échouée: {e}")
+
+    # Bump sign_count to prevent replay.
+    await db.webauthn_credentials.update_one(
+        {"credential_id": raw_id},
+        {"$set": {"sign_count": verification.new_sign_count}},
+    )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    # Revoke all OTHER creators.
+    other_creators = await db.device_keys.find(
+        {"role": "creator", "key_id": {"$ne": payload.key_id}},
+        {"_id": 0, "key_id": 1, "label": 1},
+    ).to_list(length=50)
+    for d in other_creators:
+        await db.device_keys.update_one(
+            {"key_id": d["key_id"]},
+            {"$set": {"role": "revoked", "revoked_at": now_iso, "revoked_reason": "theft"}},
+        )
+        await db.device_nonces.delete_many({"key_id": d["key_id"]})
+        await _log_decision("revoke", d["key_id"], payload.key_id, d.get("label"))
+        # Kill any active user_sessions tied to that device too.
+        await db.user_sessions.delete_many({"device_key_id": d["key_id"]})
+
+    # Promote the requester.
+    await db.device_keys.update_one(
+        {"key_id": payload.key_id},
+        {"$set": {"role": "creator", "promoted_at": now_iso, "promoted_reason": "theft"}},
+    )
+    await _log_decision("promote", payload.key_id, payload.key_id, dev.get("label"))
+    return {"recovered": True, "revoked_count": len(other_creators)}
+
+
+@api_router.get("/webauthn/has-enrollment")
+async def webauthn_has_enrollment():
+    """Public lookup — returns whether any biometric is enrolled on this
+    deployment. Used by the login page to show the right CTA."""
+    count = await db.webauthn_credentials.count_documents({})
+    return {"enrolled_count": count, "has_any": count > 0}
+
+
+# ==========================================================================
+# END pending sessions + WebAuthn
 # ==========================================================================
 
 

@@ -17,6 +17,8 @@ import Legal from './pages/Legal';
 import Discover from './pages/Discover';
 import FeedbackButton from './components/FeedbackButton';
 import SiteLockedOverlay from './components/SiteLockedOverlay';
+import ViewModePreviewBanner from './components/ViewModePreviewBanner';
+import SessionRequestNotifier from './components/SessionRequestNotifier';
 import useDeviceIdentity from './hooks/useDeviceIdentity';
 
 // Global site lock overlay — renders when site is in creator-only mode
@@ -97,6 +99,8 @@ function AppRouter() {
   return (
     <Suspense fallback={<RouteFallback />}>
       <GlobalSiteLock />
+      <ViewModePreviewBanner />
+      <SessionRequestNotifier />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />

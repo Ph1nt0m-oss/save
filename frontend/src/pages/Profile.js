@@ -5,6 +5,9 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Lock, Mail, Download, Trash2, Loader2, AlertTriangle, User as UserIcon, Settings as SettingsIcon, Users as UsersIcon, Plus, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { exportPublicKeyShareCode } from '../lib/deviceIdentity';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const KNOWN_ACCOUNTS_KEY = 'codeforge_known_accounts';
@@ -54,6 +57,27 @@ function fmtDate(iso) {
 export default function Profile() {
   const navigate = useNavigate();
   const { user, setUser, logout } = useAuth();
+  const { t } = useLanguage();
+  const device = useDeviceIdentity();
+  const [deviceShareCode, setDeviceShareCode] = useState('');
+  const [keyCopied, setKeyCopied] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    exportPublicKeyShareCode()
+      .then((code) => { if (mounted) setDeviceShareCode(code); })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  const copyDeviceKey = async () => {
+    try {
+      await navigator.clipboard.writeText(deviceShareCode);
+      setKeyCopied(true);
+      setTimeout(() => setKeyCopied(false), 1500);
+      toast.success(t('prof_key_copied'));
+    } catch (_) { toast.error(t('dm_copy_failed')); }
+  };
 
   const [tab, setTab] = useState('info'); // 'info' | 'password' | 'email' | 'prefs' | 'accounts' | 'danger'
   const [submitting, setSubmitting] = useState(false);
@@ -381,6 +405,29 @@ export default function Profile() {
                     className="ml-2 text-xs text-[#A1A1AA] hover:text-white underline">Annuler</button>
                 )}
               </div>
+
+              {device.role !== 'creator' && deviceShareCode && (
+                <div className="mt-6 pt-6 border-t border-white/10" data-testid="profile-device-key-section">
+                  <h3 className="font-['Chivo'] font-bold text-white mb-2">{t('prof_my_device_key')}</h3>
+                  <div className="flex items-center gap-2 mb-2">
+                    <code
+                      data-testid="profile-device-share-code"
+                      className="flex-1 text-[11px] text-emerald-300 bg-black/40 px-2 py-1.5 rounded-sm overflow-x-auto whitespace-nowrap border border-white/10"
+                    >
+                      {deviceShareCode}
+                    </code>
+                    <button
+                      onClick={copyDeviceKey}
+                      data-testid="profile-copy-device-key"
+                      className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 border border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] rounded-sm text-xs font-['Chivo'] font-bold transition"
+                    >
+                      {keyCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {keyCopied ? t('prof_key_copied') : t('prof_copy_key')}
+                    </button>
+                  </div>
+                  <p className="text-xs text-[#A1A1AA]">{t('prof_my_device_key_hint')}</p>
+                </div>
+              )}
 
               <div className="mt-6 pt-6 border-t border-white/10">
                 <h3 className="font-['Chivo'] font-bold text-white mb-2">Tes données (RGPD)</h3>

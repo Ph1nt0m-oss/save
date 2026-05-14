@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import confetti from 'canvas-confetti';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw, X } from 'lucide-react';
+import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw, X, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from '../components/LanguageToggle';
-import SiteModeBadge from '../components/SiteModeBadge';
+import CreatorToolbar from '../components/CreatorToolbar';
+import TheftRecoveryDialog from '../components/TheftRecoveryDialog';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { rememberEmailForDevice, recallEmailForDevice } from '../lib/deviceIdentity';
 
@@ -72,6 +73,8 @@ export default function Login() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [idleNotice, setIdleNotice] = useState(false);
   const [authError, setAuthError] = useState(''); // inline red error (wrong password, etc.)
+  const [pendingApproval, setPendingApproval] = useState(null); // {request_id, email} when 2nd-device flow active
+  const [theftOpen, setTheftOpen] = useState(false);
 
   // Verification polling state (active between /register and the user
   // clicking the magic link in their email / the demo link).
@@ -93,6 +96,41 @@ export default function Login() {
     if (remembered && !email) setEmail(remembered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Poll the session-request status until approved/denied/expired by the
+  // already-connected device.
+  useEffect(() => {
+    if (!pendingApproval?.request_id) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await axios.post(`${API}/auth/session-request-status`, {
+          request_id: pendingApproval.request_id,
+        });
+        if (cancelled) return;
+        const status = r.data?.status;
+        if (status === 'approved') {
+          // Server has set the cookie + returned the user. Hydrate auth + go.
+          if (r.data?.session_token) {
+            try { localStorage.setItem('session_token', r.data.session_token); } catch (_) {}
+          }
+          rememberEmailForDevice(r.data?.email || pendingApproval.email);
+          rememberAccount(r.data);
+          setUser(r.data);
+          toast.success(t('sess_approved'));
+          setPendingApproval(null);
+          navigate('/dashboard', { replace: true, state: { user: r.data } });
+        } else if (status === 'denied' || status === 'expired') {
+          toast.error(t('sess_denied'));
+          setPendingApproval(null);
+        }
+      } catch (_) { /* keep polling */ }
+    };
+    tick();
+    const id = setInterval(tick, 2500);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingApproval?.request_id]);
 
   // Surface ?verified=1 (post email confirm) or ?reason=idle (auto logout)
   useEffect(() => {
@@ -197,14 +235,33 @@ export default function Login() {
           startWaiting(data.verification_token, email.trim().toLowerCase(), data.expires_in_seconds);
         }
       } else {
-        const { data } = await axios.post(`${API}/auth/login`, {
-          email: email.trim(),
-          password,
-        });
+        const cachedKeyId = (typeof localStorage !== 'undefined' ? localStorage.getItem('codeforge_device_key_id') : null) || null;
+        const deviceLabel = navigator.userAgent.split(' ').slice(-2).join(' ').slice(0, 60);
+        let data;
+        try {
+          const res = await axios.post(`${API}/auth/login`, {
+            email: email.trim(),
+            password,
+            device_key_id: cachedKeyId,
+            device_label: deviceLabel,
+          });
+          data = res.data;
+        } catch (err2) {
+          // 202 → another device needs to approve this connection. Poll until decided.
+          if (err2.response?.status === 202) {
+            const detail = err2.response.data?.detail || {};
+            const reqId = detail.request_id;
+            if (reqId) {
+              toast.info(t('sess_pending_title'));
+              setPendingApproval({ request_id: reqId, email: email.trim() });
+              return;
+            }
+          }
+          throw err2;
+        }
         if (data.session_token) {
           try { localStorage.setItem('session_token', data.session_token); } catch (_) {}
         }
-        // Per-device email memory (encryption key tied to this device only).
         rememberEmailForDevice(data.email || email.trim());
         rememberAccount(data);
         setUser(data);
@@ -488,6 +545,27 @@ export default function Login() {
               </motion.div>
             )}
 
+            {pendingApproval && (
+              <div
+                data-testid="session-pending-banner"
+                className="mb-3 p-3 bg-amber-400/10 border border-amber-400/40 rounded-sm text-amber-200 text-xs flex items-start gap-2"
+              >
+                <Loader2 className="w-4 h-4 animate-spin flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-['Chivo'] font-bold mb-1">{t('sess_pending_title')}</div>
+                  <p className="text-amber-100/80 leading-relaxed">{t('sess_pending_body')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingApproval(null)}
+                  className="text-amber-200 hover:text-white"
+                  data-testid="session-pending-cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {!waitingFor && (
               <motion.form variants={item} onSubmit={handleSubmit} autoComplete="off" data-form-type="other" className="space-y-3 text-left">
                 {/* Honeypot fields to discourage browser autofill (hidden from users). */}
@@ -748,10 +826,22 @@ export default function Login() {
             <span>·</span>
             <LanguageToggle />
             <span>·</span>
-            <SiteModeBadge role={device.role} siteMode={device.siteMode} onChange={() => device.refresh()} />
+            <CreatorToolbar />
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setTheftOpen(true)}
+              data-testid="declare-theft-link"
+              className="inline-flex items-center gap-1.5 text-[11px] text-red-300/80 hover:text-red-300 font-['IBM_Plex_Sans'] transition-colors"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              {t('theft_link')}
+            </button>
           </div>
         </motion.div>
       </motion.div>
+      <TheftRecoveryDialog open={theftOpen} onClose={() => setTheftOpen(false)} />
     </div>
   );
 }

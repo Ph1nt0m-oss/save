@@ -12,7 +12,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  * - If `role === 'creator'`: interactive dropdown that PUTs /system/site-mode.
  * - Otherwise: read-only badge showing current mode.
  */
-export default function SiteModeBadge({ role, siteMode, onChange, className = '' }) {
+export default function SiteModeBadge({ role, siteMode, viewMode, onChange, className = '' }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -26,7 +26,8 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
 
   const current = MODES.find((m) => m.id === siteMode) || MODES[0];
   const Icon = current.icon;
-  const isCreator = role === 'creator';
+  // In guest preview view, even creators see the read-only badge.
+  const isCreator = role === 'creator' && viewMode !== 'guest';
 
   const setMode = async (mode) => {
     if (!isCreator || saving || mode === siteMode) { setOpen(false); return; }

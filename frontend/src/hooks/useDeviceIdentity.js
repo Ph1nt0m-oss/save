@@ -4,6 +4,19 @@ import { attestDevice, withCreatorProof, signNonce, getCachedKeyId } from '../li
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// View mode is a CLIENT-SIDE preference: creators can preview the app as a
+// guest would see it (no admin UI, no write actions). Stored in localStorage
+// so it survives reloads. Possible values: 'creator' (default) | 'guest'.
+const VIEW_MODE_KEY = 'codeforge_view_mode';
+function readViewMode() {
+  try { return localStorage.getItem(VIEW_MODE_KEY) === 'guest' ? 'guest' : 'creator'; }
+  catch (_) { return 'creator'; }
+}
+export function setStoredViewMode(mode) {
+  try { localStorage.setItem(VIEW_MODE_KEY, mode === 'guest' ? 'guest' : 'creator'); } catch (_) {}
+  try { window.dispatchEvent(new Event('codeforge:view-mode-changed')); } catch (_) {}
+}
+
 /**
  * useDeviceIdentity — ensures a device key exists, attests it on mount,
  * and exposes the current role + site mode + access permission.
@@ -21,9 +34,17 @@ export default function useDeviceIdentity() {
     siteMode: 'public',
     canAccess: true,
     pendingCount: 0,
+    viewMode: readViewMode(),
     error: null,
   });
   const sseRef = useRef(null);
+
+  // Listen for view-mode changes broadcast by setStoredViewMode().
+  useEffect(() => {
+    const onChange = () => setState((s) => ({ ...s, viewMode: readViewMode() }));
+    window.addEventListener('codeforge:view-mode-changed', onChange);
+    return () => window.removeEventListener('codeforge:view-mode-changed', onChange);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -93,8 +114,31 @@ export default function useDeviceIdentity() {
     };
   }, [state.role]);
 
-  // canWrite: only creator/approved devices may perform write actions.
-  const canWrite = state.effectiveRole === 'creator' || state.effectiveRole === 'approved';
+  // canWrite — rules per site_mode:
+  //  - 'public'  : everyone can write (creator, approved, pending, anonymous/guest)
+  //  - 'guest'   : nobody can write (read-only preview for the whole site)
+  //  - 'private' : only creator + approved can write
+  //  - 'creator' : only creator can write (others are blocked by SiteLockedOverlay)
+  // Plus: if the creator switches to "guest view mode", they preview as a
+  // guest would — so writes are disabled in that preview.
+  let canWrite;
+  if (state.viewMode === 'guest' && state.role === 'creator') {
+    canWrite = false;
+  } else if (state.siteMode === 'public') {
+    canWrite = true;
+  } else if (state.siteMode === 'guest') {
+    canWrite = false;
+  } else if (state.siteMode === 'private') {
+    canWrite = state.role === 'creator' || state.role === 'approved';
+  } else if (state.siteMode === 'creator') {
+    canWrite = state.role === 'creator';
+  } else {
+    canWrite = false;
+  }
 
-  return { ...state, canWrite, refresh };
+  // isCreatorView — true ONLY when device is the creator AND not previewing
+  // as guest. Components use this to gate creator-only UI (notif bell, badges).
+  const isCreatorView = state.role === 'creator' && state.viewMode !== 'guest';
+
+  return { ...state, canWrite, isCreatorView, refresh };
 }

@@ -9,6 +9,18 @@ body {
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Mobile: prevent content overflow when zoomed out; allow horizontal
+       scroll instead of cramming text into a too-narrow viewport. */
+    min-width: 320px;
+    overflow-x: hidden;
+}
+
+/* Mobile zoom-out friendliness — ensure prose-like blocks keep a minimum
+   readable line length even when the device pixel ratio shrinks the layout. */
+@media (max-width: 640px) {
+    .min-h-screen {
+        font-size: clamp(14px, 3.6vw, 16px);
+    }
 }
 
 code {
