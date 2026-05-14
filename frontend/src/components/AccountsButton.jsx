@@ -120,22 +120,33 @@ export default function AccountsButton({ onVisitAccount }) {
     downloadText(`accounts-history-${ts}.txt`, lines.join('\n') + '\n');
   };
 
-  const removeCreatorMode = async () => {
-    const pwd = window.prompt(t('acc_remove_creator_confirm'));
+  const removeCreatorMode = async (target) => {
+    // target = null → demote SELF (legacy bottom button). target = row →
+    // demote that specific creator device. Both paths take the caller's
+    // own password for confirmation.
+    const isSelf = !target || target.key_id === device.keyId;
+    const promptMsg = isSelf
+      ? t('acc_remove_creator_confirm')
+      : t('acc_remove_creator_other_confirm').replace('{pseudo}', target.display || target.pseudo || target.key_id.slice(0, 14));
+    const pwd = window.prompt(promptMsg);
     if (!pwd) return;
     setRemoving(true);
     try {
-      const body = await withCreatorProof(API, axios, { password: pwd });
+      const extra = isSelf ? { password: pwd } : { password: pwd, target_key_id: target.key_id };
+      const body = await withCreatorProof(API, axios, extra);
       await axios.post(`${API}/accounts/remove-creator`, body);
       toast.success(t('acc_remove_creator_done'));
-      window.location.reload();
+      if (isSelf) {
+        window.location.reload();
+      } else {
+        await load();
+      }
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Erreur');
     } finally { setRemoving(false); }
   };
 
   const filtered = (accounts || []).filter((a) => {
-    if (a.key_id === device.keyId) return false; // hide self
     if (!filter) return true;
     const q = filter.toLowerCase();
     return ((a.display || '').toLowerCase().includes(q) ||
@@ -191,10 +202,13 @@ export default function AccountsButton({ onVisitAccount }) {
                   {!loading && filtered.length === 0 && (
                     <div className="text-xs text-[#A1A1AA] py-4 text-center">{t('acc_empty')}</div>
                   )}
-                  {filtered.map((a) => (
+                  {filtered.map((a) => {
+                    const isSelf = a.key_id === device.keyId;
+                    return (
                     <div key={a.key_id} data-testid={`accounts-row-${a.key_id}`} className="bg-black/30 border border-white/10 rounded-sm p-2.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm text-white font-['Chivo'] font-bold truncate">{a.display}</span>
+                        {isSelf && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">{t('acc_you')}</span>}
                         {a.email && <span className="text-[10px] text-[#71717A] truncate font-['IBM_Plex_Mono']">{a.email}</span>}
                         {a.role === 'creator' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm inline-flex items-center gap-1"><Crown className="w-2.5 h-2.5" />creator</span>}
                         {a.role === 'approved' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-emerald-400/40 text-emerald-300 bg-emerald-400/10 rounded-sm">approved</span>}
@@ -205,39 +219,42 @@ export default function AccountsButton({ onVisitAccount }) {
                         {a.muted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-purple-400/40 text-purple-300 bg-purple-400/10 rounded-sm">muted</span>}
                       </div>
                       <div className="mt-2 flex items-center gap-1 flex-wrap">
-                        <button title={t('acc_action_visit')} data-testid={`acc-visit-${a.key_id}`} onClick={() => { setOpen(false); onVisitAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Eye className="w-3.5 h-3.5" /></button>
+                        {!isSelf && (
+                          <button title={t('acc_action_visit')} data-testid={`acc-visit-${a.key_id}`} onClick={() => { setOpen(false); onVisitAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Eye className="w-3.5 h-3.5" /></button>
+                        )}
                         <button title={t('acc_action_rename')} onClick={() => renameContact(a)} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Edit3 className="w-3.5 h-3.5" /></button>
-                        {a.muted ? (
+                        {!isSelf && (a.muted ? (
                           <button title={t('acc_action_unmute')} onClick={() => doAction('/accounts/unmute', a.key_id)} className="p-1.5 border border-purple-400/40 text-purple-300 rounded-sm"><Bell className="w-3.5 h-3.5" /></button>
                         ) : (
                           <button title={t('acc_action_mute')} onClick={() => doAction('/accounts/mute', a.key_id)} className="p-1.5 border border-white/15 hover:border-purple-400/40 text-[#A1A1AA] hover:text-purple-300 rounded-sm transition"><BellOff className="w-3.5 h-3.5" /></button>
-                        )}
-                        {a.role === 'blocked' ? (
+                        ))}
+                        {!isSelf && (a.role === 'blocked' ? (
                           <button title={t('acc_action_unblock')} onClick={() => doAction('/devices/unblock', a.key_id)} className="p-1.5 border border-emerald-400/40 text-emerald-300 rounded-sm"><ShieldCheck className="w-3.5 h-3.5" /></button>
                         ) : (
                           <button title={t('acc_action_block')} onClick={() => doAction('/devices/block', a.key_id)} className="p-1.5 border border-white/15 hover:border-red-400/40 text-[#A1A1AA] hover:text-red-400 rounded-sm transition"><Ban className="w-3.5 h-3.5" /></button>
+                        ))}
+                        {!isSelf && (
+                          <button title={t('acc_action_exclude')} onClick={() => setExcluding({ a })} data-testid={`acc-exclude-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-orange-400/40 text-[#A1A1AA] hover:text-orange-300 rounded-sm transition"><Clock className="w-3.5 h-3.5" /></button>
                         )}
-                        <button title={t('acc_action_exclude')} onClick={() => setExcluding({ a })} data-testid={`acc-exclude-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-orange-400/40 text-[#A1A1AA] hover:text-orange-300 rounded-sm transition"><Clock className="w-3.5 h-3.5" /></button>
-                        {a.banned ? (
+                        {!isSelf && (a.banned ? (
                           <button title={t('acc_action_unban')} onClick={() => doAction('/accounts/unban', a.key_id)} className="p-1.5 border border-emerald-400/40 text-emerald-300 rounded-sm"><ShieldOff className="w-3.5 h-3.5" /></button>
                         ) : (
                           <button title={t('acc_action_ban')} onClick={() => ban(a)} data-testid={`acc-ban-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-red-500/60 text-[#A1A1AA] hover:text-red-300 rounded-sm transition"><Skull className="w-3.5 h-3.5" /></button>
+                        ))}
+                        {a.role === 'creator' && (
+                          <button
+                            title={isSelf ? t('acc_remove_creator_btn') : t('acc_remove_creator_other_btn')}
+                            onClick={() => removeCreatorMode(a)}
+                            disabled={removing}
+                            data-testid={`acc-remove-creator-${a.key_id}`}
+                            className="p-1.5 border border-red-400/40 hover:border-red-500 text-red-300 hover:bg-red-500/10 rounded-sm transition disabled:opacity-50"
+                          >
+                            <ShieldOff className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
-                  ))}
-                </div>
-                <div className="border-t border-white/10 p-3 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={removeCreatorMode}
-                    disabled={removing}
-                    data-testid="remove-creator-mode-btn"
-                    className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-red-500/15 hover:bg-red-500/25 border border-red-400/40 text-red-200 hover:text-white rounded-sm font-['Chivo'] font-bold text-xs transition disabled:opacity-50"
-                  >
-                    <ShieldOff className="w-3.5 h-3.5" />
-                    {t('acc_remove_creator_btn')}
-                  </button>
+                  )})}
                 </div>
               </>
             )}

@@ -43,10 +43,15 @@ export default function FeedbackButton() {
   const [submitting, setSubmitting] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [mine, setMine] = useState([]);
-
-  // Creator devices don't need the floating composer — they see ideas in
-  // the dedicated IdeasButton header icon.
   const isCreator = device.role === 'creator';
+
+  // Creator devices on the Dashboard already have the dedicated IdeasButton
+  // in the header (with unread badge). To avoid duplication we hide the
+  // floating button there — BUT on Login/Landing the floating button must
+  // remain visible for everyone (creators included), so users on a fresh
+  // visit always have a place to drop a bug/idea/note.
+  const onDashboard = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard');
+  const hideForCreator = isCreator && onDashboard;
 
   const TYPES = [
     { key: 'bug', kind: 'bug', label: t('fbBug'), icon: Bug, color: '#FF6B6B' },
@@ -105,7 +110,7 @@ export default function FeedbackButton() {
     } finally { setSubmitting(false); }
   };
 
-  if (isCreator) return null;
+  if (hideForCreator) return null;
 
   return (
     <>

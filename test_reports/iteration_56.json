@@ -1,0 +1,25 @@
+{
+  "summary": "Iter56 mini-polish validation. Backend: 8/8 tests pass on /api/accounts/remove-creator signature/role gate + regressions on /api/ideas/send anonymous and /api/accounts/list creator-gate. Frontend: static grep confirms remove-creator-mode-btn is gone, acc-remove-creator-${key_id} is rendered per-row inside the role==='creator' block, hideForCreator logic present in FeedbackButton. Runtime smoke on /login confirms the floating yellow FeedbackButton is visible for anonymous visitors, opens the modal, exposes the 3 type buttons (bug/idea/other) and an empty-content anonymous submission succeeds (200, modal closes).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter56_remove_creator.py",
+    "/app/test_reports/pytest/iter56_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/server.py L6705-6747 remove-creator implementation looks correct: target_key_id defaults to caller, password is verified via bcrypt against the caller's own users row (not the target's), 404 if target missing, 400 if target.role != 'creator', logs 'remove_creator_self' vs 'remove_creator_other' in account_history and always inserts a device_decisions entry with action='demote'.",
+    "Minor: in AccountsButton.jsx the removeCreatorMode helper always uses window.prompt for the password — consider a proper masked password modal so the value isn't visible on screen. Not a blocker for iter56 polish.",
+    "Note: the iter56 'new branches' (target_key_id present, target non-creator → 400, wrong password → 403, demote other → success) cannot be exercised end-to-end from a black-box test environment without an existing creator device. Coverage is via static code review only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter56_remove_creator.py"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (smoke)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Two fresh ECDSA devices registered transiently for signature tests (auto-cleaned by Mongo TTL on challenges).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter56 is closed. The /api/accounts/remove-creator new branches (target_key_id present path) remain only statically verified — if a creator device becomes promotable in a future seed/admin flow, extend test_iter56_remove_creator.py with a fixture that promotes a Device via the existing /api/devices/promote-to-creator endpoint, then assert: (a) target_key_id pointing to a non-creator → 400 'Ce compte n''est pas créateur.', (b) wrong password → 403, (c) success demotes target back to 'approved' and writes account_history.event='remove_creator_other'.",
+  "rca of the issue": "N/A — no issues found."
+}

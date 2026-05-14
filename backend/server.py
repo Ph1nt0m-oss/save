@@ -6704,10 +6704,18 @@ async def accounts_delete_user_project(payload: _TargetCreatorSigIn):
 
 @api_router.post("/accounts/remove-creator")
 async def accounts_remove_creator(payload: _CreatorSigIn):
-    """Creator-only — voluntarily demote SELF (password-confirmed)."""
+    """Creator-only — demote a creator device back to 'approved'.
+
+    - target_key_id absent → demote SELF (the calling key_id).
+    - target_key_id present → demote that other creator device.
+
+    Both paths require the caller's own account password to confirm intent.
+    Logged in account_history + device_decisions.
+    """
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     body = payload.model_dump() if hasattr(payload, "model_dump") else {}
     pwd = body.get("password") or ""
+    target_key_id = body.get("target_key_id") or payload.key_id  # default = self
     me = await db.device_keys.find_one({"key_id": payload.key_id}, {"_id": 0})
     if not me or not me.get("email"):
         raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil.")
@@ -6716,20 +6724,27 @@ async def accounts_remove_creator(payload: _CreatorSigIn):
         raise HTTPException(status_code=400, detail="Aucun mot de passe configuré.")
     if not bcrypt.checkpw(pwd.encode("utf-8"), user["password_hash"].encode("utf-8")):
         raise HTTPException(status_code=403, detail="Mot de passe incorrect.")
+    target = await db.device_keys.find_one({"key_id": target_key_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+    if target.get("role") != "creator":
+        raise HTTPException(status_code=400, detail="Ce compte n'est pas créateur.")
     await db.device_keys.update_one(
-        {"key_id": payload.key_id},
+        {"key_id": target_key_id},
         {"$set": {"role": "approved"}},
     )
-    await _log_account_event("remove_creator_self", payload.key_id)
+    is_self = target_key_id == payload.key_id
+    await _log_account_event("remove_creator_self" if is_self else "remove_creator_other",
+                              target_key_id, target.get("label"))
     await db.device_decisions.insert_one({
         "decision_id": f"d_{uuid.uuid4().hex[:14]}",
         "action": "demote",
         "actor_key_id": payload.key_id,
-        "target_key_id": payload.key_id,
+        "target_key_id": target_key_id,
         "ts": datetime.now(timezone.utc).isoformat(),
-        "target_label": me.get("label"),
+        "target_label": target.get("label"),
     })
-    return {"success": True}
+    return {"success": True, "self": is_self}
 
 
 # ---------------- IDEAS / FEEDBACK ----------------
