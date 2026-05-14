@@ -17,6 +17,44 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-14 — Iter 55 (Polish: WebAuthn fallback + Feedback unified + Message grouping)
+
+**Réorganisation header** :
+- `AccountsButton` déplacé du droit → **gauche** (entre `TheftButton` et logo) sur Landing + Dashboard. Reste caché pour non-créateurs.
+- `MessageButton` reste à droite.
+
+**TheftRecoveryDialog accessible partout** :
+- WebAuthn reste le chemin par défaut quand supporté + enrolled
+- **Fallback e-mail** : `/api/auth/theft-email-request` (anti-enum 200) → magic link 30 min → `/api/auth/theft-email-confirm` révoque tous les `creator|approved` keys de l'email
+- Nouvelle route `/theft-confirm?token=...` avec page `TheftConfirm.js` qui consomme le token
+
+**Login page enrichie** :
+- Top-left : `TheftButton labelled` + `AccountsButton`
+- Top-right : `DeviceKeyCopyButton` (icône Key, copie share-code) + `MessageButton icon`
+- `FeedbackButton` (yellow Lightbulb floating) déjà global
+
+**Feedback unifié vers Ideas system** :
+- `FeedbackButton.jsx` réécrit : envoie vers `/api/ideas/send` (avec `kind: bug|idea|other`)
+- **Aucune limite caractères**, **envoi vide accepté**
+- Tab « Mes envois » via `/api/ideas/mine` (signed, retourne items du device)
+- Anonymous OK : sans signature → sender_label = "Anonyme"
+- Créateurs ne voient pas le bouton flottant (ils ont déjà `IdeasButton` dans le header)
+- Backend : `IdeasSendIn.key_id` Optional + try-catch sur _verify_signed pour fallback anonymous
+
+**MessagesPanel grouping** :
+- Messages consécutifs du même expéditeur → un seul header (pseudo + date) en haut du groupe
+- Header re-affiché si >10 min entre 2 messages
+- Plus de duplication « Galaxy S21 / Galaxy S21 14/05/2026 23:09:54 »
+
+**Sessions multi-appareils** (déjà OK depuis iter52, vérifié) :
+- 1er appareil en attente : « Votre demande est en cours de validation. Merci de patienter. »
+- Refus : reste sur login + « Demande refusée. Merci de vous connecter avec une autre adresse mail. »
+- Acceptation : redirection automatique dashboard
+- Expiration : « Demande expirée. Veuillez vous reconnecter ou réessayer ultérieurement. »
+- Sur refus : toast actionnable « Changer mon mot de passe » côté 1er appareil
+
+**Tests** : 15/15 backend PASS · Frontend layout Login/Landing/theft-confirm 100% PASS · 0 JS error.
+
 ### 2026-02-14 — Iter 54 (Creator power tools complete)
 
 **Big bang — tout en une fois** :
