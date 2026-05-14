@@ -17,7 +17,20 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-02-14 — Iter 50 (current)
+### 2026-02-14 — Iter 51 (DEFINITIVE mobile session fix)
+
+**Root cause identifié** (troubleshoot agent) : courses parallèles entre les polls `setInterval(2500ms)` combinées à la propagation d'écriture Mongo causaient :
+1. Plusieurs polls en vol simultanés
+2. 401 transient sur `/auth/me` juste après l'insert
+3. Interceptor axios 401 → redirect vers `/login?reason=session_expired` AVANT que `replace('/dashboard')` ne s'exécute
+
+**Fix appliqué (testé 16/16, retest_needed=False)** :
+- **Frontend** : guard `inFlight` (max 1 poll en vol), arrêt immédiat de l'interval AVANT validation, `/auth/me` retry 4× backoff (200/400/800ms), flag `sessionStorage.codeforge_session_grace_at` posé à l'approbation
+- **Frontend AuthContext** : interceptor 401 respecte une fenêtre de grâce de 5s après approbation → ne redirige plus pendant cette fenêtre
+- **Backend** : read-after-write check (3×50ms) sur `user_sessions.insert_one` avant de renvoyer le token, idempotency confirmée (10 polls parallèles → même token)
+
+### Iter 50
+- Messagerie privée bidirectionnelle (collection + 5 endpoints + UI bi-mode), cool-down send-to-creator (10 min), cool-down messages (30s), cache _get_site_mode 30s.
 **Backend (19/19 tests passing)** :
 - **Cache `_get_site_mode()`** : in-memory 30s, invalidé sur PUT `/system/site-mode`.
 - **Cool-down `/devices/send-to-creator`** : 1 nudge / 10 min / clé d'appareil (429 si trop tôt).
