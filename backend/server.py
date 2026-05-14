@@ -987,11 +987,13 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     now = datetime.now(timezone.utc)
 
     # --- One-device-at-a-time approval flow ---------------------------------
-    # If another active session exists for this account on a DIFFERENT device,
-    # block the login and queue a pending session request. The currently-
-    # connected device must approve from its UI.
+    # Triggered ONLY in `private` or `creator` site modes. In `public` mode
+    # the site is open to anyone, so two devices using the same email is
+    # fine — no approval needed. In `guest` mode users can't write anyway,
+    # so no point in gating.
+    site_mode = await _get_site_mode()
     requesting_key_id = (payload.device_key_id or "").strip() or None
-    if requesting_key_id:
+    if requesting_key_id and site_mode in ("private", "creator"):
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},
@@ -3933,17 +3935,30 @@ async def _device_by_key(key_id: str) -> Optional[dict]:
     return await db.device_keys.find_one({"key_id": key_id}, {"_id": 0})
 
 
-async def _log_decision(action: str, target_key_id: str, by_key_id: str, target_label: str = None):
+async def _log_decision(
+    action: str,
+    target_key_id: str,
+    by_key_id: str,
+    target_label: str = None,
+    snapshot: dict = None,
+):
     """Append an audit record to `device_decisions` so the creator can keep
-    track of past actions even after the live state changes. Bounded to last
-    500 entries to keep storage in check."""
-    await db.device_decisions.insert_one({
-        "action": action,              # 'approve' | 'revoke' | 'disconnect' | 'promote' | 'add_by_key' | 'register'
+    track of past actions even after the live state changes.
+
+    For destructive actions (revoke/disconnect) we also snapshot the device's
+    public_key_jwk so the "Undo" action can fully recreate the entry.
+    Bounded to last 500 entries to keep storage in check."""
+    row = {
+        "action": action,              # 'approve' | 'revoke' | 'disconnect' | 'promote' | 'add_by_key' | 'request_access' | 'register'
         "target_key_id": target_key_id,
         "target_label": target_label,
         "by_key_id": by_key_id,
         "ts": datetime.now(timezone.utc).isoformat(),
-    })
+    }
+    if snapshot:
+        # Strip mongo internals — store only what we need to recreate.
+        row["snapshot"] = {k: v for k, v in snapshot.items() if k != "_id"}
+    await db.device_decisions.insert_one(row)
     # Bound the collection (delete oldest beyond 500).
     total = await db.device_decisions.count_documents({})
     if total > 500:
@@ -4160,6 +4175,79 @@ async def devices_decisions_clear(payload: CreatorOnlyIn):
     return {"deleted": res.deleted_count}
 
 
+class DecisionUndoIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    target_key_id: str
+    decision_ts: str    # exact timestamp from the history row to undo
+
+
+@api_router.post("/devices/decisions/undo")
+async def devices_decisions_undo(payload: DecisionUndoIn):
+    """Creator-only — undo a specific decision and put the device back in
+    the 'pending' queue so the creator can re-decide.
+
+    Behaviour per action:
+      - approve         → role becomes 'pending' again
+      - revoke / disconnect → the device row is recreated from the snapshot
+                              stored on the decision, with role='pending'
+      - promote         → role demotes back to 'approved'
+      - add_by_key      → the device is removed (it was creator-added, so
+                          'undo' simply un-adds it)
+      - request_access  → ignored (no-op; you can just /revoke instead)
+
+    The undo itself logs a fresh 'undo' decision row for traceability."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    dec = await db.device_decisions.find_one(
+        {"target_key_id": payload.target_key_id, "ts": payload.decision_ts},
+        {"_id": 0},
+    )
+    if not dec:
+        raise HTTPException(status_code=404, detail="Décision introuvable.")
+    action = dec.get("action")
+    snapshot = dec.get("snapshot") or {}
+
+    if action == "approve":
+        await db.device_keys.update_one(
+            {"key_id": payload.target_key_id},
+            {"$set": {"role": "pending"}},
+        )
+    elif action in ("revoke", "disconnect"):
+        # Recreate the deleted row from the snapshot. If we don't have one
+        # (older logs), we just create a minimal pending shell that the
+        # device will refresh on its next /devices/register call.
+        existing = await _device_by_key(payload.target_key_id)
+        if existing:
+            await db.device_keys.update_one(
+                {"key_id": payload.target_key_id},
+                {"$set": {"role": "pending"}},
+            )
+        else:
+            new_row = {
+                "key_id": payload.target_key_id,
+                "public_key_jwk": snapshot.get("public_key_jwk", {}),
+                "label": snapshot.get("label") or dec.get("target_label"),
+                "role": "pending",
+                "created_at": snapshot.get("created_at") or datetime.now(timezone.utc).isoformat(),
+                "last_seen_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.device_keys.insert_one(new_row)
+    elif action == "promote":
+        await db.device_keys.update_one(
+            {"key_id": payload.target_key_id},
+            {"$set": {"role": "approved"}},
+        )
+    elif action == "add_by_key":
+        await db.device_keys.delete_one({"key_id": payload.target_key_id})
+    else:
+        # request_access / register / future actions — nothing to undo.
+        return {"success": False, "reason": "non_undoable_action"}
+
+    await _log_decision("undo", payload.target_key_id, payload.key_id, dec.get("target_label"))
+    return {"success": True}
+
+
 @api_router.post("/devices/pending-count")
 async def devices_pending_count(payload: CreatorOnlyIn):
     """Creator-only — quick count of pending devices, used by the bell badge.
@@ -4244,7 +4332,7 @@ async def devices_revoke(payload: DeviceTargetIn):
     await db.device_keys.delete_one({"key_id": payload.target_key_id})
     await db.device_nonces.delete_many({"key_id": payload.target_key_id})
     await db.user_sessions.delete_many({"device_key_id": payload.target_key_id})
-    await _log_decision("revoke", payload.target_key_id, payload.key_id, target_label)
+    await _log_decision("revoke", payload.target_key_id, payload.key_id, target_label, snapshot=target)
     return {"success": True, "existed": target is not None}
 
 
@@ -4262,7 +4350,7 @@ async def devices_disconnect(payload: DeviceTargetIn):
     await db.device_nonces.delete_many({"key_id": payload.target_key_id})
     await db.user_sessions.delete_many({"device_key_id": payload.target_key_id})
     await db.device_keys.delete_one({"key_id": payload.target_key_id})
-    await _log_decision("disconnect", payload.target_key_id, payload.key_id, (target or {}).get("label"))
+    await _log_decision("disconnect", payload.target_key_id, payload.key_id, (target or {}).get("label"), snapshot=target)
     return {"success": True}
 
 

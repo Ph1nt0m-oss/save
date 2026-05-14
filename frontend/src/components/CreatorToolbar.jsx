@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw } from 'lucide-react';
+import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import SiteModeBadge from './SiteModeBadge';
 import useDeviceIdentity, { setStoredViewMode } from '../hooks/useDeviceIdentity';
@@ -16,6 +16,7 @@ const ACTION_META = {
   promote:        { tk: 'dec_promote',        color: 'text-[#E4FF00] border-[#E4FF00]/40 bg-[#E4FF00]/10' },
   add_by_key:     { tk: 'dec_add_by_key',     color: 'text-sky-300 border-sky-400/40 bg-sky-400/10' },
   request_access: { tk: 'dec_request_access', color: 'text-purple-300 border-purple-400/40 bg-purple-400/10' },
+  undo:           { tk: 'dec_undo',           color: 'text-amber-300 border-amber-400/40 bg-amber-400/10' },
 };
 
 function downloadText(filename, content) {
@@ -56,11 +57,15 @@ export default function CreatorToolbar() {
 
   useEffect(() => { if (historyOpen) loadDecisions(); /* eslint-disable-next-line */ }, [historyOpen]);
 
-  const revokeFromHistory = async (target_key_id) => {
+  const undoFromHistory = async (target_key_id, decision_ts) => {
     try {
-      const body = await withCreatorProof(API, axios, { target_key_id });
-      await axios.post(`${API}/devices/revoke`, body);
-      toast.success(t('dec_revoke'));
+      const body = await withCreatorProof(API, axios, { target_key_id, decision_ts });
+      const r = await axios.post(`${API}/devices/decisions/undo`, body);
+      if (r.data?.success === false) {
+        toast.error(t('hist_undo_not_supported'));
+      } else {
+        toast.success(t('hist_undo_done'));
+      }
       loadDecisions();
     } catch (e) {
       toast.error(e?.response?.data?.detail || t('dm_op_failed'));
@@ -93,11 +98,12 @@ export default function CreatorToolbar() {
     ].join('\n');
     const labelMap = {
       approve: 'ACCEPTÉ',
-      revoke: 'ANNULÉ',
+      revoke: 'REFUSÉ',
       disconnect: 'DÉCONNECTÉ',
       promote: 'PROMU CRÉATEUR',
       add_by_key: 'AJOUTÉ PAR CLÉ',
       request_access: "DEMANDE D'ACCÈS",
+      undo: 'ANNULATION',
     };
     const body = decisions.map((d) => {
       const action = labelMap[d.action] || d.action.toUpperCase();
@@ -238,13 +244,13 @@ export default function CreatorToolbar() {
                         {new Date(dec.ts).toLocaleString()}
                       </div>
                       <button
-                        onClick={() => revokeFromHistory(dec.target_key_id)}
-                        data-testid={`history-revoke-${dec.target_key_id}`}
-                        title={t('dec_revoke')}
-                        className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-red-400/40 text-red-300 hover:bg-red-400/20 rounded-sm transition"
+                        onClick={() => undoFromHistory(dec.target_key_id, dec.ts)}
+                        data-testid={`history-undo-${dec.target_key_id}`}
+                        title={t('hist_undo')}
+                        className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-amber-400/40 text-amber-300 hover:bg-amber-400/20 rounded-sm transition"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        {t('dec_revoke')}
+                        <Undo2 className="w-3 h-3" />
+                        {t('hist_undo')}
                       </button>
                     </div>
                     {dec.target_label && (

@@ -1,0 +1,59 @@
+{
+  "summary": "Iter48 backend-only validation. 12/12 pytest cases PASS against the live preview URL in 7.75s. Verified all three iter48 changes: (1) /auth/login site_mode gating — in 'public' AND 'guest' modes, a second device on the same email logs in immediately with 200 + session_token (no 202, both sessions co-exist in user_sessions with different device_key_ids). In 'private' AND 'creator' modes, the second device returns HTTP 202 with detail.code='session_pending_approval' (regression intact). (2) /devices/revoke now stores a 'snapshot' field on the device_decisions row containing the deleted device's public_key_jwk and label, with mongo _id stripped. (3) NEW POST /api/devices/decisions/undo (creator-signed) — undo of 'revoke' recreates the device_keys row with role='pending' using the snapshot's public_key_jwk + label; undo of 'approve' flips role back to 'pending'; unknown (target_key_id, decision_ts) → 404; pending-role signer → 403; every successful undo appends a new 'undo' row in device_decisions. site_mode restored to 'public' on teardown (verified post-run via mongosh). Kept creator key dev_a797438afc28c67923881d46ae2971c1 never touched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/devices/decisions/undo",
+        "issue": "Lookup key is (target_key_id, decision_ts) — works, but ts is an ISO string, so any client-side timezone serialization drift (e.g. trailing 'Z' vs '+00:00') will fail with 404. Consider exposing a stable decision_id (e.g. the mongo _id projected as a hex string) and accepting either id-or-ts."
+      },
+      {
+        "endpoint": "POST /api/devices/decisions/undo (revoke branch)",
+        "issue": "If the snapshot is missing public_key_jwk (older audit rows pre-iter48), the recreated row gets `public_key_jwk: {}` which is a valid JWK shape — but the device cannot actually sign anything afterwards. Suggest either rejecting with 409 or marking such recreated rows with a `snapshot_incomplete: true` flag so the UI can prompt the user to re-register."
+      },
+      {
+        "endpoint": "POST /api/auth/login (site_mode gating)",
+        "issue": "_get_site_mode() is awaited on every login → an extra mongo round-trip per attempt. Low cost but cacheable (e.g. 30s in-memory TTL) since site_mode is rarely changed and is already exposed via a public GET."
+      },
+      {
+        "endpoint": "general",
+        "issue": "Carry-over: server.py is now 6025 lines (was 5937 in iter47, +88 for iter48). Still recommend extracting /devices/* into its own router."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter48_site_mode_undo.py",
+    "/app/test_reports/pytest/iter48_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Expose decision_id (stable) alongside ts so undo lookups are not sensitive to ISO formatting.",
+    "(Optional) Handle missing-snapshot case on undo of revoke/disconnect with a 409 or a `snapshot_incomplete` marker on the recreated row.",
+    "(Optional) Cache _get_site_mode() with a short TTL to avoid a mongo round-trip per /auth/login."
+  ],
+  "critical_code_review_comments": [
+    "/auth/login site_mode gate (server.py L989-1002) — correctly reads _get_site_mode() and ONLY enters the approval-pending branch when site_mode in ('private','creator') AND a requesting_key_id is present. The `$nin: [None, requesting_key_id]` query is right — a session bound to the SAME device should not block itself, and sessions without a device_key_id (legacy/back-compat) are also excluded.",
+    "/devices/decisions/undo (server.py L4186-4248) — signature-gated first (good, can't enumerate decisions without creator proof). Lookup by (target_key_id, ts) is reasonable but see minor issue above. Branch dispatch by `action` is explicit and covers all current actions; unknown actions return {success:false, reason:'non_undoable_action'} which is fine for request_access/register but might want to be 400 for true unknowns.",
+    "/devices/decisions/undo revoke/disconnect branch (L4216-4235) — handles both cases (device still exists → just set role=pending; device gone → re-insert from snapshot). The `existing` check prevents duplicate key errors. Note that the snapshot may contain stale fields (e.g. last_seen_at from the moment of revoke) — minor.",
+    "_log_decision (server.py L3938-3966) — now accepts an optional `snapshot` arg and strips _id before storing. Bounded at 500 rows. The strip is safe but doesn't sanitize potentially-large nested fields; in practice device_keys rows are small so this is fine.",
+    "/devices/revoke + /devices/disconnect (L4316-L4354) — both now pass `snapshot=target` to _log_decision. For /disconnect this is great because the row was already fetched for the 404 guard; for /revoke the snapshot is the pre-delete row (correct). The order (find → delete → log) ensures the snapshot is captured before deletion.",
+    "Site mode helper _get_site_mode (L3929-3931) defaults to 'public' if the doc is missing — a sensible safe default that matches iter48 intent (no gating)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter48_site_mode_undo.py (new — 12 tests, 7.75s, self-cleaning, restores site_mode=public on teardown)"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 from /app/memory/test_credentials.md. Used as-is.",
+  "seed_data_creation": "Test suite registers ~11 ephemeral ECDSA P-256 device keys labelled TEST_iter48_* (one temp_creator promoted to role='creator' via direct DB write; 2 keys per site_mode test for the A/B same-email scenario; a snap_target; an undo_revoke_target; an undo_approve_target; a non-creator caller; an undo_log_target). All cleaned up in the module-scoped 'cleanup' fixture teardown (device_keys, device_nonces, user_sessions). device_decisions audit rows from this suite remain (they are bounded at 500 server-side). site_mode is explicitly reset to 'public' both at the end of each gating test AND in the cleanup fixture, AND in a final test (test_site_mode_restored_to_public_at_end). Final state verified via mongosh: db.site_config.findOne({_id:'site_mode'}) → {mode:'public'}.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter48 spec items verified GREEN. Regression file is /app/backend/tests/test_iter48_site_mode_undo.py — 7.75s, self-cleans, safe to re-run. CRITICAL: this suite temporarily switches site_mode to 'guest', 'private', 'creator' during tests but ALWAYS restores to 'public' (final fixture + final test). Verified post-run via mongosh. Iter47 regression suite at /app/backend/tests/test_iter47_revoke_decisions_clear.py and iter46 still expected to pass. The new undo endpoint is creator-signed and looks up by (target_key_id, ts) — if you add more decisions in subsequent iters, the ts is the iso string from _log_decision at insert time and is the canonical 'decision_ts' the undo expects.",
+  "rca of the issue": "No bugs. All three iter48 changes work as specified: site_mode gating in /auth/login correctly conditions the 202 approval flow on private|creator (public|guest pass straight through to 200), /devices/revoke (and /devices/disconnect) snapshot the device row including public_key_jwk on the audit decision, and /devices/decisions/undo correctly reverses approve/revoke/disconnect/promote/add_by_key while logging a fresh 'undo' audit row. 12/12 tests passing in 7.75s. site_mode restored to 'public' at the end."
+}
