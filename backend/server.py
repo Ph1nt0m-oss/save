@@ -3865,6 +3865,24 @@ async def _device_by_key(key_id: str) -> Optional[dict]:
     return await db.device_keys.find_one({"key_id": key_id}, {"_id": 0})
 
 
+async def _log_decision(action: str, target_key_id: str, by_key_id: str, target_label: str = None):
+    """Append an audit record to `device_decisions` so the creator can keep
+    track of past actions even after the live state changes. Bounded to last
+    500 entries to keep storage in check."""
+    await db.device_decisions.insert_one({
+        "action": action,              # 'approve' | 'revoke' | 'disconnect' | 'promote' | 'add_by_key' | 'register'
+        "target_key_id": target_key_id,
+        "target_label": target_label,
+        "by_key_id": by_key_id,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    })
+    # Bound the collection (delete oldest beyond 500).
+    total = await db.device_decisions.count_documents({})
+    if total > 500:
+        olds = await db.device_decisions.find({}, {"_id": 1}).sort("ts", 1).limit(total - 500).to_list(length=total - 500)
+        await db.device_decisions.delete_many({"_id": {"$in": [o["_id"] for o in olds]}})
+
+
 async def _consume_nonce(key_id: str, nonce: str) -> bool:
     """Atomically delete the pending nonce. Returns True if it existed."""
     res = await db.device_nonces.delete_one({"key_id": key_id, "nonce": nonce})
@@ -4053,6 +4071,17 @@ async def devices_list(payload: CreatorOnlyIn):
     return {"devices": devices}
 
 
+@api_router.post("/devices/decisions")
+async def devices_decisions(payload: CreatorOnlyIn):
+    """Creator-only — return the history of past decisions (approve/revoke/
+    disconnect/promote/add_by_key). Sorted newest first, capped at 200."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    rows = await db.device_decisions.find(
+        {}, {"_id": 0},
+    ).sort("ts", -1).to_list(length=200)
+    return {"decisions": rows}
+
+
 @api_router.post("/devices/pending-count")
 async def devices_pending_count(payload: CreatorOnlyIn):
     """Creator-only — quick count of pending devices, used by the bell badge.
@@ -4107,12 +4136,14 @@ class DeviceTargetIn(CreatorOnlyIn):
 async def devices_approve(payload: DeviceTargetIn):
     """Creator promotes a pending device to 'approved'."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    target = await _device_by_key(payload.target_key_id)
     res = await db.device_keys.update_one(
         {"key_id": payload.target_key_id, "role": "pending"},
         {"$set": {"role": "approved", "approved_at": datetime.now(timezone.utc).isoformat()}},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Aucun appareil en attente avec cette clé.")
+    await _log_decision("approve", payload.target_key_id, payload.key_id, (target or {}).get("label"))
     return {"success": True}
 
 
@@ -4122,12 +4153,14 @@ async def devices_revoke(payload: DeviceTargetIn):
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     if payload.target_key_id == payload.key_id:
         raise HTTPException(status_code=400, detail="Tu ne peux pas révoquer ton propre appareil créateur.")
+    target = await _device_by_key(payload.target_key_id)
     res = await db.device_keys.update_one(
         {"key_id": payload.target_key_id},
         {"$set": {"role": "revoked", "revoked_at": datetime.now(timezone.utc).isoformat()}},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Appareil introuvable.")
+    await _log_decision("revoke", payload.target_key_id, payload.key_id, (target or {}).get("label"))
     return {"success": True}
 
 
@@ -4136,11 +4169,13 @@ async def devices_disconnect(payload: DeviceTargetIn):
     """Creator force-disconnects a device by bumping its `session_epoch`.
     All previously issued nonces become invalid (`/verify` will refuse)."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    target = await _device_by_key(payload.target_key_id)
     await db.device_nonces.delete_many({"key_id": payload.target_key_id})
     await db.device_keys.update_one(
         {"key_id": payload.target_key_id},
         {"$set": {"disconnected_at": datetime.now(timezone.utc).isoformat()}},
     )
+    await _log_decision("disconnect", payload.target_key_id, payload.key_id, (target or {}).get("label"))
     return {"success": True}
 
 
@@ -4178,6 +4213,8 @@ async def devices_promote_creator(payload: PromoteCreatorIn):
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Appareil introuvable.")
+    target = await _device_by_key(payload.target_key_id)
+    await _log_decision("promote", payload.target_key_id, payload.key_id, (target or {}).get("label"))
     return {"success": True}
 
 
@@ -4212,6 +4249,7 @@ async def devices_add_by_key(payload: AddByKeyIn):
             "created_at": datetime.now(timezone.utc).isoformat(),
             "added_by_creator": True,
         })
+    await _log_decision("add_by_key", target_id, payload.key_id, payload.label)
     return {"key_id": target_id, "role": role}
 
 
