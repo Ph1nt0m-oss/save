@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, FolderKanban, Sparkles, Calendar, Settings } from 'lucide-react';
+import { LogOut, User, FolderKanban, Sparkles, Calendar, Settings, KeyRound } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,8 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import DeviceManager from './DeviceManager';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -41,6 +43,8 @@ function initials(name) {
 export default function UserMenu({ user, onLogout }) {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
+  const [deviceManagerOpen, setDeviceManagerOpen] = useState(false);
+  const device = useDeviceIdentity();
 
   useEffect(() => {
     let mounted = true;
@@ -149,6 +153,18 @@ export default function UserMenu({ user, onLogout }) {
         </DropdownMenuItem>
 
         <DropdownMenuItem
+          onClick={() => setDeviceManagerOpen(true)}
+          data-testid="user-menu-devices"
+          className="px-3 py-2 cursor-pointer text-white hover:!bg-white/5 focus:bg-white/5"
+        >
+          <KeyRound className="w-4 h-4 mr-2" />
+          Autres identifiants
+          {device.role === 'creator' && (
+            <span className="ml-auto text-[10px] uppercase tracking-widest text-[#E4FF00]">créateur</span>
+          )}
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
           onClick={onLogout}
           data-testid="user-menu-logout"
           className="px-3 py-2 cursor-pointer text-red-400 hover:!bg-red-500/10 hover:!text-red-400 focus:bg-red-500/10 focus:text-red-400"
@@ -157,6 +173,12 @@ export default function UserMenu({ user, onLogout }) {
           Déconnexion
         </DropdownMenuItem>
       </DropdownMenuContent>
+      <DeviceManager
+        open={deviceManagerOpen}
+        onClose={() => setDeviceManagerOpen(false)}
+        role={device.role}
+        currentKeyId={device.keyId}
+      />
     </DropdownMenu>
   );
 }

@@ -245,8 +245,10 @@ const translations = {
  d_b5: "Vois ton app tourner immédiatement, comme si elle était déjà déployée. Web, mobile (PWA) ou desktop — au choix.",
  d_t6: '5️⃣ Mode Hors-Ligne',
  d_b6: "Pas de connexion ? Avec un moteur d’IA local installé sur ton PC, tu génères des apps sans envoyer aucune donnée à Internet. 100% privé, 100% gratuit.",
- d_t7: 'Prêt·e à essayer ?',
- d_b7: "Crée ton compte en 30 secondes — il te suffit d'un email et d'un mot de passe. Pas de CB, pas de pub, pas de quotas.",
+ d_t7: '6️⃣ Identité d’appareil & modes du site',
+ d_b7: "Au premier chargement, ton navigateur génère une clé cryptographique unique stockée dans une zone sécurisée (non extractible). Cette clé sert de signature de ton appareil. Sur la page d’accueil et la page de connexion, un badge indique le mode du site : Public (tout le monde), Privé (seuls les appareils approuvés), Créateur (seuls les appareils créateurs) ou Invité (lecture seule). Seuls les appareils créateurs peuvent changer ce mode. Tu retrouves ta clé dans « Autres identifiants » pour la partager avec un créateur — il pourra t’ajouter en privé.",
+ d_t8: 'Prêt·e à essayer ?',
+ d_b8: "Crée ton compte en 30 secondes — il te suffit d'un email et d'un mot de passe. Pas de CB, pas de pub, pas de quotas.",
 
  // Voice / microphones (Chat & Create input)
  mic_voice_send: 'Message vocal — parler & envoyer',
@@ -522,8 +524,10 @@ const translations = {
  d_b5: 'See your app running immediately, as if already deployed. Web, mobile (PWA) or desktop — your choice.',
  d_t6: '5️⃣ Offline Mode',
  d_b6: "No internet? With a local AI engine on your PC, generate apps without sending any data online. 100% private, 100% free.",
- d_t7: 'Ready to try?',
- d_b7: "Create your account in 30 seconds — just an email and a password. No card, no ads, no quotas.",
+ d_t7: '6️⃣ Device identity & site modes',
+ d_b7: "On first load, your browser generates a unique cryptographic key stored in a secure area (non-extractable). This key acts as your device's signature. On the home and login pages, a badge shows the site mode: Public (anyone), Private (approved devices only), Creator (creator devices only), or Guest (read-only). Only creator devices can change this mode. You can find your key in 'Other identifiers' to share it with the creator — they can add you to private mode.",
+ d_t8: 'Ready to try?',
+ d_b8: "Create your account in 30 seconds — just an email and a password. No card, no ads, no quotas.",
 
  // Voice / microphones
  mic_voice_send: 'Voice message — speak & send',

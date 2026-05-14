@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sparkles, Code, Smartphone, Monitor, Globe, Zap, Lock, Infinity } from 'lucide-react';
 import LanguageToggle from '../components/LanguageToggle';
+import SiteModeBadge from '../components/SiteModeBadge';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export default function Landing() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const device = useDeviceIdentity();
   const goLogin = () => navigate('/login');
   const goDiscover = () => navigate('/discover');
 
@@ -65,7 +68,8 @@ export default function Landing() {
             <span className="text-base sm:text-2xl font-['Chivo'] font-black tracking-tight truncate">CodeForge AI</span>
           </div>
 
-          <div className="justify-self-end min-w-0">
+          <div className="justify-self-end min-w-0 flex items-center gap-2">
+            <SiteModeBadge role={device.role} siteMode={device.siteMode} onChange={() => device.refresh()} />
             <LanguageToggle placement="bottom" />
           </div>
         </div>

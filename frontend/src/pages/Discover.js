@@ -232,14 +232,42 @@ function MockOfflineScreen({ t }) {
   );
 }
 
+function MockIdentityScreen({ t }) {
+  return (
+    <div className="bg-[#050505] rounded-sm overflow-hidden border border-white/10">
+      <MockTopBar title={t('d_t7') || 'Device identity'} subtitle="Cryptographic key · stored on-device" previewLabel={t('d_preview')} />
+      <div className="p-8 grid grid-cols-2 gap-6 items-stretch">
+        <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-5 space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-[#E4FF00]/15 text-[#E4FF00]">
+            ✦ ECDSA P-256
+          </div>
+          <p className="text-sm text-[#A1A1AA] leading-relaxed">{t('d_b7')}</p>
+          <code className="block bg-black/40 border border-white/10 rounded-sm p-2 text-[10px] text-emerald-300 overflow-x-auto">
+            dev_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          </code>
+        </div>
+        <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-5 space-y-2">
+          <p className="text-xs uppercase tracking-widest text-[#71717A]">Modes du site</p>
+          <ul className="text-sm text-white space-y-1.5">
+            <li>🌐 <span className="font-['Chivo'] font-bold">Public</span> · Tout le monde</li>
+            <li>🔒 <span className="font-['Chivo'] font-bold">Privé</span> · Appareils approuvés</li>
+            <li>👑 <span className="font-['Chivo'] font-bold">Créateur</span> · Réservé créateur</li>
+            <li>👁️ <span className="font-['Chivo'] font-bold">Invité</span> · Lecture seule</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MockFinalScreen({ t }) {
   return (
     <div className="bg-[#050505] rounded-sm overflow-hidden border border-white/10">
       <MockTopBar title={`🎁 ${t('l_ctaTitle')}`} subtitle={t('l_ctaSub')} previewLabel={t('d_preview')} />
       <div className="p-12 text-center max-w-2xl mx-auto">
         <Sparkles className="w-12 h-12 text-[#E4FF00] mx-auto" />
-        <h2 className="mt-4 text-3xl font-['Chivo'] font-black text-white">{t('d_t7')}</h2>
-        <p className="mt-3 text-sm text-[#A1A1AA]">{t('d_b7')}</p>
+        <h2 className="mt-4 text-3xl font-['Chivo'] font-black text-white">{t('d_t8')}</h2>
+        <p className="mt-3 text-sm text-[#A1A1AA]">{t('d_b8')}</p>
         <div className="mt-6 inline-flex items-center gap-2 text-xs text-[#A1A1AA]">
           <Plus className="w-4 h-4 text-[#E4FF00]" />
           {t('d_signup')} ↗
@@ -256,6 +284,7 @@ const SCREENS = [
   MockChatScreen,
   MockPreviewScreen,
   MockOfflineScreen,
+  MockIdentityScreen,
   MockFinalScreen,
 ];
 
@@ -274,7 +303,8 @@ export default function Discover() {
     { titleKey: 'd_t4', bodyKey: 'd_b4' },
     { titleKey: 'd_t5', bodyKey: 'd_b5' },
     { titleKey: 'd_t6', bodyKey: 'd_b6' },
-    { titleKey: 'd_t7', bodyKey: 'd_b7', final: true },
+    { titleKey: 'd_t7', bodyKey: 'd_b7' },
+    { titleKey: 'd_t8', bodyKey: 'd_b8', final: true },
   ]), []);
 
   const meta = STEP_META[step];

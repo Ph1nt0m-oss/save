@@ -2,6 +2,44 @@
 
 ## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
 
+### 14 Mai 2026 — Session 44 (suite 3) — Identité d'appareil cryptographique + modes du site
+- **🔐 Identité cryptographique par appareil (WebCrypto ECDSA P-256, non-extractable)** :
+  - `/app/frontend/src/lib/deviceIdentity.js` : génère une paire ECDSA P-256 dans le navigateur avec `extractable:false`. La clé privée est stockée comme `CryptoKey` dans IndexedDB → JS ne peut PAS l'exporter en bytes bruts (closest browser-level "secure element"). La clé publique (JWK x,y) sert d'ID partageable.
+  - `key_id = sha256(canonical_jwk)` — identifiant public stable. Affiché dans le DeviceManager.
+  - Concurrence sécurisée : `_ensurePromise` + `_attestPromise` en module-cache empêchent la double-génération de paires (React StrictMode).
+  - `signNonce()`, `attestDevice()`, `withCreatorProof()`, `exportPublicKeyShareCode()`, `parsePublicKeyShareCode()` — API complète.
+- **⚙️ Backend `/app/backend/device_auth.py` + endpoints server.py** :
+  - Verify signature ECDSA P-256 (P1363 64 bytes → DER pour `cryptography`).
+  - `POST /api/devices/register` (public) : idempotent, dedup auto-collapse, 1er device → role=`creator`, suivants → `pending`.
+  - `POST /api/devices/challenge` + `POST /api/devices/verify` (public) : nonce 32-bytes URL-safe, single-use.
+  - `GET /api/system/site-mode` (public) : retourne mode courant.
+  - `PUT /api/system/site-mode` (creator-only) : preuve signature requise.
+  - `POST /api/devices/list|approve|revoke|disconnect|promote-creator|add-by-key` (creator-only).
+  - Index unique MongoDB sur `device_keys.key_id`.
+- **🎚️ 4-modes du site (Public / Privé / Créateur / Invité)** :
+  - `Public` : tout le monde accède (paramètre actuel).
+  - `Privé` : seuls `creator` + `approved` peuvent s'authentifier.
+  - `Créateur` : seuls les `creator` peuvent s'authentifier (utile pour maintenance).
+  - `Invité` : tout le monde peut explorer (lecture seule, à compléter avec gates UI).
+- **🖼️ UI** :
+  - `SiteModeBadge.jsx` (Landing + Login) : dropdown 4-options pour créateurs, badge readonly pour les autres. Mode actuel : globe/lock/crown/eye-off.
+  - `DeviceManager.jsx` (modal accessible via `UserMenu → Autres identifiants`) : 
+    * Pour TOUS : code de partage de leur clé publique (à donner au créateur hors-ligne).
+    * Pour CRÉATEUR : liste tous les devices avec rôle + dernière connexion, boutons Approuver/Créateur (avec mot de passe)/Déconnecter/Supprimer + champ "Ajouter par clé".
+  - `useDeviceIdentity()` hook : auto-attestation au mount, expose `keyId, role, siteMode, canAccess, refresh`.
+- **📧 Email auto-prefilled per-device** :
+  - Login pré-remplit l'email du dernier compte utilisé sur CET appareil uniquement (clé localStorage `device_email:<keyId>` — autres appareils n'y ont pas accès).
+  - Mot de passe JAMAIS mémorisé.
+  - Erreurs login déjà spécifiques (`login_password_wrong`, `login_email_unknown`) — pas de message générique.
+- **📚 Tutoriel** : nouvelle slide #7 "Identité d'appareil & modes du site" ajoutée à `Discover.js` (mock visual ECDSA + grille des 4 modes). Traductions FR/EN complètes (`d_t7/d_b7` + `d_t8/d_b8`). Autres langues : fallback EN.
+- **🧪 Tests live** : script Python avec génération ECDSA + sign + verify confirme register/challenge/verify/set-site-mode → 200 OK. Screenshot Landing confirme dropdown créateur 4-modes apparaît, autres appareils voient le badge readonly.
+- **Limitations connues (non bloquantes)** :
+  - Pas de notification temps-réel (SSE/WebSocket) quand un nouveau pending arrive — le créateur doit ouvrir DeviceManager manuellement.
+  - Mode "guest" → enforcement UI partiel : il faut désactiver les boutons d'action côté frontend si role !== creator/approved.
+  - Email à elsa.barroca2@gmail.com pour notifications : non câblé (Resend nécessite API key utilisateur).
+  - Autres langues d_t7/d_b7/d_t8/d_b8 : fallback EN actif (à traduire dans une prochaine passe).
+
+
 ### 13 Mai 2026 — Session 44 (suite 2) — Live Preview iframe + Cloner + Partage public viral + Détection Ollama + Arabe étendu
 - **🖼️ Live Preview iframe inline** dans le Dashboard : dès qu'un projet web avec `generated_code` est sélectionné, un panneau `live-preview-panel` apparaît sous le header, avec iframe sandboxée (`allow-scripts allow-forms allow-popups allow-same-origin`), boutons "Ouvrir dans un onglet" et "✕ fermer", badge "Public" si partagé.
 - **🧬 `POST /api/projects/{id}/duplicate`** : clone un projet (nouveau `project_id`, nom suffixé "(copie)", reset `is_public/share_slug`). Bouton "Cloner ce projet" ajouté au menu contextuel Dashboard (`project-ctx-duplicate`, icône `Copy` ambre).

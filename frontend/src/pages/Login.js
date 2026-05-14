@@ -8,6 +8,9 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from '../components/LanguageToggle';
+import SiteModeBadge from '../components/SiteModeBadge';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import { rememberEmailForDevice, recallEmailForDevice } from '../lib/deviceIdentity';
 
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -79,10 +82,16 @@ export default function Login() {
   const pollRef = useRef(null);
   const timerRef = useRef(null);
 
-  // Sécurité : on NE prefill PAS l'email pour ne pas laisser de trace sur
-  // un appareil partagé ou volé. Chaque connexion demande une saisie complète.
+  // Sécurité : pas de prefill cross-device. Mais SUR CET APPAREIL, on
+  // pré-remplit l'email du dernier compte utilisé (lié à la clé crypto de
+  // l'appareil, jamais transmis au serveur). Le mot de passe n'est JAMAIS
+  // mémorisé.
+  const device = useDeviceIdentity();
   useEffect(() => {
     try { localStorage.removeItem(LAST_EMAIL_KEY); } catch (_) {}
+    const remembered = recallEmailForDevice();
+    if (remembered && !email) setEmail(remembered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Surface ?verified=1 (post email confirm) or ?reason=idle (auto logout)
@@ -195,7 +204,8 @@ export default function Login() {
         if (data.session_token) {
           try { localStorage.setItem('session_token', data.session_token); } catch (_) {}
         }
-        /* email non persisté (sécurité) */
+        // Per-device email memory (encryption key tied to this device only).
+        rememberEmailForDevice(data.email || email.trim());
         rememberAccount(data);
         setUser(data);
         toast.success(`Bienvenue, ${data.name || data.email} !`);
@@ -737,6 +747,8 @@ export default function Login() {
             </button>
             <span>·</span>
             <LanguageToggle />
+            <span>·</span>
+            <SiteModeBadge role={device.role} siteMode={device.siteMode} onChange={() => device.refresh()} />
           </div>
         </motion.div>
       </motion.div>
