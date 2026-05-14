@@ -9,7 +9,7 @@ import { Toaster } from './components/ui/sonner';
 // Public/auth routes — kept eager (small + on critical path)
 import Landing from './pages/Landing';
 import Login from './pages/Login';
-import SMSLogin from './pages/SMSLogin';
+import TheftConfirm from './pages/TheftConfirm';import SMSLogin from './pages/SMSLogin';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import HowItWorks from './pages/HowItWorks';
@@ -122,6 +122,7 @@ function AppRouter() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/discover" element={<Discover />} />
+        <Route path="/theft-confirm" element={<TheftConfirm />} />
         <Route path="/legal" element={<Legal />} />
         <Route 
           path="/dashboard" 

@@ -742,6 +742,7 @@ export default function Dashboard() {
               </button>
               <LanguageToggle placement="bottom" />
               <TheftButton variant="labelled" />
+              <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
             </div>
 
             {/* CENTER */}
@@ -794,7 +795,6 @@ export default function Dashboard() {
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <CreatorToolbar />
-                <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
                 <IdeasButton />
                 <MessageButton variant="icon" />
                 <NotificationBell />

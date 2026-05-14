@@ -317,23 +317,32 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
             {thread && thread.messages.length === 0 && (
               <div className="text-xs text-[#A1A1AA] py-4 text-center">{t('msg_thread_empty')}</div>
             )}
-            {thread?.messages?.map((m) => {
+            {thread?.messages?.map((m, idx, arr) => {
               const mine = isCreator ? m.is_from_creator : !m.is_from_creator;
+              // Group consecutive messages from the same sender — display
+              // the header (label + timestamp) only when the sender changes
+              // or when ≥10 minutes have passed since the previous message.
+              const prev = arr[idx - 1];
+              const sameSender = prev && prev.is_from_creator === m.is_from_creator;
+              const dt = prev ? (new Date(m.ts) - new Date(prev.ts)) / 60000 : Infinity;
+              const showHeader = !sameSender || dt > 10;
               return (
                 <div
                   key={m.message_id}
                   data-testid="msg-row"
-                  className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${mine ? 'justify-end' : 'justify-start'} ${sameSender && !showHeader ? '-mt-1.5' : ''}`}
                 >
                   <div className={`max-w-[78%] px-3 py-2 rounded-sm ${
                     mine
                       ? 'bg-[#E4FF00]/15 border border-[#E4FF00]/30 text-white'
                       : 'bg-white/[0.05] border border-white/10 text-white'
                   }`}>
-                    <div className="text-[10px] text-[#A1A1AA] mb-0.5">
-                      {m.is_from_creator ? t('msg_from_creator') : (m.sender_label || t('msg_from_user'))}
-                      <span className="ml-2 opacity-60">{new Date(m.ts).toLocaleString()}</span>
-                    </div>
+                    {showHeader && (
+                      <div className="text-[10px] text-[#A1A1AA] mb-0.5">
+                        {m.is_from_creator ? t('msg_from_creator') : (m.sender_label || t('msg_from_user'))}
+                        <span className="ml-2 opacity-60">{new Date(m.ts).toLocaleString()}</span>
+                      </div>
+                    )}
                     <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
                   </div>
                 </div>

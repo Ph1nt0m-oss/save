@@ -6,6 +6,7 @@ import LanguageToggle from '../components/LanguageToggle';
 import CreatorToolbar from '../components/CreatorToolbar';
 import MessageButton from '../components/MessageButton';
 import TheftButton from '../components/TheftButton';
+import AccountsButton from '../components/AccountsButton';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export default function Landing() {
@@ -62,6 +63,7 @@ export default function Landing() {
               {t('l_navDiscover')}
             </button>
             <TheftButton variant="labelled" />
+            <AccountsButton />
           </div>
 
           <div className="justify-self-center flex items-center gap-1.5 sm:gap-2 min-w-0">

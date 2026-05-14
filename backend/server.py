@@ -39,6 +39,7 @@ import asyncio
 import time
 import secrets
 import bcrypt
+import hashlib
 
 # Import sub-routers (PWA + Desktop)
 from routes.pwa_routes import export_router as pwa_router
@@ -6733,29 +6734,59 @@ async def accounts_remove_creator(payload: _CreatorSigIn):
 
 # ---------------- IDEAS / FEEDBACK ----------------
 class IdeasSendIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    content: str
+    model_config = ConfigDict(extra="allow")
+    key_id: Optional[str] = None
+    nonce: Optional[str] = None
+    signature: Optional[str] = None
+    content: str = ""
+    kind: str = "idea"   # 'idea' | 'bug' | 'other'
 
 @api_router.post("/ideas/send")
-async def ideas_send(payload: IdeasSendIn):
-    """Any device — send an unlimited-length idea/bug/feedback to creator."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+async def ideas_send(request: Request, payload: IdeasSendIn):
+    """Any device — send a feedback/idea/bug to creator.
+
+    Signed call (device key present) attaches the sender's pseudo for
+    follow-up; anonymous call (login page, no key yet) is accepted too
+    and lands as "Anonyme" so brand-new visitors can still report bugs.
+    """
+    sender_label = "Anonyme"
+    sender_key_id = None
+    sender_email = None
+    if payload.key_id and payload.nonce and payload.signature:
+        try:
+            dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+            sender_label = dev.get("pseudo") or dev.get("label") or payload.key_id[:14]
+            sender_key_id = payload.key_id
+            sender_email = dev.get("email")
+        except HTTPException:
+            # Fall back to anonymous if the signature is stale; never block
+            # feedback submission for a signature issue.
+            pass
+    # iter55: no minimum length, empty allowed.
     content = (payload.content or "").strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Contenu requis.")
-    sender_label = dev.get("pseudo") or dev.get("label") or payload.key_id[:14]
+    kind = payload.kind if payload.kind in ("idea", "bug", "other") else "idea"
+    ip = request.client.host if request and request.client else None
     await db.ideas.insert_one({
         "idea_id": f"idea_{uuid.uuid4().hex[:14]}",
-        "sender_key_id": payload.key_id,
+        "sender_key_id": sender_key_id,
         "sender_label": sender_label,
-        "sender_email": dev.get("email"),
+        "sender_email": sender_email,
+        "sender_ip_hash": hashlib.sha256((ip or "").encode()).hexdigest()[:16] if ip else None,
+        "kind": kind,
         "content": content,
         "ts": datetime.now(timezone.utc).isoformat(),
         "read": False,
+        "page": getattr(payload, "page", None) or "/",
     })
     return {"success": True}
+
+
+@api_router.post("/ideas/mine")
+async def ideas_mine(payload: _CreatorSigIn):
+    """Signed by any device — returns items SENT by this device. Public path."""
+    await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    rows = await db.ideas.find({"sender_key_id": payload.key_id}, {"_id": 0}).sort("ts", -1).to_list(length=500)
+    return {"ideas": rows}
 
 
 @api_router.post("/ideas/inbox")
@@ -7074,6 +7105,87 @@ async def auth_update_pseudo(request: Request, payload: UpdatePseudoIn):
             {"$set": {"pseudo": p, "label": p}},
         )
     return {"success": True, "pseudo": p}
+
+
+# ---------------- THEFT recovery — email fallback ----------------
+class TheftEmailIn(BaseModel):
+    email: str
+
+@api_router.post("/auth/theft-email-request")
+async def auth_theft_email_request(payload: TheftEmailIn):
+    """Send a magic-link to the account email; clicking it revokes ALL
+    creator+approved device keys tied to that email so the user can
+    re-onboard fresh on the new device.
+
+    Idempotent: always returns 200 even if the email is unknown (to avoid
+    enumeration). The actual mail is only sent when a matching user exists.
+    """
+    email = (payload.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Email invalide.")
+    user = await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1})
+    if user:
+        token = uuid.uuid4().hex
+        await db.theft_email_tokens.insert_one({
+            "token": token,
+            "email": email,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "used": False,
+        })
+        frontend_base = _clean_origin(os.environ.get("FRONTEND_URL", "")) or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", "")) or ""
+        link = f"{frontend_base}/theft-confirm?token={token}" if frontend_base else f"/theft-confirm?token={token}"
+        # Best-effort send via Resend — uses the same provider as verification.
+        resend_key = os.environ.get("RESEND_API_KEY")
+        if resend_key:
+            try:
+                sender = os.environ.get("EMAIL_FROM", "CodeForge AI <onboarding@resend.dev>")
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    await client.post(
+                        "https://api.resend.com/emails",
+                        headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                        json={
+                            "from": sender,
+                            "to": [email],
+                            "subject": "CodeForge AI — Récupération en cas de vol",
+                            "html": (
+                                "<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
+                                "<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
+                                "<p style='color:#E4E4E7'>Tu reçois ce mail parce qu'une procédure de récupération en cas de vol a été demandée depuis un nouvel appareil.</p>"
+                                "<p style='color:#FF6B6B'><strong>Si ce n'est pas toi, ignore ce message.</strong></p>"
+                                "<p style='color:#E4E4E7'>Sinon, clique ci-dessous pour révoquer tous les anciens appareils enregistrés sous ton compte :</p>"
+                                f"<p style='margin:24px 0'><a href='{link}' style='background:#E4FF00;color:#050505;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>Confirmer la récupération</a></p>"
+                                f"<p style='color:#A1A1AA;font-size:12px'>Ou copie ce lien : <span style='color:#00D4FF;word-break:break-all'>{link}</span></p>"
+                                "<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 30 minutes.</p>"
+                                "</div>"
+                            ),
+                        },
+                    )
+            except Exception as e:
+                logger.warning(f"theft-email send failed: {e}")
+    # Always 200 — no enumeration leak.
+    return {"success": True}
+
+
+@api_router.get("/auth/theft-email-confirm")
+async def auth_theft_email_confirm(token: str):
+    row = await db.theft_email_tokens.find_one({"token": token}, {"_id": 0})
+    if not row or row.get("used"):
+        raise HTTPException(status_code=404, detail="Lien invalide ou déjà utilisé.")
+    # Token expires after 30 min.
+    try:
+        created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+        if (datetime.now(timezone.utc) - created).total_seconds() > 1800:
+            raise HTTPException(status_code=410, detail="Lien expiré.")
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=410, detail="Lien expiré.")
+    email = row["email"]
+    # Revoke every device key bound to this email.
+    r = await db.device_keys.update_many(
+        {"email": email, "role": {"$in": ["creator", "approved"]}},
+        {"$set": {"role": "revoked", "revoked_at": datetime.now(timezone.utc).isoformat(), "revoked_reason": "theft_email_recovery"}},
+    )
+    await db.theft_email_tokens.update_one({"token": token}, {"$set": {"used": True}})
+    return {"success": True, "revoked_count": r.modified_count}
 
 
 # Helper used by ideas/polls to verify any signature (not creator-restricted).

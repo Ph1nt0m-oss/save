@@ -11,6 +11,9 @@ import LanguageToggle from '../components/LanguageToggle';
 import CreatorToolbar from '../components/CreatorToolbar';
 import TheftRecoveryDialog from '../components/TheftRecoveryDialog';
 import MessageButton from '../components/MessageButton';
+import AccountsButton from '../components/AccountsButton';
+import TheftButton from '../components/TheftButton';
+import DeviceKeyCopyButton from '../components/DeviceKeyCopyButton';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { rememberEmailForDevice, recallEmailForDevice } from '../lib/deviceIdentity';
 import { detectDeviceLabel } from '../lib/deviceLabel';
@@ -483,6 +486,19 @@ export default function Login() {
     <div className="min-h-screen bg-[#050505] flex items-center justify-center relative overflow-hidden">
       <div className="fixed inset-0 noise-bg"></div>
       <div className="fixed inset-0 grid-bg opacity-20"></div>
+
+      {/* Top toolbar — always visible on Login: theft, accounts (creator-only),
+          message to creator, copy device key. */}
+      <div className="fixed top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <TheftButton variant="labelled" />
+          <AccountsButton />
+        </div>
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <DeviceKeyCopyButton />
+          <MessageButton variant="icon" />
+        </div>
+      </div>
 
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
