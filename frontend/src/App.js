@@ -16,6 +16,15 @@ import HowItWorks from './pages/HowItWorks';
 import Legal from './pages/Legal';
 import Discover from './pages/Discover';
 import FeedbackButton from './components/FeedbackButton';
+import SiteLockedOverlay from './components/SiteLockedOverlay';
+import useDeviceIdentity from './hooks/useDeviceIdentity';
+
+// Global site lock overlay — renders when site is in creator-only mode
+// and the current device is not a creator. Sits above every page.
+function GlobalSiteLock() {
+  const device = useDeviceIdentity();
+  return <SiteLockedOverlay siteMode={device.siteMode} role={device.role} onRetry={() => device.refresh()} />;
+}
 
 // Authenticated/heavy routes — lazy-loaded to shrink initial bundle
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -87,6 +96,7 @@ function AppRouter() {
 
   return (
     <Suspense fallback={<RouteFallback />}>
+      <GlobalSiteLock />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />

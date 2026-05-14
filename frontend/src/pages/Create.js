@@ -15,6 +15,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
 import VoiceRecorder from '../components/VoiceRecorder';
 import AttachMenu from '../components/AttachMenu';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -24,6 +25,8 @@ export default function Create() {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
+  const device = useDeviceIdentity();
+  const canWrite = device.canWrite;
   const mode = location.state?.mode || 'online';
   
   const [messages, setMessages] = useState([]);
@@ -49,6 +52,10 @@ export default function Create() {
   const generateApp = async (overrideText) => {
     const userMessage = (overrideText ?? input).trim();
     if (!userMessage || isGenerating) return;
+    if (!canWrite) {
+      toast.error("Mode lecture seule — connecte-toi avec un compte approuvé pour générer", { id: 'read-only' });
+      return;
+    }
 
     if (!overrideText) setInput('');
     setIsGenerating(true);

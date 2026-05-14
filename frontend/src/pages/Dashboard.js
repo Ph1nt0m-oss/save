@@ -19,6 +19,10 @@ import UserMenu from '../components/UserMenu';
 import FeatureHint from '../components/FeatureHint';
 import SwitchAccountModal from '../components/SwitchAccountModal';
 import LanguageToggle from '../components/LanguageToggle';
+import SiteModeBadge from '../components/SiteModeBadge';
+import NotificationBell from '../components/NotificationBell';
+import SiteLockedOverlay from '../components/SiteLockedOverlay';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -28,6 +32,13 @@ export default function Dashboard() {
   const { t } = useLanguage();
   const { isOnline, cacheProjects, getCachedProjects } = useCache();
   const navigate = useNavigate();
+  const device = useDeviceIdentity();
+  const canWrite = device.canWrite;
+  const requireWrite = (action) => {
+    if (canWrite) return true;
+    toast.error("Mode lecture seule — connecte-toi avec un compte approuvé pour écrire", { id: 'read-only' });
+    return false;
+  };
   
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -150,6 +161,7 @@ export default function Dashboard() {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+    if (!requireWrite()) { setDeleteTarget(null); return; }
     try {
       await axios.delete(`${API}/projects/${deleteTarget.project_id}`, { withCredentials: true });
       setProjects(p => p.filter(pr => pr.project_id !== deleteTarget.project_id));
@@ -165,6 +177,7 @@ export default function Dashboard() {
   const duplicateProject = async (project) => {
     setCtxMenu(null);
     if (!project?.project_id) return;
+    if (!requireWrite()) return;
     try {
       const r = await axios.post(
         `${API}/projects/${project.project_id}/duplicate`,
@@ -271,6 +284,7 @@ export default function Dashboard() {
   }, [messages]);
 
   const createNewProject = async () => {
+    if (!requireWrite()) return;
     const projectName = prompt('Nom du projet:');
     if (!projectName) return;
 
@@ -463,6 +477,7 @@ export default function Dashboard() {
 
   return (
     <div className="h-screen bg-[#050505] text-white flex overflow-hidden">
+      <SiteLockedOverlay siteMode={device.siteMode} role={device.role} onRetry={() => device.refresh()} />
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* Sidebar - Projects */}
       <motion.aside
@@ -727,6 +742,8 @@ export default function Dashboard() {
               </Button>
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
+                <SiteModeBadge role={device.role} siteMode={device.siteMode} onChange={() => device.refresh()} />
+                <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />
               </div>
             </div>
@@ -799,7 +816,7 @@ export default function Dashboard() {
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/chat', { state: { mode: 'online' } })}
+                onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'online' } }); }}
                 data-testid="online-chat-btn"
                 className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-8 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
               >
@@ -818,7 +835,7 @@ export default function Dashboard() {
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/create', { state: { mode: 'online' } })}
+                onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'online' } }); }}
                 data-testid="online-create-btn"
                 data-tour="create"
                 className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-8 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
@@ -838,7 +855,7 @@ export default function Dashboard() {
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/chat', { state: { mode: 'offline' } })}
+                onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'offline' } }); }}
                 data-testid="offline-chat-btn"
                 className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
               >
@@ -857,7 +874,7 @@ export default function Dashboard() {
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/create', { state: { mode: 'offline' } })}
+                onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'offline' } }); }}
                 data-testid="offline-create-btn"
                 className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
               >

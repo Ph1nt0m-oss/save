@@ -3974,18 +3974,28 @@ async def device_verify(payload: DeviceVerifyIn):
 
     site_mode = await _get_site_mode()
     role = dev.get("role")
+    effective_role = role
     can_access = True
     if role == "revoked":
         can_access = False
     elif site_mode == "private":
-        can_access = role in ("creator", "approved")
+        # Anyone with a registered device can BROWSE in guest mode, but only
+        # creator/approved get write privileges.
+        if role not in ("creator", "approved"):
+            effective_role = "guest"
     elif site_mode == "creator":
-        can_access = role == "creator"
-    # 'public' and 'guest' both allow access (guest = read-only enforced UI-side)
+        # Strict: only creator devices may use the site.
+        if role != "creator":
+            can_access = False
+    elif site_mode == "guest":
+        # Everyone allowed, but UI enforces read-only for non-authenticated.
+        if role not in ("creator", "approved"):
+            effective_role = "guest"
 
     return {
         "verified": True,
         "role": role,
+        "effective_role": effective_role,
         "can_access": can_access,
         "site_mode": site_mode,
     }
@@ -4034,6 +4044,16 @@ async def devices_list(payload: CreatorOnlyIn):
         {}, {"_id": 0, "public_key_jwk": 0},
     ).sort("created_at", -1).to_list(length=500)
     return {"devices": devices}
+
+
+@api_router.post("/devices/pending-count")
+async def devices_pending_count(payload: CreatorOnlyIn):
+    """Creator-only — quick count of pending devices, used by the bell badge.
+    Uses POST so we can carry the creator proof in the body without exposing
+    keys in query strings/logs."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    count = await db.device_keys.count_documents({"role": "pending"})
+    return {"pending_count": count}
 
 
 class DeviceTargetIn(CreatorOnlyIn):

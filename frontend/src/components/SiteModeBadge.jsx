@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Globe, Lock, Crown, EyeOff, Check, ChevronDown } from 'lucide-react';
-import { toast } from 'sonner';
+import { Globe, Lock, Crown, EyeOff, Check, ChevronDown } from 'lucide-react';import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -43,15 +42,54 @@ export default function SiteModeBadge({ role, siteMode, onChange, className = ''
   };
 
   if (!isCreator) {
-    // Read-only badge — visible but not editable for non-creators
+    // Read-only — but still informative. Clicking opens the same dropdown
+    // with all 4 modes visible (so users can read the hints), but every
+    // option is disabled. Locked icon on the trigger makes the gating
+    // crystal-clear.
     return (
-      <div
-        data-testid="site-mode-readonly"
-        title={current.hint}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] ${className}`}
-      >
-        <Icon className="w-3.5 h-3.5" />
-        <span>{current.label}</span>
+      <div className={`relative inline-block ${className}`} data-testid="site-mode-readonly">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:bg-white/[0.06] transition-colors"
+          title="Mode du site — seul le créateur peut le changer"
+          data-testid="site-mode-readonly-toggle"
+        >
+          <Lock className="w-3 h-3" />
+          <Icon className="w-3.5 h-3.5" />
+          <span>{current.label}</span>
+          <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <div
+            data-testid="site-mode-readonly-dropdown"
+            className="absolute right-0 mt-1.5 w-56 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.6)] z-50 py-1"
+          >
+            <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-[#71717A] border-b border-white/10">
+              Réservé au créateur
+            </div>
+            {MODES.map((m) => {
+              const Mi = m.icon;
+              const active = m.id === siteMode;
+              return (
+                <div
+                  key={m.id}
+                  data-testid={`site-mode-readonly-option-${m.id}`}
+                  className={`px-3 py-2 text-xs flex items-start gap-2 cursor-not-allowed opacity-60 ${
+                    active ? 'text-[#E4FF00]' : 'text-white'
+                  }`}
+                >
+                  <Mi className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-['Chivo'] font-bold">{m.label}</div>
+                    <div className="text-[10px] text-[#A1A1AA]">{m.hint}</div>
+                  </div>
+                  {active && <Check className="w-3 h-3 ml-auto flex-shrink-0" />}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }

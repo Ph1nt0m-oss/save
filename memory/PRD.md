@@ -2,6 +2,32 @@
 
 ## Statut : VERSION P3 — STABLE & SÉCURITÉ RENFORCÉE (Mai 2026)
 
+### 14 Mai 2026 — Session 44 (suite 4) — Gating UI complet + cloche notifications + dropdown 4-modes informatif
+- **🔒 Mode 'privé' → downgrade silencieux en 'guest'** :
+  - Backend `/devices/verify` renvoie maintenant `effective_role`. En mode privé, les `pending`/inconnus reçoivent `effective_role='guest'` + `can_access=true` (peuvent BROWSER en lecture seule).
+  - En mode `creator`, seuls les créateurs reçoivent `can_access=true`. Les autres sont strictement bloqués.
+- **🚫 `SiteLockedOverlay`** : composant full-screen z-9999 affiché globalement (via `<GlobalSiteLock>` dans `App.js`) quand mode créateur + device non-créateur. Bouton "Réessayer".
+- **📖 Dropdown read-only informatif** :
+  - Le badge "Public" pour les non-créateurs est désormais un **dropdown cliquable** affichant les **4 modes** (Public/Privé/Créateur/Invité) avec leurs hints, label "RÉSERVÉ AU CRÉATEUR", icône cadenas, et toutes options en `cursor-not-allowed opacity-60` → visible mais non modifiable.
+  - Test screenshot validé : dropdown affiche bien les 4 modes avec actif marqué ✓.
+- **🔔 NotificationBell (créateur)** :
+  - Cloche dans le header du Dashboard, **visible uniquement aux créateurs**.
+  - Badge rouge avec compteur (1/2/3…/99+) basé sur `/api/devices/pending-count`.
+  - Clic ouvre le `DeviceManager` directement.
+  - Auto-refresh du compteur à la fermeture.
+- **🛡️ Gating UI des actions d'écriture** — pour `siteMode='guest'` ou `effective_role='guest'` :
+  - `Dashboard.js` : 4 boutons principaux (Chat online/offline, Create online/offline) + Cloner + Partage public + Suppression + `createNewProject` → tous gardés par `requireWrite()`. Toast "Mode lecture seule" sinon.
+  - `Chat.js` : bandeau jaune "Mode lecture seule" affiché au-dessus du form quand `!canWrite`. Textarea + boutons attach + voice + send tous `disabled`. Placeholder remplacé.
+  - `Create.js` : `generateApp()` retourne tôt avec toast "Mode lecture seule".
+- **🧪 Tests backend live (Python+ECDSA)** : 6 scénarios validés ✅
+  - Device 1 → creator, can_access ✅
+  - Device 2 mode public → pending, can_access ✅
+  - Device 2 mode PRIVÉ → `effective_role=guest`, can_access=true ✅
+  - Device 2 mode CRÉATEUR → can_access=false ✅
+  - `pending_count: 1` retourné au créateur ✅
+- **Hook `useDeviceIdentity` étendu** : expose désormais `role`, `effectiveRole`, `siteMode`, `canAccess`, `canWrite` (helper booléen), `pendingCount` (auto-fetched si créateur), `refresh()`.
+
+
 ### 14 Mai 2026 — Session 44 (suite 3) — Identité d'appareil cryptographique + modes du site
 - **🔐 Identité cryptographique par appareil (WebCrypto ECDSA P-256, non-extractable)** :
   - `/app/frontend/src/lib/deviceIdentity.js` : génère une paire ECDSA P-256 dans le navigateur avec `extractable:false`. La clé privée est stockée comme `CryptoKey` dans IndexedDB → JS ne peut PAS l'exporter en bytes bruts (closest browser-level "secure element"). La clé publique (JWK x,y) sert d'ID partageable.

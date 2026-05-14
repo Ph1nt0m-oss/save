@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw, Lock } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import VoiceRecorder from '../components/VoiceRecorder';
 import AttachMenu from '../components/AttachMenu';
 import MessageContent from '../components/MessageContent';
 import ModelPicker from '../components/ModelPicker';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -21,6 +22,8 @@ export default function Chat() {
   const location = useLocation();
   const { language, t } = useLanguage();
   const { user } = useAuth();
+  const device = useDeviceIdentity();
+  const canWrite = device.canWrite;
   const mode = location.state?.mode || 'online';
   const projectFromState = location.state?.project || null;
 
@@ -90,6 +93,10 @@ export default function Chat() {
 
   const sendMessage = async (e) => {
     if (e?.preventDefault) e.preventDefault();
+    if (!canWrite) {
+      toast.error("Mode lecture seule — connecte-toi avec un compte approuvé pour écrire", { id: 'read-only' });
+      return;
+    }
     const text = input.trim();
     if ((!text && pendingAtts.length === 0) || isLoading) return;
     setInput('');
@@ -413,6 +420,15 @@ export default function Chat() {
         </ScrollArea>
 
         <form onSubmit={sendMessage}>
+          {!canWrite && (
+            <div
+              data-testid="chat-readonly-banner"
+              className="mb-2 px-3 py-2 bg-white/[0.04] border border-amber-400/30 rounded-sm text-xs text-amber-200 flex items-center gap-2"
+            >
+              <Lock className="w-3 h-3 flex-shrink-0" />
+              <span>Mode lecture seule — connecte-toi avec un compte approuvé par le créateur pour écrire.</span>
+            </div>
+          )}
           {pendingAtts.length > 0 && (
             <div data-testid="chat-pending-atts" className="flex flex-wrap gap-2 mb-2">
               {pendingAtts.map((a, i) => {
@@ -440,22 +456,22 @@ export default function Chat() {
             </div>
           )}
           <div className="flex gap-2 sm:gap-3 items-end">
-            <AttachMenu onResult={handleAttachment} disabled={isLoading || analyzingAtt} />
+            <AttachMenu onResult={handleAttachment} disabled={isLoading || analyzingAtt || !canWrite} />
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={t('chatPlaceholder')}
-              disabled={isLoading}
+              placeholder={canWrite ? t('chatPlaceholder') : 'Lecture seule — connexion requise pour écrire'}
+              disabled={isLoading || !canWrite}
               rows={1}
               data-testid="chat-input"
               className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none disabled:opacity-50 resize-y min-h-[48px] max-h-[200px] font-['IBM_Plex_Sans']"
               style={{ borderColor: input ? modeColor : undefined }}
             />
-            <VoiceRecorder mode="dictate" onResult={handleVoiceResult} disabled={isLoading} language={language} />
-            <VoiceRecorder mode="send"    onResult={handleVoiceResult} disabled={isLoading} language={language} />
+            <VoiceRecorder mode="dictate" onResult={handleVoiceResult} disabled={isLoading || !canWrite} language={language} />
+            <VoiceRecorder mode="send"    onResult={handleVoiceResult} disabled={isLoading || !canWrite} language={language} />
             <Button
               type="submit"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || !input.trim() || !canWrite}
               size="lg"
               className="px-4 sm:px-8 flex-shrink-0"
               style={{ backgroundColor: modeColor, color: '#050505' }}
