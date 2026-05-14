@@ -47,6 +47,10 @@ export default function AccountVisitView({ target, onClose }) {
     try {
       const body = await withCreatorProof(API, axios, { text: m.content, target_lang: 'fr' });
       const r = await axios.post(`${API}/creator/translate`, body);
+      if (r.data?.error === 'translate_unavailable') {
+        toast.warning(t('visit_translate') + ' — indisponible');
+        return;
+      }
       setTranslations((tr) => ({ ...tr, [m.message_id]: r.data?.translated || m.content }));
     } catch (_) { toast.error('Échec de la traduction.'); }
   };

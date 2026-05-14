@@ -17,6 +17,41 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-14 — Iter 54 (Creator power tools complete)
+
+**Big bang — tout en une fois** :
+
+**Backend** (~25 nouveaux endpoints, 47/47 tests PASS) :
+- `/api/accounts/list` : liste de tous les comptes, pseudo + email + statuts (muted, banned, role, excluded), dédup automatique #N pour duplicates
+- `/api/accounts/rename-pseudo` : créatrice renomme n'importe quel pseudo (users + device_keys)
+- `/api/accounts/mute|unmute` : créatrice ne reçoit plus la notif badge pour les muted, conversation continue normalement
+- `/api/accounts/exclude` : exclusion temporaire (durée requise, jamais infini, plafonnée 90 jours), purge des `user_sessions`. Verify renvoie `kick_excluded`.
+- `/api/accounts/ban|unban` : ban permanent sur l'email (`banned_emails` collection, survit au re-enregistrement). Verify renvoie `kick_banned`.
+- `/api/accounts/history`, `/clear` : événements modération (mute/unmute/exclude/ban/rename/delete_project/remove_creator_self)
+- `/api/accounts/visit` : retourne projets (inclus soft-deleted) + chat history d'un user
+- `/api/accounts/delete-user-project` : soft-delete projet (deleted_by_creator=True)
+- `/api/accounts/remove-creator` : auto-demote du créatrice (bcrypt password confirm), log dans device_decisions + account_history
+- `/api/ideas/send|inbox|mark-read|delete` : feedback unlimited, attaché au pseudo
+- `/api/announcements/create|list|delete` : audience `all` ou `approved`
+- `/api/polls/create|list|vote|delete` : 2-10 options, tally agrégé + my_vote, vote unique par device
+- `/api/exports/request|decide|pending|status` : workflow d'approbation pour APK/EXE/source. Créateur auto-approve.
+- `/api/creator/translate` : traduction via Emergent LLM gpt-5.2 avec fallback gracieux
+- `/api/auth/update-pseudo` : édition pseudo par l'utilisateur
+- Inscription : uniqueness pseudo **levée** (index partiel reste pour cohérence interne)
+
+**Frontend** (6 nouveaux composants) :
+- `AccountsButton.jsx` : panel créatrice complet (list + history tabs, rename/mute/block/unblock/exclude/ban actions, "Supprimer le mode créatrice")
+- `IdeasButton.jsx` : composer côté user + inbox côté créatrice avec badge unread
+- `AnnounceButton.jsx` : 3 tabs (annonce / sondage / gérer), formulaire 2-10 options
+- `AnnouncementsBanner.jsx` : top-of-screen global, dismiss par localStorage
+- `ExportApprovalNotifier.jsx` : modal créatrice approuve/refuse, ouvre AccountVisitView pour review
+- `AccountVisitView.jsx` : full-screen, projects + messages + traduction inline
+- Dashboard : export gate non-créatrice → request + polling status → toast d'état
+- Profile : section pseudo-edit
+- i18n : ~80 nouvelles clés FR + EN, autres locales via fallback
+
+**Tests** : 47/47 backend PASS. Frontend Landing smoke clean.
+
 ### 2026-02-14 — Iter 53 (Layout swap + Block icons + Delete logic)
 
 **UX rework header** :
