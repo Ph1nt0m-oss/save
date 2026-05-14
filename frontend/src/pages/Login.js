@@ -101,67 +101,88 @@ export default function Login() {
 
   // Poll the session-request status until approved/denied/expired by the
   // already-connected device.
+  //
+  // Mobile-specific guards (iter 51 — final fix):
+  //  - We use an `inFlight` ref so we NEVER have two parallel polls. The
+  //    naïve setInterval can otherwise stack requests if the network is
+  //    slow on mobile, causing the post-approval race where the second
+  //    response arrives after we've already navigated.
+  //  - On approval we cancel the interval IMMEDIATELY (before validating)
+  //    so no parallel poll can win against the /auth/me check.
+  //  - /auth/me validation uses the Bearer token (no withCredentials) and
+  //    retries up to 3 times with exponential backoff to absorb any Mongo
+  //    write-propagation delay between session insert and the lookup.
   useEffect(() => {
     if (!pendingApproval?.request_id) return;
     let cancelled = false;
-    let navigated = false;
+    let inFlight = false;
+    let interval = null;
+    const stop = () => {
+      cancelled = true;
+      if (interval) { clearInterval(interval); interval = null; }
+    };
     const tick = async () => {
-      if (navigated) return;
+      if (cancelled || inFlight) return;
+      inFlight = true;
       try {
         const r = await axios.post(`${API}/auth/session-request-status`, {
           request_id: pendingApproval.request_id,
-        }, { withCredentials: true });
-        if (cancelled || navigated) return;
+        });
+        if (cancelled) return;
         const status = r.data?.status;
         if (status === 'approved') {
-          navigated = true;
-          // Persist Bearer FIRST so any subsequent /api call has it.
+          // Stop polling FIRST so no concurrent tick can interfere with the
+          // navigation we're about to perform.
+          stop();
           if (r.data?.session_token) {
             try { localStorage.setItem('session_token', r.data.session_token); } catch (_) {}
+            try { sessionStorage.setItem('codeforge_session_grace_at', String(Date.now())); } catch (_) {}
             axios.defaults.headers.common.Authorization = `Bearer ${r.data.session_token}`;
           }
           rememberEmailForDevice(r.data?.email || pendingApproval.email);
           rememberAccount(r.data);
 
-          // Verify the new session is fully wired up BEFORE leaving the
-          // login page — guards against any mobile race where the token is
-          // accepted but a follow-up /api call returns 401.
+          // Validate the freshly-issued token survives a server roundtrip
+          // before we navigate. Retry with exponential backoff (200/400/800ms)
+          // to absorb MongoDB write propagation delays on mobile networks.
           let okMe = false;
-          try {
-            await axios.get(`${API}/auth/me`, { withCredentials: true });
-            okMe = true;
-          } catch (_) { okMe = false; }
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              await axios.get(`${API}/auth/me`);
+              okMe = true;
+              break;
+            } catch (_) {
+              if (attempt < 3) await new Promise((res) => setTimeout(res, 200 * Math.pow(2, attempt)));
+            }
+          }
 
           setUser(r.data);
-          toast.success(t('sess_approved'));
           setPendingApproval(null);
 
           if (okMe) {
-            // Hard reload to /dashboard so AuthProvider re-bootstraps with
-            // the fresh token in localStorage (avoids edge-cases on mobile
-            // Safari where in-memory state isn't picked up by ProtectedRoute).
+            toast.success(t('sess_approved'));
+            // Hard reload so the AuthProvider re-bootstraps with the new token
+            // in localStorage — Safari iOS in particular won't honour the
+            // in-memory state across the route boundary reliably.
             window.location.replace('/dashboard');
           } else {
-            // Token didn't validate — fall back to staying on /login with
-            // a helpful error instead of bouncing to a 401-redirect loop.
+            // Genuine post-approval failure (rare). Surface a clearer message
+            // than "session expired" so the user knows to just retry login.
             try { localStorage.removeItem('session_token'); } catch (_) {}
             delete axios.defaults.headers.common.Authorization;
-            toast.error(t('sess_denied'));
+            toast.error(t('sess_retry_needed'));
           }
         } else if (status === 'denied' || status === 'expired') {
-          navigated = true;
+          stop();
           toast.error(t('sess_denied'));
           setPendingApproval(null);
-        } else if (status === 'pending') {
-          // Update the waiting-banner details if the server included device
-          // info (location, label) for the request. (Not yet returned by the
-          // status endpoint — placeholder for future enrichment.)
         }
       } catch (_) { /* keep polling */ }
+      finally { inFlight = false; }
     };
     tick();
-    const id = setInterval(tick, 2500);
-    return () => { cancelled = true; clearInterval(id); };
+    interval = setInterval(tick, 2500);
+    return () => stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingApproval?.request_id]);
 

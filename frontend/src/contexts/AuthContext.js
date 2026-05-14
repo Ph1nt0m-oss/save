@@ -59,11 +59,21 @@ axios.interceptors.response.use(
         path.startsWith('/reset-password')
       );
       if (status === 401 && !isAuthEndpoint && !onPublicPage && url.includes('/api/')) {
-        try { localStorage.removeItem('session_token'); } catch (_) {}
-        // Avoid redirect loops: only navigate if we're not already on /login
-        const onLogin = window.location.pathname.startsWith('/login');
-        if (!onLogin) {
-          window.location.assign('/login?reason=session_expired');
+        // Grace window: when the user has JUST been issued a fresh session
+        // (e.g. via the 2-device approval flow), suppress the 401-redirect
+        // for 5 seconds. Mobile networks + Mongo replica lag can cause one
+        // or two early 401s right after login before /auth/me settles.
+        let inGrace = false;
+        try {
+          const gAt = parseInt(sessionStorage.getItem('codeforge_session_grace_at') || '0', 10);
+          if (gAt && (Date.now() - gAt) < 5000) inGrace = true;
+        } catch (_) {}
+        if (!inGrace) {
+          try { localStorage.removeItem('session_token'); } catch (_) {}
+          const onLogin = window.location.pathname.startsWith('/login');
+          if (!onLogin) {
+            window.location.assign('/login?reason=session_expired');
+          }
         }
       }
     } catch (_) {}

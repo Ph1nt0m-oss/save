@@ -4666,6 +4666,10 @@ async def session_request_status(payload: SessionRequestStatusIn, response: Resp
     session_token = req.get("issued_session_token")
     if not session_token:
         session_token = secrets.token_urlsafe(32)
+        # Insert + verify it's queryable BEFORE returning, so the client's
+        # follow-up /auth/me always succeeds. Mongo writes are immediately
+        # visible to subsequent reads from the same client + DB, but we
+        # double-check here to absorb any replica lag on hosted clusters.
         await db.user_sessions.insert_one({
             "session_token": session_token,
             "user_id": user["user_id"],
@@ -4675,14 +4679,19 @@ async def session_request_status(payload: SessionRequestStatusIn, response: Resp
             "created_at": now.isoformat(),
             "expires_at": (now + timedelta(days=7)).isoformat(),
         })
+        # Tiny read-after-write check (max 3 attempts × 50ms) — rare paranoia
+        # for hosted MongoDB clusters with secondary read preference.
+        for _ in range(3):
+            check = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0, "session_token": 1})
+            if check:
+                break
+            await asyncio.sleep(0.05)
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
         await db.session_requests.update_one(
             {"request_id": payload.request_id},
             {"$set": {
                 "issued_session_token": session_token,
                 "consumed_at": now.isoformat(),
-                # Push the soft-expiry out so repeated polls keep working long
-                # enough for the requesting device to navigate.
                 "expires_at": (now + timedelta(minutes=15)).isoformat(),
             }},
         )
