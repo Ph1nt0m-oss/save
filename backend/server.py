@@ -6722,8 +6722,22 @@ async def accounts_delete_one(payload: _TargetCreatorSigIn):
 
 @api_router.post("/accounts/delete-all")
 async def accounts_delete_all(payload: _CreatorSigIn):
-    """Creator-only — delete EVERY other account. Self preserved."""
+    """Creator-only — delete EVERY other account. Self preserved.
+
+    Requires the caller's account password as a destructive-action gate
+    (same UX as remove-creator) — set ``password`` in the request body.
+    """
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    pwd = body.get("password") or ""
+    me = await db.device_keys.find_one({"key_id": payload.key_id}, {"_id": 0})
+    if not me or not me.get("email"):
+        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil.")
+    user = await db.users.find_one({"email": me["email"]}, {"_id": 0, "password_hash": 1})
+    if not user or not user.get("password_hash"):
+        raise HTTPException(status_code=400, detail="Aucun mot de passe configuré.")
+    if not bcrypt.checkpw(pwd.encode("utf-8"), user["password_hash"].encode("utf-8")):
+        raise HTTPException(status_code=403, detail="Mot de passe incorrect.")
     r = await db.device_keys.delete_many({"key_id": {"$ne": payload.key_id}})
     await _log_account_event("delete_all_accounts", payload.key_id, extra={"deleted": r.deleted_count})
     return {"success": True, "deleted": r.deleted_count}

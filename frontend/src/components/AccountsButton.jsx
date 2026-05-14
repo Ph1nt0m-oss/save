@@ -111,8 +111,10 @@ export default function AccountsButton({ onVisitAccount }) {
 
   const deleteAll = async () => {
     if (!window.confirm(t('acc_delete_all_confirm'))) return;
+    const pwd = window.prompt(t('acc_delete_all_password_prompt'));
+    if (!pwd) return;
     try {
-      const body = await withCreatorProof(API, axios, {});
+      const body = await withCreatorProof(API, axios, { password: pwd });
       const r = await axios.post(`${API}/accounts/delete-all`, body);
       toast.success(t('acc_delete_done') + ` (${r.data?.deleted || 0})`);
       await load();

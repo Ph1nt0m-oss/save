@@ -17,6 +17,16 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-14 — Iter 57 (Delete accounts + Right-side messaging)
+
+- **`/api/accounts/delete-one`** : creator + target_key_id → suppression complète du device_key (400 si self, 404 si introuvable, 403 si non-creator). User sessions purged.
+- **`/api/accounts/delete-all`** : creator + password (bcrypt confirm) → wipe `device_keys.delete_many({key_id: $ne caller})`. Sa propre clé est préservée. Loggé dans `account_history` avec `deleted` count.
+- AccountsButton.jsx : per-row **Delete** button (Trash) sur tous les non-self. Bottom-bar avec « **Vider la vue** » (local-only via `localStorage codeforge_accounts_hidden`) ⇔ « **Réafficher tout** » + « **Tout supprimer** » (call backend avec password prompt). Tab « Historique » supprimé entièrement.
+- CreatorToolbar.jsx : bouton « Historique » retiré. Panneau d'historique des décisions retiré (le JSX est gone, les states résiduels seront cleanup au prochain refactor).
+- MessagesPanel.jsx : passe de **modal centré** → **aside slide-from-right** (`top-0 right-0 bottom-0 w-full sm:w-[460px] md:w-[540px]`) — comme l'ancien panel d'historique.
+
+**Tests** : iter57 backend 11/11 PASS · Frontend smoke / static grep 100% PASS · password gate sur delete-all ajouté après code review.
+
 ### 2026-02-14 — Iter 56 (Polish 2)
 
 - **FeedbackButton (💡 jaune flottant)** visible pour TOUS sur Login/Landing (créatrice incluse). Caché uniquement sur `/dashboard` côté créatrice (qui a déjà `IdeasButton` dans le header).
