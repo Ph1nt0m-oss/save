@@ -327,7 +327,7 @@ export default function Profile() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] relative overflow-hidden">
+    <div className="min-h-screen bg-[#050505] relative overflow-x-hidden pb-16">
       <div className="fixed inset-0 noise-bg pointer-events-none"></div>
       <div className="fixed inset-0 grid-bg opacity-10 pointer-events-none"></div>
 
@@ -390,6 +390,43 @@ export default function Profile() {
                 <Field label="Dernière connexion" value={fmtDate(user.last_login)} />
               </div>
 
+              {deviceShareCode && (
+                <div className="mt-6 pt-6 border-t border-white/10" data-testid="profile-device-key-section">
+                  <h3 className="font-['Chivo'] font-bold text-white mb-2">{t('prof_my_device_key')}</h3>
+                  <div className="mb-2">
+                    <code
+                      data-testid="profile-device-share-code"
+                      className="block w-full text-[11px] text-emerald-300 bg-black/40 px-2 py-2 rounded-sm overflow-x-auto whitespace-nowrap border border-white/10 mb-2"
+                      style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
+                      {deviceShareCode}
+                    </code>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={copyDeviceKey}
+                        data-testid="profile-copy-device-key"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 border border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] rounded-sm text-xs font-['Chivo'] font-bold transition"
+                      >
+                        {keyCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {keyCopied ? t('prof_key_copied') : t('prof_copy_key')}
+                      </button>
+                      {device.role !== 'creator' && (
+                        <button
+                          onClick={sendKeyToCreator}
+                          disabled={sendingToCreator}
+                          data-testid="profile-send-to-creator"
+                          className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#E4FF00]/15 hover:bg-[#E4FF00]/25 border border-[#E4FF00]/40 text-[#E4FF00] text-xs font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-60"
+                        >
+                          {sendingToCreator ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UsersIcon className="w-3.5 h-3.5" />}
+                          {t('prof_send_to_creator')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-[#A1A1AA]">{t('prof_my_device_key_hint')}</p>
+                </div>
+              )}
+
               <div className="mt-6 pt-6 border-t border-white/10">
                 <h3 className="font-['Chivo'] font-bold text-white mb-2">Mot de passe oublié ?</h3>
                 <p className="text-xs text-[#A1A1AA] mb-3">
@@ -418,40 +455,6 @@ export default function Profile() {
                     className="ml-2 text-xs text-[#A1A1AA] hover:text-white underline">Annuler</button>
                 )}
               </div>
-
-              {deviceShareCode && (
-                <div className="mt-6 pt-6 border-t border-white/10" data-testid="profile-device-key-section">
-                  <h3 className="font-['Chivo'] font-bold text-white mb-2">{t('prof_my_device_key')}</h3>
-                  <div className="flex items-center gap-2 mb-2">
-                    <code
-                      data-testid="profile-device-share-code"
-                      className="flex-1 text-[11px] text-emerald-300 bg-black/40 px-2 py-1.5 rounded-sm overflow-x-auto whitespace-nowrap border border-white/10"
-                    >
-                      {deviceShareCode}
-                    </code>
-                    <button
-                      onClick={copyDeviceKey}
-                      data-testid="profile-copy-device-key"
-                      className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 border border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] rounded-sm text-xs font-['Chivo'] font-bold transition"
-                    >
-                      {keyCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      {keyCopied ? t('prof_key_copied') : t('prof_copy_key')}
-                    </button>
-                  </div>
-                  <p className="text-xs text-[#A1A1AA] mb-3">{t('prof_my_device_key_hint')}</p>
-                  {device.role !== 'creator' && (
-                    <button
-                      onClick={sendKeyToCreator}
-                      disabled={sendingToCreator}
-                      data-testid="profile-send-to-creator"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#E4FF00]/15 hover:bg-[#E4FF00]/25 border border-[#E4FF00]/40 text-[#E4FF00] text-sm font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-60"
-                    >
-                      {sendingToCreator ? <Loader2 className="w-4 h-4 animate-spin" /> : <UsersIcon className="w-4 h-4" />}
-                      {t('prof_send_to_creator')}
-                    </button>
-                  )}
-                </div>
-              )}
 
               <div className="mt-6 pt-6 border-t border-white/10">
                 <h3 className="font-['Chivo'] font-bold text-white mb-2">Tes données (RGPD)</h3>

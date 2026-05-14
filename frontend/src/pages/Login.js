@@ -117,20 +117,36 @@ export default function Login() {
           // Persist Bearer FIRST so any subsequent /api call has it.
           if (r.data?.session_token) {
             try { localStorage.setItem('session_token', r.data.session_token); } catch (_) {}
-            // Belt-and-braces: also set the default header right now so the
-            // very next request (Dashboard's /api/projects) is authenticated
-            // even before the interceptor reads localStorage.
             axios.defaults.headers.common.Authorization = `Bearer ${r.data.session_token}`;
           }
           rememberEmailForDevice(r.data?.email || pendingApproval.email);
           rememberAccount(r.data);
+
+          // Verify the new session is fully wired up BEFORE leaving the
+          // login page — guards against any mobile race where the token is
+          // accepted but a follow-up /api call returns 401.
+          let okMe = false;
+          try {
+            await axios.get(`${API}/auth/me`, { withCredentials: true });
+            okMe = true;
+          } catch (_) { okMe = false; }
+
           setUser(r.data);
           toast.success(t('sess_approved'));
           setPendingApproval(null);
-          // Tiny delay so React commits setUser before the route change.
-          setTimeout(() => {
-            navigate('/dashboard', { replace: true, state: { user: r.data } });
-          }, 50);
+
+          if (okMe) {
+            // Hard reload to /dashboard so AuthProvider re-bootstraps with
+            // the fresh token in localStorage (avoids edge-cases on mobile
+            // Safari where in-memory state isn't picked up by ProtectedRoute).
+            window.location.replace('/dashboard');
+          } else {
+            // Token didn't validate — fall back to staying on /login with
+            // a helpful error instead of bouncing to a 401-redirect loop.
+            try { localStorage.removeItem('session_token'); } catch (_) {}
+            delete axios.defaults.headers.common.Authorization;
+            toast.error(t('sess_denied'));
+          }
         } else if (status === 'denied' || status === 'expired') {
           navigated = true;
           toast.error(t('sess_denied'));

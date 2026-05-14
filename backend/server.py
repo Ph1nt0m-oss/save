@@ -4150,6 +4150,16 @@ async def devices_decisions(payload: CreatorOnlyIn):
     return {"decisions": rows}
 
 
+@api_router.post("/devices/decisions/clear")
+async def devices_decisions_clear(payload: CreatorOnlyIn):
+    """Creator-only — wipe the entire history log. This does NOT touch the
+    actual device state (existing creator/approved/pending roles stay). Use
+    when the history gets long and you want a clean slate."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    res = await db.device_decisions.delete_many({})
+    return {"deleted": res.deleted_count}
+
+
 @api_router.post("/devices/pending-count")
 async def devices_pending_count(payload: CreatorOnlyIn):
     """Creator-only — quick count of pending devices, used by the bell badge.
@@ -4220,18 +4230,22 @@ async def devices_revoke(payload: DeviceTargetIn):
     """Creator hard-revokes a device — they cannot authenticate again. The
     revoke also REMOVES the device from `device_keys` so it doesn't clutter
     the registered-devices list. The audit trail in `device_decisions`
-    remembers what happened."""
+    remembers what happened.
+
+    Idempotent: if the target device is already gone (cleaned-up after a
+    previous revoke), we still log the decision so the creator gets a clear
+    audit trail when revoking from the History panel."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     if payload.target_key_id == payload.key_id:
         raise HTTPException(status_code=400, detail="Tu ne peux pas révoquer ton propre appareil créateur.")
     target = await _device_by_key(payload.target_key_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+    target_label = (target or {}).get("label")
+    # Idempotent — delete if exists, no error if it doesn't.
     await db.device_keys.delete_one({"key_id": payload.target_key_id})
     await db.device_nonces.delete_many({"key_id": payload.target_key_id})
     await db.user_sessions.delete_many({"device_key_id": payload.target_key_id})
-    await _log_decision("revoke", payload.target_key_id, payload.key_id, (target or {}).get("label"))
-    return {"success": True}
+    await _log_decision("revoke", payload.target_key_id, payload.key_id, target_label)
+    return {"success": True, "existed": target is not None}
 
 
 @api_router.post("/devices/disconnect")

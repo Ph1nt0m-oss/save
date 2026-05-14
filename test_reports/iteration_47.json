@@ -1,0 +1,53 @@
+{
+  "summary": "Iter47 backend-only validation. 12/12 pytest cases pass against the live preview URL. Verified: (1) /devices/revoke is now idempotent — returns 200 {success:true, existed:false} for unknown target_key_id AND still appends a 'revoke' entry to device_decisions; for an existing target returns existed:true and hard-deletes from device_keys; calling revoke twice on the same key both succeed and produce 2 audit rows. (2) NEW /devices/decisions/clear — creator-only, returns {deleted:N} matching pre-count, empties device_decisions, AND leaves every device_keys row (id+role) byte-identical pre/post-call (verified by full snapshot diff including the kept creator dev_a797438afc28c67923881d46ae2971c1 and the temp_creator). Calling clear on an empty collection returns {deleted:0}. (3) Both endpoints return 403 when called by a non-creator key or with a forged signature. (4) Regression iter46: /auth/session-request-status unknown id returns {status:'expired'} HTTP 200 (NOT 404); /auth/login still works without device_key_id. Kept creator key never touched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/devices/decisions/clear",
+        "issue": "No rate-limit and no upper bound on call frequency. A creator who loses control of their device could wipe the entire audit history in a single call (and there is no undo). Consider keeping a tombstone count or a 'cleared_at' marker for traceability. Functional behaviour matches the spec — this is a hardening suggestion only."
+      },
+      {
+        "endpoint": "POST /api/devices/revoke",
+        "issue": "When target_key_id is unknown the response is {success:true, existed:false} — there is no way for a client to distinguish 'I just cleaned up a stale entry' from 'I tried to revoke a key that never existed'. The audit row still gets target_label=null in the latter case which is the only on-server signal. Spec-compliant; mentioned for visibility."
+      },
+      {
+        "endpoint": "POST /api/devices/decisions",
+        "issue": "Carry-over: server.py is now 5937 lines (was 5923 in iter46). Still recommend extracting /devices/* into its own router for maintainability."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter47_revoke_decisions_clear.py",
+    "/app/test_reports/pytest/iter47_results.xml"
+  ],
+  "action_items": [
+    "(Optional, hardening) Add a per-key_id rate-limit on /devices/decisions/clear (e.g. 1 call/hour) and on /devices/revoke (e.g. 30/min) to limit blast radius if a creator device is compromised.",
+    "(Optional, observability) When /decisions/clear runs, insert one final 'history_cleared' tombstone row (action='history_cleared', by_key_id, ts) so the new empty state is itself auditable."
+  ],
+  "critical_code_review_comments": [
+    "/devices/revoke (server.py L4228-4248) — correctly reordered to: signature gate -> self-target check -> snapshot label -> delete_one (idempotent) -> delete_many nonces/sessions -> _log_decision -> return {success, existed}. The 'existed' flag is derived from `target is not None` BEFORE the delete, which is correct. Self-revoke is still blocked at L4239 with HTTP 400.",
+    "/devices/decisions/clear (server.py L4153-4160) — creator gate first, then delete_many({}) and return the deleted_count. Implementation is minimal and correct. No collection-level lock needed because Mongo delete_many is atomic per-document and concurrent /devices/revoke calls writing new audit rows in flight would simply not be in the snapshot — acceptable.",
+    "_log_decision (server.py L3936-3951) — still inserts a row then trims to 500. Note: after /decisions/clear the trim branch is a no-op until count > 500 again. No issue.",
+    "_require_creator_signature (server.py L3960-3969) — order: role check -> consume_nonce -> verify_signature. This means a non-creator's nonce is NOT consumed (early return at L3963), which is the desired behaviour (otherwise a third party could DoS a pending device's nonces).",
+    "Frontend behaviour change (window.location.replace after /auth/me) was not testable here (backend-only request). Recommend a follow-up frontend test specifically of the mobile hydration path on /dashboard after session approval."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter47_revoke_decisions_clear.py (new — 12 tests, 5.85s, self-cleaning)"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 from /app/memory/test_credentials.md. Used as-is.",
+  "seed_data_creation": "Test suite registers ~9 ephemeral ECDSA P-256 device keys labelled TEST_iter47_* (one temp_creator promoted via direct DB write, one revoke-existing target, one revoke-twice target, one non-creator caller, three seed-decisions targets, plus one bad-sig target). All cleaned up in the module-scoped 'cleanup' fixture teardown (device_keys, device_nonces, user_sessions). device_decisions table ends EMPTY because the wipes test calls clear (intentional). The kept creator key dev_a797438afc28c67923881d46ae2971c1 is verified intact by the final test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter47 spec items verified GREEN. Regression file is /app/backend/tests/test_iter47_revoke_decisions_clear.py — 5.85s, self-cleans, safe to re-run. Side-effect note: this suite empties the device_decisions collection (by design — that's the feature). If the next iteration needs pre-existing decision history, it must seed its own. Iter46 regression suite at /app/backend/tests/test_iter46_session_devices.py still passes. To exercise creator-only endpoints, the suite registers a fresh P-256 key and promotes it via direct mongo write — same pattern as iter46. Frontend session-approval flow change (window.location.replace) was NOT tested (backend-only request).",
+  "rca of the issue": "No bugs. All three iter47 changes work as specified: revoke is idempotent (200 existed:false for unknown targets, audit still logged), decisions/clear wipes only device_decisions and leaves device_keys completely untouched (verified by full pre/post snapshot diff), and the iter46 regression on session-request-status + login back-compat still passes."
+}

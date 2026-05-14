@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { History, Eye, EyeOff, X } from 'lucide-react';
+import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import SiteModeBadge from './SiteModeBadge';
 import useDeviceIdentity, { setStoredViewMode } from '../hooks/useDeviceIdentity';
@@ -18,12 +18,23 @@ const ACTION_META = {
   request_access: { tk: 'dec_request_access', color: 'text-purple-300 border-purple-400/40 bg-purple-400/10' },
 };
 
+function downloadText(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /**
  * Top-bar toolbar. Two distinct layouts:
  *  - Creator devices: SiteMode dropdown + History side-panel button.
  *  - Non-creator devices ("guests"): SiteMode read-only badge + a view-mode
- *    toggle ("user view" ↔ "creator preview, read-only") so they can peek
- *    at the admin surface (used as a tutorial). Free to flip anytime.
+ *    toggle. The History button is creator-only.
  */
 export default function CreatorToolbar() {
   const { t } = useLanguage();
@@ -45,6 +56,59 @@ export default function CreatorToolbar() {
 
   useEffect(() => { if (historyOpen) loadDecisions(); /* eslint-disable-next-line */ }, [historyOpen]);
 
+  const revokeFromHistory = async (target_key_id) => {
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id });
+      await axios.post(`${API}/devices/revoke`, body);
+      toast.success(t('dec_revoke'));
+      loadDecisions();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('dm_op_failed'));
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!window.confirm(t('hist_clear_confirm'))) return;
+    try {
+      const body = await withCreatorProof(API, axios, {});
+      const r = await axios.post(`${API}/devices/decisions/clear`, body);
+      toast.success(t('hist_cleared').replace('{n}', String(r.data?.deleted || 0)));
+      setDecisions([]);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('dm_op_failed'));
+    }
+  };
+
+  const exportHistory = () => {
+    const ts = new Date();
+    const ymd = ts.toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const header = [
+      '# CodeForge AI — Historique des décisions',
+      `# Exporté le ${ts.toLocaleString()}`,
+      `# Total entrées: ${decisions.length}`,
+      '#',
+      '# Format: [date]  ACTION  cle_appareil  (label)',
+      ''.padEnd(80, '-'),
+      '',
+    ].join('\n');
+    const labelMap = {
+      approve: 'ACCEPTÉ',
+      revoke: 'ANNULÉ',
+      disconnect: 'DÉCONNECTÉ',
+      promote: 'PROMU CRÉATEUR',
+      add_by_key: 'AJOUTÉ PAR CLÉ',
+      request_access: "DEMANDE D'ACCÈS",
+    };
+    const body = decisions.map((d) => {
+      const action = labelMap[d.action] || d.action.toUpperCase();
+      const label = d.target_label ? `  (${d.target_label})` : '';
+      const when = new Date(d.ts).toLocaleString();
+      return `[${when}]  ${action.padEnd(18)}  ${d.target_key_id}${label}`;
+    }).join('\n');
+    downloadText(`codeforge-history-${ymd}.txt`, header + body + '\n');
+    toast.success(t('hist_exported'));
+  };
+
   const isCreatorDevice = device.role === 'creator';
   const inGuestView = device.viewMode === 'guest';
 
@@ -57,7 +121,6 @@ export default function CreatorToolbar() {
         onChange={() => device.refresh()}
       />
 
-      {/* History side-panel button — creator only */}
       {isCreatorDevice && (
         <button
           type="button"
@@ -71,7 +134,6 @@ export default function CreatorToolbar() {
         </button>
       )}
 
-      {/* Guest-facing view-mode toggle: only for non-creator devices. */}
       {!isCreatorDevice && (
         <button
           type="button"
@@ -98,14 +160,14 @@ export default function CreatorToolbar() {
           />
           <aside
             data-testid="history-panel"
-            className="fixed top-0 right-0 bottom-0 z-[61] w-full sm:w-[420px] bg-[#0A0A0A] border-l border-white/15 shadow-[-20px_0_60px_rgba(0,0,0,0.6)] flex flex-col"
+            className="fixed top-0 right-0 bottom-0 z-[61] w-full sm:w-[460px] bg-[#0A0A0A] border-l border-white/15 shadow-[-20px_0_60px_rgba(0,0,0,0.6)] flex flex-col"
           >
-            <header className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <History className="w-5 h-5 text-[#E4FF00]" />
-                <h2 className="text-base font-['Chivo'] font-bold text-white">{t('dm_history')}</h2>
+            <header className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <History className="w-5 h-5 text-[#E4FF00] flex-shrink-0" />
+                <h2 className="text-base font-['Chivo'] font-bold text-white truncate">{t('dm_history')}</h2>
                 {decisions.length > 0 && (
-                  <span className="text-[10px] uppercase tracking-widest text-[#71717A]">
+                  <span className="text-[10px] uppercase tracking-widest text-[#71717A] flex-shrink-0">
                     ({decisions.length})
                   </span>
                 )}
@@ -113,12 +175,42 @@ export default function CreatorToolbar() {
               <button
                 onClick={() => setHistoryOpen(false)}
                 data-testid="history-close"
-                className="text-[#A1A1AA] hover:text-white"
+                className="text-[#A1A1AA] hover:text-white flex-shrink-0"
                 aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </header>
+
+            <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2 flex-shrink-0 flex-wrap">
+              <button
+                onClick={loadDecisions}
+                data-testid="history-refresh"
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30 rounded-sm transition"
+              >
+                <RefreshCw className="w-3 h-3" />
+                {t('dm_refresh')}
+              </button>
+              <button
+                onClick={exportHistory}
+                disabled={decisions.length === 0}
+                data-testid="history-export"
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border border-sky-400/40 text-sky-300 hover:bg-sky-400/10 rounded-sm transition disabled:opacity-40"
+              >
+                <Download className="w-3 h-3" />
+                {t('hist_export')}
+              </button>
+              <button
+                onClick={clearHistory}
+                disabled={decisions.length === 0}
+                data-testid="history-clear"
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border border-red-400/40 text-red-300 hover:bg-red-400/10 rounded-sm transition disabled:opacity-40 ml-auto"
+              >
+                <Trash2 className="w-3 h-3" />
+                {t('hist_clear')}
+              </button>
+            </div>
+
             <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
               {loadingHist && (
                 <div className="text-xs text-[#A1A1AA] px-2 py-3" data-testid="history-loading">
@@ -136,20 +228,29 @@ export default function CreatorToolbar() {
                   <div
                     key={`${dec.target_key_id}-${dec.ts}-${i}`}
                     data-testid="history-row"
-                    className="bg-black/30 border border-white/10 rounded-sm p-2.5 flex items-center gap-3"
+                    className="bg-black/30 border border-white/10 rounded-sm p-2.5 space-y-1.5"
                   >
-                    <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm ${meta.color}`}>
-                      {t(meta.tk)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      {dec.target_label && (
-                        <div className="text-xs text-white truncate">{dec.target_label}</div>
-                      )}
-                      <code className="block text-[10px] text-[#71717A] truncate">{dec.target_key_id}</code>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm ${meta.color}`}>
+                        {t(meta.tk)}
+                      </span>
+                      <div className="text-[10px] text-[#71717A]">
+                        {new Date(dec.ts).toLocaleString()}
+                      </div>
+                      <button
+                        onClick={() => revokeFromHistory(dec.target_key_id)}
+                        data-testid={`history-revoke-${dec.target_key_id}`}
+                        title={t('dec_revoke')}
+                        className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border border-red-400/40 text-red-300 hover:bg-red-400/20 rounded-sm transition"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        {t('dec_revoke')}
+                      </button>
                     </div>
-                    <div className="text-[10px] text-[#71717A] flex-shrink-0">
-                      {new Date(dec.ts).toLocaleString()}
-                    </div>
+                    {dec.target_label && (
+                      <div className="text-xs text-white truncate">{dec.target_label}</div>
+                    )}
+                    <code className="block text-[10px] text-[#71717A] break-all">{dec.target_key_id}</code>
                   </div>
                 );
               })}
