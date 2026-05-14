@@ -108,6 +108,22 @@ export default function Profile() {
   const [pwdForDelete, setPwdForDelete] = useState('');
   const [confirmDelete, setConfirmDelete] = useState('');
 
+  // Pseudo update — iter54
+  const [newPseudo, setNewPseudo] = useState(user?.pseudo || user?.name || '');
+  const [savingPseudo, setSavingPseudo] = useState(false);
+  useEffect(() => { setNewPseudo(user?.pseudo || user?.name || ''); }, [user?.pseudo, user?.name]);
+  const savePseudo = async () => {
+    const p = (newPseudo || '').trim();
+    if (p.length < 3 || p.length > 30) { toast.error(t('pseudo_required')); return; }
+    setSavingPseudo(true);
+    try {
+      const r = await axios.post(`${API}/auth/update-pseudo`, { new_pseudo: p });
+      setUser((u) => ({ ...u, pseudo: r.data?.pseudo || p }));
+      toast.success(t('pseudo_changed'));
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
+    finally { setSavingPseudo(false); }
+  };
+
   // Reset password (alternative to "view password" — bcrypt one-way)
   const [resetSent, setResetSent] = useState(false);
   const [resetNewPwd, setResetNewPwd] = useState('');
@@ -388,6 +404,28 @@ export default function Profile() {
                 <Field label="Email vérifié" value={user.verified ? 'Oui' : 'Non'} />
                 <Field label="Membre depuis" value={fmtDate(user.created_at)} />
                 <Field label="Dernière connexion" value={fmtDate(user.last_login)} />
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-white/10" data-testid="profile-pseudo-section">
+                <h3 className="font-['Chivo'] font-bold text-white mb-2">{t('pseudo_label')}</h3>
+                <p className="text-xs text-[#A1A1AA] mb-3">{t('pseudo_help')}</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={newPseudo}
+                    onChange={(e) => setNewPseudo(e.target.value)}
+                    maxLength={30}
+                    data-testid="profile-pseudo-input"
+                    className="flex-1 bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white focus:outline-none focus:border-[#E4FF00]"
+                  />
+                  <button
+                    onClick={savePseudo}
+                    disabled={savingPseudo}
+                    data-testid="profile-pseudo-save"
+                    className="inline-flex items-center gap-1 px-4 py-2 bg-[#E4FF00]/15 hover:bg-[#E4FF00]/25 border border-[#E4FF00]/30 text-[#E4FF00] text-sm font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-60"
+                  >
+                    {t('pseudo_change')}
+                  </button>
+                </div>
               </div>
 
               <div className="mt-6 pt-6 border-t border-white/10">

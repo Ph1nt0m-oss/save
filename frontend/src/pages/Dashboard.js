@@ -24,6 +24,11 @@ import NotificationBell from '../components/NotificationBell';
 import SiteLockedOverlay from '../components/SiteLockedOverlay';
 import MessageButton from '../components/MessageButton';
 import TheftButton from '../components/TheftButton';
+import IdeasButton from '../components/IdeasButton';
+import AnnounceButton from '../components/AnnounceButton';
+import AccountsButton from '../components/AccountsButton';
+import AccountVisitView from '../components/AccountVisitView';
+import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -57,6 +62,7 @@ export default function Dashboard() {
   const [deleteTarget, setDeleteTarget] = useState(null); // project pending delete confirm
   // Filtre de la sidebar — 'all' | 'chat-online' | 'chat-offline' | 'web-online' | 'web-offline'
   const [sidebarFilter, setSidebarFilter] = useState('all');
+  const [visiting, setVisiting] = useState(null);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -403,6 +409,45 @@ export default function Dashboard() {
       return;
     }
 
+    // Export approval gate — iter54. Non-creator devices must obtain an
+    // explicit approval from the creator before exporting any APK / ZIP+GitHub
+    // / EXE. Creators bypass this entirely.
+    if (device.role !== 'creator') {
+      try {
+        const { withCreatorProof } = await import('../lib/deviceIdentity');
+        const body = await withCreatorProof(API, axios, {
+          project_id: selectedProject.project_id,
+          export_kind: exportType,
+        });
+        const r = await axios.post(`${API}/exports/request`, body);
+        if (!r.data?.approved) {
+          toast.warning(t('exp_pending_title'), { description: t('exp_pending_body'), duration: 9000 });
+          // Poll for decision (max 90 polls × 4s = 6 min).
+          let attempts = 0;
+          const poll = setInterval(async () => {
+            attempts += 1;
+            try {
+              const b = await withCreatorProof(API, axios, { request_id: r.data?.request_id });
+              const s = await axios.post(`${API}/exports/status`, b);
+              if (s.data?.status === 'approved') {
+                clearInterval(poll);
+                toast.success(t('exp_approved_title'), { description: t('exp_approved_body'), duration: 9000 });
+              } else if (s.data?.status === 'rejected') {
+                clearInterval(poll);
+                toast.error(t('exp_rejected_title'), { description: t('exp_rejected_body'), duration: 12000 });
+              } else if (attempts > 90) {
+                clearInterval(poll);
+              }
+            } catch (_) {}
+          }, 4000);
+          return;
+        }
+      } catch (e) {
+        toast.error(e?.response?.data?.detail || 'Erreur');
+        return;
+      }
+    }
+
     try {
       if (exportType === 'source') {
         // 1) Download ZIP locally.
@@ -480,6 +525,8 @@ export default function Dashboard() {
   return (
     <div className="h-screen bg-[#050505] text-white flex overflow-hidden">
       <SiteLockedOverlay siteMode={device.siteMode} role={device.role} kickReason={device.kickReason} onRetry={() => device.refresh()} />
+      <ExportApprovalNotifier onOpenAccount={(o) => setVisiting({ key_id: o.key_id })} />
+      {visiting && <AccountVisitView target={visiting} onClose={() => setVisiting(null)} />}
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* Sidebar - Projects */}
       <motion.aside
@@ -708,6 +755,7 @@ export default function Dashboard() {
 
             {/* RIGHT */}
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+              <AnnounceButton />
               <Button
                 onClick={() => exportProject('apk')}
                 size="sm"
@@ -746,6 +794,8 @@ export default function Dashboard() {
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <CreatorToolbar />
+                <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
+                <IdeasButton />
                 <MessageButton variant="icon" />
                 <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />

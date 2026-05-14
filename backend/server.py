@@ -600,11 +600,10 @@ async def register(payload: RegisterRequest, request: Request):
         raise HTTPException(status_code=400, detail="Le pseudo est trop long (30 max).")
     if pseudo_raw.lower() in ("créatrice", "creatrice", "créateur", "createur"):
         raise HTTPException(status_code=409, detail="Ce pseudo est réservé.")
-    # Uniqueness check (case-insensitive).
-    if await db.users.find_one(
-        {"pseudo_lower": pseudo_raw.lower(), "verified": True}, {"_id": 0, "user_id": 1},
-    ):
-        raise HTTPException(status_code=409, detail="Ce pseudo est déjà pris.")
+    # Pseudo uniqueness is intentionally NOT enforced anymore — users keep
+    # the right to choose any pseudo. The creator-side "Autres comptes"
+    # panel disambiguates duplicates by appending "#N" suffixes when
+    # listing, and offers a rename action for both sides.
 
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing and existing.get("verified"):
@@ -4177,7 +4176,30 @@ async def device_verify(payload: DeviceVerifyIn):
     effective_role = role
     can_access = True
     kick_reason = None  # localized message key — frontend translates
-    if role == "blocked":
+
+    # ----- Account-level moderation gates (iter54) -----
+    # Exclusion / Ban are tied to the device's email (if any). They lock
+    # the account itself, not just one device — re-registering on the same
+    # email keeps the gate active.
+    excluded_until = dev.get("excluded_until")
+    if excluded_until:
+        try:
+            exp = datetime.fromisoformat(excluded_until.replace("Z", "+00:00"))
+            if exp <= datetime.now(timezone.utc):
+                await db.device_keys.update_one(
+                    {"key_id": payload.key_id},
+                    {"$unset": {"excluded_until": "", "excluded_reason": ""}},
+                )
+                excluded_until = None
+        except Exception:
+            excluded_until = None
+    if dev.get("banned"):
+        can_access = False
+        kick_reason = "kick_banned"
+    elif excluded_until:
+        can_access = False
+        kick_reason = "kick_excluded"
+    elif role == "blocked":
         can_access = False
         kick_reason = "kick_blocked"
     elif role == "revoked":
@@ -4207,6 +4229,7 @@ async def device_verify(payload: DeviceVerifyIn):
         "can_access": can_access,
         "site_mode": site_mode,
         "kick_reason": kick_reason,
+        "excluded_until": excluded_until,
     }
 
 
@@ -5241,7 +5264,12 @@ async def messages_unread_count(payload: MessagesThreadIn):
     if not verify_signature(sender.get("public_key_jwk") or {}, payload.nonce, payload.signature):
         raise HTTPException(status_code=403, detail="Signature invalide.")
     if sender.get("role") == "creator":
-        n = await db.messages.count_documents({"is_from_creator": False, "read_by_creator": False})
+        # Exclude messages from muted senders so the creator gets no notif badge.
+        muted_ids = [d["key_id"] async for d in db.device_keys.find({"muted": True}, {"_id": 0, "key_id": 1})]
+        q = {"is_from_creator": False, "read_by_creator": False}
+        if muted_ids:
+            q["thread_key_id"] = {"$nin": muted_ids}
+        n = await db.messages.count_documents(q)
     else:
         n = await db.messages.count_documents({
             "thread_key_id": payload.key_id,
@@ -6434,6 +6462,630 @@ async def redeploy(request: Request):
         raise HTTPException(status_code=500, detail=f"Deploy failed: {e.output.decode() if e.output else str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================================================================
+#                  ITER 54 — Creator power tools
+# ==================================================================
+# Accounts panel, Ideas inbox, Announcements, Polls, Export approval,
+# Account visit, Remove-creator-mode. All endpoints below are creator-
+# signature gated unless explicitly noted.
+
+class _CreatorSigIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    key_id: str
+    nonce: str
+    signature: str
+
+
+class _TargetCreatorSigIn(_CreatorSigIn):
+    target_key_id: str
+
+
+async def _log_account_event(event: str, target_key_id: str, target_label: Optional[str] = None,
+                              extra: Optional[Dict[str, Any]] = None):
+    doc = {
+        "event_id": f"ah_{uuid.uuid4().hex[:14]}",
+        "event": event,
+        "target_key_id": target_key_id,
+        "target_label": target_label,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    if extra:
+        doc.update(extra)
+    await db.account_history.insert_one(doc)
+
+
+def _disambiguate_pseudos(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Append "#N" to duplicate pseudos for creator-side display only."""
+    by_lower: Dict[str, int] = {}
+    out = []
+    for r in rows:
+        p = (r.get("pseudo") or r.get("label") or "").strip()
+        key = p.lower()
+        if not p:
+            r["display"] = (r.get("email") or r.get("key_id", "")[:14])
+            out.append(r)
+            continue
+        by_lower[key] = by_lower.get(key, 0) + 1
+        n = by_lower[key]
+        r["display"] = p if n == 1 else f"{p} #{n}"
+        out.append(r)
+    return out
+
+
+@api_router.post("/accounts/list")
+async def accounts_list(payload: _CreatorSigIn):
+    """Creator-only — list ALL device accounts with pseudo/email/state."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    devices = await db.device_keys.find(
+        {}, {"_id": 0, "public_key_jwk": 0},
+    ).sort("created_at", -1).to_list(length=1000)
+    # Enrich with pseudo from users collection (matched by email).
+    emails = list({d.get("email") for d in devices if d.get("email")})
+    users = {}
+    if emails:
+        async for u in db.users.find({"email": {"$in": emails}}, {"_id": 0, "email": 1, "pseudo": 1}):
+            users[u["email"]] = u.get("pseudo")
+    for d in devices:
+        d["pseudo"] = users.get(d.get("email")) or d.get("pseudo") or d.get("label")
+        d["muted"] = bool(d.get("muted"))
+        d["banned"] = bool(d.get("banned"))
+    return {"accounts": _disambiguate_pseudos(devices)}
+
+
+@api_router.post("/accounts/rename-pseudo")
+async def accounts_rename_pseudo(payload: _TargetCreatorSigIn):
+    """Creator-only — rename a peer's pseudo (everywhere)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    new_pseudo = (getattr(payload, "new_pseudo", None) or "").strip() if hasattr(payload, "new_pseudo") else ""
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    new_pseudo = (body.get("new_pseudo") or "").strip()
+    if not (3 <= len(new_pseudo) <= 30):
+        raise HTTPException(status_code=400, detail="Pseudo invalide (3-30).")
+    if new_pseudo.lower() in ("créatrice", "creatrice", "créateur", "createur"):
+        raise HTTPException(status_code=409, detail="Pseudo réservé.")
+    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+    await db.device_keys.update_one(
+        {"key_id": payload.target_key_id},
+        {"$set": {"pseudo": new_pseudo, "label": new_pseudo}},
+    )
+    if target.get("email"):
+        await db.users.update_one(
+            {"email": target["email"]},
+            {"$set": {"pseudo": new_pseudo, "pseudo_lower": new_pseudo.lower()}},
+        )
+    await _log_account_event("rename", payload.target_key_id, new_pseudo)
+    return {"success": True, "pseudo": new_pseudo}
+
+
+@api_router.post("/accounts/mute")
+async def accounts_mute(payload: _TargetCreatorSigIn):
+    """Creator-only — mute a peer (creator no longer gets unread notif)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    await db.device_keys.update_one(
+        {"key_id": payload.target_key_id},
+        {"$set": {"muted": True, "muted_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    await _log_account_event("mute", payload.target_key_id)
+    return {"success": True}
+
+
+@api_router.post("/accounts/unmute")
+async def accounts_unmute(payload: _TargetCreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    await db.device_keys.update_one(
+        {"key_id": payload.target_key_id},
+        {"$set": {"muted": False}, "$unset": {"muted_at": ""}},
+    )
+    await _log_account_event("unmute", payload.target_key_id)
+    return {"success": True}
+
+
+@api_router.post("/accounts/exclude")
+async def accounts_exclude(payload: _TargetCreatorSigIn):
+    """Creator-only — temporary exclusion. duration_minutes mandatory, no infinite."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    minutes = int(body.get("duration_minutes") or 0)
+    if minutes <= 0 or minutes > 60 * 24 * 90:  # max 90 days, no infinite
+        raise HTTPException(status_code=400, detail="Durée invalide (1 min - 90 jours).")
+    until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    await db.device_keys.update_one(
+        {"key_id": payload.target_key_id},
+        {"$set": {"excluded_until": until.isoformat(), "excluded_reason": body.get("reason") or ""}},
+    )
+    # Also wipe active sessions so the user is kicked immediately.
+    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0, "email": 1})
+    if target and target.get("email"):
+        await db.user_sessions.delete_many({"email": target["email"]})
+    await _log_account_event("exclude", payload.target_key_id, extra={"until": until.isoformat(), "minutes": minutes})
+    return {"success": True, "excluded_until": until.isoformat()}
+
+
+@api_router.post("/accounts/ban")
+async def accounts_ban(payload: _TargetCreatorSigIn):
+    """Creator-only — permanent ban on the account's email."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+    await db.device_keys.update_one(
+        {"key_id": payload.target_key_id},
+        {"$set": {"banned": True, "banned_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if target.get("email"):
+        # Mark email-level ban so future re-registrations stay banned.
+        await db.banned_emails.update_one(
+            {"email": target["email"]},
+            {"$set": {"email": target["email"], "banned_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        await db.user_sessions.delete_many({"email": target["email"]})
+    await _log_account_event("ban", payload.target_key_id, extra={"email": target.get("email")})
+    return {"success": True}
+
+
+@api_router.post("/accounts/unban")
+async def accounts_unban(payload: _TargetCreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
+    await db.device_keys.update_one(
+        {"key_id": payload.target_key_id},
+        {"$set": {"banned": False}, "$unset": {"banned_at": ""}},
+    )
+    if target and target.get("email"):
+        await db.banned_emails.delete_many({"email": target["email"]})
+    await _log_account_event("unban", payload.target_key_id)
+    return {"success": True}
+
+
+@api_router.post("/accounts/history")
+async def accounts_history(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    rows = await db.account_history.find({}, {"_id": 0}).sort("ts", -1).to_list(length=1000)
+    return {"history": rows}
+
+
+@api_router.post("/accounts/history/clear")
+async def accounts_history_clear(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    r = await db.account_history.delete_many({})
+    return {"deleted": r.deleted_count}
+
+
+@api_router.post("/accounts/visit")
+async def accounts_visit(payload: _TargetCreatorSigIn):
+    """Creator-only — view a user's projects + chat history (read for review)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Compte introuvable.")
+    user_id = None
+    if target.get("email"):
+        u = await db.users.find_one({"email": target["email"]}, {"_id": 0, "user_id": 1})
+        if u:
+            user_id = u["user_id"]
+    projects = []
+    messages = []
+    if user_id:
+        # Include "deleted" projects (soft-deleted) so creator can review.
+        projects = await db.projects.find(
+            {"user_id": user_id}, {"_id": 0, "generated_code": 0},
+        ).sort("created_at", -1).to_list(length=200)
+        messages = await db.chat_messages.find(
+            {"user_id": user_id}, {"_id": 0},
+        ).sort("timestamp", -1).to_list(length=500)
+    return {
+        "target": {"key_id": payload.target_key_id, "email": target.get("email"), "pseudo": target.get("pseudo") or target.get("label")},
+        "projects": projects,
+        "messages": list(reversed(messages)),
+    }
+
+
+@api_router.post("/accounts/delete-user-project")
+async def accounts_delete_user_project(payload: _TargetCreatorSigIn):
+    """Creator-only — delete a user's project (CGU violation / unsafe app)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    project_id = body.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=400, detail="project_id requis.")
+    r = await db.projects.update_one(
+        {"project_id": project_id},
+        {"$set": {"deleted_by_creator": True, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    await _log_account_event("delete_project", payload.target_key_id, extra={"project_id": project_id})
+    return {"success": True, "matched": r.matched_count}
+
+
+@api_router.post("/accounts/remove-creator")
+async def accounts_remove_creator(payload: _CreatorSigIn):
+    """Creator-only — voluntarily demote SELF (password-confirmed)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    pwd = body.get("password") or ""
+    me = await db.device_keys.find_one({"key_id": payload.key_id}, {"_id": 0})
+    if not me or not me.get("email"):
+        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil.")
+    user = await db.users.find_one({"email": me["email"]}, {"_id": 0, "password_hash": 1})
+    if not user or not user.get("password_hash"):
+        raise HTTPException(status_code=400, detail="Aucun mot de passe configuré.")
+    if not bcrypt.checkpw(pwd.encode("utf-8"), user["password_hash"].encode("utf-8")):
+        raise HTTPException(status_code=403, detail="Mot de passe incorrect.")
+    await db.device_keys.update_one(
+        {"key_id": payload.key_id},
+        {"$set": {"role": "approved"}},
+    )
+    await _log_account_event("remove_creator_self", payload.key_id)
+    await db.device_decisions.insert_one({
+        "decision_id": f"d_{uuid.uuid4().hex[:14]}",
+        "action": "demote",
+        "actor_key_id": payload.key_id,
+        "target_key_id": payload.key_id,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "target_label": me.get("label"),
+    })
+    return {"success": True}
+
+
+# ---------------- IDEAS / FEEDBACK ----------------
+class IdeasSendIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    content: str
+
+@api_router.post("/ideas/send")
+async def ideas_send(payload: IdeasSendIn):
+    """Any device — send an unlimited-length idea/bug/feedback to creator."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Contenu requis.")
+    sender_label = dev.get("pseudo") or dev.get("label") or payload.key_id[:14]
+    await db.ideas.insert_one({
+        "idea_id": f"idea_{uuid.uuid4().hex[:14]}",
+        "sender_key_id": payload.key_id,
+        "sender_label": sender_label,
+        "sender_email": dev.get("email"),
+        "content": content,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "read": False,
+    })
+    return {"success": True}
+
+
+@api_router.post("/ideas/inbox")
+async def ideas_inbox(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    rows = await db.ideas.find({}, {"_id": 0}).sort("ts", -1).to_list(length=500)
+    return {"ideas": rows}
+
+
+@api_router.post("/ideas/mark-read")
+async def ideas_mark_read(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    await db.ideas.update_many({"read": False}, {"$set": {"read": True}})
+    return {"success": True}
+
+
+@api_router.post("/ideas/delete")
+async def ideas_delete(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    idea_id = body.get("idea_id")
+    if not idea_id:
+        raise HTTPException(status_code=400, detail="idea_id requis.")
+    await db.ideas.delete_one({"idea_id": idea_id})
+    return {"success": True}
+
+
+# ---------------- ANNOUNCEMENTS + POLLS ----------------
+class AnnounceCreateIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    title: str
+    body: str = ""
+    audience: str = "all"   # "all" | "approved"
+
+@api_router.post("/announcements/create")
+async def announcements_create(payload: AnnounceCreateIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Titre requis.")
+    if payload.audience not in ("all", "approved"):
+        raise HTTPException(status_code=400, detail="Audience invalide.")
+    doc = {
+        "announce_id": f"ann_{uuid.uuid4().hex[:12]}",
+        "title": payload.title.strip()[:200],
+        "body": (payload.body or "").strip()[:5000],
+        "audience": payload.audience,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.announcements.insert_one(doc)
+    return {"success": True, "announce_id": doc["announce_id"]}
+
+
+@api_router.get("/announcements/list")
+async def announcements_list(key_id: Optional[str] = None):
+    """Public — anyone can fetch the active announcements they qualify for."""
+    rows = await db.announcements.find({}, {"_id": 0}).sort("ts", -1).to_list(length=50)
+    if key_id:
+        dev = await db.device_keys.find_one({"key_id": key_id}, {"_id": 0, "role": 1})
+        role = (dev or {}).get("role") or "public"
+    else:
+        role = "public"
+    filtered = []
+    for r in rows:
+        if r.get("audience") == "approved" and role not in ("approved", "creator"):
+            continue
+        filtered.append(r)
+    return {"announcements": filtered}
+
+
+@api_router.post("/announcements/delete")
+async def announcements_delete(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    ann_id = body.get("announce_id")
+    if not ann_id:
+        raise HTTPException(status_code=400, detail="announce_id requis.")
+    await db.announcements.delete_one({"announce_id": ann_id})
+    return {"success": True}
+
+
+class PollCreateIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    question: str
+    options: List[str] = Field(default_factory=list)
+    audience: str = "all"
+
+@api_router.post("/polls/create")
+async def polls_create(payload: PollCreateIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    q = (payload.question or "").strip()
+    opts = [o.strip() for o in (payload.options or []) if o.strip()]
+    if not q or len(opts) < 2:
+        raise HTTPException(status_code=400, detail="Question + 2 options requis.")
+    doc = {
+        "poll_id": f"poll_{uuid.uuid4().hex[:12]}",
+        "question": q[:300],
+        "options": opts[:10],
+        "audience": payload.audience if payload.audience in ("all", "approved") else "all",
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.polls.insert_one(doc)
+    return {"success": True, "poll_id": doc["poll_id"]}
+
+
+@api_router.get("/polls/list")
+async def polls_list(key_id: Optional[str] = None):
+    rows = await db.polls.find({}, {"_id": 0}).sort("ts", -1).to_list(length=50)
+    if key_id:
+        dev = await db.device_keys.find_one({"key_id": key_id}, {"_id": 0, "role": 1})
+        role = (dev or {}).get("role") or "public"
+    else:
+        role = "public"
+    out = []
+    for p in rows:
+        if p.get("audience") == "approved" and role not in ("approved", "creator"):
+            continue
+        # Tally votes.
+        votes = await db.poll_votes.aggregate([
+            {"$match": {"poll_id": p["poll_id"]}},
+            {"$group": {"_id": "$option_index", "count": {"$sum": 1}}},
+        ]).to_list(length=20)
+        tally = {v["_id"]: v["count"] for v in votes}
+        p["tally"] = [tally.get(i, 0) for i in range(len(p.get("options", [])))]
+        my = None
+        if key_id:
+            mv = await db.poll_votes.find_one({"poll_id": p["poll_id"], "voter_key_id": key_id}, {"_id": 0, "option_index": 1})
+            my = mv.get("option_index") if mv else None
+        p["my_vote"] = my
+        out.append(p)
+    return {"polls": out}
+
+
+class PollVoteIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    poll_id: str
+    option_index: int
+
+@api_router.post("/polls/vote")
+async def polls_vote(payload: PollVoteIn):
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    poll = await db.polls.find_one({"poll_id": payload.poll_id}, {"_id": 0})
+    if not poll:
+        raise HTTPException(status_code=404, detail="Sondage introuvable.")
+    if poll.get("audience") == "approved" and dev.get("role") not in ("approved", "creator"):
+        raise HTTPException(status_code=403, detail="Réservé aux clés validées.")
+    idx = int(payload.option_index)
+    if not (0 <= idx < len(poll.get("options", []))):
+        raise HTTPException(status_code=400, detail="Option invalide.")
+    await db.poll_votes.update_one(
+        {"poll_id": payload.poll_id, "voter_key_id": payload.key_id},
+        {"$set": {
+            "poll_id": payload.poll_id,
+            "voter_key_id": payload.key_id,
+            "option_index": idx,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+@api_router.post("/polls/delete")
+async def polls_delete(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    poll_id = body.get("poll_id")
+    if not poll_id:
+        raise HTTPException(status_code=400, detail="poll_id requis.")
+    await db.polls.delete_one({"poll_id": poll_id})
+    await db.poll_votes.delete_many({"poll_id": poll_id})
+    return {"success": True}
+
+
+# ---------------- EXPORT APPROVAL ----------------
+class ExportRequestIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    project_id: str
+    export_kind: str   # "apk" | "exe" | "zip+github" | "source"
+
+@api_router.post("/exports/request")
+async def exports_request(payload: ExportRequestIn):
+    """Any non-creator device — request export approval."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    if dev.get("role") == "creator":
+        return {"approved": True, "auto": True}
+    # Check for an existing pending/approved entry to avoid duplicates.
+    existing = await db.export_requests.find_one({
+        "key_id": payload.key_id,
+        "project_id": payload.project_id,
+        "export_kind": payload.export_kind,
+        "status": {"$in": ["pending", "approved"]},
+    }, {"_id": 0})
+    if existing:
+        return {"approved": existing["status"] == "approved", "status": existing["status"], "request_id": existing["request_id"]}
+    doc = {
+        "request_id": f"er_{uuid.uuid4().hex[:14]}",
+        "key_id": payload.key_id,
+        "label": dev.get("pseudo") or dev.get("label"),
+        "project_id": payload.project_id,
+        "export_kind": payload.export_kind,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.export_requests.insert_one(doc)
+    return {"approved": False, "status": "pending", "request_id": doc["request_id"]}
+
+
+@api_router.post("/exports/decide")
+async def exports_decide(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    req_id = body.get("request_id")
+    decision = body.get("decision")  # "approve" | "reject"
+    if not req_id or decision not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="request_id + decision (approve|reject) requis.")
+    new_status = "approved" if decision == "approve" else "rejected"
+    r = await db.export_requests.update_one(
+        {"request_id": req_id, "status": "pending"},
+        {"$set": {"status": new_status, "decided_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Demande introuvable.")
+    return {"success": True, "status": new_status}
+
+
+@api_router.post("/exports/pending")
+async def exports_pending(payload: _CreatorSigIn):
+    """Creator-only — list pending export requests."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    rows = await db.export_requests.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    return {"requests": rows}
+
+
+class ExportStatusIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    request_id: Optional[str] = None
+    project_id: Optional[str] = None
+    export_kind: Optional[str] = None
+
+@api_router.post("/exports/status")
+async def exports_status(payload: ExportStatusIn):
+    """User-side polling — current status of a pending export request."""
+    await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    q = {"key_id": payload.key_id}
+    if payload.request_id:
+        q["request_id"] = payload.request_id
+    elif payload.project_id and payload.export_kind:
+        q["project_id"] = payload.project_id
+        q["export_kind"] = payload.export_kind
+    else:
+        raise HTTPException(status_code=400, detail="request_id ou (project_id+export_kind) requis.")
+    row = await db.export_requests.find_one(q, {"_id": 0}, sort=[("created_at", -1)])
+    if not row:
+        return {"status": "none"}
+    return {"status": row["status"], "request_id": row["request_id"]}
+
+
+# ---------------- AUTO-TRANSLATE (creator review) ----------------
+class TranslateIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    text: str
+    target_lang: str = "fr"
+
+@api_router.post("/creator/translate")
+async def creator_translate(payload: TranslateIn):
+    """Creator-only — translate arbitrary text via Emergent LLM."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    text = (payload.text or "").strip()
+    if not text:
+        return {"translated": ""}
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            raise ValueError("EMERGENT_LLM_KEY missing")
+        chat = LlmChat(api_key=key, session_id=f"trans_{uuid.uuid4().hex[:8]}",
+                       system_message=f"Translate the user's text into {payload.target_lang}. Output ONLY the translation, no prose.").with_model("openai", "gpt-5.2")
+        translated = await chat.send_message(UserMessage(text=text[:4000]))
+        return {"translated": str(translated).strip()}
+    except Exception as e:
+        logger.warning(f"translate failed: {e}")
+        return {"translated": text, "error": "translate_unavailable"}
+
+
+# ---------------- USER pseudo update ----------------
+class UpdatePseudoIn(BaseModel):
+    new_pseudo: str
+
+@api_router.post("/auth/update-pseudo")
+async def auth_update_pseudo(request: Request, payload: UpdatePseudoIn):
+    user_id = await get_current_user(request)
+    p = (payload.new_pseudo or "").strip()
+    if not (3 <= len(p) <= 30):
+        raise HTTPException(status_code=400, detail="Pseudo invalide (3-30).")
+    if p.lower() in ("créatrice", "creatrice", "créateur", "createur"):
+        raise HTTPException(status_code=409, detail="Pseudo réservé.")
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "email": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    await db.users.update_one({"user_id": user_id}, {"$set": {"pseudo": p, "pseudo_lower": p.lower()}})
+    if user.get("email"):
+        await db.device_keys.update_many(
+            {"email": user["email"]},
+            {"$set": {"pseudo": p, "label": p}},
+        )
+    return {"success": True, "pseudo": p}
+
+
+# Helper used by ideas/polls to verify any signature (not creator-restricted).
+async def _verify_signed(key_id: str, nonce: str, signature: str) -> Dict[str, Any]:
+    dev = await _device_by_key(key_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail="Clé inconnue.")
+    if not await _consume_nonce(key_id, nonce):
+        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
+    if not verify_signature(dev.get("public_key_jwk") or {}, nonce, signature):
+        raise HTTPException(status_code=403, detail="Signature invalide.")
+    return dev
 
 
 # Include the router in the main app
