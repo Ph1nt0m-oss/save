@@ -79,7 +79,8 @@ const translations = {
  codeSent: 'Code envoyé !',
  
  // Dashboard
- dashboard: 'Tableau de bord',
+ dashboard: 'Menu',
+ back_to_menu: 'Retour au menu',
  projects: 'Projets',
  newProject: 'Nouveau Projet',
  whatToDo: 'Que souhaitez-vous faire ?',

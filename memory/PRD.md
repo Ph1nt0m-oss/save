@@ -17,6 +17,19 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 67 (Sidebar mobile + i18n Menu + last_seen_at 3 min)
+
+**🐛 Bug critique mobile** : le bouton sidebar-toggle changeait juste l'icône mais la sidebar ne s'ouvrait pas (flex column 280px → mainContent poussé hors viewport). **Fix** : sur mobile (max-width:767px), la sidebar devient un **drawer overlay** (`fixed inset-y-0 left-0 z-40`) avec backdrop cliquable (`z-30 bg-black/60 backdrop-blur-sm md:hidden`). Default `isSidebarOpen=false` sur mobile, `true` sur desktop (matchMedia).
+
+**🌐 i18n FR/EN** :
+- `dashboard` : `'Tableau de bord'` → `'Menu'` (FR) / `'Dashboard'` → `'Menu'` (EN).
+- Nouvelle clé `back_to_menu` : `'Retour au menu'` (FR) / `'Back to menu'` (EN).
+- `Profile.js` : « Retour au dashboard » → `{t('back_to_menu')}`.
+
+**⏱️ Backend `last_seen_at` threshold 10 min → 3 min** : le heartbeat est écrit à chaque `/auth/me` + `/auth/session-pending` (tick 3s). 3 min de silence = onglet vraiment fermé, ne déclenche plus de demande d'approbation fantôme. **Reset Mongo** : 97 sessions backfillées à `now - 1h` pour éviter les faux positifs résiduels.
+
+**Tests iter67** : 14/14 backend pytest PASS (3/3 nouveaux test_iter67_threshold_3min + 5/5 régression iter66 + 6/6 régression iter63). i18n FR vérifié post-correction (`grep` confirme `dashboard: 'Menu'` et `back_to_menu: 'Retour au menu'`).
+
 ### 2026-02-15 — Iter 66 (Le bug 202 / pendingApproval enfin résolu)
 
 **🐛 RCA confirmé** : axios traite `HTTP 202` comme un succès par défaut. Le code Login.js d'avant cherchait le 202 dans le `catch(err2)` → **jamais exécuté** → `setPendingApproval()` jamais appelé → bandeau jamais visible sur B → polling jamais lancé. **C'est pour ça que B ne recevait rien**.
