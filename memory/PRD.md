@@ -17,6 +17,27 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 70 (Iris fullscreen wizard + WebAuthn rp_id fix + détection mouvement live)
+
+**🐛 BUG WebAuthn critique** : `The relying party ID is not a registrable domain suffix` → causé par l'ingress Kubernetes réécrivant le header `Origin` vers un hostname interne. **Fix** : le frontend (`BiometricEnrollmentField`) envoie maintenant explicitement `window.location.origin` dans le body POST `/api/webauthn/enroll-begin`. Le backend l'utilise en priorité avant le header. → `rp_id = no-code-builder-25.preview.emergentagent.com` correctement dérivé.
+
+**🖼️ Iris fullscreen wizard** (composant `IrisFullscreenWizard`) :
+- **React Portal** vers `document.body` → contourne le piège du `backdrop-filter` parent qui transformait `position:fixed` en `position:absolute` à l'intérieur de la card Login (vérifié smoke test : bbox 1280×900, parent=BODY).
+- Header avec icône + titre + bouton X / Vidéo plein-écran avec cercle visage centré / Footer status + barre de progression.
+- Vidéo mirrored horizontalement (l'utilisateur se voit en miroir).
+
+**🧠 Détection LIVE de mouvement de tête (anti-photo)** :
+- 3 challenges aléatoires shuffled (gauche/droite/centre) → l'ordre change à chaque session, replay attack impossible.
+- `requestAnimationFrame` boucle ~60fps qui calcule le `pixelDiff` (somme abs RGB) entre frames successives.
+- Threshold `MOVE_MIN = 4.0` + `REQUIRED_HITS = 12` frames d'activité → ~0.4s de vrai mouvement.
+- Une photo statique produit diff ≈ 0 → ne valide JAMAIS, peu importe combien de fois on l'agite.
+
+**👓 Détection « Enlève tes lunettes »** :
+- Heuristique `looksLikeGlasses` : compte les pixels luminance > 235 dans la zone yeux (haut du frame).
+- Si > 120 super-bright pixels → alerte bloquante « Veuillez enlever vos lunettes pour une identification infaillible ».
+
+**Tests iter70** : **34/34 backend pytest PASS** (3 nouveaux `test_iter70_webauthn_origin.py` + 31 régression) + Smoke frontend confirmé : wizard fullscreen 1280×900 parent BODY, header, footer status, message caméra denied propre.
+
 ### 2026-02-15 — Iter 69 (Biométrie obligatoire + sendBeacon + threshold 35s + UX étoiles)
 
 **🔐 Biométrie obligatoire à l'inscription** :

@@ -20,6 +20,7 @@
  *   - kind = 'iris'     → data = { hashes: [b64,b64,b64] }
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import axios from 'axios';
 import {
   Fingerprint, Eye, Camera, RotateCcw, Check, Loader2, ShieldCheck,
@@ -390,7 +391,10 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
   const CurrentPose = step >= 1 && step <= 3 ? poses[step - 1] : null;
   const CurrentIcon = CurrentPose?.icon;
 
-  return (
+  // iter70: render through a Portal so the parent Login card's
+  // `backdrop-filter: blur(...)` does NOT trap our `position: fixed` to
+  // its 446px containing block. Direct child of <body> = true viewport.
+  return ReactDOM.createPortal(
     <div
       className="fixed inset-0 z-[110] bg-black flex flex-col"
       data-testid="iris-fullscreen-wizard"
@@ -483,6 +487,7 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
           </p>
         )}
       </footer>
-    </div>
+    </div>,
+    document.body
   );
 }
