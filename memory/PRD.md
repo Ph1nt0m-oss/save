@@ -17,6 +17,23 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 71 (Tutoriel iris 'approche visage' + reuse wizard dans déclaration de vol)
+
+**🎓 Tutoriel iris en 5 étapes** (style FranceIdentité) :
+- **Step 0 NOUVEAU** : « Approche ton visage du cercle bleu » → auto-progress quand `faceVariance > 500` sur 6 hits consécutifs. Barre cyan séparée `data-testid='iris-approach-progress'`.
+- Step 1 : Vérification lunettes (1.5s, alerte bloquante si > 120 pixels brillants en zone yeux).
+- Steps 2-4 : 3 défis pose aléatoires (gauche/droite/centre) avec `pixelDiff` live anti-photo.
+- Step 5 : Done → hashes envoyés au parent.
+
+**🛡️ Wizard iris réutilisé sur la page de déclaration de vol** (`/theft-confirm`) :
+- Après que le token email confirme la révocation, l'utilisateur voit un **bouton « Lancer la vérification iris »** (data-testid='theft-iris-confirm-btn').
+- Click → IrisFullscreenWizard plein écran (même contrat onCancel/onDone) → POST `/api/auth/theft-iris-verify`.
+- Nouveau endpoint backend stub (shape validation + log dans `theft_iris_attempts`) — **matching réel iris au prochain sprint**.
+
+**🐛 Fix StrictMode double-fire** : `TheftConfirm.js` utilisait un `cancelled` boolean qui ne bloquait pas le fetch, juste le setState. En dev/StrictMode, le useEffect double-render → 1er GET consommait le token, 2e GET retournait 404 → état 'Échec' à tort. Fix : `useRef sentinel` (3 lignes).
+
+**Tests iter71** : **40/40 backend pytest PASS** (6 nouveaux `test_iter71_theft_iris_verify` + 34 régression iter63→70). Frontend smoke confirmé : wizard fullscreen 1280×900 parent BODY, named-import IrisFullscreenWizard OK, bouton 'theft-iris-confirm-btn' présent. Step 0 face-approach loop validé par code review (requiert vraie webcam pour tester runtime).
+
 ### 2026-02-15 — Iter 70 (Iris fullscreen wizard + WebAuthn rp_id fix + détection mouvement live)
 
 **🐛 BUG WebAuthn critique** : `The relying party ID is not a registrable domain suffix` → causé par l'ingress Kubernetes réécrivant le header `Origin` vers un hostname interne. **Fix** : le frontend (`BiometricEnrollmentField`) envoie maintenant explicitement `window.location.origin` dans le body POST `/api/webauthn/enroll-begin`. Le backend l'utilise en priorité avant le header. → `rp_id = no-code-builder-25.preview.emergentagent.com` correctement dérivé.

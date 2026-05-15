@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, ShieldAlert, Loader2, Eye } from 'lucide-react';
@@ -29,9 +29,14 @@ export default function TheftConfirm() {
   const [irisOpen, setIrisOpen] = useState(false);
   const [irisVerified, setIrisVerified] = useState(false);
   const [irisSending, setIrisSending] = useState(false);
+  // iter71 fix: StrictMode + dev double-fires useEffect → burned the
+  // single-use email-confirm token on the 2nd render. Guard the call.
+  const firedRef = useRef(false);
 
   useEffect(() => {
     if (!token) { setState('error'); setErr('Lien invalide.'); return; }
+    if (firedRef.current) return;
+    firedRef.current = true;
     let cancelled = false;
     (async () => {
       try {
