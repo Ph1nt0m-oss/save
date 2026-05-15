@@ -52,7 +52,15 @@ export default function Dashboard() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    // iter67: open by default on desktop, closed on mobile so the main
+    // content takes the full viewport instead of being squashed behind a
+    // 280px-wide drawer that never appeared visually.
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      return false;
+    }
+    return true;
+  });
   const [aiStatus, setAiStatus] = useState('online');
   const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
   // Right-click context menu state for projects in the sidebar.
@@ -528,11 +536,22 @@ export default function Dashboard() {
       <ExportApprovalNotifier onOpenAccount={(o) => setVisiting({ key_id: o.key_id })} />
       {visiting && <AccountVisitView target={visiting} onClose={() => setVisiting(null)} />}
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
+      {/* iter67: on mobile, the sidebar becomes a fixed overlay drawer with
+         a backdrop. On desktop (md+) it stays as a normal flex column that
+         pushes the main content sideways. */}
+      {isSidebarOpen && (
+        <div
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
+          data-testid="sidebar-backdrop"
+          aria-hidden="true"
+        />
+      )}
       {/* Sidebar - Projects */}
       <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 280 : 0 }}
-        className="bg-[#0F0F13] border-r border-white/10 flex flex-col overflow-hidden"
+        className="bg-[#0F0F13] border-r border-white/10 flex flex-col overflow-hidden fixed inset-y-0 left-0 z-40 md:relative md:z-auto"
       >
         <div className="p-4 border-b border-white/10 flex items-center">
           <div className="flex items-center space-x-2">

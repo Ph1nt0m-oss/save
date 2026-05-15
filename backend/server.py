@@ -1287,14 +1287,14 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     # connected device must approve from its UI. This applies regardless of
     # site_mode — the email account itself is the unit of trust.
     if requesting_key_id:
-        # iter66: "active" means recently seen, not just an unexpired 7d
-        # session token. A device that hasn't pinged the server in >10 min
-        # is considered abandoned — don't bother its non-listening owner
-        # with an approval modal that nobody will see. The threshold
-        # matches the heartbeat from SessionRequestNotifier (3s poll) +
-        # /auth/me bootstrap. After 10 min of pure silence, the device is
-        # effectively logged out for approval purposes.
-        recent_threshold = (now - timedelta(minutes=10)).isoformat()
+        # iter67: shortened threshold from 10min to 3min. The heartbeat is
+        # written by /auth/me + every /auth/session-pending poll (3s tick),
+        # so a really-active device pings at least every ~3s. A 3-min
+        # silence window is generous enough to handle laggy mobile
+        # networks/sleep states while still considering closed tabs as
+        # genuinely abandoned. This is what the user meant by "no approval
+        # prompt when nothing is actually connected".
+        recent_threshold = (now - timedelta(minutes=3)).isoformat()
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},

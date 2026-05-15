@@ -1,0 +1,51 @@
+{
+  "summary": "iter67 testing — Backend 3-min threshold (3/3 PASS), iter66 regression (5/5 PASS), iter63 regression (6/6 PASS) — total 14/14 backend tests green. Frontend Dashboard mobile sidebar overlay code-reviewed: implementation matches spec (fixed inset-y-0 left-0 z-40 + z-30 backdrop md:hidden + matchMedia(max-width:767px) default closed). Frontend i18n FR has a BUG: in LanguageContext.js the FR section still uses dashboard:'Tableau de bord' (line 82) instead of 'Menu' and the back_to_menu key is MISSING entirely from the fr block (only present in EN at line 672). UI playwright session-logged test could not complete because the auth-email-input is marked readonly on first load (device-key registration race) — couldn't enter credentials in time during the smoke; backend & code inspection were used as substitute.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "i18n_bugs": [
+      {
+        "file": "/app/frontend/src/contexts/LanguageContext.js",
+        "issue": "FR section: key 'dashboard' is still 'Tableau de bord' (line 82) — spec says it must be 'Menu'.",
+        "priority": "HIGH"
+      },
+      {
+        "file": "/app/frontend/src/contexts/LanguageContext.js",
+        "issue": "FR section: key 'back_to_menu' is MISSING (only EN has it on line 672). Profile.js calls t('back_to_menu') in FR → will render the raw key string.",
+        "priority": "HIGH"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter67_threshold_3min.py",
+    "/app/backend/tests/test_iter66_last_seen.py",
+    "/app/backend/tests/test_iter63_session_pending.py",
+    "/app/test_reports/pytest/iter67_threshold.xml",
+    "/app/test_reports/pytest/iter67_regression.xml"
+  ],
+  "action_items": [
+    "Add to FR block in LanguageContext.js: change dashboard:'Tableau de bord' → dashboard:'Menu'.",
+    "Add to FR block in LanguageContext.js: insert back_to_menu:'Retour au menu' (currently missing — Profile.js t('back_to_menu') will fallback to the literal key in FR).",
+    "Optional UX: auth-email-input should not be readonly on mount — currently it blocks fast playwright/E2E logins while device-key generation completes. Consider removing readonly and adding aria-busy instead."
+  ],
+  "critical_code_review_comments": [
+    "Dashboard.js sidebar overlay implementation (lines 542-555) is correct: backdrop z-30 + aside z-40 + md:hidden on backdrop + md:relative on aside. Default isSidebarOpen via matchMedia(max-width:767px) is sound. width-anim 0→280 is OK because position is fixed on mobile.",
+    "LanguageContext.js is now >1300 lines — split per-language file recommended for maintainability and to avoid this kind of missing-key drift across locales.",
+    "auth-email-input readonly-on-mount is causing slow E2E logins. Should track device-key readiness via a state flag rather than DOM-level readonly that blocks both bots and users typing fast."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter67_threshold_3min.py (created)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "code-reviewed (no live login)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — usable, but UI readonly race delayed login during playwright run.",
+  "seed_data_creation": "Backend tests seed TEST_iter67_* users + iter67_* device keys; cleanup fixture removes them at module teardown.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter67 backend (last_seen_at threshold = 3min) is fully validated: -2min→202, -4min→200, -5min→200. iter66/iter63 still green. Frontend FR i18n needs fix (see action_items). Once FR keys are patched, re-run a playwright check: navigate /profile in FR → expect 'Retour au menu'; navigate /dashboard mobile (412x915) → expect data-testid='sidebar-backdrop' to appear on toggle and disappear on backdrop click. Use a longer wait_for_selector(':not([readonly])') on auth-email-input or login via /api/auth/login and inject session_token in localStorage to bypass the input readonly race.",
+  "rca of the issue": "FR i18n keys 'dashboard' and 'back_to_menu' were updated in EN (lines 671-672) but the patch never reached the FR block (lines 81-83). Root cause: language objects are duplicated literals in one big file (>1300 lines) so cross-locale parity is easy to miss. Fix: add the two FR strings + ideally split per-locale modules with a runtime missing-key warning."
+}

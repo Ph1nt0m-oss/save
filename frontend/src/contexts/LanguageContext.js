@@ -668,7 +668,8 @@ pseudo_changed: 'Pseudo mis à jour.',
  codeSent: 'Code sent!',
  
  // Dashboard
- dashboard: 'Dashboard',
+ dashboard: 'Menu',
+ back_to_menu: 'Back to menu',
  projects: 'Projects',
  newProject: 'New Project',
  whatToDo: 'What would you like to do?',
