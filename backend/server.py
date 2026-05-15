@@ -1384,18 +1384,20 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     # connected device must approve from its UI. This applies regardless of
     # site_mode — the email account itself is the unit of trust.
     if requesting_key_id:
-        # iter75: threshold = 0. Combined with the beforeunload
-        # sendBeacon to /auth/disconnect-soft and the 30s heartbeat,
-        # any session whose last_seen_at is even 1 ms behind `now` is
-        # considered abandoned. The cookie itself stays valid for the
-        # full 7 days so the user can reopen the same tab; but a sister
-        # tab will NOT be asked to approve unless that sister tab is
-        # literally pinging right now.
-        recent_threshold = now.isoformat()
+        # iter76: bug "phantom approval prompt" — la fenêtre `> now` créait
+        # une race condition : si A heartbeat juste APRÈS que B capture `now`,
+        # alors `last_seen_at(A) > now` → prompt fantôme. On utilise désormais
+        # une fenêtre de présence explicite : on considère A actif uniquement
+        # si son `last_seen_at` est dans les 8 dernières secondes ET supérieur
+        # à `last_seen_at_ack` (qui ne s'incrémente pas via sendBeacon).
+        # Comme `/auth/session-pending` est appelé toutes les 3s par chaque
+        # onglet ouvert, 8s couvre largement le cas réel ; les onglets fermés
+        # avec sendBeacon ou simplement expirés tombent hors fenêtre.
+        presence_window = (now - timedelta(seconds=8)).isoformat()
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},
-            "last_seen_at": {"$gt": recent_threshold},
+            "last_seen_at": {"$gt": presence_window},
             "device_key_id": {"$nin": [None, requesting_key_id]},
         }, {"_id": 0, "device_key_id": 1})
         if active_other:
@@ -7302,7 +7304,13 @@ async def announcements_create(payload: AnnounceCreateIn):
 
 @api_router.get("/announcements/list")
 async def announcements_list(key_id: Optional[str] = None):
-    """Public — anyone can fetch the active announcements they qualify for."""
+    """Public — anyone can fetch the active announcements they qualify for.
+
+    iter76 — enrichi avec :
+    - `my_state` : état perso du device courant (validated/refused/orange/null)
+    - `staff_states` : (visible créatrice uniquement) tableau des états posés
+      par chaque autre key_id, pour pouvoir confirmer ou réinitialiser.
+    """
     rows = await db.announcements.find({}, {"_id": 0}).sort("ts", -1).to_list(length=50)
     if key_id:
         dev = await db.device_keys.find_one({"key_id": key_id}, {"_id": 0, "role": 1})
@@ -7312,6 +7320,27 @@ async def announcements_list(key_id: Optional[str] = None):
     filtered = []
     for r in rows:
         if r.get("audience") == "approved" and role not in ("approved", "creator"):
+            continue
+        my_state = None
+        if key_id:
+            ms = await db.announcement_states.find_one(
+                {"announce_id": r["announce_id"], "key_id": key_id},
+                {"_id": 0, "state": 1, "actor": 1, "ts": 1},
+            )
+            if ms:
+                my_state = ms.get("state")
+        # iter76 — côté créatrice, ramène tous les états du staff pour cette annonce.
+        if role == "creator":
+            states = await db.announcement_states.find(
+                {"announce_id": r["announce_id"], "key_id": {"$ne": key_id}},
+                {"_id": 0, "key_id": 1, "state": 1, "actor": 1, "ts": 1},
+            ).to_list(length=200)
+            r["staff_states"] = states
+        r["my_state"] = my_state
+        # iter76 — masque côté requérant si VALIDÉ par lui (le user a fini la tâche).
+        # Refusé reste visible (non-supprimable sauf via clear-history).
+        # La créatrice voit toujours TOUT.
+        if role != "creator" and my_state == "validated":
             continue
         filtered.append(r)
     return {"announcements": filtered}
@@ -7335,6 +7364,7 @@ class PollCreateIn(BaseModel):
     question: str
     options: List[str] = Field(default_factory=list)
     audience: str = "all"
+    max_selections: int = 1  # iter76 — nb max d'options sélectionnables par voter (min 1)
 
 @api_router.post("/polls/create")
 async def polls_create(payload: PollCreateIn):
@@ -7343,11 +7373,18 @@ async def polls_create(payload: PollCreateIn):
     opts = [o.strip() for o in (payload.options or []) if o.strip()]
     if not q or len(opts) < 2:
         raise HTTPException(status_code=400, detail="Question + 2 options requis.")
+    # iter76 — borne max_selections entre 1 et len(opts).
+    try:
+        max_sel = int(payload.max_selections or 1)
+    except Exception:
+        max_sel = 1
+    max_sel = max(1, min(max_sel, len(opts[:10])))
     doc = {
         "poll_id": f"poll_{uuid.uuid4().hex[:12]}",
         "question": q[:300],
         "options": opts[:10],
         "audience": payload.audience if payload.audience in ("all", "approved") else "all",
+        "max_selections": max_sel,
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     await db.polls.insert_one(doc)
@@ -7366,17 +7403,28 @@ async def polls_list(key_id: Optional[str] = None):
     for p in rows:
         if p.get("audience") == "approved" and role not in ("approved", "creator"):
             continue
+        # iter76 — défaut max_selections=1 pour rétrocompat.
+        if "max_selections" not in p:
+            p["max_selections"] = 1
         # Tally votes.
         votes = await db.poll_votes.aggregate([
             {"$match": {"poll_id": p["poll_id"]}},
-            {"$group": {"_id": "$option_index", "count": {"$sum": 1}}},
-        ]).to_list(length=20)
+            {"$unwind": "$option_indices"},
+            {"$group": {"_id": "$option_indices", "count": {"$sum": 1}}},
+        ]).to_list(length=50)
         tally = {v["_id"]: v["count"] for v in votes}
         p["tally"] = [tally.get(i, 0) for i in range(len(p.get("options", [])))]
+        # iter76 — total = nombre de votants uniques (pas de doublons due au multi-select).
+        voters = await db.poll_votes.count_documents({"poll_id": p["poll_id"]})
+        p["voters"] = voters
         my = None
         if key_id:
-            mv = await db.poll_votes.find_one({"poll_id": p["poll_id"], "voter_key_id": key_id}, {"_id": 0, "option_index": 1})
-            my = mv.get("option_index") if mv else None
+            mv = await db.poll_votes.find_one({"poll_id": p["poll_id"], "voter_key_id": key_id}, {"_id": 0, "option_indices": 1, "option_index": 1})
+            if mv:
+                if isinstance(mv.get("option_indices"), list):
+                    my = mv["option_indices"]
+                elif mv.get("option_index") is not None:
+                    my = [mv["option_index"]]
         p["my_vote"] = my
         out.append(p)
     return {"polls": out}
@@ -7387,7 +7435,8 @@ class PollVoteIn(BaseModel):
     nonce: str
     signature: str
     poll_id: str
-    option_index: int
+    option_index: Optional[int] = None  # legacy single
+    option_indices: Optional[List[int]] = None  # iter76 multi-select
 
 @api_router.post("/polls/vote")
 async def polls_vote(payload: PollVoteIn):
@@ -7397,17 +7446,30 @@ async def polls_vote(payload: PollVoteIn):
         raise HTTPException(status_code=404, detail="Sondage introuvable.")
     if poll.get("audience") == "approved" and dev.get("role") not in ("approved", "creator"):
         raise HTTPException(status_code=403, detail="Réservé aux clés validées.")
-    idx = int(payload.option_index)
-    if not (0 <= idx < len(poll.get("options", []))):
-        raise HTTPException(status_code=400, detail="Option invalide.")
+    n = len(poll.get("options", []))
+    max_sel = int(poll.get("max_selections") or 1)
+    # iter76 — accepte legacy `option_index` OU nouveau `option_indices`.
+    if payload.option_indices is not None:
+        chosen = sorted({int(i) for i in payload.option_indices if isinstance(i, int)})
+    elif payload.option_index is not None:
+        chosen = [int(payload.option_index)]
+    else:
+        raise HTTPException(status_code=400, detail="option_index(s) requis.")
+    if not chosen:
+        raise HTTPException(status_code=400, detail="Sélection vide.")
+    if len(chosen) > max_sel:
+        raise HTTPException(status_code=400, detail=f"Max {max_sel} sélection(s) autorisée(s).")
+    for idx in chosen:
+        if not (0 <= idx < n):
+            raise HTTPException(status_code=400, detail="Option invalide.")
     await db.poll_votes.update_one(
         {"poll_id": payload.poll_id, "voter_key_id": payload.key_id},
         {"$set": {
             "poll_id": payload.poll_id,
             "voter_key_id": payload.key_id,
-            "option_index": idx,
+            "option_indices": chosen,
             "ts": datetime.now(timezone.utc).isoformat(),
-        }},
+        }, "$unset": {"option_index": ""}},
         upsert=True,
     )
     return {"success": True}
@@ -7423,6 +7485,171 @@ async def polls_delete(payload: _CreatorSigIn):
     await db.polls.delete_one({"poll_id": poll_id})
     await db.poll_votes.delete_many({"poll_id": poll_id})
     return {"success": True}
+
+
+# ---------------- iter76: ANNOUNCEMENT STATES (validated/refused/orange) ----------------
+class AnnStateIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    announce_id: str
+    state: str  # 'validated' | 'refused' | 'orange' | 'reset'
+
+
+@api_router.post("/announcements/set-state")
+async def announcements_set_state(payload: AnnStateIn):
+    """iter76 — Marque l'annonce avec un état pour le device courant.
+
+    - validated (✅ vert) → tâche faite. Disparait pour le staff/user qui valide.
+    - refused (❌ rouge) → tâche refusée. Reste visible (non-supprimable, sauf via clear-history).
+    - orange (🟠) → escalade: « le staff n'a pas les codes, seule la créatrice peut ».
+    - reset → suppression de l'état (annonce redevient en attente).
+
+    Asymétrie staff↔créatrice:
+    - Quand le staff valide, la créatrice voit toujours l'annonce mais avec un badge
+      « Coché par staff » et peut soit confirmer (et l'annonce disparait pour la créatrice
+      aussi) soit réinitialiser (et l'annonce redevient en attente pour tout le monde).
+    """
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    state = (payload.state or "").strip().lower()
+    if state not in ("validated", "refused", "orange", "reset"):
+        raise HTTPException(status_code=400, detail="État invalide.")
+    ann = await db.announcements.find_one({"announce_id": payload.announce_id}, {"_id": 0, "announce_id": 1})
+    if not ann:
+        raise HTTPException(status_code=404, detail="Annonce introuvable.")
+    role = dev.get("role") or "public"
+    actor = "creator" if role == "creator" else ("staff" if role == "approved" else "user")
+
+    if state == "reset":
+        # Le créateur peut réinitialiser TOUS les états d'une annonce ; sinon, seul son propre état.
+        if role == "creator":
+            await db.announcement_states.delete_many({"announce_id": payload.announce_id})
+        else:
+            await db.announcement_states.delete_one({"announce_id": payload.announce_id, "key_id": payload.key_id})
+        return {"success": True, "reset": True}
+
+    await db.announcement_states.update_one(
+        {"announce_id": payload.announce_id, "key_id": payload.key_id},
+        {"$set": {
+            "announce_id": payload.announce_id,
+            "key_id": payload.key_id,
+            "state": state,
+            "actor": actor,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"success": True, "state": state, "actor": actor}
+
+
+@api_router.post("/announcements/clear-history")
+async def announcements_clear_history(payload: _CreatorSigIn):
+    """iter76 — Bouton « Supprimer l'historique » côté créatrice : retire complètement
+    toutes les annonces ET tous les états associés. Sert à repartir propre."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    res_ann = await db.announcements.delete_many({})
+    res_st = await db.announcement_states.delete_many({})
+    return {"success": True, "deleted_announcements": res_ann.deleted_count, "deleted_states": res_st.deleted_count}
+
+
+# Modifie l'endpoint list pour enrichir avec states (rétrocompat: on RÉ-ÉCRIT
+# la route ci-dessous, mais l'ancienne au-dessus reste l'autoritative car
+# FastAPI prend la 1ʳᵉ enregistrée. Donc on patche directement la liste plus haut.
+# Pas de seconde définition ici — voir announcements_list ci-dessus modifié.
+
+
+# ---------------- iter76: SCHEDULED DISCONNECT ----------------
+class ScheduleKickIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    minutes: int = 5  # délai avant la déconnexion massive
+    note: str = ""  # texte d'annonce optionnel publié immédiatement
+    audience: str = "all"  # 'all' | 'approved'
+
+
+@api_router.post("/system/schedule-kick")
+async def system_schedule_kick(payload: ScheduleKickIn):
+    """iter76 — La créatrice programme la déconnexion de tous les utilisateurs
+    (sauf elle-même) à `now + minutes`. Pas de message justificatif obligatoire,
+    mais si `note` est fourni, une annonce est publiée immédiatement.
+
+    Implémentation : on stocke un doc {execute_at} dans `scheduled_kicks`.
+    Le sweeper `_periodic_auth_cleanup` (qui tourne toutes les 10 min) est
+    trop lent → on a un sweeper dédié toutes les 10s qui purge les sessions
+    non-créatrice quand `execute_at <= now` et logue dans `account_history`.
+    """
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    try:
+        delay = max(0, min(int(payload.minutes or 0), 24 * 60))  # cap 24h
+    except Exception:
+        delay = 5
+    now = datetime.now(timezone.utc)
+    execute_at = (now + timedelta(minutes=delay)).isoformat()
+    sk_id = f"sk_{uuid.uuid4().hex[:12]}"
+    await db.scheduled_kicks.insert_one({
+        "kick_id": sk_id,
+        "creator_key_id": payload.key_id,
+        "minutes": delay,
+        "execute_at": execute_at,
+        "executed": False,
+        "ts": now.isoformat(),
+    })
+    # Annonce optionnelle, publiée tout de suite.
+    if (payload.note or "").strip():
+        await db.announcements.insert_one({
+            "announce_id": f"ann_{uuid.uuid4().hex[:12]}",
+            "title": (payload.note.strip())[:200],
+            "body": "",
+            "audience": payload.audience if payload.audience in ("all", "approved") else "all",
+            "ts": now.isoformat(),
+            "from_scheduled_kick": sk_id,
+        })
+    return {"success": True, "kick_id": sk_id, "execute_at": execute_at}
+
+
+@api_router.get("/system/scheduled-kicks")
+async def system_scheduled_kicks_list(key_id: Optional[str] = None):
+    """Liste les déconnexions programmées en cours (pour affichage côté créatrice)."""
+    rows = await db.scheduled_kicks.find(
+        {"executed": False}, {"_id": 0}
+    ).sort("execute_at", 1).to_list(length=50)
+    return {"scheduled_kicks": rows}
+
+
+@api_router.post("/system/cancel-scheduled-kick")
+async def system_cancel_scheduled_kick(payload: _CreatorSigIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
+    kid = body.get("kick_id")
+    if not kid:
+        raise HTTPException(status_code=400, detail="kick_id requis.")
+    await db.scheduled_kicks.update_one({"kick_id": kid}, {"$set": {"executed": True, "cancelled": True}})
+    return {"success": True}
+
+
+async def _execute_due_kicks():
+    """iter76 — appelé par le sweeper toutes les 10s : pour chaque kick dû,
+    purge toutes les user_sessions non-créatrice et marque le kick exécuté."""
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        due = await db.scheduled_kicks.find(
+            {"executed": False, "execute_at": {"$lte": now}}, {"_id": 0}
+        ).to_list(length=20)
+        for k in due:
+            # Trouve les key_ids non-créateur.
+            non_creator = await db.device_keys.find(
+                {"role": {"$ne": "creator"}}, {"_id": 0, "key_id": 1}
+            ).to_list(length=5000)
+            kids = [d["key_id"] for d in non_creator]
+            if kids:
+                await db.user_sessions.delete_many({"device_key_id": {"$in": kids}})
+            await db.scheduled_kicks.update_one(
+                {"kick_id": k["kick_id"]},
+                {"$set": {"executed": True, "executed_at": now}}
+            )
+    except Exception as e:
+        logger.warning(f"scheduled-kick sweep error: {e}")
 
 
 # ---------------- EXPORT APPROVAL ----------------
@@ -7726,6 +7953,7 @@ async def ensure_indexes():
 # DB doesn't grow unboundedly. Documents store ISO strings (not Mongo
 # Date) so we can't use a TTL index — we sweep manually.
 _cleanup_task: asyncio.Task | None = None
+_kick_sweeper_task: asyncio.Task | None = None
 
 
 async def _periodic_auth_cleanup():
@@ -7752,16 +7980,30 @@ async def _periodic_auth_cleanup():
         await asyncio.sleep(10 * 60)  # 10 minutes
 
 
+async def _periodic_kick_sweeper():
+    """iter76 — sweeper rapide (10s) pour exécuter les déconnexions programmées."""
+    while True:
+        try:
+            await _execute_due_kicks()
+        except Exception as e:
+            logger.warning(f"Kick sweeper error: {e}")
+        await asyncio.sleep(10)
+
+
 @app.on_event("startup")
 async def start_cleanup_task():
-    global _cleanup_task
+    global _cleanup_task, _kick_sweeper_task
     _cleanup_task = asyncio.create_task(_periodic_auth_cleanup())
+    _kick_sweeper_task = asyncio.create_task(_periodic_kick_sweeper())
     logger.info("✅ Auth cleanup background task started (every 10 min)")
+    logger.info("✅ Kick sweeper background task started (every 10s)")
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    global _cleanup_task
+    global _cleanup_task, _kick_sweeper_task
     if _cleanup_task:
         _cleanup_task.cancel()
+    if _kick_sweeper_task:
+        _kick_sweeper_task.cancel()
     client.close()

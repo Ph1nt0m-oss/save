@@ -133,12 +133,10 @@ class TestThreshold60sSpecScenario:
         _seed_devkey(db, kC)
         _seed_devkey(db, kD)
 
-        # sessionA fresh (-30s) — active
-        sessA = _seed_session(db, uid, kA, last_seen_offset_sec=-30)
-        # sessionB stale (-90s) — also kB so it doesn't match "different device" against kC's login
-        # Actually we want the active_other lookup to see sessionA fresh from C's login,
-        # and to NOT find any fresh session after sessionA is deleted (only sessionB stale).
-        sessB = _seed_session(db, uid, kB, last_seen_offset_sec=-90)
+        # sessionA fresh (-3s) — active (window iter76 = 8s)
+        sessA = _seed_session(db, uid, kA, last_seen_offset_sec=-3)
+        # sessionB stale (-30s) — outside iter76 8s window
+        sessB = _seed_session(db, uid, kB, last_seen_offset_sec=-30)
 
         # Login from device C → should be blocked by sessionA (fresh) → 202
         rC = requests.post(f"{API}/auth/login", json={
