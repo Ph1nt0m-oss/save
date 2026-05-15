@@ -285,7 +285,19 @@ async def get_current_user(request: Request) -> str:
     
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="Session expirée")
-    
+
+    # iter66: heartbeat — mark this session as "recently seen" so the
+    # multi-device approval flow (server.py L1278) can distinguish a
+    # really-active device from one that just left a stale 7-day cookie
+    # behind. Cheap fire-and-forget update.
+    try:
+        await db.user_sessions.update_one(
+            {"session_token": session_token},
+            {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    except Exception:
+        pass
+
     return session_doc["user_id"]
 
 class SMSAuthRequest(BaseModel):
@@ -1275,9 +1287,18 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     # connected device must approve from its UI. This applies regardless of
     # site_mode — the email account itself is the unit of trust.
     if requesting_key_id:
+        # iter66: "active" means recently seen, not just an unexpired 7d
+        # session token. A device that hasn't pinged the server in >10 min
+        # is considered abandoned — don't bother its non-listening owner
+        # with an approval modal that nobody will see. The threshold
+        # matches the heartbeat from SessionRequestNotifier (3s poll) +
+        # /auth/me bootstrap. After 10 min of pure silence, the device is
+        # effectively logged out for approval purposes.
+        recent_threshold = (now - timedelta(minutes=10)).isoformat()
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},
+            "last_seen_at": {"$gt": recent_threshold},
             "device_key_id": {"$nin": [None, requesting_key_id]},
         }, {"_id": 0, "device_key_id": 1})
         if active_other:
@@ -1349,6 +1370,7 @@ async def login(payload: LoginRequest, response: Response, request: Request):
         "device_label": (payload.device_label or "")[:80] or None,
         "auth_type": "email",
         "created_at": now.isoformat(),
+        "last_seen_at": now.isoformat(),  # iter66 heartbeat init
         "expires_at": (now + timedelta(days=7)).isoformat(),
     })
 
@@ -4960,6 +4982,7 @@ async def session_request_status(payload: SessionRequestStatusIn, response: Resp
             "device_label": req.get("requesting_label"),
             "auth_type": "email",
             "created_at": now.isoformat(),
+            "last_seen_at": now.isoformat(),  # iter66
             "expires_at": (now + timedelta(days=7)).isoformat(),
         })
         # Tiny read-after-write check (max 3 attempts × 50ms) — rare paranoia

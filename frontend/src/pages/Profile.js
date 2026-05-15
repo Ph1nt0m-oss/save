@@ -92,7 +92,17 @@ export default function Profile() {
     } finally { setSendingToCreator(false); }
   };
 
-  const [tab, setTab] = useState('info'); // 'info' | 'password' | 'email' | 'prefs' | 'accounts' | 'danger'
+  const [tab, setTab] = useState(() => {
+    // iter66: support deep-linking to a specific tab (e.g. after a denied
+    // session-approval, where we recommend the user changes their password
+    // RIGHT NOW). Read once at mount; fall back to 'info'.
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get('tab');
+      if (t && ['info', 'password', 'email', 'prefs', 'accounts', 'danger'].includes(t)) return t;
+    } catch (_) {}
+    return 'info';
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Change password

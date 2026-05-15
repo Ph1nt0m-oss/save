@@ -75,7 +75,7 @@ export default function SessionRequestNotifier() {
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => { setDenyPrompt(false); navigate('/profile?section=security'); }}
+              onClick={() => { setDenyPrompt(false); navigate('/profile?tab=password'); }}
               data-testid="sess-deny-change-pwd-btn"
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#E4FF00] hover:bg-[#E4FF00]/90 text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm transition"
             >

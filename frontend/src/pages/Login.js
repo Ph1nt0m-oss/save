@@ -344,36 +344,48 @@ export default function Login() {
         const cachedKeyId = (typeof localStorage !== 'undefined' ? localStorage.getItem('codeforge_device_key_id') : null) || null;
         const deviceLabel = detectDeviceLabel();
         let data;
+        let resStatus = 200;
         try {
+          // iter66: validateStatus lets 202 pass through as success, so we
+          // can branch on res.status WITHOUT relying on the catch block
+          // (axios treats 2xx as success by default — 202 used to slip past
+          // the pending-approval handler).
           const res = await axios.post(`${API}/auth/login`, {
             email: email.trim(),
             password,
             device_key_id: cachedKeyId,
             device_label: deviceLabel,
-          });
+          }, { validateStatus: (s) => (s >= 200 && s < 300) || s === 401 || s === 403 || s === 404 || s === 409 || s === 429 });
+          resStatus = res.status;
           data = res.data;
-        } catch (err2) {
-          // 202 → another device needs to approve this connection. Poll until decided.
-          if (err2.response?.status === 202) {
-            const detail = err2.response.data?.detail || {};
-            const reqId = detail.request_id;
-            if (reqId) {
-              toast.info(t('sess_pending_title'));
-              // iter64: localStorage (with 15-min TTL) so the polling
-              // survives a mobile tab-close/restore. The intercepteur reads
-              // this to skip the misleading "session expired" toast.
-              try {
-                localStorage.setItem(
-                  'codeforge_session_pending',
-                  JSON.stringify({ request_id: reqId, email: email.trim(), until: Date.now() + 15 * 60 * 1000 })
-                );
-              } catch (_) {}
-              try { window.history.replaceState(null, '', window.location.pathname); } catch (_) {}
-              setPendingApproval({ request_id: reqId, email: email.trim() });
-              return;
-            }
+          // Manual error re-throw for non-2xx statuses we just allowed
+          if (resStatus >= 400) {
+            const err = new Error(data?.detail || `HTTP ${resStatus}`);
+            err.response = res;
+            throw err;
           }
+        } catch (err2) {
+          // 202 is now handled BELOW in the success path. The catch only
+          // covers genuine errors (401/403/404/409/429/network).
           throw err2;
+        }
+        // iter66: pending-approval branch — backend returns 202 with body
+        // {code, request_id, message} (no exception path anymore).
+        if (resStatus === 202) {
+          const detail = (data && (data.detail || data)) || {};
+          const reqId = detail.request_id;
+          if (reqId) {
+            toast.info(t('sess_pending_title'));
+            try {
+              localStorage.setItem(
+                'codeforge_session_pending',
+                JSON.stringify({ request_id: reqId, email: email.trim(), until: Date.now() + 15 * 60 * 1000 })
+              );
+            } catch (_) {}
+            try { window.history.replaceState(null, '', window.location.pathname); } catch (_) {}
+            setPendingApproval({ request_id: reqId, email: email.trim() });
+            return;
+          }
         }
         if (data.session_token) {
           try { localStorage.setItem('session_token', data.session_token); } catch (_) {}

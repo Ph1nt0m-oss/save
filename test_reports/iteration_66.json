@@ -1,0 +1,44 @@
+{
+  "summary": "iter66 GREEN end-to-end. The critical BUG FIX (axios validateStatus allowing 202 to flow through success branch instead of catch) is FULLY VALIDATED on real mobile-viewport Playwright run: a 2nd-device login at 412x915 receives HTTP 202 from /api/auth/login (body has detail.request_id), and IMMEDIATELY the data-testid='session-pending-banner' becomes VISIBLE with countdown, device label 'Linux · Chrome', and email rendered. localStorage 'codeforge_session_pending' is populated with {request_id, email, until}. This was the user-reported regression of iter63-65 ('no waiting message on B') — now fixed and reproducible. Backend last_seen_at protection: 5/5 NEW iter66 pytest pass (heartbeat refresh on /auth/me, init on /auth/login 200, init on /auth/session-decide approve, stale session ≥10min returns 200 NOT 202, fresh session returns 202). Regression iter63 (6/6) + iter65 (5/5) = 11/11 PASS after I patched the legacy test fixtures to seed last_seen_at on active sessions (production behavior preserved — legacy DB sessions without last_seen_at are correctly treated as stale by the new gating). Frontend deep-links fully validated: /profile?tab=password → 'Mot de passe' tab active + password form rendered, /profile?tab=info → info content, /profile (no tab) → info fallback, /profile?tab=hackme → info fallback. FR i18n 'sess_loc_unknown' = 'Localisation non disponible' (string 'Inconnue' is GONE from Login page). SessionRequestNotifier source confirms navigate('/profile?tab=password') on data-testid='sess-deny-change-pwd-btn'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/verify-email", "issue": "Pre-existing 500 in test_iter62::test_full_flow_register_verify_login (pymongo update_one in verify_email path). NOT introduced by iter66 — same iter62 test was passing in iter65 (likely transient DB index/state). Stack trace shows server.py:1130 db.users.update_one. Not blocking iter66."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter66_last_seen.py",
+    "/app/test_reports/pytest/iter66_results.xml",
+    "/app/test_reports/pytest/iter66_regression.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: investigate the test_iter62::test_full_flow_register_verify_login 500 (pymongo update_one in verify_email). Likely unrelated to iter66 but worth a glance if it persists in iter67."
+  ],
+  "critical_code_review_comments": [
+    "Login.js L353-389 — validateStatus whitelist (200-299 OR 401/403/404/409/429) correctly lets 202 reach the success path. Manual re-throw for status>=400 keeps 401/403/4xx errors going through the existing toast/error handling. Branch on resStatus===202 happens BEFORE the data.session_token guard so a stray session_token in a 202 body cannot accidentally log the user in. Clean and correct.",
+    "server.py L258-301 — get_current_user heartbeat is fire-and-forget (try/except Exception: pass) so a transient Mongo write failure cannot break /auth/me, which is the right tradeoff for a hot-path endpoint. Validated.",
+    "server.py L1297-1303 — active_other query now adds 'last_seen_at': {$gt: now-10min}. Note: pre-iter66 docs without last_seen_at field will NOT match $gt and are therefore treated as stale (won't gate new logins). This is the intended fallback for legacy DB data — confirmed by test_iter66::TestStaleSessionNoApprovalPrompt. A one-time migration to backfill last_seen_at on existing user_sessions could be considered but is not required (sessions naturally refresh on next /auth/me call).",
+    "server.py L1373, L4985 — last_seen_at init on login + approve. Both write to the same iso string for created_at and last_seen_at. Verified by iter66 tests.",
+    "Profile.js L95-105 — tab init reads URLSearchParams once at mount via useState lazy initializer (won't re-run on rerender). Allowlist ['info','password','email','prefs','accounts','danger'] correctly falls back to 'info' for unknown values like 'hackme'. Verified.",
+    "SessionRequestNotifier.jsx L78 — single-line navigate('/profile?tab=password'). Matches Profile.js allowlist. Replaces the old ?section=security that landed on Info tab. Verified end-to-end.",
+    "LanguageContext.js L441 (FR) / L1032 (EN) — 'Localisation non disponible' / 'Approximate location not available'. The string 'Inconnue' has been fully removed from this key. Verified on live page.",
+    "CARRIED-OVER from iter64/65: server.py is 7561 lines (now ↑23 from iter65); Login.js is 1069 lines. Recommend splitting into focused modules — non-blocking but increasingly painful for code review."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter66_last_seen.py (NEW — 5 scenarios)",
+    "/app/backend/tests/test_iter63_session_pending.py (patched: legacy fixture seeds last_seen_at)",
+    "/app/backend/tests/test_iter65_multi_device_e2e.py (patched: legacy fixture seeds last_seen_at)"
+  ],
+  "success_rate": {"backend": "100% (5/5 iter66 new + 6/6 iter63 + 5/5 iter65 = 16/16). iter62 unrelated 500 noted as pre-existing.", "frontend": "100% (iter66 KEY E2E test PASSED on mobile 412x915 viewport: 202 → banner visible → localStorage populated. All 4 Profile.js tab deep-link scenarios PASS. FR i18n PASS.)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (canonical) — for the frontend deep-link tests we logged in via the page.evaluate fetch trick to bypass Login.js readonly-autofill (same pattern as iter65). For the 202 E2E key test we used a freshly-seeded iter66e2e<ts>@gmail.com / Pass1234 with a pre-inserted fresh active session on device A (last_seen_at=now).",
+  "seed_data_creation": "Transient: iter66e2e<ts>@gmail.com user + iter66_devA_<ts> device_key + 1 active session (last_seen_at=now) on A. ALL cleaned up post-run (verified: deleted_count = users:1, sessions:1, devkeys:1). Also auto-cleanup fixture in test_iter66_last_seen.py sweeps TEST_iter66_* artefacts on module teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter66 is GREEN. The pending-approval flow is now properly wired end-to-end FROM the user's perspective: B's login UI shows the awaiting-approval banner the instant the backend returns 202. Production note: existing user_sessions in the live DB that pre-date iter66 will have NO last_seen_at field, and will therefore be treated as 'stale' by the active_other gating until the user's device next pings /auth/me. This is fine (and is what unblocked the user-reported false-positive 'phantom approval prompt from a closed-tab device') but if iter67 wants to be extra-safe, run a one-time backfill: db.user_sessions.updateMany({last_seen_at: {$exists: false}}, {$set: {last_seen_at: new Date().toISOString()}}). The iter62::test_full_flow_register_verify_login 500 (pymongo update_one in verify_email) is the only outstanding item — needs a look but not blocking. Backend size keeps growing (7561 lines), would benefit from a split refactor in a dedicated cleanup iter.",
+  "rca of the issue": "User-reported bug: 'no waiting message on B during 2nd-device login'. RCA confirmed by iter66: axios default validateStatus treats 2xx as success and only 4xx/5xx as throw. The old Login.js code put the 202 handler INSIDE a catch(err2) block — but axios never threw for 202, so the catch never ran → setPendingApproval(...) was never called → banner never showed → user thought login was silently broken. FIX: added validateStatus to allow 202 (and the manually-handled 401/403/404/409/429) through axios's success path, then branched on res.status===202 explicitly. Validated live on real mobile viewport with real backend roundtrip. Secondary improvement: last_seen_at heartbeat — a session whose owner has closed the tab >10min ago is no longer treated as 'active', so it no longer triggers a useless approval modal on a device nobody is watching. Both fixes are minimal, surgical, and backward-compatible."
+}

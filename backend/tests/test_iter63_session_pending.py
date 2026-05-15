@@ -108,6 +108,8 @@ class TestSessionRequestTTL:
             "device_key_id": key1,
             "auth_type": "email",
             "created_at": datetime.now(timezone.utc).isoformat(),
+            # iter66: heartbeat required for active_other gating
+            "last_seen_at": datetime.now(timezone.utc).isoformat(),
             "expires_at": "9999-01-01T00:00:00+00:00",
         })
 

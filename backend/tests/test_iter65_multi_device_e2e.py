@@ -86,6 +86,8 @@ def _seed_active_session(db, user_id: str, key_id: str, label: str = "PC test"):
         "device_label": label,
         "auth_type": "email",
         "created_at": now.isoformat(),
+        # iter66: heartbeat required for active_other gating (>now-10min)
+        "last_seen_at": now.isoformat(),
         "expires_at": (now + timedelta(days=7)).isoformat(),
     })
     return token
