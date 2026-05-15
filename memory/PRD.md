@@ -17,6 +17,14 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 73 (Seuils iris assouplis)
+
+User a signalé que la détection iris était trop stricte (2 min sans progression). Ajustement des seuils :
+- **Step 0 « approche visage »** : `APPROACH_THRESHOLD` 500→200 + `REQUIRED_HITS` 6→3 (passage en ~1s avec un visage normal).
+- **Steps 2-4 poses** : `MOVE_MIN` 4.0→1.5 + `REQUIRED_HITS` 12→4 (respiration/clignement naturel suffit).
+- ❌ Retrait du warning « Bouge réellement ta tête » — les 3 poses suffisent à prouver une vraie personne.
+- Import `AlertTriangle` retiré (orphelin).
+
 ### 2026-02-15 — Iter 72 (Fix runtime faceVariance + UX inscription affinée)
 
 **🐛 CRITIQUE — Runtime error `faceVariance is not defined`** (rapporté par user avec screenshot) : la fonction `faceVariance` avait été perdue lors d'un edit précédent. Restauration de la fonction module-level (luminance + variance pixel sur disque central, seuil empirique 500). Smoke test confirme zéro page error au mount du wizard.

@@ -24,7 +24,7 @@ import ReactDOM from 'react-dom';
 import axios from 'axios';
 import {
   Fingerprint, Eye, Camera, RotateCcw, Check, Loader2, ShieldCheck,
-  X, ArrowLeft, ArrowRight, Eye as EyeIcon, Glasses, AlertTriangle,
+  X, ArrowLeft, ArrowRight, Eye as EyeIcon, Glasses,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { isWebAuthnSupported, webauthnCreate } from '../lib/webauthnClient';
@@ -358,14 +358,12 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
   }, [streamReady]);
 
   // Step 0: face-approach detection — auto-advance once the face fills
-  // the centre circle. We poll faceVariance at ~10 Hz; a flat wall gives
-  // <250, a real face crowded near the camera gives 800-1800. We require
-  // 6 consecutive hits above APPROACH_THRESHOLD to advance, debouncing
-  // brief noise.
+  // the centre circle. iter73: thresholds relaxed (200 / 3 hits) so a
+  // user holding still is not stuck on step 0 forever.
   useEffect(() => {
     if (!streamReady || step !== 0) return;
-    const APPROACH_THRESHOLD = 500;
-    const REQUIRED_HITS = 6;
+    const APPROACH_THRESHOLD = 200;
+    const REQUIRED_HITS = 3;
     let hits = 0;
     const id = setInterval(() => {
       const v = faceVariance(lastFrameRef.current);
@@ -403,17 +401,16 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
     return () => clearTimeout(t);
   }, [streamReady, step, poses]);
 
-  // Steps 2..4: pose challenges. We need a sustained burst of movement
-  // (avg diff > MOVE_MIN over the last ~1.5s) to consider the pose "done".
-  // A static photo held in front of the camera produces near-zero diff
-  // because the only varying pixels are background noise — it will never
-  // reach the threshold required to advance through the 3 challenges.
+  // Steps 2..4: pose challenges. iter73: thresholds relaxed (1.5 / 4
+  // hits) — the three poses themselves already prove a real person; we
+  // only need a *tiny* amount of natural motion (head turn, eyes
+  // blinking, micro-tremor) to confirm the frame is not 100% frozen.
   useEffect(() => {
     if (step < 2 || step > 4) return;
     recentSamplesRef.current = [];
     setActivePoseProgress(0);
-    const MOVE_MIN = 4.0;
-    const REQUIRED_HITS = 12;
+    const MOVE_MIN = 1.5;
+    const REQUIRED_HITS = 4;
     let hits = 0;
     const id = setInterval(() => {
       const samples = recentSamplesRef.current;
@@ -530,18 +527,12 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
       <footer className="px-4 py-4 bg-[#0A0A0A] border-t border-white/10 space-y-2">
         <p className="text-center text-sm sm:text-base text-white font-['Chivo'] font-bold" data-testid="iris-status">{statusMsg}</p>
         {step >= 2 && step <= 4 && (
-          <>
-            <p className="text-center text-[11px] text-[#A1A1AA]">
-              <AlertTriangle className="w-3 h-3 inline-block mr-1 text-amber-400" />
-              Bouge réellement ta tête — une photo statique ne sera pas acceptée.
-            </p>
-            <div className="w-full max-w-md mx-auto h-1.5 bg-white/[0.08] rounded-full overflow-hidden" data-testid="iris-progress">
-              <div
-                className="h-full bg-[#00D4FF] transition-[width] duration-100"
-                style={{ width: `${activePoseProgress}%` }}
-              />
-            </div>
-          </>
+          <div className="w-full max-w-md mx-auto h-1.5 bg-white/[0.08] rounded-full overflow-hidden" data-testid="iris-progress">
+            <div
+              className="h-full bg-[#00D4FF] transition-[width] duration-100"
+              style={{ width: `${activePoseProgress}%` }}
+            />
+          </div>
         )}
         {step === 0 && streamReady && (
           <div className="w-full max-w-md mx-auto h-1.5 bg-white/[0.08] rounded-full overflow-hidden" data-testid="iris-approach-progress">
