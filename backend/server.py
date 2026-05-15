@@ -831,8 +831,9 @@ async def register(payload: RegisterRequest, request: Request):
         raise HTTPException(status_code=400, detail="Le pseudo est requis.")
     if len(pseudo_raw) > 30:
         raise HTTPException(status_code=400, detail="Le pseudo est trop long (30 max).")
-    if pseudo_raw.lower() in ("créatrice", "creatrice", "créateur", "createur"):
-        raise HTTPException(status_code=409, detail="Ce pseudo est réservé.")
+    # iter75: pseudo "créatrice" is no longer reserved — the creator can
+    # rename anyone (including herself) freely, so the reservation is
+    # purely cosmetic noise. Anyone may now pick "créatrice" as a pseudo.
     # Pseudo uniqueness is intentionally NOT enforced anymore — users keep
     # the right to choose any pseudo. The creator-side "Autres comptes"
     # panel disambiguates duplicates by appending "#N" suffixes when
@@ -1383,11 +1384,14 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     # connected device must approve from its UI. This applies regardless of
     # site_mode — the email account itself is the unit of trust.
     if requesting_key_id:
-        # iter69: threshold lowered to 35s (just above one 30s heartbeat
-        # tick + a small jitter budget). Paired with the new
-        # /auth/disconnect-soft beforeunload beacon, a closed tab is
-        # auto-stale within seconds — no more phantom approval prompts.
-        recent_threshold = (now - timedelta(seconds=35)).isoformat()
+        # iter75: threshold = 0. Combined with the beforeunload
+        # sendBeacon to /auth/disconnect-soft and the 30s heartbeat,
+        # any session whose last_seen_at is even 1 ms behind `now` is
+        # considered abandoned. The cookie itself stays valid for the
+        # full 7 days so the user can reopen the same tab; but a sister
+        # tab will NOT be asked to approve unless that sister tab is
+        # literally pinging right now.
+        recent_threshold = now.isoformat()
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},
@@ -6916,8 +6920,7 @@ async def accounts_rename_pseudo(payload: _TargetCreatorSigIn):
     new_pseudo = (body.get("new_pseudo") or "").strip()
     if not (1 <= len(new_pseudo) <= 30):
         raise HTTPException(status_code=400, detail="Pseudo invalide (3-30).")
-    if new_pseudo.lower() in ("créatrice", "creatrice", "créateur", "createur"):
-        raise HTTPException(status_code=409, detail="Pseudo réservé.")
+    # iter75: "créatrice" no longer reserved on pseudo updates either.
     target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Compte introuvable.")
@@ -7092,6 +7095,34 @@ async def accounts_delete_one(payload: _TargetCreatorSigIn):
     return {"success": True}
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+async def _email_for_device_key(key_id: str) -> Optional[str]:
+    """iter75: resolve the email tied to a device_key, healing missing
+    bindings on the fly. Legacy creator devices that pre-date iter63
+    sometimes have an empty device_keys.email even though they have an
+    active user_session — that broke creator-destructive actions like
+    /accounts/delete-all by returning 'Aucun email lié à cet appareil.'
+    even when the password was correct. Now we transparently look up the
+    active session, derive the owner's email, and persist the binding."""
+    me = await db.device_keys.find_one({"key_id": key_id}, {"_id": 0, "email": 1})
+    if me and me.get("email"):
+        return me["email"]
+    sess = await db.user_sessions.find_one(
+        {"device_key_id": key_id, "expires_at": {"$gt": _now_iso()}},
+        {"_id": 0, "user_id": 1},
+    )
+    if not sess:
+        return None
+    owner = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0, "email": 1})
+    if owner and owner.get("email"):
+        await db.device_keys.update_one({"key_id": key_id}, {"$set": {"email": owner["email"]}})
+        return owner["email"]
+    return None
+
+
 @api_router.post("/accounts/delete-all")
 async def accounts_delete_all(payload: _CreatorSigIn):
     """Creator-only — delete EVERY other account. Self preserved.
@@ -7102,10 +7133,10 @@ async def accounts_delete_all(payload: _CreatorSigIn):
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     body = payload.model_dump() if hasattr(payload, "model_dump") else {}
     pwd = body.get("password") or ""
-    me = await db.device_keys.find_one({"key_id": payload.key_id}, {"_id": 0})
-    if not me or not me.get("email"):
-        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil.")
-    user = await db.users.find_one({"email": me["email"]}, {"_id": 0, "password_hash": 1})
+    email = await _email_for_device_key(payload.key_id)
+    if not email:
+        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil. Reconnecte-toi pour le re-lier.")
+    user = await db.users.find_one({"email": email}, {"_id": 0, "password_hash": 1})
     if not user or not user.get("password_hash"):
         raise HTTPException(status_code=400, detail="Aucun mot de passe configuré.")
     if not bcrypt.checkpw(pwd.encode("utf-8"), user["password_hash"].encode("utf-8")):
@@ -7129,10 +7160,10 @@ async def accounts_remove_creator(payload: _CreatorSigIn):
     body = payload.model_dump() if hasattr(payload, "model_dump") else {}
     pwd = body.get("password") or ""
     target_key_id = body.get("target_key_id") or payload.key_id  # default = self
-    me = await db.device_keys.find_one({"key_id": payload.key_id}, {"_id": 0})
-    if not me or not me.get("email"):
-        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil.")
-    user = await db.users.find_one({"email": me["email"]}, {"_id": 0, "password_hash": 1})
+    email = await _email_for_device_key(payload.key_id)
+    if not email:
+        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil. Reconnecte-toi pour le re-lier.")
+    user = await db.users.find_one({"email": email}, {"_id": 0, "password_hash": 1})
     if not user or not user.get("password_hash"):
         raise HTTPException(status_code=400, detail="Aucun mot de passe configuré.")
     if not bcrypt.checkpw(pwd.encode("utf-8"), user["password_hash"].encode("utf-8")):
@@ -7519,10 +7550,9 @@ class UpdatePseudoIn(BaseModel):
 async def auth_update_pseudo(request: Request, payload: UpdatePseudoIn):
     user_id = await get_current_user(request)
     p = (payload.new_pseudo or "").strip()
-    if not (3 <= len(p) <= 30):
-        raise HTTPException(status_code=400, detail="Pseudo invalide (3-30).")
-    if p.lower() in ("créatrice", "creatrice", "créateur", "createur"):
-        raise HTTPException(status_code=409, detail="Pseudo réservé.")
+    if not (1 <= len(p) <= 30):
+        raise HTTPException(status_code=400, detail="Pseudo invalide (1-30).")
+    # iter75: "créatrice" no longer reserved.
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "email": 1})
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
@@ -7605,29 +7635,32 @@ async def auth_theft_email_confirm(token: str):
 
 
 class TheftIrisVerifyIn(BaseModel):
-    """iter71: optional iris re-confirmation submitted after the email
-    token is consumed. The endpoint records the captured hashes against
-    the email so the next sprint's real iris-matching pass (feature
-    vectors, not SHA-256) can grade them. Today we only validate shape +
-    that the email had at least one previously-enrolled iris baseline."""
-    token: str
+    """iter71/75: optional iris re-confirmation. iter75 retired the
+    email-token leg and now accepts an email directly so the backend
+    can look up the iris baseline without a one-time-use link in the
+    user's compromised inbox."""
+    token: Optional[str] = None  # legacy — accepted for backwards-compat
+    email: Optional[str] = None
     hashes: List[str]
 
 
 @api_router.post("/auth/theft-iris-verify")
 async def auth_theft_iris_verify(payload: TheftIrisVerifyIn):
-    if not payload.token or not isinstance(payload.hashes, list) or len(payload.hashes) < 3:
+    if not isinstance(payload.hashes, list) or len(payload.hashes) < 3:
         raise HTTPException(status_code=400, detail="3 captures iris sont requises.")
     if any((not isinstance(h, str)) or len(h) < 20 or len(h) > 128 for h in payload.hashes[:3]):
         raise HTTPException(status_code=400, detail="Empreintes iris invalides.")
-    row = await db.theft_email_tokens.find_one({"token": payload.token}, {"_id": 0, "email": 1})
-    if not row:
-        raise HTTPException(status_code=404, detail="Token introuvable.")
-    email = row.get("email")
-    # Lookup baseline (must exist for the iris flow to be meaningful).
+    # Resolve target email: iter75 prefers `email` directly; falls back
+    # to the legacy `token` lookup so older clients still work.
+    email = (payload.email or "").strip().lower() or None
+    if not email and payload.token:
+        row = await db.theft_email_tokens.find_one({"token": payload.token}, {"_id": 0, "email": 1})
+        if row:
+            email = row.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email du compte requis.")
     user = await db.users.find_one({"email": email}, {"_id": 0, "biometric": 1})
     if not user or (user.get("biometric") or {}).get("kind") != "iris":
-        # We still 200 to avoid leaking which accounts have iris enrolled.
         logger.info(f"theft-iris-verify: no iris baseline for {email}, accepting capture as observation only")
     await db.theft_iris_attempts.insert_one({
         "email": email,
@@ -7636,7 +7669,7 @@ async def auth_theft_iris_verify(payload: TheftIrisVerifyIn):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "verified": False,  # real matching comes in the next sprint
     })
-    return {"success": True}
+    return {"success": True, "revoked_count": 0}
 
 
 # Helper used by ideas/polls to verify any signature (not creator-restricted).
