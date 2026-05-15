@@ -1,0 +1,58 @@
+{
+  "summary": "iter70 — 34/34 backend tests PASS (3 new iter70 enroll-begin origin tests + 31 regression: iter63/66/67/68/69). Frontend signup screen renders biometric-enrollment-field with both bio-webauthn-btn and bio-iris-btn. Clicking iris opens iris-fullscreen-wizard (data-testid OK), header 'Identification iris' + cancel X + iris-status footer all present. Camera-denied path shows exact spec message 'Impossible d'accéder à la caméra. Vérifie les permissions et recommence.' iris-cancel closes the wizard. WebAuthn enroll-begin with body.origin returns options.rp.id == window.location.origin host (chain verified end-to-end). ONE BLOCKING UX BUG FOUND: the iris-fullscreen-wizard is NOT actually fullscreen on signup — it renders at 446×996 inside the login card (viewport is 1280×900). Root cause: the parent login card div carries `backdrop-blur-xl` which compiles to `backdrop-filter: blur(...)` — per CSS spec, any non-`none` backdrop-filter on an ancestor establishes a *containing block* for ALL descendants including position:fixed ones. So `fixed inset-0 z-[110]` is trapped to the card. Fix: render IrisFullscreenWizard through a React Portal (ReactDOM.createPortal to document.body).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "IrisFullscreenWizard (BiometricEnrollmentField.jsx)",
+        "issue": "Wizard renders at 446×996px instead of the full viewport (1280×900) on the signup screen. `fixed inset-0 z-[110]` is constrained because the parent Login card uses `backdrop-blur-xl` (= `backdrop-filter: blur(...)`) which creates a containing block for all descendants — including position:fixed. The user explicitly requested 'Iris fullscreen au lieu de petite fenêtre' in iter70 deliverable #2; this fix is therefore NOT effective on the signup page. The wizard IS visually centered and looks like a 'small window', exactly the bug iter70 set out to fix. Resolution: wrap the wizard's return in ReactDOM.createPortal(<wizard>, document.body) so it escapes the backdrop-filter containing block. Quick confirmation: removing `backdrop-blur-xl` from the Login card (or adding the portal) makes the wizard fill 1280×900.",
+        "selector": "[data-testid='iris-fullscreen-wizard']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Login mobile/desktop signup (carry-over from iter69)",
+        "issues": [
+          "Pseudonym helper still says 'Visible to the creator only. 1 to 30 characters.' EN side OK now (was wrong in iter69 FR). FR text still TBD — please verify both locales after the portal fix.",
+          "Carry-over: auth-email-input remains DOM `readonly` while device-key generates."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter70_webauthn_origin.py",
+    "/app/backend/tests/test_iter69_biometric.py",
+    "/app/test_reports/pytest/iter70_results.xml",
+    "/app/test_reports/iter70_iris_wizard.png"
+  ],
+  "action_items": [
+    "(HIGH) Wrap the IrisFullscreenWizard return in ReactDOM.createPortal(..., document.body) so it escapes the `backdrop-filter` containing block of the Login card and renders truly fullscreen (1280×900 desktop, 100vw×100vh mobile). Alternatively, drop `backdrop-blur-xl` from the parent card while the wizard is open — but the Portal approach is the canonical fix and won't regress other cards.",
+    "(LOW carry-over) Replace DOM `readonly` on auth-email-input with a React state flag once the device-key is ready, to unblock E2E autofill.",
+    "(LOW) Verify pseudonym hint text in both FR and EN after portal fix."
+  ],
+  "critical_code_review_comments": [
+    "server.py /webauthn/enroll-begin (lines 5187-5221) — iter70 change is correctly minimal: `origin = payload.origin or request.headers.get('origin') or request.headers.get('referer') or ''`. The body origin takes precedence over the header — exactly what is needed to defeat the ingress hostname rewrite. Good defensive fallback chain.",
+    "_rp_id_from_origin (lines 5161-5168) correctly strips scheme + port via urlparse(...).hostname — covers https://example.com:8443 → example.com (verified in test_iter70_webauthn_origin.py test_arbitrary_origin_strips_scheme_and_port).",
+    "BiometricEnrollmentField.jsx structurally clean: shuffle/sha256B64/pixelDiff/looksLikeGlasses pure helpers, REQUIRED_HITS=12 + MOVE_MIN=4.0 thresholds match spec, rAF loop has proper cleanup via cancelAnimationFrame. looksLikeGlasses heuristic checks luminance>235 in top-1/3 with threshold 120 — exactly per spec.",
+    "BUG (HIGH): the wizard's `position:fixed` is broken by an ancestor's `backdrop-filter`. Standard solution = React Portal. Without the portal, NO amount of z-index or inset-0 tweaking will rescue it because the containing block is now the blurred ancestor, not the viewport.",
+    "iter70 made NO backend code change other than the optional `origin` field on WebAuthnSignupEnrollIn — the rest of the chain (challenge persistence, register-options-token lookup, verify) is unchanged. Regression confirmed: iter69 13 tests + iter68/67/66/63 18 tests all still pass."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter70_webauthn_origin.py (new — 3 tests: body origin sets rp.id, scheme+port stripping, empty-body legacy path)"
+  ],
+  "success_rate": {
+    "backend": "100% (34/34 — 3 iter70 + 13 iter69 + 18 regression iter63/66/67/68)",
+    "frontend": "Partial — testids OK, camera-denied UX OK, cancel OK, enroll-begin chain OK. BUT the headline iter70 deliverable (#2 'iris fullscreen au lieu de petite fenêtre') is NOT met on signup due to the backdrop-filter containing-block trap."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (legacy login; no bio enrollment).",
+  "seed_data_creation": "iter70 tests insert one transient webauthn_challenges doc per test and clean up immediately. The module-level cleanup wipes example.com:8443 stragglers.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "After main agent wraps IrisFullscreenWizard in createPortal(document.body), re-run the Playwright check: click bio-iris-btn → expect bounding box of [data-testid='iris-fullscreen-wizard'] ≥ viewport-5px in both dimensions. Backend chain is GREEN — no need to re-run iter70 backend tests unless server.py changes. The 'WebAuthn relying party ID' bug (deliverable #1) is genuinely fixed: the test_iter70_webauthn_origin.py test_origin_in_body_sets_rp_id_to_public_host PASSES with rp.id = 'no-code-builder-25.preview.emergentagent.com'. Glasses heuristic (deliverable #3) cannot be runtime-verified without a real webcam — confirmed only via code review: looksLikeGlasses + pixelDiff + REQUIRED_HITS=12 + MOVE_MIN=4.0 all match spec.",
+  "rca of the issue": "ROOT CAUSE: iter70 deliverable #2 (fullscreen iris wizard) is defeated by a CSS containing-block side-effect of `backdrop-blur-xl` on the parent Login card. Per W3C Filter Effects spec, any element with `backdrop-filter: <not none>` becomes the containing block for its position:fixed descendants. The wizard's `fixed inset-0` is therefore anchored to the 446px-wide blurred card, not the viewport. REPRODUCTION: open /login → click 'Sign up' → click 'Iris (webcam)' → measure [data-testid='iris-fullscreen-wizard'].getBoundingClientRect() — actual width≈446 vs expected 1280. MITIGATION (canonical): wrap the wizard return JSX in `ReactDOM.createPortal(<div className='fixed inset-0 …'>…</div>, document.body)`. This sidesteps every CSS containing-block trap (transform, filter, contain, perspective, will-change) by rendering the wizard as a direct child of <body>. Took ~15 lines."
+}
