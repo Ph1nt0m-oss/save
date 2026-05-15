@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Lightbulb, X, Send, Trash2 } from 'lucide-react';
+import { Lightbulb, X, Send, Trash2, Bug, MoreHorizontal, ListFilter } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
@@ -8,13 +8,21 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const KIND_META = {
+  bug:   { label: 'Bug',    icon: Bug,             color: '#FF6B6B' },
+  idea:  { label: 'Idée',   icon: Lightbulb,       color: '#E4FF00' },
+  other: { label: 'Autre',  icon: MoreHorizontal,  color: '#00D4FF' },
+};
+
 /**
  * Ideas / feedback button.
  *
  * - Non-creator devices: opens a composer panel — unlimited length, sends
  *   one idea to the creator with the sender's pseudo attached.
  * - Creator devices: opens an inbox of received ideas with mark-as-read
- *   and per-item delete actions.
+ *   and per-item delete actions. iter64 — adds per-kind colour badges
+ *   (Bug/Idée/Autre), checkbox filters and an optional "type-grouped"
+ *   sort so the creator can isolate or prioritise one category.
  */
 export default function IdeasButton() {
   const device = useDeviceIdentity();
@@ -25,6 +33,37 @@ export default function IdeasButton() {
   const [ideas, setIdeas] = useState([]);
   const isCreator = device.role === 'creator';
   const [unread, setUnread] = useState(0);
+  // iter64 — creator-side filters (persisted in localStorage so they survive reloads)
+  const [filters, setFilters] = useState(() => {
+    try {
+      const raw = localStorage.getItem('codeforge_ideas_filters');
+      if (raw) return { bug: true, idea: true, other: true, ...JSON.parse(raw) };
+    } catch (_) {}
+    return { bug: true, idea: true, other: true };
+  });
+  const [sortByKind, setSortByKind] = useState(() => {
+    try { return localStorage.getItem('codeforge_ideas_sort_kind') === '1'; } catch (_) { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('codeforge_ideas_filters', JSON.stringify(filters)); } catch (_) {}
+  }, [filters]);
+  useEffect(() => {
+    try { localStorage.setItem('codeforge_ideas_sort_kind', sortByKind ? '1' : '0'); } catch (_) {}
+  }, [sortByKind]);
+
+  const visibleIdeas = useMemo(() => {
+    const filtered = ideas.filter((x) => filters[(x.kind || 'idea')] !== false);
+    if (!sortByKind) return filtered;
+    // bugs first, then ideas, then others — preserve ts order within each group
+    const order = { bug: 0, idea: 1, other: 2 };
+    return [...filtered].sort((a, b) => (order[a.kind || 'idea'] ?? 3) - (order[b.kind || 'idea'] ?? 3));
+  }, [ideas, filters, sortByKind]);
+
+  const allOn = filters.bug && filters.idea && filters.other;
+  const toggleAll = () => {
+    const next = !allOn;
+    setFilters({ bug: next, idea: next, other: next });
+  };
 
   useEffect(() => {
     if (!isCreator || !device.keyId) return undefined;
@@ -143,30 +182,97 @@ export default function IdeasButton() {
             )}
 
             {isCreator && (
-              <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[200px]">
-                {ideas.length === 0 && (
-                  <div className="text-xs text-[#A1A1AA] py-4 text-center">{t('ideas_empty_inbox')}</div>
-                )}
-                {ideas.map((idea) => (
-                  <div key={idea.idea_id} className="bg-black/30 border border-white/10 rounded-sm p-3 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[11px] text-amber-300 truncate">
-                        {idea.sender_label || idea.sender_key_id?.slice(0, 14)}
-                        <span className="text-[#71717A] ml-2">{new Date(idea.ts).toLocaleString()}</span>
-                      </div>
-                      <button
-                        onClick={() => deleteIdea(idea.idea_id)}
-                        data-testid={`ideas-delete-${idea.idea_id}`}
-                        title={t('ideas_delete_one')}
-                        className="text-[#A1A1AA] hover:text-red-400 transition p-1 flex-shrink-0"
+              <>
+                {/* iter64 — filter bar */}
+                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-wrap text-[11px]">
+                  <ListFilter className="w-3 h-3 text-[#A1A1AA] flex-shrink-0" />
+                  {(['bug', 'idea', 'other']).map((k) => {
+                    const meta = KIND_META[k];
+                    const Icon = meta.icon;
+                    const on = filters[k];
+                    return (
+                      <label
+                        key={k}
+                        data-testid={`ideas-filter-${k}`}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-sm border cursor-pointer transition ${
+                          on ? 'border-white/30 bg-white/[0.05] text-white' : 'border-white/10 text-[#71717A]'
+                        }`}
+                        style={on ? { color: meta.color, borderColor: `${meta.color}55` } : undefined}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => setFilters((f) => ({ ...f, [k]: !f[k] }))}
+                          className="accent-current w-3 h-3"
+                        />
+                        <Icon className="w-3 h-3" />
+                        {meta.label}
+                      </label>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    data-testid="ideas-filter-all"
+                    className="ml-1 px-2 py-1 text-[11px] rounded-sm border border-white/15 text-[#A1A1AA] hover:text-white transition"
+                  >
+                    {allOn ? 'Tout décocher' : 'Tout cocher'}
+                  </button>
+                  <label
+                    data-testid="ideas-sort-by-kind"
+                    className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-white/10 text-[#A1A1AA] cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={sortByKind}
+                      onChange={() => setSortByKind((s) => !s)}
+                      className="accent-amber-300 w-3 h-3"
+                    />
+                    Trier par type
+                  </label>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[200px]">
+                  {visibleIdeas.length === 0 && (
+                    <div className="text-xs text-[#A1A1AA] py-4 text-center">
+                      {ideas.length === 0 ? t('ideas_empty_inbox') : 'Aucun message ne correspond aux filtres.'}
                     </div>
-                    <div className="text-sm text-white whitespace-pre-wrap break-words">{idea.content}</div>
-                  </div>
-                ))}
-              </div>
+                  )}
+                  {visibleIdeas.map((idea) => {
+                    const meta = KIND_META[idea.kind] || KIND_META.idea;
+                    const KIcon = meta.icon;
+                    return (
+                      <div key={idea.idea_id} data-testid={`ideas-row-${idea.idea_id}`} className="bg-black/30 border border-white/10 rounded-sm p-3 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span
+                              data-testid={`ideas-kind-${idea.idea_id}`}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 border rounded-sm text-[10px] font-bold uppercase tracking-wider flex-shrink-0"
+                              style={{ color: meta.color, borderColor: `${meta.color}55`, background: `${meta.color}10` }}
+                            >
+                              <KIcon className="w-3 h-3" />
+                              {meta.label}
+                            </span>
+                            <div className="text-[11px] text-amber-300 truncate">
+                              {idea.sender_label || idea.sender_key_id?.slice(0, 14)}
+                              <span className="text-[#71717A] ml-2">{new Date(idea.ts).toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteIdea(idea.idea_id)}
+                            data-testid={`ideas-delete-${idea.idea_id}`}
+                            title={t('ideas_delete_one')}
+                            className="text-[#A1A1AA] hover:text-red-400 transition p-1 flex-shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="text-sm text-white whitespace-pre-wrap break-words">{idea.content || <em className="text-[#71717A]">(message vide)</em>}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </div>

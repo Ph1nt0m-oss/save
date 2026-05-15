@@ -1,0 +1,40 @@
+{
+  "summary": "iter64 — mobile toast suppression + localStorage migration of pending-approval + IdeasButton creator-side filters/sort. All P0 features verified. Backend: 17/17 pytest pass (iter63 6/6 + iter62 11/11 — one pre-existing data-pollution dup-pseudo cleaned up). Multi-device unlimited regression confirmed end-to-end: 3 separate logins from 3 distinct device_key_id all return 202 with 3 DISTINCT request_ids, and db.session_requests holds 3 parallel pending docs simultaneously. Frontend: (1) visiting /login?reason=session_expired on viewport 420x900 → URL stripped to /login, ZERO toast captured during 3s window — confirmed. (2) pendingApproval restore from localStorage at Login mount → session-pending-banner with correct email 'restore@test.com' renders (with polling route stubbed to keep state alive). (3) expired flag (until in past) → not restored AND localStorage cleared on mount. (4) AuthContext.js 401 interceptor reads localStorage with safe JSON.parse + until>Date.now() guard — code review clean. (5) IdeasButton: all 5 required data-testids (ideas-filter-bug/idea/other, ideas-filter-all, ideas-sort-by-kind) confirmed in source; KIND_META colours (bug=#FF6B6B, idea=#E4FF00, other=#00D4FF) correct; visibleIdeas useMemo applies filters then optional sort with order {bug:0,idea:1,other:2}; localStorage round-trip of codeforge_ideas_filters + codeforge_ideas_sort_kind verified via direct DOM injection+reload. iter63 follow-up: /accounts/list role filter bug FIXED — server.py L6728 now uses {role: {$ne: 'inactive'}} mirroring /devices/list. Live creator-panel UI exercise blocked by Login readonly anti-autofill on test_dash account (same issue documented in iter63); code path verified by inspection.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter63_session_pending.py",
+    "/app/backend/tests/test_iter62_device_capture.py",
+    "/app/test_reports/pytest/iter64_regression.xml"
+  ],
+  "action_items": [
+    "No fixes required for iter64. All P0 features (toast suppression on mobile, localStorage pending-approval with TTL, IdeasButton filters/sort/persistence) pass code-review + runtime validation. Main agent may purge test artifact pseudo_lower='regr62' and stale db.users 'test_iter63_%' entries from prior iteration runs as housekeeping (not blocking)."
+  ],
+  "critical_code_review_comments": [
+    "Login.js L107-119 — restore-pending block is wrapped in try/catch with TTL guard (Date.now()<j.until). Safe, idempotent, mobile-friendly. Good.",
+    "Login.js L226-232 — ?reason=session_expired branch now ONLY strips the URL (no toast). Matches iter64 spec verbatim.",
+    "Login.js L362-370 — on 202, JSON.stringify({request_id, email, until: now+15min}) into localStorage. The 15-min TTL matches backend session_requests TTL (server.py L1297), so client-side flag will not outlive the server-side request.",
+    "Login.js L158, L199, L204, L193 — localStorage flag cleared on all terminal polling outcomes (approved/denied/expired) + on post-approval /auth/me failure. No leak.",
+    "AuthContext.js L67-75 — 401 interceptor parses localStorage safely (try/catch), checks until>Date.now() and self-cleans stale entries. Correct.",
+    "IdeasButton.jsx L36-52 — useState lazy-init from localStorage with merge-default {bug:true,idea:true,other:true,...JSON.parse} prevents partial-state corruption if user upgrades from a future schema with fewer kinds.",
+    "IdeasButton.jsx L54-60 — visibleIdeas memo properly chains filter then sort; default kind 'idea' when missing; preserves chronological order within each kind group when sortByKind on.",
+    "server.py 7538 lines — STILL strongly recommend splitting routers (auth/devices/accounts/ideas) — carried over from iter63 review.",
+    "Login.js 1057 lines — same recommendation: extract Login/{SignIn,SignUp,Forgot,PendingBanner}.jsx.",
+    "Pre-existing data-hygiene: test_iter62_device_capture.py::test_full_flow_register_verify_login is NOT idempotent — registers user with hardcoded pseudo 'regr62' so re-runs without prior cleanup hit a Mongo unique-index DuplicateKeyError on pseudo_lower. Test data should use a timestamped pseudo OR the test should cleanup after itself. Not iter64-introduced."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (17/17 regression pytest + multi-device unlimited end-to-end)", "frontend": "100% on code-verifiable+headless-testable surface: toast suppression, URL strip, pending banner restore, expired flag cleanup, localStorage persistence round-trip all PASS. Live creator IdeasButton DOM render exercise blocked by readonly-autofill on canonical login (carried over from iter63) — fallback was source inspection + DOM-injection-driven localStorage round-trip."},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — still valid (canonical regression).",
+  "seed_data_creation": "1 transient user test_iter64_multi_<ts>@gmail.com + 3 pending session_requests for multi-device unlimited regression — all CLEANED up at end of run (verified via pymongo delete_many). No residual TEST_ data left from iter64.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter64 is GREEN. Backend untouched in scope except for the iter63 carry-over /accounts/list one-liner which the main agent applied correctly (L6728 now has $ne:'inactive' filter). The readonly-autofill trick on email/password inputs in Login.js remains the only Playwright-level annoyance; if future iterations need live creator-panel DOM tests, consider adding a window.__test_force_role hook gated by NODE_ENV!=='production' so headless tests can bypass the device-role bootstrap and exercise IdeasButton/AccountsButton creator panels directly. P1 items in backlog (moderation escalation, History tab, unread breakdown badge) are NOT implemented in this sprint per spec.",
+  "rca of the issue": "N/A — no bugs found in iter64 implementation. The user-reported 'Ta session a expiré' mobile toast issue is conclusively resolved at two layers: (a) Login.js no longer SHOWS the toast at all on ?reason=session_expired (just strips the URL), and (b) AuthContext.js 401 interceptor still respects the localStorage pendingApproval flag (with TTL) to suppress the redirect-and-toast cycle while an approval is in flight. Migration sessionStorage→localStorage means tab-close on mobile no longer invalidates the in-flight request. Confirmed via headless reproduction at viewport 420x900."
+}
