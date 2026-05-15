@@ -1244,13 +1244,36 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     await db.login_attempts.delete_many({"identifier": identifier})
 
     now = datetime.now(timezone.utc)
+    requesting_key_id = (payload.device_key_id or "").strip() or None
+
+    # ----- iter63: device-binding (1 device-key = 1 account) -----------------
+    # If THIS device-key has already been bound to a DIFFERENT verified user,
+    # block the login. This prevents the same browser/PC from juggling several
+    # accounts. We bind at first successful login (set device_keys.email).
+    if requesting_key_id:
+        existing_dev = await db.device_keys.find_one(
+            {"key_id": requesting_key_id},
+            {"_id": 0, "email": 1, "role": 1},
+        )
+        if existing_dev and existing_dev.get("email") and existing_dev["email"] != email:
+            # Make sure the bound account still exists — otherwise free the slot.
+            owner = await db.users.find_one({"email": existing_dev["email"]}, {"_id": 0, "user_id": 1})
+            if owner:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Cet appareil est déjà lié à un autre compte (" + existing_dev["email"] + "). "
+                        "Connecte-toi avec ce compte, ou utilise un autre appareil."
+                    ),
+                )
+            # Stale binding → clear it before continuing.
+            await db.device_keys.update_one({"key_id": requesting_key_id}, {"$unset": {"email": ""}})
 
     # --- One-device-at-a-time approval flow ---------------------------------
     # If another active session exists for this account on a DIFFERENT device,
     # block the login and queue a pending session request. The currently-
     # connected device must approve from its UI. This applies regardless of
     # site_mode — the email account itself is the unit of trust.
-    requesting_key_id = (payload.device_key_id or "").strip() or None
     if requesting_key_id:
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
@@ -1294,7 +1317,7 @@ async def login(payload: LoginRequest, response: Response, request: Request):
                     "location": location,
                     "status": "pending",  # 'pending' | 'approved' | 'denied' | 'expired'
                     "created_at": now.isoformat(),
-                    "expires_at": (now + timedelta(minutes=10)).isoformat(),
+                    "expires_at": (now + timedelta(minutes=15)).isoformat(),
                 })
                 request_id_to_return = request_id
             else:
@@ -1310,6 +1333,13 @@ async def login(payload: LoginRequest, response: Response, request: Request):
             )
 
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
+
+    # iter63: bind this device-key to the account (1 device = 1 account).
+    if requesting_key_id:
+        await db.device_keys.update_one(
+            {"key_id": requesting_key_id},
+            {"$set": {"email": email, "last_seen_at": now.isoformat()}},
+        )
 
     session_token = secrets.token_urlsafe(32)
     await db.user_sessions.insert_one({
@@ -4280,7 +4310,10 @@ async def device_register(payload: DeviceRegisterIn):
 
     # Count DISTINCT key_ids before granting creator role (more robust than total).
     distinct_ids = await db.device_keys.distinct("key_id")
-    role = "creator" if len(distinct_ids) == 0 else "pending"
+    # iter63: New devices land as "inactive" (silent, NOT in the creator's
+    # accounts panel). They become "pending" only when the user explicitly
+    # nudges the creator via /devices/send-to-creator.
+    role = "creator" if len(distinct_ids) == 0 else "inactive"
     doc = {
         "key_id": key_id,
         "public_key_jwk": jwk,
@@ -4483,8 +4516,9 @@ class CreatorOnlyIn(BaseModel):
 async def devices_list(payload: CreatorOnlyIn):
     """Creator-only — list all registered devices."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    # iter63: hide silent "inactive" devices.
     devices = await db.device_keys.find(
-        {}, {"_id": 0, "public_key_jwk": 0},
+        {"role": {"$ne": "inactive"}}, {"_id": 0, "public_key_jwk": 0},
     ).sort("created_at", -1).to_list(length=500)
     return {"devices": devices}
 

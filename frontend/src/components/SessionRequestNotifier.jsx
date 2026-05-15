@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { Smartphone, MapPin, Check, X, ShieldAlert, KeyRound } from 'lucide-react';
+import { Smartphone, MapPin, Check, X, ShieldAlert, KeyRound, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +21,7 @@ export default function SessionRequestNotifier() {
   const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [denyPrompt, setDenyPrompt] = useState(false);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -45,15 +46,9 @@ export default function SessionRequestNotifier() {
       if (decision === 'approve') {
         toast.success(t('sess_approved'));
       } else {
-        // On denial, suggest a password change for extra security on the
-        // original account — actionable toast routes to the Profile page.
-        toast.warning(t('sess_denied_pwd_suggest'), {
-          duration: 9000,
-          action: {
-            label: t('sess_change_pwd_cta'),
-            onClick: () => navigate('/profile?section=security'),
-          },
-        });
+        // iter63: on deny, surface a non-blocking modal that strongly
+        // recommends a password change. The user can close it freely.
+        setDenyPrompt(true);
       }
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Erreur');
@@ -62,7 +57,46 @@ export default function SessionRequestNotifier() {
     }
   };
 
-  if (!user || requests.length === 0) return null;
+  if (!user) return null;
+  if (denyPrompt) {
+    return (
+      <div
+        className="fixed inset-0 z-[95] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+        data-testid="sess-deny-modal"
+      >
+        <div className="max-w-md w-full bg-[#0A0A0A] border border-red-400/40 rounded-sm p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-300" />
+            <h2 className="text-lg font-['Chivo'] font-bold text-white">{t('sess_denied_modal_title')}</h2>
+          </div>
+          <p className="text-xs text-[#A1A1AA] leading-relaxed">
+            {t('sess_denied_modal_body')}
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => { setDenyPrompt(false); navigate('/profile?section=security'); }}
+              data-testid="sess-deny-change-pwd-btn"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#E4FF00] hover:bg-[#E4FF00]/90 text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm transition"
+            >
+              <KeyRound className="w-4 h-4" />
+              {t('sess_denied_modal_change')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDenyPrompt(false)}
+              data-testid="sess-deny-later-btn"
+              className="w-full inline-flex items-center justify-center px-4 py-2 text-xs text-[#A1A1AA] hover:text-white rounded-sm transition"
+            >
+              {t('sess_denied_modal_later')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (requests.length === 0) return null;
   const req = requests[0];
 
   return (

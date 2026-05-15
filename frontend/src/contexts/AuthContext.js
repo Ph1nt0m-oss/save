@@ -59,6 +59,17 @@ axios.interceptors.response.use(
         path.startsWith('/reset-password')
       );
       if (status === 401 && !isAuthEndpoint && !onPublicPage && url.includes('/api/')) {
+        // iter63: while a session-approval is being polled from another
+        // device, the local user is NOT yet logged in. Suppress the 401-
+        // redirect so we never replace their "request in progress" UI with
+        // a misleading "session expired" banner.
+        let pendingApproval = false;
+        try {
+          pendingApproval = sessionStorage.getItem('codeforge_session_pending') === '1';
+        } catch (_) {}
+        if (pendingApproval) {
+          return Promise.reject(error);
+        }
         // Grace window: when the user has JUST been issued a fresh session
         // (e.g. via the 2-device approval flow), suppress the 401-redirect
         // for 5 seconds. Mobile networks + Mongo replica lag can cause one

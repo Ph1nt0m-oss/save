@@ -142,6 +142,7 @@ export default function Login() {
           // Stop polling FIRST so no concurrent tick can interfere with the
           // navigation we're about to perform.
           stop();
+          try { sessionStorage.removeItem('codeforge_session_pending'); } catch (_) {}
           if (r.data?.session_token) {
             try { localStorage.setItem('session_token', r.data.session_token); } catch (_) {}
             try { sessionStorage.setItem('codeforge_session_grace_at', String(Date.now())); } catch (_) {}
@@ -182,10 +183,12 @@ export default function Login() {
           }
         } else if (status === 'denied') {
           stop();
+          try { sessionStorage.removeItem('codeforge_session_pending'); } catch (_) {}
           setSessionUiState('denied');
           setPendingApproval(null);
         } else if (status === 'expired') {
           stop();
+          try { sessionStorage.removeItem('codeforge_session_pending'); } catch (_) {}
           setSessionUiState('expired');
           setPendingApproval(null);
         }
@@ -208,10 +211,16 @@ export default function Login() {
       setIdleNotice(true);
       window.history.replaceState(null, '', window.location.pathname);
     } else if (params.get('reason') === 'session_expired') {
-      setTimeout(() => toast.info(
-        'Ta session a expiré côté serveur. Reconnecte-toi.',
-        { duration: 6000 }
-      ), 400);
+      // iter63: never show this toast if a pending-approval flow is active
+      // — that would falsely scare the user mid-flow.
+      let pending = false;
+      try { pending = sessionStorage.getItem('codeforge_session_pending') === '1'; } catch (_) {}
+      if (!pending) {
+        setTimeout(() => toast.info(
+          'Ta session a expiré côté serveur. Reconnecte-toi.',
+          { duration: 6000 }
+        ), 400);
+      }
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
@@ -343,6 +352,10 @@ export default function Login() {
             const reqId = detail.request_id;
             if (reqId) {
               toast.info(t('sess_pending_title'));
+              try { sessionStorage.setItem('codeforge_session_pending', '1'); } catch (_) {}
+              // iter63: also strip any lingering ?reason=session_expired so
+              // the warning toast can never fire mid-flow.
+              try { window.history.replaceState(null, '', window.location.pathname); } catch (_) {}
               setPendingApproval({ request_id: reqId, email: email.trim() });
               return;
             }
@@ -667,7 +680,7 @@ export default function Login() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setPendingApproval(null)}
+                    onClick={() => { try { sessionStorage.removeItem('codeforge_session_pending'); } catch (_) {} setPendingApproval(null); }}
                     className="text-amber-200 hover:text-white flex-shrink-0"
                     data-testid="session-pending-cancel"
                     aria-label={t('dm_cancel')}

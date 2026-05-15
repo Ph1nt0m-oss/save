@@ -1,0 +1,43 @@
+{
+  "summary": "iter63 — Multi-device session-pending flow + 1-device=1-account dedup. Backend 6/6 pytest pass: TTL=15 min (delta 900s ±10s), 409 on cross-account device login with proper FR message including bound email, stale binding self-clearing, /devices/register lands new devices as role='inactive', Mongo $ne:'inactive' filter validated, and canonical user regression login still 200. Frontend: toast 'Ta session a expiré' fires WITHOUT codeforge_session_pending flag, and is correctly SUPPRESSED when flag is set + ?reason=session_expired is stripped from URL on visit. i18n keys (FR L447-461 + EN L1038-1052) all match spec verbatim. SessionRequestNotifier modal has the 3 required data-testids (sess-deny-modal, sess-deny-change-pwd-btn, sess-deny-later-btn). One real bug found in /api/accounts/list: it does NOT filter role='inactive' — contradicts iter63 spec item 4 and is inconsistent with /devices/list which DOES filter.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/accounts/list", "issue": "Does not filter out role='inactive' devices (server.py L6726 uses find({}, ...)). Spec iter63 item 4 explicitly requires inactive devices to be EXCLUDED from the creator's accounts panel. /devices/list (L4520) correctly applies {role: {$ne: 'inactive'}} — accounts/list must mirror this.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter63_session_pending.py",
+    "/app/test_reports/pytest/iter63_results.xml"
+  ],
+  "action_items": [
+    "FIX server.py /api/accounts/list (L6722-6728): change `db.device_keys.find({}, ...)` to `db.device_keys.find({'role': {'$ne': 'inactive'}}, ...)` to align with /devices/list and iter63 spec item 4.",
+    "(no other functional fixes required for iter63 — backend dedup, TTL, register-inactive, toast-suppression and modal-on-deny all work as designed)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1253-1270 — 1-device-1-account check is well-placed BEFORE the multi-device approval branch; stale-binding clearing (L1270) is a nice touch and prevents lock-out after account deletion. Verified end-to-end via pytest.",
+    "server.py:1320 — TTL is computed as `now + timedelta(minutes=15)` — matches spec. Test validates the delta in the Mongo doc directly (890-910s window).",
+    "server.py:4316 — `role = 'creator' if len(distinct_ids) == 0 else 'inactive'` — correct; first device still becomes creator, all others land silent.",
+    "server.py:6722-6743 /accounts/list — MISSING the role filter. This is the only real bug. Fix is one line.",
+    "AuthContext.js:61-72 — pending-approval guard reads sessionStorage on every 401; safe and stateless. Good.",
+    "Login.js:213-225 — toast suppression on ?reason=session_expired correctly guarded by pending flag. Manually verified in browser: WITH flag → no toast; WITHOUT flag → toast shown.",
+    "SessionRequestNotifier.jsx:61-97 — denyPrompt modal correctly renders BEFORE the pending-requests modal; data-testids 'sess-deny-modal', 'sess-deny-change-pwd-btn', 'sess-deny-later-btn' all present; navigates to /profile?section=security on change-pwd. Conforms to spec.",
+    "server.py is now 7536 lines (carried from iter62) — strongly recommend splitting auth/devices/accounts into separate routers.",
+    "Login.js 1044 lines — could be split into pages/Login/{SignIn,SignUp,Forgot,PendingBanner}.jsx subcomponents."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter63_session_pending.py (new — 6 pytest cases, pymongo+requests, no async)"
+  ],
+  "success_rate": {"backend": "100% (6/6 pytest)", "frontend": "toast suppression verified (A/B); modal/banner UI code reviewed — could not fully exercise mocked-202 banner due to readonly anti-autofill on the password input (Playwright keyboard.type intermittently fails on it). The code path itself is correct per inspection."},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — still valid (regression test passes).",
+  "seed_data_creation": "8 TEST iter63 users created in db.users (test_iter63_ttl_a_<ts>, test_iter63_a_<ts>, test_iter63_b_<ts>, test_iter63_stale_b_<ts>, all @gmail.com) — all verified=True, will accumulate harmlessly; main agent can purge later via WHERE email LIKE 'test_iter63_%'. Multiple iter63_* device_keys also seeded.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter63 backend is solid except for /accounts/list missing the inactive filter. After main agent applies the one-line fix to server.py L6726, re-run `pytest /app/backend/tests/test_iter63_session_pending.py -v` (6 pass) and optionally add an additional case calling /accounts/list directly with a minted creator signature to assert the API surface (not just the Mongo query). Frontend pending-banner end-to-end is blocked by the readonly-autofill trick on the email/password inputs in Playwright; the better approach is to assert via a unit/RTL test or skip the banner and instead drive setPendingApproval through window.__test_pending injection if the main agent adds such a hook. Toast suppression and the modal data-testids are all verified.",
+  "rca of the issue": "Spec item 4 — /accounts/list filter — was missed during iter63 implementation. The dev correctly updated /devices/list at L4520 (added `{role: {$ne: 'inactive'}}`) but left /accounts/list at L6726 as `find({}, ...)`. As a result, when the creator opens the 'Autres comptes' panel, freshly-registered devices that the user has NOT yet sent via /devices/send-to-creator will still appear, defeating the silent-pending UX promised by spec item 5. Fix: change L6726 from `find({}, ...)` to `find({'role': {'$ne': 'inactive'}}, ...)`. One-liner."
+}
