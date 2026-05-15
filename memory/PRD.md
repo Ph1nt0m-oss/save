@@ -17,6 +17,17 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 72 (Fix runtime faceVariance + UX inscription affinée)
+
+**🐛 CRITIQUE — Runtime error `faceVariance is not defined`** (rapporté par user avec screenshot) : la fonction `faceVariance` avait été perdue lors d'un edit précédent. Restauration de la fonction module-level (luminance + variance pixel sur disque central, seuil empirique 500). Smoke test confirme zéro page error au mount du wizard.
+
+**✨ UX inscription** :
+- Hint pseudo « Visible par la créatrice uniquement. 1 à 30 caractères. » **retiré** (utilisateur le trouvait redondant).
+- Légende « * Champs obligatoires à remplir » déplacée **en bas du formulaire** (centrée, italic, sous le bouton).
+- Étoiles rouges sur email + password + pseudo + biométrie + capture appareil — toutes vérifiées.
+
+**Tests iter72** : Régression 22/22 PASS sur iter69/70/71. Smoke frontend (1280×900) zéro page error + tous data-testids présents (`required-fields-legend`, `iris-fullscreen-wizard` rendu propre avec cercle bleu glow).
+
 ### 2026-02-15 — Iter 71 (Tutoriel iris 'approche visage' + reuse wizard dans déclaration de vol)
 
 **🎓 Tutoriel iris en 5 étapes** (style FranceIdentité) :

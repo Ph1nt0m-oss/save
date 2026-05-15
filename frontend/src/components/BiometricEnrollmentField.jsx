@@ -78,10 +78,41 @@ function pixelDiff(a, b) {
 }
 
 /**
+ * Variance of luminance over the centre region — coarse proxy for "is
+ * something with structure (a face) currently inside the circle?". A flat
+ * wall or empty frame has variance < ~250. A real face crowded into the
+ * circle averages 800–1800.
+ */
+function faceVariance(imgData) {
+  if (!imgData) return 0;
+  const { data, width, height } = imgData;
+  const cx = width / 2;
+  const cy = height / 2;
+  const r = Math.min(width, height) * 0.4;
+  const r2 = r * r;
+  let sum = 0;
+  let sumSq = 0;
+  let n = 0;
+  for (let y = 0; y < height; y += 4) {
+    const dy = y - cy;
+    for (let x = 0; x < width; x += 4) {
+      const dx = x - cx;
+      if (dx * dx + dy * dy > r2) continue;
+      const i = (y * width + x) * 4;
+      const lum = 0.21 * data[i] + 0.72 * data[i + 1] + 0.07 * data[i + 2];
+      sum += lum;
+      sumSq += lum * lum;
+      n++;
+    }
+  }
+  if (n === 0) return 0;
+  const mean = sum / n;
+  return Math.max(0, sumSq / n - mean * mean);
+}
+
+/**
  * Heuristic glasses detector: count bright (luminance > 235) pixel
- * clusters in the upper third of the frame (where lenses sit). Lenses
- * reflect ambient light → consistent bright blobs. Returns true if too
- * many such pixels are found (likely glasses).
+ * clusters in the upper third of the frame (where lenses sit).
  */
 function looksLikeGlasses(imgData) {
   if (!imgData) return false;

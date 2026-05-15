@@ -793,12 +793,6 @@ export default function Login() {
                 <input type="text" name="username" tabIndex={-1} autoComplete="username" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
                 <input type="password" name="password" tabIndex={-1} autoComplete="current-password" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
                 {mode === 'signup' && (
-                  <p className="text-[11px] text-[#A1A1AA] italic" data-testid="required-fields-legend">
-                    <span className="text-red-400 mr-1">*</span>
-                    {t('required_fields_legend')}
-                  </p>
-                )}
-                {mode === 'signup' && (
                   <div>
                     <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">
                       {t('signup_pseudo_label')} <span className="text-red-400">*</span>
@@ -817,7 +811,6 @@ export default function Login() {
                         className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
                       />
                     </div>
-                    <p className="text-[10px] text-[#71717A] mt-1">{t('signup_pseudo_hint')}</p>
                   </div>
                 )}
 
@@ -930,6 +923,13 @@ export default function Login() {
                       </>
                     )}
                   </button>
+                )}
+
+                {mode === 'signup' && (
+                  <p className="text-[11px] text-[#A1A1AA] italic text-center mt-2" data-testid="required-fields-legend">
+                    <span className="text-red-400 mr-1">*</span>
+                    {t('required_fields_legend')}
+                  </p>
                 )}
 
                 {mode === 'forgot' && (
