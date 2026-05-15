@@ -17,6 +17,64 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 77 (Multi-audience + sondages illimités + rôles staff + Iris vol + comptes complets)
+
+**🎯 Multi-audience cases à cocher (annonces / sondages / déco-programmée)** :
+- Nouveau composant `AudiencePicker` : checkboxes pour combiner les groupes
+  `all / approved / non_validated / admin / modo`. Si rien → `['all']`.
+- Helper backend `_audience_matches(audience, dev)` évalue le match selon `role`
+  + `staff_kind` (iter77). Rétrocompat avec audience string legacy.
+- `/system/schedule-kick` accepte aussi l'alias `staff` (= admin+modo).
+
+**🆕 Rôles staff `admin` et `modo`** (sous `approved` ; promotion via créa) :
+- Nouveau champ `device_keys.staff_kind` ('admin' | 'modo' | null).
+- Endpoint `/accounts/set-staff-kind` (créa-only).
+- `/devices/verify` expose maintenant `staff_kind` + `force_visitor`.
+- Hook `useDeviceIdentity` propage `staffKind` + `forceVisitor`.
+
+**👁️ Mode visiteur forcé** :
+- `/accounts/force-visitor` met `device_keys.force_visitor=true` → frontend
+  hook met `canWrite=false` (lecture seule sans déconnexion).
+
+**📊 Sondages illimités + réponses perso** :
+- `max_selections=0` = sélection illimitée (auparavant min 1).
+- `allow_user_suggestions=true` → endpoint `/polls/suggest-option` (user) +
+  `/polls/decide-suggestion` (créa valide/retire). Si retiré, ses votes ne
+  comptent plus.
+- `/polls/list` enrichi : `voters` (uniques), `voters_detail` (créa-only, sauf
+  audience inclut "all" = communauté → anonyme), `suggestions[]`.
+
+**✏️ Bouton crayon « modifier »** :
+- `/announcements/edit` + `/polls/edit` (créa-only). Reset les `announcement_states`
+  pour l'annonce → réapparait à tous. Reset les votes si options changent.
+
+**🛡️ Vol : remplacement WebAuthn + Email Gmail par Iris** :
+- `TheftRecoveryDialog` ré-écrit : saisie email + lance `IrisFullscreenWizard`
+  (le même que l'inscription). POST `/auth/theft-iris-verify`.
+- Plus aucune référence à `theft-email-request` côté frontend.
+
+**👥 Comptes complets** :
+- `/accounts/list` retourne désormais TOUS les `device_keys`, y compris
+  `role=inactive` (avec flag `is_inactive=true`). Permet de voir les amis
+  qui ont testé la plateforme sans pousser de demande.
+- Inclut `staff_kind` + `force_visitor` dans la réponse.
+
+**💡 Bug & idées avec états (staff+créa)** :
+- `/ideas/set-state` (admin/modo/creator) : validated / refused / orange / reset.
+- IdeasButton : boutons ✅❌🟠 visibles uniquement pour `isStaff`.
+- ⚠️ Note : `/ideas/inbox` reste créa-only (staff inbox à un prochain sprint).
+
+**🎯 UX divers** :
+- `FeedbackButton` : `hideForCreator = false` (la créa peut désormais se
+  poser des tâches à elle-même via la boîte à idées).
+- `AnnouncementsBanner` : annonces affichées EN MODAL fullscreen sous le titre
+  CodeForge AI à la 1ʳᵉ vue. Click X → bascule en bandeau haut. Re-click X →
+  dismiss complet (jusqu'à modif créa).
+- Bannière retire les boutons ✅❌🟠 (déplacés vers le panneau « Gérer »).
+
+**Tests iter77** : **16/16 nouveaux backend pytest PASS** + 27/27 régression
+(iter65/66/67/68/76) PASS = **43/43 total**. Aucune issue critique ou mineure.
+
 ### 2026-02-15 — Iter 76 (Annonces enrichies + sondages multi-select + déco programmée + fix phantom-prompt 8s)
 
 **📢 Annonces enrichies (P0 — reporté du fork précédent)** :
