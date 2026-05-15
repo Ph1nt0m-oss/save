@@ -6723,8 +6723,10 @@ def _disambiguate_pseudos(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 async def accounts_list(payload: _CreatorSigIn):
     """Creator-only — list ALL device accounts with pseudo/email/state."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    # iter63: hide silent "inactive" devices (those that haven't explicitly
+    # nudged the creator). Mirror /devices/list filter.
     devices = await db.device_keys.find(
-        {}, {"_id": 0, "public_key_jwk": 0},
+        {"role": {"$ne": "inactive"}}, {"_id": 0, "public_key_jwk": 0},
     ).sort("created_at", -1).to_list(length=1000)
     # Enrich with pseudo from users collection (matched by email).
     emails = list({d.get("email") for d in devices if d.get("email")})

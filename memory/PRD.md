@@ -17,6 +17,38 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 63 (Multi-device session-pending définitivement réparé)
+
+**🔧 Corrections critiques du flux multi-appareils** :
+
+1. **Bug "session expirée" fantôme éliminé** :
+   - Pendant un `pendingApproval` (appareil B attend l'OK de A), `sessionStorage.codeforge_session_pending='1'` est posé.
+   - `AuthContext.js` interceptor 401 : skip tout redirect/clear si flag présent.
+   - `Login.js` : suppression auto de `?reason=session_expired` dans l'URL au moment où on entre en pending. Toast bloqué côté useEffect aussi.
+   - Flag nettoyé sur approved/denied/expired/cancel.
+
+2. **TTL d'approbation 10 → 15 minutes** (`/auth/login` insère `expires_at = now + 15min`).
+
+3. **Modal "Changer mot de passe (recommandé)" côté A après refus** :
+   - `SessionRequestNotifier.jsx` : sur deny, plus de toast → modal dédié `data-testid='sess-deny-modal'`.
+   - 2 boutons : « Changer mon mot de passe » (navigate `/profile?section=security`) + « Plus tard » (ferme). Non bloquant.
+
+4. **Nouveau rôle silent `inactive` pour les devices** :
+   - `/devices/register` : 1er device → `creator`, tous les autres → `inactive` (au lieu de `pending`).
+   - `/accounts/list` + `/devices/list` filtrent `{role: {$ne: 'inactive'}}` → ces devices N'apparaissent PAS dans le panneau Créatrice tant que l'utilisateur ne fait pas explicitement `/devices/send-to-creator`.
+   - Le nudge passe automatiquement `inactive` → `pending`.
+
+5. **Déduplication 1 device-key = 1 compte** :
+   - `/auth/login` : check `device_keys.email` ; si déjà bound à un autre user vérifié → `HTTP 409` avec message FR clair indiquant l'email lié.
+   - Binding posé à chaque login réussi. Auto-clearing si stale (le user lié a été supprimé).
+
+6. **Wording i18n FR/EN aligné sur la spec utilisateur** :
+   - `sess_denied_body` = "Votre demande a été refusée. Veuillez réessayer avec une autre adresse mail."
+   - `sess_expired_body` = "Votre demande a expiré. Veuillez réessayer ou vous reconnecter avec une autre adresse mail."
+   - `sess_in_progress_body` = "Votre demande est en cours de validation. Veuillez patienter."
+
+**Tests** : iter63 backend 6/6 pytest PASS (`/app/backend/tests/test_iter63_session_pending.py`) · Régression iter62 OK · Toast suppression vérifié end-to-end (avec/sans flag) · Modal denied + i18n vérifiés en code review.
+
 ### 2026-02-15 — Iter 62 (Capture d'écran d'appareil OBLIGATOIRE à l'inscription)
 
 **🆕 Nouvelle exigence sécurité** :
