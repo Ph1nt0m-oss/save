@@ -4089,7 +4089,9 @@ async def _require_creator_signature(key_id: str, nonce: str, signature: str) ->
 
 class DeviceRegisterIn(BaseModel):
     public_key_jwk: Dict[str, Any]
-    label: Optional[str] = None  # human-friendly device name (e.g. "iPhone")
+    label: Optional[str] = None   # human-friendly device name (e.g. "iPhone")
+    product: Optional[str] = None # marketing name ("Galaxy S21 5G", "iPhone")
+    model: Optional[str] = None   # raw code ("SM-G991U1")
 
 
 @api_router.post("/devices/register")
@@ -4102,6 +4104,9 @@ async def device_register(payload: DeviceRegisterIn):
     if jwk.get("kty") != "EC" or jwk.get("crv") != "P-256":
         raise HTTPException(status_code=400, detail="Clé publique invalide (EC P-256 attendu).")
     key_id = compute_key_id(jwk)
+    product = (payload.product or "")[:60] or None
+    model = (payload.model or "")[:60] or None
+    label = (payload.label or "")[:60] or None
 
     # Atomic-ish: try to find any existing doc for this key. If any, we
     # consolidate by keeping the highest-privilege role and removing duplicates.
@@ -4109,14 +4114,17 @@ async def device_register(payload: DeviceRegisterIn):
     if matches:
         priority = {"creator": 4, "approved": 3, "pending": 2, "revoked": 1}
         best_role = max((m.get("role") for m in matches), key=lambda r: priority.get(r, 0))
-        # Collapse to a single canonical doc with the best role.
+        # Preserve any product/model already known if the new payload is empty.
+        existing = matches[0]
         await db.device_keys.delete_many({"key_id": key_id})
         await db.device_keys.insert_one({
             "key_id": key_id,
             "public_key_jwk": jwk,
             "role": best_role,
-            "label": (payload.label or "")[:60] or None,
-            "created_at": matches[0].get("created_at") or datetime.now(timezone.utc).isoformat(),
+            "label": label or existing.get("label"),
+            "product": product or existing.get("product"),
+            "model": model or existing.get("model"),
+            "created_at": existing.get("created_at") or datetime.now(timezone.utc).isoformat(),
             "last_seen_at": datetime.now(timezone.utc).isoformat(),
         })
         return {"key_id": key_id, "role": best_role, "already_registered": True}
@@ -4128,7 +4136,9 @@ async def device_register(payload: DeviceRegisterIn):
         "key_id": key_id,
         "public_key_jwk": jwk,
         "role": role,
-        "label": (payload.label or "")[:60] or None,
+        "label": label,
+        "product": product,
+        "model": model,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "last_seen_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -6543,6 +6553,10 @@ async def accounts_list(payload: _CreatorSigIn):
         d["pseudo"] = users.get(d.get("email")) or d.get("pseudo") or d.get("label")
         d["muted"] = bool(d.get("muted"))
         d["banned"] = bool(d.get("banned"))
+        # iter61: surface product + model so the panel can show them
+        # on two lines ("Galaxy S21 5G" / "SM-G991U1").
+        d.setdefault("product", None)
+        d.setdefault("model", None)
     return {"accounts": _disambiguate_pseudos(devices)}
 
 

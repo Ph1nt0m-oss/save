@@ -161,10 +161,14 @@ export async function attestDevice(API, axios) {
   _attestPromise = (async () => {
     try {
       const { keyId, publicJwk } = await ensureDeviceKey();
-      // Register (no-op if already known)
+      const info = (await import('./deviceLabel')).detectDeviceInfo();
+      // Register (no-op if already known) — send the rich info so the
+      // creator-side accounts panel can display "product / model" two-lined.
       await axios.post(`${API}/devices/register`, {
         public_key_jwk: publicJwk,
-        label: (await import('./deviceLabel')).detectDeviceLabel(),
+        label: info.label,
+        product: info.product,
+        model: info.model,
       }).catch(() => {});
 
       const ch = await axios.post(`${API}/devices/challenge`, { key_id: keyId });
