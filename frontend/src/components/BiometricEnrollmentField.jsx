@@ -23,31 +23,18 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import axios from 'axios';
 import {
-  Fingerprint, Eye, Camera, RotateCcw, Check, Loader2, ShieldCheck,
-  X, ArrowLeft, ArrowRight, Eye as EyeIcon, Glasses,
+  Eye, RotateCcw, Check, ShieldCheck, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { isWebAuthnSupported, webauthnCreate } from '../lib/webauthnClient';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+// Kept for back-compat with axios import (used by other paths in this
+// project that share the same module).
+const _api = API;
 
 // 3 randomly-ordered active challenges. The user must complete all of
-// them to enrol. The order is shuffled each session so a replay attack
-// cannot precompute the sequence.
-const POSES = [
-  { id: 'left',   label: 'Tourne la tête à gauche', icon: ArrowLeft },
-  { id: 'right',  label: 'Tourne la tête à droite', icon: ArrowRight },
-  { id: 'center', label: 'Regarde droit devant',    icon: EyeIcon },
-];
-
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+// (iter74 removed POSES + shuffle — replaced by alignment loop with fixed
+// pose-per-capture-index, see POSE_FOR_INDEX inside the wizard.)
 
 async function sha256B64(blob) {
   const buf = await blob.arrayBuffer();
@@ -133,47 +120,12 @@ function looksLikeGlasses(imgData) {
   return bright > 120;
 }
 
-export default function BiometricEnrollmentField({ value, onChange, email, disabled }) {
-  const [mode, setMode] = useState('idle'); // 'idle' | 'webauthn-busy' | 'iris-fullscreen' | 'done'
+export default function BiometricEnrollmentField({ value, onChange, disabled }) {
+  const [mode, setMode] = useState('idle'); // 'idle' | 'iris-fullscreen' | 'done'
   const [error, setError] = useState('');
 
   // Persist last enrolled summary for the compact "Done" pill.
-  const enrolled = value && (
-    value.kind === 'webauthn'
-    || (value.kind === 'iris' && (value.data?.hashes?.length || 0) >= 3)
-  );
-
-  const tryWebAuthn = async () => {
-    setError('');
-    setMode('webauthn-busy');
-    try {
-      if (!isWebAuthnSupported()) {
-        throw new Error('Ce navigateur ne supporte pas WebAuthn.');
-      }
-      const optsRes = await axios.post(`${API}/webauthn/enroll-begin`, {
-        email: (email || '').trim() || null,
-        origin: window.location.origin,
-      });
-      const { options, options_token } = optsRes.data;
-      const credential = await webauthnCreate(options);
-      onChange({ kind: 'webauthn', data: { credential, options_token } });
-      setMode('done');
-      toast.success('Capteur biométrique enregistré.');
-    } catch (e) {
-      const msg = e?.message || '';
-      // Friendlier French copy for the most common WebAuthn failure modes
-      let pretty = 'Le capteur biométrique a refusé. Essaie l\'iris ci-dessous.';
-      if (/relying party ID/i.test(msg)) {
-        pretty = 'Configuration WebAuthn invalide pour ce domaine. Essaie l\'iris ci-dessous.';
-      } else if (/NotAllowedError|denied|cancel/i.test(msg)) {
-        pretty = 'Demande annulée. Recommence ou utilise l\'iris.';
-      } else if (/NotSupportedError|no.*authenticator/i.test(msg)) {
-        pretty = 'Aucun capteur biométrique détecté sur cet appareil. Utilise l\'iris.';
-      }
-      setError(pretty);
-      setMode('idle');
-    }
-  };
+  const enrolled = value && value.kind === 'iris' && (value.data?.hashes?.length || 0) >= 3;
 
   const handleIrisDone = (hashes) => {
     onChange({ kind: 'iris', data: { hashes } });
@@ -199,33 +151,17 @@ export default function BiometricEnrollmentField({ value, onChange, email, disab
       </p>
 
       {!enrolled && mode === 'idle' && (
-        <div className="flex flex-col sm:flex-row gap-2">
-          <button
-            type="button"
-            onClick={tryWebAuthn}
-            disabled={disabled}
-            data-testid="bio-webauthn-btn"
-            className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-3 bg-white/[0.04] border border-white/15 rounded-sm text-sm text-white hover:border-[#E4FF00]/60 hover:bg-white/[0.08] transition disabled:opacity-50"
-          >
-            <Fingerprint className="w-4 h-4 text-[#E4FF00]" />
-            Empreinte / Face ID
-          </button>
+        <div className="flex flex-col gap-2">
           <button
             type="button"
             onClick={() => { setError(''); setMode('iris-fullscreen'); }}
             disabled={disabled}
             data-testid="bio-iris-btn"
-            className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-3 bg-white/[0.04] border border-white/15 rounded-sm text-sm text-white hover:border-[#00D4FF]/60 hover:bg-white/[0.08] transition disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 px-3 py-3 bg-white/[0.04] border border-white/15 rounded-sm text-sm text-white hover:border-[#00D4FF]/60 hover:bg-white/[0.08] transition disabled:opacity-50"
           >
             <Eye className="w-4 h-4 text-[#00D4FF]" />
-            Iris (webcam)
+            Démarrer l'identification iris
           </button>
-        </div>
-      )}
-
-      {mode === 'webauthn-busy' && (
-        <div className="text-[11px] text-[#A1A1AA] inline-flex items-center gap-1">
-          <Loader2 className="w-3 h-3 animate-spin" /> En attente du capteur…
         </div>
       )}
 
@@ -233,7 +169,7 @@ export default function BiometricEnrollmentField({ value, onChange, email, disab
         <div className="flex items-center justify-between gap-2 bg-emerald-500/10 border border-emerald-400/40 rounded-sm px-3 py-2" data-testid="bio-enrolled">
           <div className="flex items-center gap-2 text-xs text-emerald-200">
             <Check className="w-4 h-4" />
-            {value.kind === 'webauthn' ? 'Capteur biométrique enregistré' : 'Iris enregistré (3 captures)'}
+            Iris enregistré (3 captures)
           </div>
           <button
             type="button"
@@ -276,19 +212,23 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
   const recentSamplesRef = useRef([]); // (frame timestamp, diff) for the active pose
 
   const [streamReady, setStreamReady] = useState(false);
-  // step semantics — iter71:
-  //   0 = "Approche ton visage du cercle bleu" (auto-progress when faceVariance > THRESH)
-  //   1 = glasses check (1.5s)
-  //   2..4 = pose challenges (3 random poses)
-  //   5 = done, exiting
-  const [step, setStep] = useState(0);
-  const [poses] = useState(() => shuffle(POSES));
-  const [glassesAlert, setGlassesAlert] = useState(false);
-  const [statusMsg, setStatusMsg] = useState('Initialisation de la caméra…');
+  const [streamError, setStreamError] = useState('');
+  // iter74 — pose-based flow with live "rouge/vert" alignment :
+  //   captureIdx 0..2 → after 3 successful captures we exit.
+  //   For each capture: cycle (instruction) → (aligned, hold steady) →
+  //   (countdown 2 s with blue bar, ring vert) → (capture+hash) → reset.
+  //   The required "current instruction" varies per capture index so
+  //   the user must visibly change pose between them (look ahead /
+  //   turn left / turn right) — that's what blocks photos and masks.
+  const [captureIdx, setCaptureIdx] = useState(0);
+  // 'unknown' | 'no_face' | 'too_far' | 'glasses' | 'turn_left' |
+  // 'turn_right' | 'aligned'
+  const [alignment, setAlignment] = useState('unknown');
+  const [holdProgress, setHoldProgress] = useState(0); // 0..100 — blue bar (steadiness countdown)
   const [hashes, setHashes] = useState([]);
-  const [activePoseProgress, setActivePoseProgress] = useState(0); // 0..100
-  // 0..100 — progress of the face-approach detection, drives the cyan ring tween
-  const [approachProgress, setApproachProgress] = useState(0);
+  const HOLD_TICKS = 20; // 20 ticks of 100 ms = 2 s steady before capture
+  const holdRef = useRef(0); // active hold counter
+  const POSE_FOR_INDEX = ['center', 'left', 'right']; // distinct pose per capture
 
   const stopStream = useCallback(() => {
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -314,9 +254,9 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
           await videoRef.current.play();
         }
         setStreamReady(true);
-        setStatusMsg('Approche ton visage du cercle bleu');
+        setAlignment('no_face');
       } catch (e) {
-        setStatusMsg('Impossible d\'accéder à la caméra. Vérifie les permissions et recommence.');
+        setStreamError('Impossible d\'accéder à la caméra. Vérifie les permissions et recommence.');
       }
     })();
     return () => { mounted = false; };
@@ -357,71 +297,76 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [streamReady]);
 
-  // Step 0: face-approach detection — auto-advance once the face fills
-  // the centre circle. iter73: thresholds relaxed (200 / 3 hits) so a
-  // user holding still is not stuck on step 0 forever.
+  // iter74 — single unified alignment loop. At 10 Hz we (1) compute a
+  // coarse face presence + horizontal balance signal from the latest
+  // frame and (2) pick the most actionable instruction. While the user
+  // is properly aligned for the current capture's required pose, a 2 s
+  // steady countdown fills the blue bar; if the alignment breaks, the
+  // counter resets — the ring goes red and the instructions re-appear.
   useEffect(() => {
-    if (!streamReady || step !== 0) return;
-    const APPROACH_THRESHOLD = 200;
-    const REQUIRED_HITS = 3;
-    let hits = 0;
-    const id = setInterval(() => {
-      const v = faceVariance(lastFrameRef.current);
-      const pct = Math.min(100, Math.round((v / APPROACH_THRESHOLD) * 70 + (hits / REQUIRED_HITS) * 30));
-      setApproachProgress(pct);
-      if (v > APPROACH_THRESHOLD) hits++;
-      else hits = Math.max(0, hits - 1);
-      if (hits >= REQUIRED_HITS) {
-        clearInterval(id);
-        setStep(1);
-        setStatusMsg('Vérification des lunettes…');
+    if (!streamReady || captureIdx >= 3) return;
+    const requiredPose = POSE_FOR_INDEX[captureIdx];
+    const id = setInterval(async () => {
+      const img = lastFrameRef.current;
+      if (!img) return;
+      const v = faceVariance(img);
+      if (v < 80) {
+        holdRef.current = 0;
+        setHoldProgress(0);
+        setAlignment('no_face');
+        return;
       }
-    }, 100);
-    return () => clearInterval(id);
-  }, [streamReady, step]);
-
-  // Step 1: glasses pre-check (auto-advances after 1.5s).
-  useEffect(() => {
-    if (!streamReady || step !== 1) return;
-    const t = setTimeout(() => {
-      try {
-        const last = lastFrameRef.current;
-        if (looksLikeGlasses(last)) {
-          setGlassesAlert(true);
-          setStatusMsg('Veuillez enlever vos lunettes pour une identification infaillible.');
-        } else {
-          setGlassesAlert(false);
-          setStep(2);
-          recentSamplesRef.current = [];
-          setActivePoseProgress(0);
-          setStatusMsg(poses[0].label);
+      if (v < 250) {
+        holdRef.current = 0;
+        setHoldProgress(0);
+        setAlignment('too_far');
+        return;
+      }
+      // Glasses guard active on every capture (not just first).
+      if (looksLikeGlasses(img)) {
+        holdRef.current = 0;
+        setHoldProgress(0);
+        setAlignment('glasses');
+        return;
+      }
+      // Pose: compute centre-of-mass shift of bright/dark structure on
+      // the X axis. positive → user is turned RIGHT (mirror video so
+      // their right ends up on the right of the canvas).
+      const { data, width, height } = img;
+      let sumLeft = 0;
+      let sumRight = 0;
+      const half = Math.floor(width / 2);
+      for (let y = Math.floor(height * 0.25); y < Math.floor(height * 0.75); y += 4) {
+        for (let x = 0; x < width; x += 4) {
+          const i = (y * width + x) * 4;
+          const lum = 0.21 * data[i] + 0.72 * data[i + 1] + 0.07 * data[i + 2];
+          // High-frequency structure proxy: distance from mid-grey (128)
+          const s = Math.abs(lum - 128);
+          if (x < half) sumLeft += s; else sumRight += s;
         }
-      } catch (_) {}
-    }, 1500);
-    return () => clearTimeout(t);
-  }, [streamReady, step, poses]);
-
-  // Steps 2..4: pose challenges. iter73: thresholds relaxed (1.5 / 4
-  // hits) — the three poses themselves already prove a real person; we
-  // only need a *tiny* amount of natural motion (head turn, eyes
-  // blinking, micro-tremor) to confirm the frame is not 100% frozen.
-  useEffect(() => {
-    if (step < 2 || step > 4) return;
-    recentSamplesRef.current = [];
-    setActivePoseProgress(0);
-    const MOVE_MIN = 1.5;
-    const REQUIRED_HITS = 4;
-    let hits = 0;
-    const id = setInterval(() => {
-      const samples = recentSamplesRef.current;
-      if (samples.length === 0) return;
-      const avg = samples.reduce((s, d) => s + d, 0) / samples.length;
-      const pct = Math.min(100, Math.round((avg / MOVE_MIN) * 50 + (hits / REQUIRED_HITS) * 50));
-      setActivePoseProgress(pct);
-      if (avg > MOVE_MIN) hits++;
-      else hits = Math.max(0, hits - 1);
-      if (hits >= REQUIRED_HITS) {
+      }
+      const total = sumLeft + sumRight || 1;
+      const balance = (sumRight - sumLeft) / total; // -1..1, positive = looking right
+      let detected;
+      if (balance > 0.18) detected = 'right';
+      else if (balance < -0.18) detected = 'left';
+      else detected = 'center';
+      if (detected !== requiredPose) {
+        holdRef.current = 0;
+        setHoldProgress(0);
+        setAlignment(requiredPose === 'left' ? 'turn_left'
+          : requiredPose === 'right' ? 'turn_right'
+          : 'center');
+        return;
+      }
+      // Aligned → progress the steady-hold countdown.
+      setAlignment('aligned');
+      holdRef.current = Math.min(HOLD_TICKS, holdRef.current + 1);
+      const pct = Math.round((holdRef.current / HOLD_TICKS) * 100);
+      setHoldProgress(pct);
+      if (holdRef.current >= HOLD_TICKS) {
         clearInterval(id);
+        // capture
         const c = canvasRef.current;
         if (c) {
           c.toBlob(async (blob) => {
@@ -429,13 +374,15 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
             const h = await sha256B64(blob);
             const next = [...hashes, h];
             setHashes(next);
-            if (step < 4) {
-              setStep(step + 1);
-              setStatusMsg(poses[step - 1].label);
+            // reset for next capture
+            holdRef.current = 0;
+            setHoldProgress(0);
+            if (next.length >= 3) {
+              setCaptureIdx(3); // done sentinel
+              setTimeout(() => { stopStream(); onDone(next); }, 400);
             } else {
-              setStatusMsg('Iris enregistré !');
-              setStep(5);
-              setTimeout(() => { stopStream(); onDone(next); }, 600);
+              setAlignment('unknown');
+              setCaptureIdx(captureIdx + 1);
             }
           }, 'image/jpeg', 0.85);
         }
@@ -443,12 +390,22 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
     }, 100);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, poses]);
+  }, [streamReady, captureIdx]);
 
+  const ALIGN_COPY = {
+    unknown:    'Initialisation…',
+    no_face:    'Place ton visage face à la caméra',
+    too_far:    'Rapproche-toi de la caméra',
+    glasses:    'Enlève tes lunettes',
+    turn_left:  'Tourne la tête à gauche',
+    turn_right: 'Tourne la tête à droite',
+    center:     'Regarde droit devant',
+    aligned:    'Ne bouge plus — capture en cours',
+  };
+  const isAligned = alignment === 'aligned';
+  const ringColor = isAligned ? '#10B981' : '#EF4444'; // emerald / red
+  const ringGlow = isAligned ? 'rgba(16,185,129,0.55)' : 'rgba(239,68,68,0.45)';
   const dismiss = () => { stopStream(); onCancel(); };
-
-  const CurrentPose = step >= 2 && step <= 4 ? poses[step - 2] : null;
-  const CurrentIcon = CurrentPose?.icon;
 
   // iter70: render through a Portal so the parent Login card's
   // `backdrop-filter: blur(...)` does NOT trap our `position: fixed` to
@@ -463,7 +420,10 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
         <div className="flex items-center gap-2">
           <Eye className="w-5 h-5 text-[#00D4FF]" />
           <h2 className="text-sm sm:text-base font-['Chivo'] font-bold text-white">
-            Identification iris {step >= 2 && step <= 4 && (<span className="text-[#A1A1AA] font-normal ml-2">{step - 1}/3</span>)}
+            Identification iris
+            {captureIdx < 3 && (
+              <span className="text-[#A1A1AA] font-normal ml-2">{captureIdx + 1}/3</span>
+            )}
           </h2>
         </div>
         <button
@@ -484,65 +444,44 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
           muted
           playsInline
           className="w-full h-full object-cover"
-          // Mirror horizontally so the user's movement feels natural
           style={{ transform: 'scaleX(-1)' }}
         />
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Centre face mask */}
+        {/* Centre face mask — colour-coded by alignment */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="w-[60vmin] h-[60vmin] max-w-[420px] max-h-[420px] rounded-full border-2 border-[#00D4FF]/70 shadow-[0_0_120px_rgba(0,212,255,0.4)]" />
+          <div
+            data-testid="iris-ring"
+            data-aligned={isAligned ? '1' : '0'}
+            className="w-[60vmin] h-[60vmin] max-w-[420px] max-h-[420px] rounded-full transition-colors duration-150"
+            style={{
+              borderWidth: 3,
+              borderStyle: 'solid',
+              borderColor: ringColor,
+              boxShadow: `0 0 120px ${ringGlow}`,
+            }}
+          />
         </div>
-
-        {/* Active pose arrow / icon */}
-        {CurrentIcon && (
-          <div className="pointer-events-none absolute top-1/2 -translate-y-1/2 right-4 sm:right-12 text-[#00D4FF] animate-pulse">
-            <CurrentIcon className="w-16 h-16 sm:w-24 sm:h-24" />
-          </div>
-        )}
-
-        {/* Glasses alert overlay */}
-        {glassesAlert && (
-          <div className="absolute inset-x-0 top-1/3 mx-4 sm:mx-auto sm:max-w-md bg-amber-500/95 text-[#050505] rounded-sm p-4 shadow-2xl" data-testid="iris-glasses-alert">
-            <div className="flex items-start gap-2">
-              <Glasses className="w-6 h-6 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="font-['Chivo'] font-bold text-sm mb-1">Lunettes détectées</p>
-                <p className="text-xs leading-relaxed">Veuillez enlever vos lunettes pour une identification infaillible.</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => { setGlassesAlert(false); setStep(2); setStatusMsg(poses[0].label); recentSamplesRef.current = []; }}
-              data-testid="iris-glasses-ack"
-              className="mt-3 w-full inline-flex items-center justify-center gap-1 px-3 py-2 bg-[#050505] text-amber-300 rounded-sm font-['Chivo'] font-bold text-xs"
-            >
-              C'est fait — continuer
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Status footer */}
-      <footer className="px-4 py-4 bg-[#0A0A0A] border-t border-white/10 space-y-2">
-        <p className="text-center text-sm sm:text-base text-white font-['Chivo'] font-bold" data-testid="iris-status">{statusMsg}</p>
-        {step >= 2 && step <= 4 && (
-          <div className="w-full max-w-md mx-auto h-1.5 bg-white/[0.08] rounded-full overflow-hidden" data-testid="iris-progress">
+      {/* Status footer — instruction ABOVE, blue countdown bar BELOW */}
+      <footer className="px-4 py-4 bg-[#0A0A0A] border-t border-white/10 space-y-3">
+        <p
+          className="text-center text-base sm:text-lg text-white font-['Chivo'] font-bold transition-colors duration-150"
+          data-testid="iris-instruction"
+          style={{ color: isAligned ? '#10B981' : '#EF4444' }}
+        >
+          {streamError ? streamError : (ALIGN_COPY[alignment] || ALIGN_COPY.unknown)}
+        </p>
+        {captureIdx < 3 && streamReady && (
+          <div className="w-full max-w-md mx-auto h-2 bg-white/[0.08] rounded-full overflow-hidden" data-testid="iris-hold-progress">
             <div
               className="h-full bg-[#00D4FF] transition-[width] duration-100"
-              style={{ width: `${activePoseProgress}%` }}
+              style={{ width: `${holdProgress}%` }}
             />
           </div>
         )}
-        {step === 0 && streamReady && (
-          <div className="w-full max-w-md mx-auto h-1.5 bg-white/[0.08] rounded-full overflow-hidden" data-testid="iris-approach-progress">
-            <div
-              className="h-full bg-[#00D4FF] transition-[width] duration-100"
-              style={{ width: `${approachProgress}%` }}
-            />
-          </div>
-        )}
-        {step === 5 && (
+        {captureIdx >= 3 && (
           <p className="text-center text-xs text-emerald-300 inline-flex items-center justify-center gap-1">
             <Check className="w-4 h-4" /> 3/3 captures réussies
           </p>
