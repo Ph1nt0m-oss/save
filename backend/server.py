@@ -471,6 +471,37 @@ async def auth_heartbeat(request: Request):
     await get_current_user(request)
     return {"ok": True, "now": datetime.now(timezone.utc).isoformat()}
 
+
+@api_router.post("/auth/disconnect-soft")
+async def auth_disconnect_soft(request: Request):
+    """iter69: called via `navigator.sendBeacon` from a `beforeunload`
+    handler when the user closes the tab/browser. Marks the current
+    session's last_seen_at far in the past so the multi-device approval
+    gating immediately treats it as abandoned. The session row is NOT
+    deleted — if the user reopens within the 7-day cookie window, the
+    next /auth/me + heartbeat will resurrect it. This is what allows
+    'close tab ⇒ instantly stale' without forcing a hard logout."""
+    try:
+        session_token = request.cookies.get("session_token")
+        if not session_token:
+            auth_header = request.headers.get("Authorization") or ""
+            if auth_header.startswith("Bearer "):
+                session_token = auth_header[7:]
+        # iter69: sendBeacon doesn't let us set custom headers, so the
+        # frontend appends the token as a query param.
+        if not session_token:
+            session_token = request.query_params.get("t")
+        if session_token:
+            past = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            await db.user_sessions.update_one(
+                {"session_token": session_token},
+                {"$set": {"last_seen_at": past}},
+            )
+    except Exception:
+        pass
+    # sendBeacon ignores the body but we return 200 anyway
+    return {"ok": True}
+
 @api_router.get("/user/stats")
 async def get_user_stats(request: Request):
     """Stats summary shown in the Dashboard avatar dropdown."""
@@ -671,6 +702,11 @@ class RegisterRequest(BaseModel):
     device_capture_product: Optional[str] = None   # e.g. "Galaxy S21 5G"
     device_capture_model: Optional[str] = None     # e.g. "SM-G991U1"
     device_capture_name: Optional[str] = None      # e.g. "DESKTOP-52KO8J1" (computer hostname)
+    # iter69: mandatory biometric enrollment (kind = 'webauthn' | 'iris')
+    biometric_kind: Optional[str] = None
+    biometric_options_token: Optional[str] = None  # webauthn only — links to webauthn_challenges
+    biometric_credential: Optional[Dict[str, Any]] = None  # webauthn navigator.credentials.create result
+    biometric_iris_hashes: Optional[List[str]] = None  # iris only — 3 SHA-256 b64 hashes
 
 
 class LoginRequest(BaseModel):
@@ -791,8 +827,8 @@ async def register(payload: RegisterRequest, request: Request):
 
     # Pseudo — required, unique, "Créatrice" reserved for the creator.
     pseudo_raw = (payload.pseudo or payload.name or "").strip()
-    if not pseudo_raw or len(pseudo_raw) < 3:
-        raise HTTPException(status_code=400, detail="Le pseudo est requis (3 caractères minimum).")
+    if not pseudo_raw or len(pseudo_raw) < 1:
+        raise HTTPException(status_code=400, detail="Le pseudo est requis.")
     if len(pseudo_raw) > 30:
         raise HTTPException(status_code=400, detail="Le pseudo est trop long (30 max).")
     if pseudo_raw.lower() in ("créatrice", "creatrice", "créateur", "createur"):
@@ -824,6 +860,52 @@ async def register(payload: RegisterRequest, request: Request):
             "Ouvre Paramètres > Système > Informations système (Windows) ou À propos de ce Mac (macOS)."
         ))
 
+    # iter69: mandatory biometric enrollment.
+    bio_kind = (payload.biometric_kind or "").strip().lower()
+    bio_doc: Optional[dict] = None
+    if bio_kind not in ("webauthn", "iris"):
+        raise HTTPException(status_code=400, detail=(
+            "Identité biométrique requise. Utilise ton empreinte / Face ID, ou capture ton iris via la webcam."
+        ))
+    if bio_kind == "webauthn":
+        if not payload.biometric_options_token or not payload.biometric_credential:
+            raise HTTPException(status_code=400, detail="Enrôlement biométrique incomplet (token ou credential manquant).")
+        challenge_doc = await db.webauthn_challenges.find_one_and_delete(
+            {"options_token": payload.biometric_options_token, "kind": "signup"},
+        )
+        if not challenge_doc:
+            raise HTTPException(status_code=400, detail="Défi d'enrôlement biométrique introuvable ou expiré.")
+        try:
+            verification = webauthn.verify_registration_response(
+                credential=payload.biometric_credential,
+                expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_doc["challenge"]),
+                expected_origin=challenge_doc.get("origin"),
+                expected_rp_id=challenge_doc.get("rp_id"),
+                require_user_verification=False,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Vérification biométrique échouée: {e}")
+        bio_doc = {
+            "kind": "webauthn",
+            "credential_id": webauthn.helpers.bytes_to_base64url(verification.credential_id),
+            "public_key": webauthn.helpers.bytes_to_base64url(verification.credential_public_key),
+            "sign_count": verification.sign_count,
+            "rp_id": challenge_doc.get("rp_id"),
+            "enrolled_at": datetime.now(timezone.utc).isoformat(),
+        }
+    elif bio_kind == "iris":
+        hashes = payload.biometric_iris_hashes or []
+        if not isinstance(hashes, list) or len(hashes) < 3:
+            raise HTTPException(status_code=400, detail="3 captures iris sont requises pour l'enrôlement.")
+        clean = [h for h in hashes if isinstance(h, str) and 20 <= len(h) <= 128]
+        if len(clean) < 3:
+            raise HTTPException(status_code=400, detail="Empreintes iris invalides.")
+        bio_doc = {
+            "kind": "iris",
+            "hashes": clean[:3],
+            "enrolled_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing and existing.get("verified"):
         raise HTTPException(status_code=409, detail="Un compte existe déjà avec cet email. Connecte-toi.")
@@ -847,6 +929,7 @@ async def register(payload: RegisterRequest, request: Request):
                     "model": capture_model or None,
                     "device_name": capture_name or None,
                 },
+                "biometric": bio_doc,
                 "updated_at": now.isoformat(),
             }},
         )
@@ -867,6 +950,7 @@ async def register(payload: RegisterRequest, request: Request):
                 "model": capture_model or None,
                 "device_name": capture_name or None,
             },
+            "biometric": bio_doc,
             "created_at": now.isoformat(),
         })
 
@@ -1299,12 +1383,11 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     # connected device must approve from its UI. This applies regardless of
     # site_mode — the email account itself is the unit of trust.
     if requesting_key_id:
-        # iter68: threshold tightened from 3min → 60s. With the new
-        # explicit /auth/heartbeat ping (every 30s from AuthContext) the
-        # active devices stay refreshed well within the window. A closed
-        # tab stops pinging and is auto-flagged stale within 60s — no
-        # more phantom approval prompts after a single tab close.
-        recent_threshold = (now - timedelta(seconds=60)).isoformat()
+        # iter69: threshold lowered to 35s (just above one 30s heartbeat
+        # tick + a small jitter budget). Paired with the new
+        # /auth/disconnect-soft beforeunload beacon, a closed tab is
+        # auto-stale within seconds — no more phantom approval prompts.
+        recent_threshold = (now - timedelta(seconds=35)).isoformat()
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},
@@ -5092,6 +5175,52 @@ class WebAuthnEnrollOptionsIn(BaseModel):
     origin: str           # window.location.origin
 
 
+class WebAuthnSignupEnrollIn(BaseModel):
+    """iter69: lightweight signup-flow enrollment options. No creator
+    signature required (the user doesn't exist yet) — just a one-shot
+    challenge bound to a short-lived token so the verify step can be
+    correlated to the right register payload."""
+    email: Optional[str] = None
+    origin: Optional[str] = None
+
+
+@api_router.post("/webauthn/enroll-begin")
+async def webauthn_enroll_begin(payload: WebAuthnSignupEnrollIn, request: Request):
+    """iter69: signup-time biometric enrollment options. The client calls
+    this BEFORE submitting /auth/register; the returned options_token is
+    bundled with the WebAuthn attestation inside the register payload."""
+    origin = payload.origin or request.headers.get("origin") or request.headers.get("referer") or ""
+    rp_id = _rp_id_from_origin(origin) if origin else "localhost"
+    user_handle = secrets.token_bytes(16)
+    options_token = secrets.token_urlsafe(24)
+
+    options = webauthn.generate_registration_options(
+        rp_id=rp_id,
+        rp_name="CodeForge AI",
+        user_id=user_handle,
+        user_name=(payload.email or f"new_{secrets.token_hex(4)}@codeforge.ai")[:64],
+        user_display_name=payload.email or "Nouveau compte",
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.PREFERRED,
+            user_verification=UserVerificationRequirement.PREFERRED,
+        ),
+        timeout=120_000,
+    )
+    await db.webauthn_challenges.insert_one({
+        "options_token": options_token,
+        "challenge": webauthn.helpers.bytes_to_base64url(options.challenge),
+        "rp_id": rp_id,
+        "kind": "signup",
+        "origin": origin,
+        "user_handle": webauthn.helpers.bytes_to_base64url(user_handle),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {
+        "options": json.loads(webauthn.helpers.options_to_json(options)),
+        "options_token": options_token,
+    }
+
+
 @api_router.post("/webauthn/register-options")
 async def webauthn_register_options(payload: WebAuthnEnrollOptionsIn):
     """Step 1 (creator-only): generate a challenge for biometric enrollment.
@@ -6785,7 +6914,7 @@ async def accounts_rename_pseudo(payload: _TargetCreatorSigIn):
     new_pseudo = (getattr(payload, "new_pseudo", None) or "").strip() if hasattr(payload, "new_pseudo") else ""
     body = payload.model_dump() if hasattr(payload, "model_dump") else {}
     new_pseudo = (body.get("new_pseudo") or "").strip()
-    if not (3 <= len(new_pseudo) <= 30):
+    if not (1 <= len(new_pseudo) <= 30):
         raise HTTPException(status_code=400, detail="Pseudo invalide (3-30).")
     if new_pseudo.lower() in ("créatrice", "creatrice", "créateur", "createur"):
         raise HTTPException(status_code=409, detail="Pseudo réservé.")

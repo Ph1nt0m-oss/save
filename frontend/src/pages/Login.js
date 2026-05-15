@@ -15,6 +15,7 @@ import AccountsButton from '../components/AccountsButton';
 import TheftButton from '../components/TheftButton';
 import DeviceKeyCopyButton from '../components/DeviceKeyCopyButton';
 import DeviceCaptureField from '../components/DeviceCaptureField';
+import BiometricEnrollmentField from '../components/BiometricEnrollmentField';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { rememberEmailForDevice, recallEmailForDevice } from '../lib/deviceIdentity';
 import { detectDeviceLabel } from '../lib/deviceLabel';
@@ -85,6 +86,8 @@ export default function Login() {
   // iter62 — mandatory device capture (OCR via Gemini Vision) collected
   // before /auth/register can succeed.
   const [deviceCapture, setDeviceCapture] = useState(null);
+  // iter69 — mandatory biometric enrollment (WebAuthn or iris webcam).
+  const [biometric, setBiometric] = useState(null);
 
   // Verification polling state (active between /register and the user
   // clicking the magic link in their email / the demo link).
@@ -297,8 +300,8 @@ export default function Login() {
     try {
       if (mode === 'signup') {
         const pseudoTrimmed = name.trim();
-        if (!pseudoTrimmed || pseudoTrimmed.length < 3) {
-          toast.error('Le pseudo est requis (3 caractères minimum).');
+        if (!pseudoTrimmed || pseudoTrimmed.length < 1) {
+          toast.error('Le pseudo est requis.');
           setSubmitting(false);
           return;
         }
@@ -308,6 +311,12 @@ export default function Login() {
             (deviceCapture.kind === 'phone' && !(deviceCapture.product || deviceCapture.model)) ||
             (deviceCapture.kind === 'computer' && !deviceCapture.device_name)) {
           toast.error("Capture de l'appareil requise. Glisse-dépose ou colle une capture d'écran d'« À propos » de ton téléphone ou ordinateur.");
+          setSubmitting(false);
+          return;
+        }
+        // iter69: biometric enrollment mandatory.
+        if (!biometric || !biometric.kind || (biometric.kind === 'iris' && (biometric.data?.hashes?.length || 0) < 3)) {
+          toast.error("Identité biométrique requise. Utilise ton empreinte / Face ID, ou capture ton iris via la webcam.");
           setSubmitting(false);
           return;
         }
@@ -321,6 +330,10 @@ export default function Login() {
           device_capture_product: deviceCapture.product || '',
           device_capture_model: deviceCapture.model || '',
           device_capture_name: deviceCapture.device_name || '',
+          biometric_kind: biometric.kind,
+          biometric_options_token: biometric.kind === 'webauthn' ? biometric.data?.options_token : null,
+          biometric_credential: biometric.kind === 'webauthn' ? biometric.data?.credential : null,
+          biometric_iris_hashes: biometric.kind === 'iris' ? biometric.data?.hashes : null,
         });
         /* email non persisté (sécurité) */
 
@@ -780,6 +793,12 @@ export default function Login() {
                 <input type="text" name="username" tabIndex={-1} autoComplete="username" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
                 <input type="password" name="password" tabIndex={-1} autoComplete="current-password" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
                 {mode === 'signup' && (
+                  <p className="text-[11px] text-[#A1A1AA] italic" data-testid="required-fields-legend">
+                    <span className="text-red-400 mr-1">*</span>
+                    {t('required_fields_legend')}
+                  </p>
+                )}
+                {mode === 'signup' && (
                   <div>
                     <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">
                       {t('signup_pseudo_label')} <span className="text-red-400">*</span>
@@ -792,7 +811,7 @@ export default function Login() {
                         onChange={(e) => setName(e.target.value)}
                         data-testid="signup-name-input"
                         required
-                        minLength={3}
+                        minLength={1}
                         maxLength={30}
                         placeholder={t('signup_pseudo_placeholder')}
                         className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
@@ -810,9 +829,18 @@ export default function Login() {
                   />
                 )}
 
+                {mode === 'signup' && (
+                  <BiometricEnrollmentField
+                    value={biometric}
+                    onChange={setBiometric}
+                    email={email}
+                    disabled={submitting}
+                  />
+                )}
+
                 <div>
                   <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">
-                    {t('loginEmail')}
+                    {t('loginEmail')} <span className="text-red-400">*</span>
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
@@ -840,7 +868,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">{t('loginPassword')}</label>
+                  <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">{t('loginPassword')} <span className="text-red-400">*</span></label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
                     <input

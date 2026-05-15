@@ -1,0 +1,57 @@
+{
+  "summary": "iter69 — 31/31 backend tests PASS (13 new iter69 + 18 regression iter63/66/67/68). New endpoints /auth/disconnect-soft and /webauthn/enroll-begin (anonymous signup-flow) verified. Biometric validation on /auth/register working: 400 without bio_kind, 200 with 3 iris hashes, 400 with 2 hashes, 400 with bad webauthn options_token. Threshold tightened to 35s — -20s fresh (202), -40s stale (200), -120s stale (200). Pseudo min 1-char accepted; empty pseudo → 400. Frontend Login signup (412x915): all 5 mandatory data-testids visible (signup-name-input, device-capture-dropzone, biometric-enrollment-field, bio-webauthn-btn, bio-iris-btn) + required-fields-legend present ('*Required fields'). Reassurance message 'La créatrice n'a aucun accès…' rendered. Iris-btn with denied camera → bio-error 'Impossible d'accéder à la caméra. Vérifie les permissions.' confirmed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Login signup — pseudonym hint",
+        "issue": "Helper text under 'Your pseudonym' still says '3-30 characters, must be unique.' even though iter69 lowered the min to 1 char (and uniqueness was removed in an earlier iter). Hint contradicts both the new backend validation (1-30) and the doc-string in server.py (pseudo uniqueness intentionally NOT enforced anymore). Update to e.g. '1-30 characters' (FR/EN).",
+        "selector": "Login.js pseudo hint paragraph (under signup-name-input)",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Login mobile signup (412x915)",
+        "issues": [
+          "Carry-over from iter67/68: auth-email-input remains `readonly` while device-key generates, blocking Playwright fill. Only impacts E2E/autofill, not the manual user flow. Recommend tracking device-key readiness via a React state flag instead of DOM-level readonly that snaps back on every remount."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter69_biometric.py",
+    "/app/test_reports/pytest/iter69_results.xml",
+    "/app/test_reports/pytest/iter69_regression.xml"
+  ],
+  "action_items": [
+    "(LOW) Update pseudonym helper text in Login.js i18n (FR + EN) from '3-30 characters, must be unique.' to '1-30 characters.' so the UI matches iter69's relaxed validation.",
+    "(Carry-over) Replace DOM `readonly` with a React state flag for auth-email-input to unblock E2E/autofill."
+  ],
+  "critical_code_review_comments": [
+    "server.py /auth/disconnect-soft (lines 475-503) correctly: (a) accepts token via cookie OR Authorization Bearer OR ?t= query param (essential for sendBeacon), (b) pushes last_seen_at 24h into the past (>> 35s threshold), (c) wraps DB update in try/except so a malformed beacon never errors out the response, (d) always returns 200 since sendBeacon discards the body. Solid.",
+    "server.py /webauthn/enroll-begin (lines 5187-5221) — anonymous endpoint, no signature required. Persists challenge with kind='signup' bound to a 32-char options_token. Correctly extracts rp_id from origin/referer header. No rate limit yet — consider adding one (e.g. 10/min/IP) to avoid challenge-flood DoS on the webauthn_challenges collection.",
+    "server.py /auth/register biometric block (lines 863-907): clean branching webauthn vs iris, iris hashes filtered to 20-128 char strings then sliced to 3. Note: no rejection if 4+ hashes provided (only 3 kept) — acceptable but worth a comment.",
+    "server.py line 1390: `recent_threshold = now - timedelta(seconds=35)` — aligns with 30s heartbeat tick (5s safety margin). Tighter than iter68's 60s; combined with /disconnect-soft this means a closed tab is stale in <35s (immediately on close if beacon fires).",
+    "Login.js signup payload (lines 333-336): correct conditional shape per biometric kind. Validation guard at line 318 ensures iris has 3 hashes before submit.",
+    "BiometricEnrollmentField.jsx error path: 'Impossible d'accéder à la caméra. Vérifie les permissions.' confirmed via runtime test with getUserMedia denied. data-testid='bio-error' renders correctly.",
+    "WARNING — server.py is now 7700 lines (+129 vs iter68). Splitting per-domain routers (auth, webauthn, devices, projects, chat, admin) is increasingly overdue."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter69_biometric.py (new — 13 tests: bio validation, enroll-begin, disconnect-soft, threshold 35s, pseudo 1-char)"
+  ],
+  "success_rate": {
+    "backend": "100% (31/31 — 13 iter69 + 18 regression)",
+    "frontend": "Verified via Playwright: 5 required signup data-testids + required-fields-legend present, reassurance text rendered, iris-btn camera-denied bio-error confirmed. Only minor: pseudo hint text outdated."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (pre-iter69 — has no bio enrollment, so can't be used for new bio-locked register paths, but works for login regression).",
+  "seed_data_creation": "iter69 tests seed TEST_iter69_* users + iter69_* device keys + test_iter69_* registered emails; module-scoped cleanup fixture wipes them all by regex.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter69 is GREEN end-to-end. /auth/disconnect-soft is the new piece — it accepts ?t= query param so navigator.sendBeacon (which can't set headers) still authenticates the closed session. Threshold = 35s in server.py:1390. /webauthn/enroll-begin is the anonymous signup-flow variant (kind='signup' in webauthn_challenges); the existing /webauthn/register-options (kind='register') is creator-only and untouched. ONE small i18n cleanup is pending (pseudonym hint says '3-30 characters' but min is 1). The iter67/iter68 tests still use 60s thresholds in their assertions (-30/-90/-120s) — those scenarios remain valid against 35s (30s is still fresh since 30<35, and 90/120s still stale). If a future iter pushes threshold below 30s, those tests will need re-tuning.",
+  "rca of the issue": "No bug observed in iter69 — all flows specified in the request are operating correctly. The carry-over auth-email-input readonly race is the only persistent friction point for automation."
+}

@@ -163,16 +163,38 @@ export const AuthProvider = ({ children }) => {
   // current session so the multi-device approval gating can tell apart a
   // tab that's actually open from one that closed an hour ago but still
   // has a valid cookie. Stops automatically on logout.
+  // iter69: paired with a beforeunload `navigator.sendBeacon` to
+  // /auth/disconnect-soft so a closed tab becomes stale instantly
+  // (no need to wait for the next missing heartbeat).
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     const tick = async () => {
       try { await axios.post(`${API}/auth/heartbeat`, {}); } catch (_) { /* offline OK */ }
     };
-    // Fire one right away so a brand-new tab is immediately fresh.
     tick();
     const id = setInterval(() => { if (!cancelled) tick(); }, 30_000);
-    return () => { cancelled = true; clearInterval(id); };
+
+    const beforeUnload = () => {
+      try {
+        const token = (typeof localStorage !== 'undefined' && localStorage.getItem('session_token')) || '';
+        // sendBeacon is the only fetch that reliably runs during page
+        // teardown. We pass the bearer token as a query param so the
+        // cookie-less beacon still authenticates the session row.
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          const url = `${API}/auth/disconnect-soft${token ? `?t=${encodeURIComponent(token)}` : ''}`;
+          navigator.sendBeacon(url, new Blob([JSON.stringify({})], { type: 'application/json' }));
+        }
+      } catch (_) {}
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    window.addEventListener('pagehide', beforeUnload);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener('beforeunload', beforeUnload);
+      window.removeEventListener('pagehide', beforeUnload);
+    };
   }, [user]);
 
   const logout = useCallback(async (reason = 'manual') => {
