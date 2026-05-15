@@ -17,6 +17,27 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 69 (Biométrie obligatoire + sendBeacon + threshold 35s + UX étoiles)
+
+**🔐 Biométrie obligatoire à l'inscription** :
+- Nouveau composant `BiometricEnrollmentField.jsx` : 2 boutons → **Empreinte/Face ID (WebAuthn)** ou **Iris (webcam)**.
+- WebAuthn : tente `navigator.credentials.create` via le nouveau endpoint `/api/webauthn/enroll-begin` (signup-flow, anonyme).
+- Iris : `getUserMedia({video})` → preview live → bouton « Capturer » → crop centre 256×256 → SHA-256 client-side → 3 hashes b64 envoyés au backend.
+- Message rassurance UI : « **La créatrice n'a aucun accès** à tes empreintes ni à la photo de ton iris ».
+- Backend `/auth/register` : `biometric_kind` requis, sinon **400**. Stockage `user.biometric = {kind, ...}`.
+
+**⏱️ Threshold 60s → 35s + sendBeacon beforeunload** :
+- Nouveau `POST /api/auth/disconnect-soft` (accepte token via cookie / header / query `?t=`) → marque `last_seen_at` à -24h.
+- `AuthContext.js` enregistre un `beforeunload` qui ping `disconnect-soft` via `navigator.sendBeacon` → onglet fermé = stale **instantanément**.
+- Combine avec le heartbeat 30s : 35s suffit largement pour absorber le jitter.
+
+**📝 UX champs obligatoires** :
+- ⭐ Étoile rouge sur email, password, pseudo, capture appareil, biométrie.
+- Ligne « Champs obligatoires à remplir » i18n FR/EN.
+- Pseudo : min **1 char** (au lieu de 3). Hint mis à jour.
+
+**Tests iter69** : **31/31 backend pytest PASS** (13 nouveaux + 18 régression) + frontend Playwright vérifié (5 testids obligatoires + bouton iris + caméra denied + message rassurance). Aucun bug critique.
+
 ### 2026-02-15 — Iter 68 (Heartbeat 30s + threshold 60s + no toast B + mobile horizontal scroll)
 
 **🐛 Bug "phantom approval prompts" résolu pour de bon** :
