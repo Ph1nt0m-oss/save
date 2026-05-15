@@ -1,9 +1,9 @@
-"""iter67 — last_seen_at threshold reduced from 10min to 3min.
+"""iter67 — last_seen_at threshold (tightened to 60s in iter68).
 
-Tests:
- 1. Session active at -2min (within 3min window) → another device login → 202 pending.
- 2. Session active at -5min (>3min, stale) → another device login → 200 (no approval needed).
- 3. Boundary check: session at -4min must be considered stale (200, not 202).
+Tests (patched for iter68 — seconds-based offsets):
+ 1. Session active at -30s (within 60s window) → another device login → 202 pending.
+ 2. Session active at -120s (>60s, stale) → another device login → 200 (no approval needed).
+ 3. Boundary check: session at -90s must be considered stale (200, not 202).
 """
 from __future__ import annotations
 import os, time, secrets
@@ -50,10 +50,10 @@ def _seed_devkey(db, key_id, role="inactive", email=None):
     db.device_keys.insert_one(doc)
 
 
-def _seed_session(db, uid, key_id, last_seen_offset_min=0):
+def _seed_session(db, uid, key_id, last_seen_offset_sec=0):
     token = "TEST_iter67_sess_" + secrets.token_urlsafe(12)
     now = datetime.now(timezone.utc)
-    seen = now + timedelta(minutes=last_seen_offset_min)
+    seen = now + timedelta(seconds=last_seen_offset_sec)
     db.user_sessions.insert_one({
         "session_token": token, "user_id": uid,
         "device_key_id": key_id, "device_label": "iter67-test",
@@ -65,57 +65,57 @@ def _seed_session(db, uid, key_id, last_seen_offset_min=0):
     return token
 
 
-class TestThreshold3Min:
-    def test_session_2min_old_triggers_202(self, db):
-        """Session with last_seen_at = -2 min (fresh, within 3min) → 202."""
+class TestThreshold60Sec:
+    def test_session_30s_old_triggers_202(self, db):
+        """Session with last_seen_at = -30s (fresh, within 60s) → 202."""
         ts = int(time.time())
-        email = f"test_iter67_2min_{ts}@gmail.com"
+        email = f"test_iter67_30s_{ts}@gmail.com"
         pwd = "Pass1234"
         uid = _ensure_user(db, email, pwd)
         db.user_sessions.delete_many({"user_id": uid})
         db.session_requests.delete_many({"user_id": uid})
-        ka, kb = f"iter67_2min_A_{ts}", f"iter67_2min_B_{ts}"
+        ka, kb = f"iter67_30s_A_{ts}", f"iter67_30s_B_{ts}"
         _seed_devkey(db, ka, email=email)
         _seed_devkey(db, kb)
-        _seed_session(db, uid, ka, last_seen_offset_min=-2)
+        _seed_session(db, uid, ka, last_seen_offset_sec=-30)
         r = requests.post(f"{API}/auth/login", json={
             "email": email, "password": pwd,
-            "device_key_id": kb, "device_label": "2min-B"}, timeout=15)
-        assert r.status_code == 202, f"-2min session should trigger 202, got {r.status_code}: {r.text[:200]}"
+            "device_key_id": kb, "device_label": "30s-B"}, timeout=15)
+        assert r.status_code == 202, f"-30s session should trigger 202, got {r.status_code}: {r.text[:200]}"
 
-    def test_session_5min_old_returns_200(self, db):
-        """Session at -5 min (>3min, stale) → 200 OK."""
+    def test_session_120s_old_returns_200(self, db):
+        """Session at -120s (>60s, stale) → 200 OK."""
         ts = int(time.time()) + 50
-        email = f"test_iter67_5min_{ts}@gmail.com"
+        email = f"test_iter67_120s_{ts}@gmail.com"
         pwd = "Pass1234"
         uid = _ensure_user(db, email, pwd)
         db.user_sessions.delete_many({"user_id": uid})
         db.session_requests.delete_many({"user_id": uid})
-        ka, kb = f"iter67_5min_A_{ts}", f"iter67_5min_B_{ts}"
+        ka, kb = f"iter67_120s_A_{ts}", f"iter67_120s_B_{ts}"
         _seed_devkey(db, ka, email=email)
         _seed_devkey(db, kb)
-        _seed_session(db, uid, ka, last_seen_offset_min=-5)
+        _seed_session(db, uid, ka, last_seen_offset_sec=-120)
         r = requests.post(f"{API}/auth/login", json={
             "email": email, "password": pwd,
-            "device_key_id": kb, "device_label": "5min-B"}, timeout=15)
-        assert r.status_code == 200, f"-5min stale session should return 200, got {r.status_code}: {r.text[:200]}"
+            "device_key_id": kb, "device_label": "120s-B"}, timeout=15)
+        assert r.status_code == 200, f"-120s stale session should return 200, got {r.status_code}: {r.text[:200]}"
 
-    def test_session_4min_old_returns_200(self, db):
-        """Boundary: session at -4 min must be stale → 200."""
+    def test_session_90s_old_returns_200(self, db):
+        """Boundary: session at -90s must be stale → 200."""
         ts = int(time.time()) + 150
-        email = f"test_iter67_4min_{ts}@gmail.com"
+        email = f"test_iter67_90s_{ts}@gmail.com"
         pwd = "Pass1234"
         uid = _ensure_user(db, email, pwd)
         db.user_sessions.delete_many({"user_id": uid})
         db.session_requests.delete_many({"user_id": uid})
-        ka, kb = f"iter67_4min_A_{ts}", f"iter67_4min_B_{ts}"
+        ka, kb = f"iter67_90s_A_{ts}", f"iter67_90s_B_{ts}"
         _seed_devkey(db, ka, email=email)
         _seed_devkey(db, kb)
-        _seed_session(db, uid, ka, last_seen_offset_min=-4)
+        _seed_session(db, uid, ka, last_seen_offset_sec=-90)
         r = requests.post(f"{API}/auth/login", json={
             "email": email, "password": pwd,
-            "device_key_id": kb, "device_label": "4min-B"}, timeout=15)
-        assert r.status_code == 200, f"-4min session should be stale → 200, got {r.status_code}: {r.text[:200]}"
+            "device_key_id": kb, "device_label": "90s-B"}, timeout=15)
+        assert r.status_code == 200, f"-90s session should be stale → 200, got {r.status_code}: {r.text[:200]}"
 
 
 @pytest.fixture(scope="module", autouse=True)

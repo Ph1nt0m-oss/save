@@ -375,7 +375,9 @@ export default function Login() {
           const detail = (data && (data.detail || data)) || {};
           const reqId = detail.request_id;
           if (reqId) {
-            toast.info(t('sess_pending_title'));
+            // iter68: removed redundant toast — the yellow banner below
+            // already conveys this info inside the form. Avoids two
+            // overlapping notifications on small mobile screens.
             try {
               localStorage.setItem(
                 'codeforge_session_pending',

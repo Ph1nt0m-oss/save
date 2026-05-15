@@ -158,6 +158,23 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, [checkAuth]);
 
+  // iter68: explicit liveness heartbeat — pings /auth/heartbeat every 30s
+  // while the user is authenticated. This updates last_seen_at on the
+  // current session so the multi-device approval gating can tell apart a
+  // tab that's actually open from one that closed an hour ago but still
+  // has a valid cookie. Stops automatically on logout.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const tick = async () => {
+      try { await axios.post(`${API}/auth/heartbeat`, {}); } catch (_) { /* offline OK */ }
+    };
+    // Fire one right away so a brand-new tab is immediately fresh.
+    tick();
+    const id = setInterval(() => { if (!cancelled) tick(); }, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
   const logout = useCallback(async (reason = 'manual') => {
     try {
       await axios.post(`${API}/auth/logout`, {});

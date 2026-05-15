@@ -1,0 +1,46 @@
+{
+  "summary": "iter68 testing — 18/18 backend tests PASS, frontend Dashboard header overflow-x-auto + min-w-max verified, heartbeat fires at mount and repeats every ~30s, no toast leaks on 202 pending (code-verified at Login.js:378). Patched iter67 test fixtures from minutes→seconds to align with the new 60s threshold; previous (-2/-4/-5 min) cases became inconsistent because they all fall outside the 60s window. New seeds: -30s (fresh→202), -90s (stale boundary→200), -120s (stale→200). All iter63 (6) + iter66 (5) + iter67 (3) + iter68 (4) tests green.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Login mobile (412x915) — auth-email-input readonly race",
+        "issues": [
+          "Still present from iter67: input is briefly readonly while device-key generates; on every key remount (different `name` attribute) the readonly comes back. Blocks fast Playwright/E2E and may briefly block real users with autofill. Recommend tracking device-key readiness via a state flag rather than DOM-level readonly that snaps back on every remount."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter68_heartbeat.py",
+    "/app/backend/tests/test_iter67_threshold_3min.py",
+    "/app/backend/tests/test_iter66_last_seen.py",
+    "/app/backend/tests/test_iter63_session_pending.py",
+    "/app/test_reports/pytest/iter68_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Investigate Dashboard mobile content overflow — at 412px the page horizontally scrolls because internal content (e.g. 'What would you like…' title, prompt card) extends beyond viewport. Header overflow-x-auto is correctly applied, but the parent flex column may need overflow-x-hidden on the main column to keep page-level horizontal scroll off.",
+    "(Carry-over from iter67) Replace `readonly`-on-mount in auth-email-input with a state flag; current behavior snaps back to readonly when the input remounts with a new `name` attribute and blocks E2E logins."
+  ],
+  "critical_code_review_comments": [
+    "server.py POST /auth/heartbeat (lines 463-472) is a clean, idempotent wrapper that delegates last_seen_at refresh to get_current_user(). Correct.",
+    "server.py line 1307: recent_threshold = now - 60s — aligns with the 30s client tick (2 ticks of safety margin). Sound.",
+    "AuthContext.js lines 166-176: initial tick() + setInterval(30_000) + cancellation via cancelled flag and clearInterval — correctly bound to [user] so it tears down on logout. Good.",
+    "Login.js lines 378-380: redundant toast properly removed; pending banner is the single visual source — matches request.",
+    "Dashboard.js lines 747-748: `overflow-x-auto md:overflow-x-visible` on <header> + `min-w-max md:min-w-0` on inner div — correct mobile-only horizontal-scroll pattern.",
+    "WARNING — server.py is 7571 lines; please split into routers per domain (auth, projects, devices, chat, admin, webhook). Long-term maintainability risk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter67_threshold_3min.py (patched: minute→second seeds, class renamed to TestThreshold60Sec, scenarios -30s/-90s/-120s)",
+    "/app/backend/tests/test_iter68_heartbeat.py (new — 4 tests: 401 noauth, 401 badtoken, 200+last_seen refresh, end-to-end fresh→stale 202/200 spec scenario)"
+  ],
+  "success_rate": { "backend": "100% (18/18)", "frontend": "Verified via Playwright: header classes present, heartbeat fires initial + ≥1 repeat over 35s. Toast removal verified by code inspection." },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — works via in-browser fetch (REST from container hit Cloudflare 1010 due to UA; switched to page.evaluate fetch).",
+  "seed_data_creation": "iter68 tests seed TEST_iter68_* users + iter68_* device keys; cleanup fixture wipes them at module teardown. Same pattern in patched iter67 tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter68 is GREEN end-to-end. POST /api/auth/heartbeat is live, threshold is 60s, AuthContext sends initial+30s ticks, Login.js no longer raises a toast on 202. Patched iter67 tests now use seconds. If a future iter changes the threshold again, just update the offset_sec args in test_iter67_threshold_3min.py and test_iter68_heartbeat.py. To bypass the auth-email-input readonly race for UI tests, login via in-browser fetch and inject session_token into localStorage (see iter68 playwright script).",
+  "rca of the issue": "User-reported 'phantom approval prompts on both devices' RCA: previous threshold (3min) + lack of explicit liveness ping meant any tab that had been opened in the last 3 minutes — even one closed minutes ago — kept its last_seen_at fresh through the cached /auth/me call. With iter68: (a) explicit /auth/heartbeat fires every 30s only from open tabs, (b) threshold tightened to 60s so a closed tab is stale 60s after its last ping, (c) backfill (-2h on 105 sessions) cleans the historical fresh-but-abandoned rows. End result: tab closed ⇒ no ping ⇒ stale in 60s ⇒ no phantom prompt on the next login."
+}

@@ -459,6 +459,18 @@ async def get_me(request: Request):
     
     return user
 
+
+@api_router.post("/auth/heartbeat")
+async def auth_heartbeat(request: Request):
+    """iter68: explicit liveness ping called every 30s by the frontend.
+    Updates last_seen_at on the current session so the multi-device
+    approval gating can distinguish a really-active device from one that
+    has just left a stale 7-day cookie behind. get_current_user() already
+    refreshes last_seen_at as a side-effect, so this endpoint is mostly a
+    no-op wrapper that returns the freshness window for diagnostics."""
+    await get_current_user(request)
+    return {"ok": True, "now": datetime.now(timezone.utc).isoformat()}
+
 @api_router.get("/user/stats")
 async def get_user_stats(request: Request):
     """Stats summary shown in the Dashboard avatar dropdown."""
@@ -1287,14 +1299,12 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     # connected device must approve from its UI. This applies regardless of
     # site_mode — the email account itself is the unit of trust.
     if requesting_key_id:
-        # iter67: shortened threshold from 10min to 3min. The heartbeat is
-        # written by /auth/me + every /auth/session-pending poll (3s tick),
-        # so a really-active device pings at least every ~3s. A 3-min
-        # silence window is generous enough to handle laggy mobile
-        # networks/sleep states while still considering closed tabs as
-        # genuinely abandoned. This is what the user meant by "no approval
-        # prompt when nothing is actually connected".
-        recent_threshold = (now - timedelta(minutes=3)).isoformat()
+        # iter68: threshold tightened from 3min → 60s. With the new
+        # explicit /auth/heartbeat ping (every 30s from AuthContext) the
+        # active devices stay refreshed well within the window. A closed
+        # tab stops pinging and is auto-flagged stale within 60s — no
+        # more phantom approval prompts after a single tab close.
+        recent_threshold = (now - timedelta(seconds=60)).isoformat()
         active_other = await db.user_sessions.find_one({
             "user_id": user["user_id"],
             "expires_at": {"$gt": now.isoformat()},
