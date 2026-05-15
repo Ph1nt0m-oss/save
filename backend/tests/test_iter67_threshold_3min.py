@@ -67,7 +67,7 @@ def _seed_session(db, uid, key_id, last_seen_offset_sec=0):
 
 class TestThreshold60Sec:
     def test_session_30s_old_triggers_202(self, db):
-        """Session with last_seen_at = -30s (fresh, within 60s) → 202."""
+        """iter76 — fenêtre de présence 8s: session avec last_seen_at = -3s → 202."""
         ts = int(time.time())
         email = f"test_iter67_30s_{ts}@gmail.com"
         pwd = "Pass1234"
@@ -77,11 +77,11 @@ class TestThreshold60Sec:
         ka, kb = f"iter67_30s_A_{ts}", f"iter67_30s_B_{ts}"
         _seed_devkey(db, ka, email=email)
         _seed_devkey(db, kb)
-        _seed_session(db, uid, ka, last_seen_offset_sec=-30)
+        _seed_session(db, uid, ka, last_seen_offset_sec=-3)
         r = requests.post(f"{API}/auth/login", json={
             "email": email, "password": pwd,
             "device_key_id": kb, "device_label": "30s-B"}, timeout=15)
-        assert r.status_code == 202, f"-30s session should trigger 202, got {r.status_code}: {r.text[:200]}"
+        assert r.status_code == 202, f"-3s session should trigger 202, got {r.status_code}: {r.text[:200]}"
 
     def test_session_120s_old_returns_200(self, db):
         """Session at -120s (>60s, stale) → 200 OK."""

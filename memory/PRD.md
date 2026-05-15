@@ -17,7 +17,38 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-02-15 — Iter 73 (Seuils iris assouplis)
+### 2026-02-15 — Iter 76 (Annonces enrichies + sondages multi-select + déco programmée + fix phantom-prompt 8s)
+
+**📢 Annonces enrichies (P0 — reporté du fork précédent)** :
+- 3 émojis d'état : ✅ Validé (vert), ❌ Refusé (rouge, non supprimable sauf clear-history), 🟠 Orange = « staff n'a pas les codes » (escalade vers la créatrice).
+- Asymétrie staff/créatrice : si un staff valide, l'annonce disparaît pour lui mais reste visible pour la créatrice avec badge « Coché par le staff ». La créatrice peut confirmer (disparaît partout) ou réinitialiser (revient en attente).
+- Bouton « Supprimer l'historique » (`/api/announcements/clear-history`) côté créatrice — wipe complet annonces + états.
+- Nouvelle collection `announcement_states` (announce_id, key_id, state, actor, ts).
+- Endpoint `POST /api/announcements/set-state` (any signed user, state: validated|refused|orange|reset).
+- Endpoint `GET /api/announcements/list?key_id=...` enrichi avec `my_state` + `staff_states` (créatrice only).
+
+**📊 Sondages multi-select + temps de publication** :
+- Nouveau champ `max_selections` (min 1, par défaut 1) au create. Stocké sur le doc poll.
+- Vote accepte désormais `option_indices: [int]` (ancienne API `option_index: int` reste compatible).
+- Tally agrégé via `$unwind` sur les indices.
+- Réponse `/polls/list` enrichie avec `voters` (nb de votants uniques) + `my_vote` (array).
+- UI banner: cases à cocher visuelles, bouton « Voter » apparaît seulement si sélection ≥ 1.
+- Date de publication affichée dans la bannière + dans le panneau Gérer.
+
+**⏰ Déconnexion programmée (P0)** :
+- `POST /api/system/schedule-kick` : créatrice planifie un kick massif dans X minutes (cap 24h). Si `note` fourni, publie une annonce immédiate.
+- `GET /api/system/scheduled-kicks` : liste des kicks pending.
+- `POST /api/system/cancel-scheduled-kick` : annule un kick programmé.
+- Background sweeper `_periodic_kick_sweeper` (10s) qui purge toutes les `user_sessions` non-créatrice à l'heure dite.
+- Nouvel onglet « Déco. progr. » dans `AnnounceButton.jsx`.
+
+**🐛 Fix phantom-prompt multi-device (récurrent x3)** :
+- Cause: threshold-0 (iter75) créait race condition — si le device A heartbeat juste APRÈS que B capture `now`, alors `last_seen_at(A) > now(B)` → prompt fantôme côté A.
+- Fix: fenêtre de présence glissante 8s (`now - 8s`). Couvre largement le polling 3s de `/auth/session-pending` ; les onglets fermés (sendBeacon ou simple fermeture) tombent hors fenêtre instantanément.
+- Tests iter67/68 adaptés à la nouvelle fenêtre (fresh = -3s, stale = -30s).
+
+**Tests iter76** : **13/13 backend pytest PASS** (test_iter76_announcements_polls_kicks.py — annonces shape + my_state + hide-validated, polls multi-select tally [1,2,1] / voters=2, scheduled-kicks list, gating signatures 403). Régression iter65/66/67/68 verte après refit -30s→-3s.
+
 
 User a signalé que la détection iris était trop stricte (2 min sans progression). Ajustement des seuils :
 - **Step 0 « approche visage »** : `APPROACH_THRESHOLD` 500→200 + `REQUIRED_HITS` 6→3 (passage en ~1s avec un visage normal).
