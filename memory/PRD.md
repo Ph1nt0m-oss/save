@@ -17,6 +17,26 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 62 (Capture d'écran d'appareil OBLIGATOIRE à l'inscription)
+
+**🆕 Nouvelle exigence sécurité** :
+
+1. **Endpoint OCR** `/api/auth/ocr-device-info` (Gemini 2.5 Flash Vision via `emergentintegrations`) — accepte image base64 (data-URL ou bare), retourne `{kind: 'phone'|'computer'|'unknown', product, model, device_name, confidence}`. Cap à ~3.5 MB.
+
+2. **`/api/auth/register` enrichi** : exige `device_capture_kind` (`phone`|`computer`) + soit `device_capture_product`/`device_capture_model` (téléphone) soit `device_capture_name` (ordinateur). Stocké sur `users.device_capture`. Sans capture valide → 400 avec message FR explicite.
+
+3. **Composant frontend `DeviceCaptureField.jsx`** : dropzone glassmorphism (drag-drop + click + Ctrl+V paste), redimensionne à 1600px max et JPEG 0.85 avant upload, affiche le résultat OCR (Smartphone/Monitor icon + product/model ou device_name). 5 data-testids exposés.
+
+4. **`Login.js`** : import + state `deviceCapture` + rendu du composant entre pseudo et email en mode signup. Validation client miroir du backend (defense in depth).
+
+**Tests** : iter62 backend 11/11 PASS (pytest `/app/backend/tests/test_iter62_device_capture.py`) · Frontend e2e PASS (dropzone visible, validation bloque submit sans capture, toast affiché, requête interceptée) · Régression login Pass1234 OK.
+
+### 2026-02-14 — Iter 60-61 (Migration Gmail SMTP + flux complets créatrice)
+
+- Migration Resend → **Gmail SMTP** via `aiosmtplib` (App Password). Plus de sandbox, envoi à n'importe quelle adresse.
+- Mode Créatrice complet : annonces (📣), sondages, boîte à idées (💡), approbation manuelle des exports ZIP/APK/EXE, blocage/bannissement/exclusion temporaire.
+- Continuité LLM en arrière-plan via `asyncio.shield` (génération continue même si client se déconnecte).
+
 ### 2026-02-14 — Iter 59 (Email no-reply définitif + fallback toujours exposé)
 
 **🔧 Correction définitive** :
