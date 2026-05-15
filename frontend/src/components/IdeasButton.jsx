@@ -44,26 +44,33 @@ export default function IdeasButton() {
   const [sortByKind, setSortByKind] = useState(() => {
     try { return localStorage.getItem('codeforge_ideas_sort_kind') === '1'; } catch (_) { return false; }
   });
+  const [sortByDate, setSortByDate] = useState(() => {
+    try { return localStorage.getItem('codeforge_ideas_sort_date') !== '0'; } catch (_) { return true; }
+  });
   useEffect(() => {
     try { localStorage.setItem('codeforge_ideas_filters', JSON.stringify(filters)); } catch (_) {}
   }, [filters]);
   useEffect(() => {
     try { localStorage.setItem('codeforge_ideas_sort_kind', sortByKind ? '1' : '0'); } catch (_) {}
   }, [sortByKind]);
+  useEffect(() => {
+    try { localStorage.setItem('codeforge_ideas_sort_date', sortByDate ? '1' : '0'); } catch (_) {}
+  }, [sortByDate]);
 
   const visibleIdeas = useMemo(() => {
     const filtered = ideas.filter((x) => filters[(x.kind || 'idea')] !== false);
-    if (!sortByKind) return filtered;
-    // bugs first, then ideas, then others — preserve ts order within each group
-    const order = { bug: 0, idea: 1, other: 2 };
-    return [...filtered].sort((a, b) => (order[a.kind || 'idea'] ?? 3) - (order[b.kind || 'idea'] ?? 3));
-  }, [ideas, filters, sortByKind]);
+    if (sortByKind) {
+      // bugs first, then ideas, then others — preserve ts order within each group
+      const order = { bug: 0, idea: 1, other: 2 };
+      return [...filtered].sort((a, b) => (order[a.kind || 'idea'] ?? 3) - (order[b.kind || 'idea'] ?? 3));
+    }
+    if (sortByDate) {
+      return [...filtered].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+    }
+    return filtered;
+  }, [ideas, filters, sortByKind, sortByDate]);
 
   const allOn = filters.bug && filters.idea && filters.other;
-  const toggleAll = () => {
-    const next = !allOn;
-    setFilters({ bug: next, idea: next, other: next });
-  };
 
   useEffect(() => {
     if (!isCreator || !device.keyId) return undefined;
@@ -210,26 +217,32 @@ export default function IdeasButton() {
                       </label>
                     );
                   })}
-                  <button
-                    type="button"
-                    onClick={toggleAll}
-                    data-testid="ideas-filter-all"
-                    className="ml-1 px-2 py-1 text-[11px] rounded-sm border border-white/15 text-[#A1A1AA] hover:text-white transition"
-                  >
-                    {allOn ? 'Tout décocher' : 'Tout cocher'}
-                  </button>
-                  <label
-                    data-testid="ideas-sort-by-kind"
-                    className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-white/10 text-[#A1A1AA] cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={sortByKind}
-                      onChange={() => setSortByKind((s) => !s)}
-                      className="accent-amber-300 w-3 h-3"
-                    />
-                    Trier par type
-                  </label>
+                  <div className="ml-auto flex items-center gap-2">
+                    <label
+                      data-testid="ideas-sort-by-kind"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-white/10 text-[#A1A1AA] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={sortByKind}
+                        onChange={() => { setSortByKind(true); setSortByDate(false); }}
+                        className="accent-amber-300 w-3 h-3"
+                      />
+                      Trier par type
+                    </label>
+                    <label
+                      data-testid="ideas-sort-by-date"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-white/10 text-[#A1A1AA] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={sortByDate}
+                        onChange={() => { setSortByDate(true); setSortByKind(false); }}
+                        className="accent-amber-300 w-3 h-3"
+                      />
+                      Trier par date
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[200px]">
