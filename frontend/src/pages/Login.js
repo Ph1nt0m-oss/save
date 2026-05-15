@@ -282,12 +282,25 @@ export default function Login() {
           setSubmitting(false);
           return;
         }
+        // iter62: device-capture is mandatory. Block submit until OCR
+        // confirms a non-empty product/model (phone) or device name (PC).
+        if (!deviceCapture || !deviceCapture.kind ||
+            (deviceCapture.kind === 'phone' && !(deviceCapture.product || deviceCapture.model)) ||
+            (deviceCapture.kind === 'computer' && !deviceCapture.device_name)) {
+          toast.error("Capture de l'appareil requise. Glisse-dépose ou colle une capture d'écran d'« À propos » de ton téléphone ou ordinateur.");
+          setSubmitting(false);
+          return;
+        }
         const { data } = await axios.post(`${API}/auth/register`, {
           email: email.trim(),
           password,
           name: pseudoTrimmed,
           pseudo: pseudoTrimmed,
           frontend_url: window.location.origin,
+          device_capture_kind: deviceCapture.kind,
+          device_capture_product: deviceCapture.product || '',
+          device_capture_model: deviceCapture.model || '',
+          device_capture_name: deviceCapture.device_name || '',
         });
         /* email non persisté (sécurité) */
 

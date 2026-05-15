@@ -632,6 +632,11 @@ class RegisterRequest(BaseModel):
     name: Optional[str] = None       # display name (legacy)
     pseudo: Optional[str] = None     # required, unique nickname — see /auth/register
     frontend_url: Optional[str] = None
+    # iter62: mandatory device-capture data (extracted client-side via /auth/ocr-device-info)
+    device_capture_kind: Optional[str] = None      # 'phone' | 'computer'
+    device_capture_product: Optional[str] = None   # e.g. "Galaxy S21 5G"
+    device_capture_model: Optional[str] = None     # e.g. "SM-G991U1"
+    device_capture_name: Optional[str] = None      # e.g. "DESKTOP-52KO8J1" (computer hostname)
 
 
 class LoginRequest(BaseModel):
@@ -639,6 +644,106 @@ class LoginRequest(BaseModel):
     password: str
     device_key_id: Optional[str] = None  # cryptographic device identifier (browser ECDSA)
     device_label: Optional[str] = None   # human label (e.g. "iPhone 15 Pro")
+
+
+# ---------------- Device-info OCR (registration capture) ----------------
+class OcrDeviceIn(BaseModel):
+    image_base64: str
+    hint: Optional[str] = None  # 'phone' | 'computer' (optional kind hint)
+
+
+@api_router.post("/auth/ocr-device-info")
+async def auth_ocr_device_info(payload: OcrDeviceIn):
+    """Extract product name + model number from an "About this phone /
+    About this PC" screenshot using Gemini Vision (Emergent LLM).
+
+    Public endpoint — used during registration (no auth yet at that point).
+    Rate-limited softly via the front-end UX (one request per submission).
+
+    Returns:
+      {kind: 'phone'|'computer'|'unknown', product, model, raw_text, confidence}
+    """
+    raw_b64 = (payload.image_base64 or "").strip()
+    if raw_b64.startswith("data:"):
+        # strip the leading "data:image/png;base64," header if present
+        try:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        except Exception:
+            pass
+    if not raw_b64 or len(raw_b64) > 5_000_000:  # ~3.5 MB image cap
+        raise HTTPException(status_code=400, detail="Image manquante ou trop volumineuse.")
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+    except ImportError:
+        raise HTTPException(status_code=500, detail="OCR indisponible.")
+
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY missing.")
+
+    system_msg = (
+        "You are an OCR + classifier specialized in device-info screenshots. "
+        "You receive ONE screenshot taken from either:\n"
+        "  - an Android 'About phone' page (Samsung/Pixel/etc) — fields like "
+        "    'Device name', 'Model name', 'Model number'\n"
+        "  - an iPhone 'About' page (Réglages > Général > Informations) — "
+        "    fields like 'Nom', 'Numéro de modèle'\n"
+        "  - a Windows 'About' page (Paramètres > Système > Informations) — "
+        "    field like 'Nom de l'appareil' / 'Device name'\n"
+        "  - a macOS 'About this Mac' page\n\n"
+        "Return STRICT JSON, no extra text:\n"
+        '  {"kind": "phone" | "computer" | "unknown", '
+        '"product": "<marketing name like Galaxy S21 5G or empty>", '
+        '"model": "<model code like SM-G991U1 or empty>", '
+        '"device_name": "<computer name like DESKTOP-52KO8J1 or empty>", '
+        '"confidence": 0.0..1.0}\n\n'
+        "RULES:\n"
+        "- Phones: prioritize the 'Model name' (marketing) for product and "
+        "  'Model number' (technical SKU) for model. If only one is present, "
+        "  put it in product. NEVER invent.\n"
+        "- Computers: only fill device_name (e.g. 'DESKTOP-52KO8J1' or "
+        "  'MacBook-Pro-de-Vincent'). Leave product/model empty.\n"
+        "- If you can't identify ANY device info, set kind='unknown' and "
+        "  confidence below 0.3."
+    )
+    chat = LlmChat(
+        api_key=key,
+        session_id=f"ocr_{uuid.uuid4().hex[:8]}",
+        system_message=system_msg,
+    ).with_model("gemini", "gemini-2.5-flash")
+    image = ImageContent(image_base64=raw_b64)
+    msg = UserMessage(text="Extract device info from this screenshot.", file_contents=[image])
+    try:
+        raw = await chat.send_message(msg)
+    except Exception as e:
+        logger.warning(f"ocr-device-info upstream: {e}")
+        raise HTTPException(status_code=502, detail="OCR upstream error.")
+    text = str(raw).strip()
+    # Strip ```json fences if present
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.startswith("json"):
+            text = text[4:]
+    try:
+        import json as _json
+        parsed = _json.loads(text)
+    except Exception:
+        return {
+            "kind": "unknown",
+            "product": "",
+            "model": "",
+            "device_name": "",
+            "confidence": 0.0,
+            "raw": text[:300],
+        }
+    return {
+        "kind": parsed.get("kind") or "unknown",
+        "product": (parsed.get("product") or "").strip()[:80],
+        "model": (parsed.get("model") or "").strip()[:80],
+        "device_name": (parsed.get("device_name") or "").strip()[:80],
+        "confidence": float(parsed.get("confidence") or 0.0),
+    }
 
 
 @api_router.post("/auth/register")
@@ -663,6 +768,28 @@ async def register(payload: RegisterRequest, request: Request):
     # panel disambiguates duplicates by appending "#N" suffixes when
     # listing, and offers a rename action for both sides.
 
+    # iter62: mandatory device capture (extracted via /auth/ocr-device-info)
+    capture_kind = (payload.device_capture_kind or "").strip().lower()
+    capture_product = (payload.device_capture_product or "").strip()
+    capture_model = (payload.device_capture_model or "").strip()
+    capture_name = (payload.device_capture_name or "").strip()
+    if capture_kind not in ("phone", "computer"):
+        raise HTTPException(status_code=400, detail=(
+            "Capture d'écran de l'appareil requise. "
+            "Téléphone : Paramètres > À propos du téléphone (capture du Nom du produit + Numéro de modèle). "
+            "Ordinateur : Paramètres > Système > Informations système (capture du Nom de l'appareil)."
+        ))
+    if capture_kind == "phone" and not (capture_product or capture_model):
+        raise HTTPException(status_code=400, detail=(
+            "Capture invalide : impossible de lire le nom du produit + numéro de modèle. "
+            "Ouvre Paramètres > À propos du téléphone et capture la page complète."
+        ))
+    if capture_kind == "computer" and not capture_name:
+        raise HTTPException(status_code=400, detail=(
+            "Capture invalide : impossible de lire le nom de l'ordinateur. "
+            "Ouvre Paramètres > Système > Informations système (Windows) ou À propos de ce Mac (macOS)."
+        ))
+
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing and existing.get("verified"):
         raise HTTPException(status_code=409, detail="Un compte existe déjà avec cet email. Connecte-toi.")
@@ -680,6 +807,12 @@ async def register(payload: RegisterRequest, request: Request):
                 "name": payload.name or existing.get("name") or email.split("@")[0],
                 "pseudo": pseudo_raw,
                 "pseudo_lower": pseudo_raw.lower(),
+                "device_capture": {
+                    "kind": capture_kind,
+                    "product": capture_product or None,
+                    "model": capture_model or None,
+                    "device_name": capture_name or None,
+                },
                 "updated_at": now.isoformat(),
             }},
         )
@@ -694,6 +827,12 @@ async def register(payload: RegisterRequest, request: Request):
             "pseudo_lower": pseudo_raw.lower(),
             "verified": False,
             "auth_type": "email",
+            "device_capture": {
+                "kind": capture_kind,
+                "product": capture_product or None,
+                "model": capture_model or None,
+                "device_name": capture_name or None,
+            },
             "created_at": now.isoformat(),
         })
 
