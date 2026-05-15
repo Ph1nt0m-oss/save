@@ -67,6 +67,8 @@ export default function useDeviceIdentity() {
         guestView: result.guest_view || null,
         canAccess: !!result.can_access,
         kickReason: result.kick_reason || null,
+        forceVisitor: !!result.force_visitor,  // iter77
+        staffKind: result.staff_kind || null,  // iter77
         pendingCount,
         viewMode: readViewMode(),
         error: null,
@@ -124,8 +126,11 @@ export default function useDeviceIdentity() {
   //  - 'creator' : only creator can write (others are blocked by SiteLockedOverlay)
   // Plus: any NON-creator visitor who toggles "preview creator view" sees
   // the admin surface in read-only mode — canWrite becomes false in that view.
+  // iter77 — `force_visitor` côté backend = la créa a mis ce device en lecture seule.
   let canWrite;
-  if (state.viewMode === 'guest' && state.role !== 'creator') {
+  if (state.forceVisitor && state.role !== 'creator') {
+    canWrite = false;  // iter77 — visiteur forcé
+  } else if (state.viewMode === 'guest' && state.role !== 'creator') {
     canWrite = false; // guest previewing creator UI → enforced read-only
   } else if (state.siteMode === 'public') {
     canWrite = true;

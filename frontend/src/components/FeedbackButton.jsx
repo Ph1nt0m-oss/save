@@ -45,13 +45,10 @@ export default function FeedbackButton() {
   const [mine, setMine] = useState([]);
   const isCreator = device.role === 'creator';
 
-  // Creator devices on the Dashboard already have the dedicated IdeasButton
-  // in the header (with unread badge). To avoid duplication we hide the
-  // floating button there — BUT on Login/Landing the floating button must
-  // remain visible for everyone (creators included), so users on a fresh
-  // visit always have a place to drop a bug/idea/note.
-  const onDashboard = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard');
-  const hideForCreator = isCreator && onDashboard;
+  // iter77 — Sur demande utilisatrice, le bouton flottant doit rester visible
+  // partout, y compris pour la créatrice sur /dashboard (« je peux moi-même
+  // noter des trucs pour que le staff les fasse »).
+  const hideForCreator = false;
 
   const TYPES = [
     { key: 'bug', kind: 'bug', label: t('fbBug'), icon: Bug, color: '#FF6B6B' },

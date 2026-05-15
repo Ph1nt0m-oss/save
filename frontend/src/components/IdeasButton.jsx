@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Lightbulb, X, Send, Trash2, Bug, MoreHorizontal, ListFilter } from 'lucide-react';
+import { Lightbulb, X, Send, Trash2, Bug, MoreHorizontal, ListFilter, Check, AlertTriangle, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
@@ -121,6 +121,19 @@ export default function IdeasButton() {
       setIdeas((ls) => ls.filter((x) => x.idea_id !== idea_id));
     } catch (_) {}
   };
+
+  const setIdeaState = async (idea_id, state) => {
+    try {
+      const body = await withCreatorProof(API, axios, { idea_id, state });
+      await axios.post(`${API}/ideas/set-state`, body);
+      // Optimistic update
+      setIdeas((ls) => ls.map((x) => x.idea_id === idea_id ? { ...x, state: state === 'reset' ? null : state } : x));
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Erreur');
+    }
+  };
+
+  const isStaff = isCreator || device.staffKind === 'admin' || device.staffKind === 'modo';
 
   if (!device.keyId) {
     return (
@@ -281,6 +294,19 @@ export default function IdeasButton() {
                           </button>
                         </div>
                         <div className="text-sm text-white whitespace-pre-wrap break-words">{idea.content || <em className="text-[#71717A]">(message vide)</em>}</div>
+                        {isStaff && (
+                          <div className="flex items-center gap-1 mt-1.5">
+                            <button onClick={() => setIdeaState(idea.idea_id, 'validated')} data-testid={`idea-validate-${idea.idea_id}`} title="Validé" className={`text-[11px] px-1.5 py-0.5 rounded-sm border ${idea.state === 'validated' ? 'border-green-500 bg-green-500/15 text-green-300' : 'border-green-500/40 text-green-300 hover:bg-green-500/10'}`}><Check className="w-3 h-3 inline" /></button>
+                            <button onClick={() => setIdeaState(idea.idea_id, 'refused')} data-testid={`idea-refuse-${idea.idea_id}`} title="Refusé" className={`text-[11px] px-1.5 py-0.5 rounded-sm border ${idea.state === 'refused' ? 'border-red-500 bg-red-500/15 text-red-300' : 'border-red-500/40 text-red-300 hover:bg-red-500/10'}`}><X className="w-3 h-3 inline" /></button>
+                            <button onClick={() => setIdeaState(idea.idea_id, 'orange')} data-testid={`idea-orange-${idea.idea_id}`} title="Seule la créa peut" className={`text-[11px] px-1.5 py-0.5 rounded-sm border ${idea.state === 'orange' ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-orange-500/40 text-orange-300 hover:bg-orange-500/10'}`}><KeyRound className="w-3 h-3 inline" /></button>
+                            {idea.state && idea.state !== null && (
+                              <button onClick={() => setIdeaState(idea.idea_id, 'reset')} title="Réinitialiser" className="text-[10px] text-[#A1A1AA] hover:text-white ml-1"><AlertTriangle className="w-3 h-3 inline" /></button>
+                            )}
+                            {idea.state_actor && idea.state && (
+                              <span className="text-[9px] text-[#71717A] uppercase tracking-widest ml-auto">par {idea.state_actor}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

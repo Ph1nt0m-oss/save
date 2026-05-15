@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { Megaphone, X, Plus, Trash2, BarChart3 } from 'lucide-react';
+import { Megaphone, X, Plus, Trash2, BarChart3, Edit3, Check, AlertTriangle, KeyRound, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
@@ -8,12 +8,48 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// iter77 — Groupes d'audience disponibles. Multi-select via cases à cocher.
+const AUDIENCE_GROUPS = [
+  { id: 'all', label: 'Tout le monde' },
+  { id: 'approved', label: 'Clés validées' },
+  { id: 'non_validated', label: 'Clés non validées' },
+  { id: 'admin', label: 'Admins' },
+  { id: 'modo', label: 'Modos' },
+];
+
+function AudiencePicker({ value, onChange, testid = 'audience' }) {
+  const v = Array.isArray(value) ? value : [value || 'all'];
+  const toggle = (id) => {
+    if (id === 'all') return onChange(['all']);
+    const next = new Set(v.filter((x) => x !== 'all'));
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(next.size ? Array.from(next) : ['all']);
+  };
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap" data-testid={testid}>
+      <span className="text-xs text-[#A1A1AA] mr-1">Audience :</span>
+      {AUDIENCE_GROUPS.map((g) => {
+        const on = v.includes(g.id);
+        return (
+          <label key={g.id} data-testid={`${testid}-${g.id}`} className={`text-[11px] inline-flex items-center gap-1 px-2 py-1 rounded-sm border cursor-pointer transition ${on ? 'border-[#E4FF00]/50 bg-[#E4FF00]/10 text-[#E4FF00]' : 'border-white/10 text-[#A1A1AA] hover:text-white'}`}>
+            <input type="checkbox" checked={on} onChange={() => toggle(g.id)} className="accent-[#E4FF00] w-3 h-3" />
+            {g.label}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function formatAud(aud) {
+  if (!aud) return 'tout le monde';
+  const list = Array.isArray(aud) ? aud : [aud];
+  return list.map((g) => AUDIENCE_GROUPS.find((x) => x.id === g)?.label || g).join(', ');
+}
+
 /**
- * 📣 Announce + Poll launcher (creator-only).
- * - Announce: title + body, audience = all | approved
- * - Poll: question + options, audience = all | approved
- *
- * Visitors see the banner via <AnnouncementsBanner /> elsewhere.
+ * 📣 Announce + Poll + Scheduled-kick launcher (creator-only). iter77.
  */
 export default function AnnounceButton() {
   const device = useDeviceIdentity();
@@ -25,16 +61,20 @@ export default function AnnounceButton() {
   // Announce form
   const [aTitle, setATitle] = useState('');
   const [aBody, setABody] = useState('');
-  const [aAud, setAAud] = useState('all');
+  const [aAud, setAAud] = useState(['all']);  // iter77 — multi-select
   // Poll form
   const [pQ, setPQ] = useState('');
   const [pOpts, setPOpts] = useState(['', '']);
-  const [pAud, setPAud] = useState('all');
-  const [pMaxSel, setPMaxSel] = useState(1); // iter76 — min 1
+  const [pAud, setPAud] = useState(['all']);  // iter77 — multi-select
+  const [pMaxSel, setPMaxSel] = useState(0);  // iter77 — 0 = illimité
+  const [pAllowSugg, setPAllowSugg] = useState(false);  // iter77
   // Scheduled disconnect form
   const [skMinutes, setSkMinutes] = useState(5);
   const [skNote, setSkNote] = useState('');
+  const [skAud, setSkAud] = useState(['all']);  // iter77 — multi-select
   const [scheduledKicks, setScheduledKicks] = useState([]);
+  // Edit state
+  const [editing, setEditing] = useState(null);  // {kind:'ann'|'poll', id, payload}
 
   const [items, setItems] = useState({ announcements: [], polls: [] });
 
@@ -57,7 +97,8 @@ export default function AnnounceButton() {
   const publishAnnounce = async () => {
     if (!aTitle.trim()) return toast.error(t('ann_subject') + ' ?');
     try {
-      const body = await withCreatorProof(API, axios, { title: aTitle.trim(), body: aBody.trim(), audience: aAud });
+      const aud = aAud.length ? aAud : ['all'];
+      const body = await withCreatorProof(API, axios, { title: aTitle.trim(), body: aBody.trim(), audience: aud });
       await axios.post(`${API}/announcements/create`, body);
       toast.success(t('ann_created'));
       setATitle(''); setABody(''); setOpen(false);
@@ -66,13 +107,66 @@ export default function AnnounceButton() {
 
   const publishPoll = async () => {
     const opts = pOpts.map((o) => o.trim()).filter(Boolean);
-    if (!pQ.trim() || opts.length < 2) return toast.error('?');
-    const maxSel = Math.max(1, Math.min(parseInt(pMaxSel || 1, 10), opts.length));
+    if (!pQ.trim() || opts.length < 2) return toast.error('Question + 2 options requis');
+    const maxSel = Math.max(0, parseInt(pMaxSel || 0, 10) || 0);  // iter77 — 0 = illimité
     try {
-      const body = await withCreatorProof(API, axios, { question: pQ.trim(), options: opts, audience: pAud, max_selections: maxSel });
+      const aud = pAud.length ? pAud : ['all'];
+      const body = await withCreatorProof(API, axios, {
+        question: pQ.trim(), options: opts, audience: aud,
+        max_selections: maxSel, allow_user_suggestions: pAllowSugg,
+      });
       await axios.post(`${API}/polls/create`, body);
       toast.success(t('ann_created'));
-      setPQ(''); setPOpts(['', '']); setPMaxSel(1); setOpen(false);
+      setPQ(''); setPOpts(['', '']); setPMaxSel(0); setPAllowSugg(false); setOpen(false);
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
+  };
+
+  const editAnnSave = async () => {
+    if (!editing || editing.kind !== 'ann') return;
+    try {
+      const body = await withCreatorProof(API, axios, {
+        announce_id: editing.id,
+        title: editing.payload.title, body: editing.payload.body,
+        audience: editing.payload.audience,
+      });
+      await axios.post(`${API}/announcements/edit`, body);
+      toast.success('Annonce modifiée — réenvoyée à tous');
+      setEditing(null);
+      loadManage();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
+  };
+
+  const editPollSave = async () => {
+    if (!editing || editing.kind !== 'poll') return;
+    try {
+      const body = await withCreatorProof(API, axios, {
+        poll_id: editing.id,
+        question: editing.payload.question,
+        options: editing.payload.options,
+        audience: editing.payload.audience,
+        max_selections: editing.payload.max_selections,
+        allow_user_suggestions: editing.payload.allow_user_suggestions,
+      });
+      await axios.post(`${API}/polls/edit`, body);
+      toast.success('Sondage modifié — votes réinitialisés si options changent');
+      setEditing(null);
+      loadManage();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
+  };
+
+  const decideSuggestion = async (suggestion_id, decision) => {
+    try {
+      const body = await withCreatorProof(API, axios, { suggestion_id, decision });
+      await axios.post(`${API}/polls/decide-suggestion`, body);
+      loadManage();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
+  };
+
+  const setAnnState = async (announce_id, state) => {
+    try {
+      const body = await withCreatorProof(API, axios, { announce_id, state });
+      await axios.post(`${API}/announcements/set-state`, body);
+      loadManage();
     } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
   };
 
@@ -88,7 +182,12 @@ export default function AnnounceButton() {
 
   const scheduleKick = async () => {
     try {
-      const body = await withCreatorProof(API, axios, { minutes: parseInt(skMinutes || 0, 10), note: skNote.trim() });
+      const aud = skAud.length ? skAud : ['all'];
+      const body = await withCreatorProof(API, axios, {
+        minutes: parseInt(skMinutes || 0, 10),
+        note: skNote.trim(),
+        audience: aud,
+      });
       await axios.post(`${API}/system/schedule-kick`, body);
       toast.success(`Déconnexion programmée dans ${skMinutes} min`);
       setSkNote('');
@@ -151,12 +250,7 @@ export default function AnnounceButton() {
                 <>
                   <input value={aTitle} onChange={(e) => setATitle(e.target.value)} placeholder={t('ann_subject')} data-testid="ann-title" className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white placeholder-[#71717A] focus:outline-none focus:border-[#E4FF00]" />
                   <textarea value={aBody} onChange={(e) => setABody(e.target.value)} placeholder={t('ann_body')} data-testid="ann-body" rows={5} className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white placeholder-[#71717A] focus:outline-none focus:border-[#E4FF00] resize-none" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#A1A1AA]">{t('ann_audience')}</span>
-                    {['all', 'approved'].map((v) => (
-                      <button key={v} onClick={() => setAAud(v)} data-testid={`ann-aud-${v}`} className={`text-[11px] px-2 py-1 rounded-sm border ${aAud === v ? 'border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10' : 'border-white/10 text-[#A1A1AA]'}`}>{t(v === 'all' ? 'ann_aud_all' : 'ann_aud_approved')}</button>
-                    ))}
-                  </div>
+                  <AudiencePicker value={aAud} onChange={setAAud} testid="ann-aud" />
                   <button onClick={publishAnnounce} data-testid="ann-publish" className="w-full px-3 py-2 bg-[#E4FF00] text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm hover:bg-white transition">{t('ann_create_btn')}</button>
                 </>
               )}
@@ -170,24 +264,20 @@ export default function AnnounceButton() {
                       {pOpts.length > 2 && <button onClick={() => setPOpts((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-300 p-1"><X className="w-3.5 h-3.5" /></button>}
                     </div>
                   ))}
-                  {pOpts.length < 10 && (
+                  {pOpts.length < 50 && (
                     <button onClick={() => setPOpts((arr) => [...arr, ''])} data-testid="poll-add-opt" className="inline-flex items-center gap-1 text-xs text-[#E4FF00] hover:text-white transition"><Plus className="w-3 h-3" />{t('poll_add_option')}</button>
                   )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-[#A1A1AA]">{t('ann_audience')}</span>
-                    {['all', 'approved'].map((v) => (
-                      <button key={v} onClick={() => setPAud(v)} className={`text-[11px] px-2 py-1 rounded-sm border ${pAud === v ? 'border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10' : 'border-white/10 text-[#A1A1AA]'}`}>{t(v === 'all' ? 'ann_aud_all' : 'ann_aud_approved')}</button>
-                    ))}
-                    <span className="text-xs text-[#A1A1AA] ml-2">Choix max/voter</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={Math.max(2, pOpts.filter((o) => o.trim()).length || 2)}
-                      value={pMaxSel}
-                      onChange={(e) => setPMaxSel(Math.max(1, parseInt(e.target.value || '1', 10) || 1))}
-                      data-testid="poll-max-sel"
-                      className="w-16 bg-black/40 border border-white/10 rounded-sm px-2 py-1 text-xs text-white focus:outline-none focus:border-[#E4FF00]"
-                    />
+                  <AudiencePicker value={pAud} onChange={setPAud} testid="poll-aud" />
+                  <div className="flex items-center gap-3 flex-wrap text-xs">
+                    <label className="inline-flex items-center gap-1.5 text-[#A1A1AA]">
+                      Choix max/voter
+                      <input type="number" min={0} max={50} value={pMaxSel} onChange={(e) => setPMaxSel(Math.max(0, parseInt(e.target.value || '0', 10) || 0))} data-testid="poll-max-sel" className="w-16 bg-black/40 border border-white/10 rounded-sm px-2 py-1 text-xs text-white focus:outline-none focus:border-[#E4FF00]" />
+                      <span className="text-[10px] text-[#71717A]">(0 = illimité)</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 text-[#A1A1AA] cursor-pointer">
+                      <input type="checkbox" checked={pAllowSugg} onChange={(e) => setPAllowSugg(e.target.checked)} data-testid="poll-allow-sugg" className="accent-[#E4FF00]" />
+                      Autoriser réponses perso (validation créa)
+                    </label>
                   </div>
                   <button onClick={publishPoll} data-testid="poll-publish" className="w-full px-3 py-2 bg-[#E4FF00] text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm hover:bg-white transition">{t('ann_create_btn')}</button>
                 </>
@@ -195,20 +285,21 @@ export default function AnnounceButton() {
 
               {tab === 'kick' && (
                 <>
-                  <div className="text-xs text-[#A1A1AA]">Programme la déconnexion de tous les utilisateurs (toi exclue) dans X minutes. Optionnel : ajouter une annonce publiée tout de suite.</div>
+                  <div className="text-xs text-[#A1A1AA]">Programme la déconnexion dans X minutes pour l'audience cochée (toi exclue).</div>
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-white">Dans</label>
                     <input type="number" min={0} max={1440} value={skMinutes} onChange={(e) => setSkMinutes(Math.max(0, parseInt(e.target.value || '0', 10) || 0))} data-testid="kick-minutes" className="w-20 bg-black/40 border border-white/10 rounded-sm px-2 py-1 text-sm text-white focus:outline-none focus:border-[#E4FF00]" />
                     <label className="text-xs text-white">min</label>
                   </div>
                   <input value={skNote} onChange={(e) => setSkNote(e.target.value)} placeholder="Message d'annonce (facultatif)" data-testid="kick-note" className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white placeholder-[#71717A] focus:outline-none focus:border-[#E4FF00]" />
+                  <AudiencePicker value={skAud} onChange={setSkAud} testid="kick-aud" />
                   <button onClick={scheduleKick} data-testid="kick-schedule" className="w-full px-3 py-2 bg-[#E4FF00] text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm hover:bg-white transition">Programmer</button>
                   {scheduledKicks.length > 0 && (
                     <div className="mt-2 space-y-1">
                       <div className="text-[10px] uppercase tracking-widest text-[#71717A]">En cours</div>
                       {scheduledKicks.map((k) => (
                         <div key={k.kick_id} data-testid={`kick-row-${k.kick_id}`} className="flex items-center justify-between bg-black/30 border border-white/10 rounded-sm p-2 text-xs">
-                          <span className="text-white">Dans {k.minutes} min — à {new Date(k.execute_at).toLocaleTimeString()}</span>
+                          <span className="text-white">Dans {k.minutes} min — à {new Date(k.execute_at).toLocaleTimeString()} → {formatAud(k.audience)}</span>
                           <button onClick={() => cancelKick(k.kick_id)} data-testid={`kick-cancel-${k.kick_id}`} className="text-red-300 hover:text-red-400 p-1"><X className="w-3.5 h-3.5" /></button>
                         </div>
                       ))}
@@ -227,21 +318,44 @@ export default function AnnounceButton() {
                   {items.announcements.length === 0 && items.polls.length === 0 && (
                     <div className="text-xs text-[#A1A1AA] py-4 text-center">{t('ann_empty')}</div>
                   )}
-                  {items.announcements.map((a) => (
-                    <div key={a.announce_id} className="bg-black/30 border border-white/10 rounded-sm p-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-['Chivo'] font-bold text-white truncate">{a.title}</div>
-                        <button onClick={() => deleteAnn(a.announce_id)} className="text-[#A1A1AA] hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                  {items.announcements.map((a) => {
+                    const staffStates = a.staff_states || [];
+                    const counts = { validated: 0, refused: 0, orange: 0 };
+                    staffStates.forEach((s) => { if (counts[s.state] !== undefined) counts[s.state]++; });
+                    const my = a.my_state;
+                    return (
+                      <div key={a.announce_id} data-testid={`manage-ann-${a.announce_id}`} className="bg-black/30 border border-white/10 rounded-sm p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm font-['Chivo'] font-bold text-white truncate flex-1">{a.title}</div>
+                          <button onClick={() => setEditing({ kind: 'ann', id: a.announce_id, payload: { title: a.title, body: a.body || '', audience: a.audience } })} data-testid={`ann-edit-${a.announce_id}`} title="Modifier" className="text-[#A1A1AA] hover:text-[#E4FF00] p-1"><Edit3 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteAnn(a.announce_id)} title="Supprimer" className="text-[#A1A1AA] hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                        {a.body && <div className="text-xs text-[#A1A1AA] mt-1 whitespace-pre-wrap break-words">{a.body}</div>}
+                        <div className="text-[9px] text-[#71717A] mt-1 uppercase tracking-widest">→ {formatAud(a.audience)} · {new Date(a.ts).toLocaleString()}{a.updated_at ? ' (modifiée)' : ''}</div>
+                        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                          <button onClick={() => setAnnState(a.announce_id, 'validated')} data-testid={`manage-ann-validate-${a.announce_id}`} className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${my === 'validated' ? 'border-green-500 bg-green-500/15 text-green-300' : 'border-green-500/40 text-green-300 hover:bg-green-500/10'}`} title="Validé">✅</button>
+                          <button onClick={() => setAnnState(a.announce_id, 'refused')} data-testid={`manage-ann-refuse-${a.announce_id}`} className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${my === 'refused' ? 'border-red-500 bg-red-500/15 text-red-300' : 'border-red-500/40 text-red-300 hover:bg-red-500/10'}`} title="Refusé">❌</button>
+                          <button onClick={() => setAnnState(a.announce_id, 'orange')} data-testid={`manage-ann-orange-${a.announce_id}`} className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${my === 'orange' ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-orange-500/40 text-orange-300 hover:bg-orange-500/10'}`} title="Seule la créa peut"><KeyRound className="w-3 h-3 inline" /></button>
+                          {(my || staffStates.length > 0) && (
+                            <button onClick={() => setAnnState(a.announce_id, 'reset')} data-testid={`manage-ann-reset-${a.announce_id}`} className="text-[10px] px-1.5 py-0.5 rounded-sm border border-white/15 text-[#A1A1AA] hover:bg-white/5" title="Réinitialiser"><RotateCcw className="w-3 h-3 inline" /></button>
+                          )}
+                          {(counts.validated + counts.refused + counts.orange) > 0 && (
+                            <span className="text-[10px] text-[#A1A1AA] inline-flex items-center gap-1.5 ml-1">
+                              <Check className="w-3 h-3 text-green-400" />{counts.validated}
+                              <X className="w-3 h-3 text-red-400" />{counts.refused}
+                              <AlertTriangle className="w-3 h-3 text-orange-400" />{counts.orange}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {a.body && <div className="text-xs text-[#A1A1AA] mt-1 whitespace-pre-wrap break-words">{a.body}</div>}
-                      <div className="text-[9px] text-[#71717A] mt-1 uppercase tracking-widest">{a.audience} · {new Date(a.ts).toLocaleString()}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {items.polls.map((p) => (
-                    <div key={p.poll_id} className="bg-black/30 border border-white/10 rounded-sm p-2.5">
+                    <div key={p.poll_id} data-testid={`manage-poll-${p.poll_id}`} className="bg-black/30 border border-white/10 rounded-sm p-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-['Chivo'] font-bold text-white truncate inline-flex items-center gap-2"><BarChart3 className="w-3.5 h-3.5 text-[#E4FF00]" />{p.question}</div>
-                        <button onClick={() => deletePoll(p.poll_id)} className="text-[#A1A1AA] hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <div className="text-sm font-['Chivo'] font-bold text-white truncate flex-1 inline-flex items-center gap-2"><BarChart3 className="w-3.5 h-3.5 text-[#E4FF00]" />{p.question}</div>
+                        <button onClick={() => setEditing({ kind: 'poll', id: p.poll_id, payload: { question: p.question, options: [...(p.options || [])], audience: p.audience, max_selections: p.max_selections || 0, allow_user_suggestions: !!p.allow_user_suggestions } })} data-testid={`poll-edit-${p.poll_id}`} title="Modifier" className="text-[#A1A1AA] hover:text-[#E4FF00] p-1"><Edit3 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => deletePoll(p.poll_id)} title="Supprimer" className="text-[#A1A1AA] hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                       <div className="mt-1 space-y-1">
                         {p.options.map((o, idx) => {
@@ -256,9 +370,90 @@ export default function AnnounceButton() {
                           );
                         })}
                       </div>
-                      <div className="text-[9px] text-[#71717A] mt-1 uppercase tracking-widest">{p.audience} · max {p.max_selections || 1} choix · {p.voters || 0} vote{(p.voters || 0) > 1 ? 's' : ''} · {new Date(p.ts).toLocaleString()}</div>
+                      <div className="text-[9px] text-[#71717A] mt-1 uppercase tracking-widest">→ {formatAud(p.audience)} · max {p.max_selections === 0 ? '∞' : (p.max_selections || 1)} · {p.voters || 0} vote{(p.voters || 0) > 1 ? 's' : ''} · {new Date(p.ts).toLocaleString()}</div>
+                      {/* Propositions perso */}
+                      {p.suggestions && p.suggestions.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
+                          <div className="text-[10px] uppercase tracking-widest text-[#71717A]">Propositions</div>
+                          {p.suggestions.map((s) => (
+                            <div key={s.suggestion_id} data-testid={`sugg-${s.suggestion_id}`} className="flex items-center gap-2 text-[11px]">
+                              <span className="flex-1 text-white truncate">« {s.text} » — {s.pseudo}</span>
+                              <span className={`text-[9px] uppercase ${s.status === 'approved' ? 'text-green-400' : s.status === 'removed' ? 'text-red-400' : 'text-amber-300'}`}>{s.status}</span>
+                              {s.status === 'pending' && (
+                                <>
+                                  <button onClick={() => decideSuggestion(s.suggestion_id, 'approve')} data-testid={`sugg-approve-${s.suggestion_id}`} className="text-green-300 hover:bg-green-500/10 p-0.5 rounded-sm"><Check className="w-3 h-3" /></button>
+                                  <button onClick={() => decideSuggestion(s.suggestion_id, 'remove')} data-testid={`sugg-remove-${s.suggestion_id}`} className="text-red-300 hover:bg-red-500/10 p-0.5 rounded-sm"><X className="w-3 h-3" /></button>
+                                </>
+                              )}
+                              {s.status === 'approved' && (
+                                <button onClick={() => decideSuggestion(s.suggestion_id, 'remove')} title="Retirer" className="text-red-300 hover:bg-red-500/10 p-0.5 rounded-sm"><X className="w-3 h-3" /></button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Voters detail */}
+                      {p.voters_detail && p.voters_detail.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-white/10">
+                          <div className="text-[10px] uppercase tracking-widest text-[#71717A] mb-0.5">Qui a voté</div>
+                          <div className="text-[10px] text-white space-y-0.5 max-h-32 overflow-y-auto">
+                            {p.voters_detail.map((v) => (
+                              <div key={v.voter_key_id} className="flex justify-between gap-2">
+                                <span className="truncate">{v.pseudo}</span>
+                                <span className="text-[#71717A]">→ {(v.option_indices || []).map((i) => p.options[i]).filter(Boolean).join(', ')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* iter77 — Edit modal */}
+      {editing && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 backdrop-blur-sm p-2 sm:p-4" onClick={() => setEditing(null)} data-testid="edit-modal">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xl max-h-[85vh] bg-[#0A0A0A] border border-[#E4FF00]/30 rounded-sm flex flex-col overflow-hidden">
+            <header className="px-3 py-3 border-b border-white/10 flex items-center gap-2">
+              <Edit3 className="w-4 h-4 text-[#E4FF00]" />
+              <h2 className="text-sm font-['Chivo'] font-bold text-white">Modifier {editing.kind === 'ann' ? 'annonce' : 'sondage'}</h2>
+              <button onClick={() => setEditing(null)} className="ml-auto text-[#A1A1AA] hover:text-white"><X className="w-4 h-4" /></button>
+            </header>
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {editing.kind === 'ann' ? (
+                <>
+                  <input value={editing.payload.title} onChange={(e) => setEditing((p) => ({ ...p, payload: { ...p.payload, title: e.target.value } }))} placeholder="Titre" data-testid="edit-ann-title" className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white focus:outline-none focus:border-[#E4FF00]" />
+                  <textarea value={editing.payload.body} onChange={(e) => setEditing((p) => ({ ...p, payload: { ...p.payload, body: e.target.value } }))} rows={4} placeholder="Détails" data-testid="edit-ann-body" className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white focus:outline-none focus:border-[#E4FF00] resize-none" />
+                  <AudiencePicker value={editing.payload.audience} onChange={(aud) => setEditing((p) => ({ ...p, payload: { ...p.payload, audience: aud } }))} testid="edit-ann-aud" />
+                  <button onClick={editAnnSave} data-testid="edit-ann-save" className="w-full px-3 py-2 bg-[#E4FF00] text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm">Enregistrer + renvoyer</button>
+                </>
+              ) : (
+                <>
+                  <input value={editing.payload.question} onChange={(e) => setEditing((p) => ({ ...p, payload: { ...p.payload, question: e.target.value } }))} placeholder="Question" data-testid="edit-poll-q" className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white focus:outline-none focus:border-[#E4FF00]" />
+                  {editing.payload.options.map((o, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input value={o} onChange={(e) => setEditing((p) => ({ ...p, payload: { ...p.payload, options: p.payload.options.map((x, idx) => idx === i ? e.target.value : x) } }))} className="flex-1 bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-white" />
+                      {editing.payload.options.length > 2 && <button onClick={() => setEditing((p) => ({ ...p, payload: { ...p.payload, options: p.payload.options.filter((_, idx) => idx !== i) } }))} className="text-red-300 p-1"><X className="w-3.5 h-3.5" /></button>}
+                    </div>
+                  ))}
+                  <button onClick={() => setEditing((p) => ({ ...p, payload: { ...p.payload, options: [...p.payload.options, ''] } }))} className="inline-flex items-center gap-1 text-xs text-[#E4FF00]"><Plus className="w-3 h-3" />Ajouter option</button>
+                  <AudiencePicker value={editing.payload.audience} onChange={(aud) => setEditing((p) => ({ ...p, payload: { ...p.payload, audience: aud } }))} testid="edit-poll-aud" />
+                  <div className="flex items-center gap-3 flex-wrap text-xs">
+                    <label className="inline-flex items-center gap-1.5 text-[#A1A1AA]">
+                      Choix max
+                      <input type="number" min={0} value={editing.payload.max_selections} onChange={(e) => setEditing((p) => ({ ...p, payload: { ...p.payload, max_selections: Math.max(0, parseInt(e.target.value || '0', 10) || 0) } }))} className="w-16 bg-black/40 border border-white/10 rounded-sm px-2 py-1 text-xs text-white" />
+                      <span className="text-[10px] text-[#71717A]">(0 = illimité)</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 text-[#A1A1AA] cursor-pointer">
+                      <input type="checkbox" checked={!!editing.payload.allow_user_suggestions} onChange={(e) => setEditing((p) => ({ ...p, payload: { ...p.payload, allow_user_suggestions: e.target.checked } }))} className="accent-[#E4FF00]" />
+                      Réponses perso
+                    </label>
+                  </div>
+                  <button onClick={editPollSave} data-testid="edit-poll-save" className="w-full px-3 py-2 bg-[#E4FF00] text-[#050505] rounded-sm font-['Chivo'] font-bold text-sm">Enregistrer + renvoyer</button>
                 </>
               )}
             </div>
