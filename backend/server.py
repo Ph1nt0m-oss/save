@@ -538,8 +538,14 @@ async def _send_via_smtp(to_email: str, subject: str, html: str, reply_to: Optio
         msg["From"] = sender
         msg["To"] = to_email
         msg["Subject"] = subject
-        if reply_to:
-            msg["Reply-To"] = reply_to
+        # No-reply enforcement: replies bounce on the IETF-reserved .invalid
+        # TLD (RFC 2606), so they never reach SMTP_USER's mailbox — even the
+        # creator can't receive a reply. Auto-Submitted (RFC 3834) tells
+        # well-behaved MTAs to suppress auto-responders / out-of-office
+        # bounces. Callers may still override Reply-To explicitly.
+        msg["Reply-To"] = reply_to or "no-reply@codeforge-ai.invalid"
+        msg["Auto-Submitted"] = "auto-generated"
+        msg["X-Auto-Response-Suppress"] = "All"
         # plain-text fallback for spam filters
         msg.set_content("Ce mail contient du HTML. Active l'affichage HTML dans ton client.")
         msg.add_alternative(html, subtype="html")
@@ -574,9 +580,13 @@ async def _send_via_resend(to_email: str, subject: str, html: str, reply_to: Opt
                 json={
                     "from": sender,
                     "to": [to_email],
-                    "reply_to": reply_to or os.environ.get("EMAIL_REPLY_TO", "commandes.et.publicites@gmail.com"),
+                    "reply_to": reply_to or "no-reply@codeforge-ai.invalid",
                     "subject": subject,
                     "html": html,
+                    "headers": {
+                        "Auto-Submitted": "auto-generated",
+                        "X-Auto-Response-Suppress": "All",
+                    },
                 },
             )
             if resp.status_code in (200, 202):
@@ -612,11 +622,11 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
         f"Confirmer mon compte</a></p>"
         f"<p style='color:#A1A1AA;font-size:12px;margin:24px 0 8px'>Ou copie ce lien dans ton navigateur (Chrome, Safari, Firefox)&nbsp;:<br>"
         f"<span style='color:#00D4FF;word-break:break-all;font-size:11px'>{verify_url}</span></p>"
-        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 5 minutes.</p>"
+        f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'><strong>Ce lien expire dans 5 minutes.</strong> Passé ce délai, il sera invalide et tu devras recommencer l'inscription.</p>"
         f"<p style='color:#A1A1AA;font-size:12px'>Astuce&nbsp;: si le bouton ouvre une page bloquée, copie-colle le lien dans ton navigateur principal (Chrome, Safari…).</p>"
         f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>"
         f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
-        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
+        f"<p style='color:#71717A;font-size:11px;margin:0'>Courriel automatique — <strong>ne réponds pas</strong>. Toute réponse sera rejetée par le serveur, personne ne la lira.</p>"
         f"</div>"
     )
     ok = await _send_email(to_email, "Confirme ton compte CodeForge AI", html)
@@ -1506,7 +1516,7 @@ async def send_reset_email(to_email: str, reset_url: str) -> bool:
         f"<p style='color:#A1A1AA;font-size:12px;margin-top:24px'>Ce lien expire dans 30 minutes. Tant que tu ne cliques pas, ton ancien mot de passe reste valide.</p>"
         f"<p style='color:#A1A1AA;font-size:12px'>Si tu n'es pas à l'origine de cette demande, ignore cet email — ton mot de passe actuel reste inchangé.</p>"
         f"<hr style='border:none;border-top:1px solid rgba(255,255,255,.1);margin:24px 0'>"
-        f"<p style='color:#71717A;font-size:11px;margin:0'>Ce courriel a été envoyé automatiquement, merci de ne pas y répondre.</p>"
+        f"<p style='color:#71717A;font-size:11px;margin:0'>Courriel automatique — <strong>ne réponds pas</strong>. Toute réponse sera rejetée par le serveur, personne ne la lira.</p>"
         f"</div>"
     )
     ok = await _send_email(to_email, "Confirme la réinitialisation de ton mot de passe CodeForge AI", html)
