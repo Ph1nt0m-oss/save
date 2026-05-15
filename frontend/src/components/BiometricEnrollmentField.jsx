@@ -235,7 +235,7 @@ export default function BiometricEnrollmentField({ value, onChange, email, disab
  * to compute live movement deltas — a still photograph held in front of the
  * camera fails the liveness checks because the per-frame diff stays near 0.
  */
-function IrisFullscreenWizard({ onCancel, onDone }) {
+export function IrisFullscreenWizard({ onCancel, onDone }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -245,12 +245,19 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
   const recentSamplesRef = useRef([]); // (frame timestamp, diff) for the active pose
 
   const [streamReady, setStreamReady] = useState(false);
-  const [step, setStep] = useState(0); // 0 = warm-up & glasses check, 1..3 = pose challenges, 4 = done
+  // step semantics — iter71:
+  //   0 = "Approche ton visage du cercle bleu" (auto-progress when faceVariance > THRESH)
+  //   1 = glasses check (1.5s)
+  //   2..4 = pose challenges (3 random poses)
+  //   5 = done, exiting
+  const [step, setStep] = useState(0);
   const [poses] = useState(() => shuffle(POSES));
   const [glassesAlert, setGlassesAlert] = useState(false);
   const [statusMsg, setStatusMsg] = useState('Initialisation de la caméra…');
   const [hashes, setHashes] = useState([]);
   const [activePoseProgress, setActivePoseProgress] = useState(0); // 0..100
+  // 0..100 — progress of the face-approach detection, drives the cyan ring tween
+  const [approachProgress, setApproachProgress] = useState(0);
 
   const stopStream = useCallback(() => {
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -276,7 +283,7 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
           await videoRef.current.play();
         }
         setStreamReady(true);
-        setStatusMsg('Vérification des lunettes…');
+        setStatusMsg('Approche ton visage du cercle bleu');
       } catch (e) {
         setStatusMsg('Impossible d\'accéder à la caméra. Vérifie les permissions et recommence.');
       }
@@ -319,9 +326,34 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [streamReady]);
 
-  // Step 0: glasses pre-check + warm-up
+  // Step 0: face-approach detection — auto-advance once the face fills
+  // the centre circle. We poll faceVariance at ~10 Hz; a flat wall gives
+  // <250, a real face crowded near the camera gives 800-1800. We require
+  // 6 consecutive hits above APPROACH_THRESHOLD to advance, debouncing
+  // brief noise.
   useEffect(() => {
     if (!streamReady || step !== 0) return;
+    const APPROACH_THRESHOLD = 500;
+    const REQUIRED_HITS = 6;
+    let hits = 0;
+    const id = setInterval(() => {
+      const v = faceVariance(lastFrameRef.current);
+      const pct = Math.min(100, Math.round((v / APPROACH_THRESHOLD) * 70 + (hits / REQUIRED_HITS) * 30));
+      setApproachProgress(pct);
+      if (v > APPROACH_THRESHOLD) hits++;
+      else hits = Math.max(0, hits - 1);
+      if (hits >= REQUIRED_HITS) {
+        clearInterval(id);
+        setStep(1);
+        setStatusMsg('Vérification des lunettes…');
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [streamReady, step]);
+
+  // Step 1: glasses pre-check (auto-advances after 1.5s).
+  useEffect(() => {
+    if (!streamReady || step !== 1) return;
     const t = setTimeout(() => {
       try {
         const last = lastFrameRef.current;
@@ -330,27 +362,27 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
           setStatusMsg('Veuillez enlever vos lunettes pour une identification infaillible.');
         } else {
           setGlassesAlert(false);
-          setStep(1);
+          setStep(2);
           recentSamplesRef.current = [];
           setActivePoseProgress(0);
           setStatusMsg(poses[0].label);
         }
       } catch (_) {}
-    }, 1500); // give 1.5s for camera autoexposure + face placement
+    }, 1500);
     return () => clearTimeout(t);
   }, [streamReady, step, poses]);
 
-  // Steps 1..3: pose challenges. We need a sustained burst of movement
+  // Steps 2..4: pose challenges. We need a sustained burst of movement
   // (avg diff > MOVE_MIN over the last ~1.5s) to consider the pose "done".
   // A static photo held in front of the camera produces near-zero diff
   // because the only varying pixels are background noise — it will never
   // reach the threshold required to advance through the 3 challenges.
   useEffect(() => {
-    if (step < 1 || step > 3) return;
+    if (step < 2 || step > 4) return;
     recentSamplesRef.current = [];
     setActivePoseProgress(0);
-    const MOVE_MIN = 4.0;     // ~3-5 = empirical floor for genuine motion
-    const REQUIRED_HITS = 12; // about 0.4s at 30fps of active motion
+    const MOVE_MIN = 4.0;
+    const REQUIRED_HITS = 12;
     let hits = 0;
     const id = setInterval(() => {
       const samples = recentSamplesRef.current;
@@ -362,7 +394,6 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
       else hits = Math.max(0, hits - 1);
       if (hits >= REQUIRED_HITS) {
         clearInterval(id);
-        // Capture the final frame for this pose and hash it
         const c = canvasRef.current;
         if (c) {
           c.toBlob(async (blob) => {
@@ -370,12 +401,12 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
             const h = await sha256B64(blob);
             const next = [...hashes, h];
             setHashes(next);
-            if (step < 3) {
+            if (step < 4) {
               setStep(step + 1);
-              setStatusMsg(poses[step].label);
+              setStatusMsg(poses[step - 1].label);
             } else {
               setStatusMsg('Iris enregistré !');
-              setStep(4);
+              setStep(5);
               setTimeout(() => { stopStream(); onDone(next); }, 600);
             }
           }, 'image/jpeg', 0.85);
@@ -388,7 +419,7 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
 
   const dismiss = () => { stopStream(); onCancel(); };
 
-  const CurrentPose = step >= 1 && step <= 3 ? poses[step - 1] : null;
+  const CurrentPose = step >= 2 && step <= 4 ? poses[step - 2] : null;
   const CurrentIcon = CurrentPose?.icon;
 
   // iter70: render through a Portal so the parent Login card's
@@ -404,7 +435,7 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
         <div className="flex items-center gap-2">
           <Eye className="w-5 h-5 text-[#00D4FF]" />
           <h2 className="text-sm sm:text-base font-['Chivo'] font-bold text-white">
-            Identification iris {step >= 1 && step <= 3 && (<span className="text-[#A1A1AA] font-normal ml-2">{step}/3</span>)}
+            Identification iris {step >= 2 && step <= 4 && (<span className="text-[#A1A1AA] font-normal ml-2">{step - 1}/3</span>)}
           </h2>
         </div>
         <button
@@ -454,7 +485,7 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
             </div>
             <button
               type="button"
-              onClick={() => { setGlassesAlert(false); setStep(1); setStatusMsg(poses[0].label); recentSamplesRef.current = []; }}
+              onClick={() => { setGlassesAlert(false); setStep(2); setStatusMsg(poses[0].label); recentSamplesRef.current = []; }}
               data-testid="iris-glasses-ack"
               className="mt-3 w-full inline-flex items-center justify-center gap-1 px-3 py-2 bg-[#050505] text-amber-300 rounded-sm font-['Chivo'] font-bold text-xs"
             >
@@ -467,7 +498,7 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
       {/* Status footer */}
       <footer className="px-4 py-4 bg-[#0A0A0A] border-t border-white/10 space-y-2">
         <p className="text-center text-sm sm:text-base text-white font-['Chivo'] font-bold" data-testid="iris-status">{statusMsg}</p>
-        {step >= 1 && step <= 3 && (
+        {step >= 2 && step <= 4 && (
           <>
             <p className="text-center text-[11px] text-[#A1A1AA]">
               <AlertTriangle className="w-3 h-3 inline-block mr-1 text-amber-400" />
@@ -481,7 +512,15 @@ function IrisFullscreenWizard({ onCancel, onDone }) {
             </div>
           </>
         )}
-        {step === 4 && (
+        {step === 0 && streamReady && (
+          <div className="w-full max-w-md mx-auto h-1.5 bg-white/[0.08] rounded-full overflow-hidden" data-testid="iris-approach-progress">
+            <div
+              className="h-full bg-[#00D4FF] transition-[width] duration-100"
+              style={{ width: `${approachProgress}%` }}
+            />
+          </div>
+        )}
+        {step === 5 && (
           <p className="text-center text-xs text-emerald-300 inline-flex items-center justify-center gap-1">
             <Check className="w-4 h-4" /> 3/3 captures réussies
           </p>

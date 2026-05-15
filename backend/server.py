@@ -7604,6 +7604,41 @@ async def auth_theft_email_confirm(token: str):
     return {"success": True, "revoked_count": r.modified_count}
 
 
+class TheftIrisVerifyIn(BaseModel):
+    """iter71: optional iris re-confirmation submitted after the email
+    token is consumed. The endpoint records the captured hashes against
+    the email so the next sprint's real iris-matching pass (feature
+    vectors, not SHA-256) can grade them. Today we only validate shape +
+    that the email had at least one previously-enrolled iris baseline."""
+    token: str
+    hashes: List[str]
+
+
+@api_router.post("/auth/theft-iris-verify")
+async def auth_theft_iris_verify(payload: TheftIrisVerifyIn):
+    if not payload.token or not isinstance(payload.hashes, list) or len(payload.hashes) < 3:
+        raise HTTPException(status_code=400, detail="3 captures iris sont requises.")
+    if any((not isinstance(h, str)) or len(h) < 20 or len(h) > 128 for h in payload.hashes[:3]):
+        raise HTTPException(status_code=400, detail="Empreintes iris invalides.")
+    row = await db.theft_email_tokens.find_one({"token": payload.token}, {"_id": 0, "email": 1})
+    if not row:
+        raise HTTPException(status_code=404, detail="Token introuvable.")
+    email = row.get("email")
+    # Lookup baseline (must exist for the iris flow to be meaningful).
+    user = await db.users.find_one({"email": email}, {"_id": 0, "biometric": 1})
+    if not user or (user.get("biometric") or {}).get("kind") != "iris":
+        # We still 200 to avoid leaking which accounts have iris enrolled.
+        logger.info(f"theft-iris-verify: no iris baseline for {email}, accepting capture as observation only")
+    await db.theft_iris_attempts.insert_one({
+        "email": email,
+        "hashes": payload.hashes[:3],
+        "token": payload.token,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "verified": False,  # real matching comes in the next sprint
+    })
+    return {"success": True}
+
+
 # Helper used by ideas/polls to verify any signature (not creator-restricted).
 async def _verify_signed(key_id: str, nonce: str, signature: str) -> Dict[str, Any]:
     dev = await _device_by_key(key_id)

@@ -1,0 +1,48 @@
+{
+  "summary": "iter71 — 6/6 NEW backend tests on /api/auth/theft-iris-verify PASS (empty token→400, <3 hashes→400, hash too short→400, hash too long→400, valid 3 hashes+seeded token→200+{success:true} with persisted doc in theft_iris_attempts, unknown token→404). 34/34 regression tests PASS (iter63 6, iter66 5, iter67 3, iter68 4, iter69 13, iter70 3). FRONTEND: TheftConfirm.js named-import of IrisFullscreenWizard works (no render crash on error path). When the email-confirm GET resolves to OK, the page renders 'Récupération validée' + Étape 2 iris card + theft-iris-confirm-btn ('Lancer la vérification iris'). Click opens IrisFullscreenWizard TRULY FULLSCREEN (1280×900 bounding box on a 1280×900 viewport — the iter70 createPortal(document.body) fix carries through). iris-cancel closes the wizard cleanly. Step-0 testids verified by code-review (line 515-522 BiometricEnrollmentField.jsx: iris-approach-progress only when `step === 0 && streamReady`, iris-progress only when `step >= 2 && step <= 4`). Camera is denied in headless Chromium → status 'Impossible d'accéder à la caméra…' is shown and streamReady stays false → approach-progress correctly absent. ONE NEW UX BUG FOUND in TheftConfirm.js: React.StrictMode + dev build causes the useEffect to fire twice → first GET consumes the token (DB: used:True), second GET returns 404 → state ends at 'error' even with a freshly-seeded valid token. To complete the success-path Playwright test I had to network-mock the endpoint. In a prod build (no StrictMode double-mount) the flow works as designed, but this is still a robustness gap that costs idempotency on any remount.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "TheftConfirm.js useEffect",
+        "issue": "React.StrictMode double-mount in dev causes /auth/theft-email-confirm to be called twice. The endpoint is single-use: 1st call marks used:True, 2nd call returns 404 → final state is 'error' even with a fresh valid token. Reproduction: seed theft_email_tokens with a token, visit /theft-confirm?token=…, observe DB shows used:True AND UI shows 'Échec / Lien invalide ou déjà utilisé.'. The `cancelled` flag in the cleanup function only suppresses setState — it does NOT abort the in-flight request. Fix: gate the axios call with a useRef sentinel (e.g. `if (firedRef.current) return; firedRef.current = true;`) or wrap with AbortController. In production builds StrictMode does not double-fire so end-users won't see this, but any future legitimate remount (e.g. Suspense, route change) would also burn the token.",
+        "selector": "/theft-confirm?token=<valid>",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter71_theft_iris_verify.py",
+    "/app/test_reports/pytest/iter71_results.xml",
+    "/app/test_reports/pytest/iter71_regression.xml"
+  ],
+  "action_items": [
+    "(MEDIUM) TheftConfirm.js: guard the email-confirm useEffect against double-fire (useRef sentinel or AbortController). Otherwise StrictMode burns the token on first render and the success UI is unreachable in dev.",
+    "(LOW) Optional: make /auth/theft-email-confirm idempotent for ~5s after first success (return cached {success, revoked_count}) so a benign double-fire does not show 404 to the user. Adds resilience for back/forward nav too."
+  ],
+  "critical_code_review_comments": [
+    "server.py /auth/theft-iris-verify (lines 7607-7639): clean Pydantic model + correct 400/404 ordering (shape first, then DB lookup), exactly 3 hashes are stored via `payload.hashes[:3]`, length bounds 20-128 enforced for all 3, `verified:False` flag is set so the next sprint's matcher can flip it. Mongo write uses ISO string created_at — consistent with the rest of server.py. Good: response returns 200 even when no iris baseline exists to avoid enumeration leak.",
+    "TheftConfirm.js: named import `import { IrisFullscreenWizard } from '../components/BiometricEnrollmentField'` works (verified at runtime by absence of render-time crash on the error path). The wizard is rendered conditionally with the same props contract used by the signup path (onCancel/onDone(hashes)) so the wizard's fullscreen Portal (iter70 fix) continues to escape any parent containing-block trap.",
+    "BiometricEnrollmentField.jsx step semantics 0..5 with iter71 step-0 'approach' overlay: line 248-253 comment is accurate; line 515-522 gates iris-approach-progress on `step === 0 && streamReady` (correct); line 501-514 gates iris-progress on `step >= 2 && step <= 4` (correct — exclusive of step 0/1/5).",
+    "POTENTIAL ISSUE (LOW): the step-0 face-approach useEffect (line ~329-348 per request) cannot be verified in headless Playwright because no real camera = streamReady false = the rAF loop never starts. Only code review applies. Logic looks consistent: faceVariance > 500 over 6 consecutive hits → setStep(1). Recommend the main agent test with a real webcam to confirm the approach progress ring tweens and the auto-transition to step 1 (glasses check) actually triggers.",
+    "TheftConfirm.js useEffect (line 33-49): the `cancelled` boolean prevents setState after unmount, but the network call still fires twice in StrictMode. This is the documented React pitfall — see action items."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter71_theft_iris_verify.py (new — 6 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (40/40 — 6 iter71 + 34 regression iter63/66/67/68/69/70)",
+    "frontend": "95% — OK-state render, iris-button presence + click, wizard fullscreen 1280×900 via portal, iris-cancel, named-export of IrisFullscreenWizard all green. Step-0 face-approach loop and the approach-progress bar cannot be runtime-verified in headless (no webcam) — covered by code review only."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (unchanged from iter70).",
+  "seed_data_creation": "iter71 tests insert one transient theft_email_tokens row + one theft_iris_attempts row per success test and clean up via the seeded_token fixture teardown. UI test used Playwright route.fulfill() to mock /auth/theft-email-confirm and /auth/theft-iris-verify (no DB writes from the UI run).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter71 backend is GREEN, no re-run needed unless server.py changes. The new endpoint /api/auth/theft-iris-verify is a STUB — shape validation + Mongo logging only; the real iris-matching pass is the next sprint. To re-verify the TheftConfirm OK path you MUST either (a) network-mock the /auth/theft-email-confirm GET (Playwright route.fulfill) or (b) ask the main agent to fix the StrictMode double-fire first. The fullscreen-wizard contract (Portal escapes parent backdrop-filter) is now verified in TWO contexts: signup (iter70) and theft-confirm (iter71). Step-0 face-approach loop needs a real webcam — flag for manual user testing.",
+  "rca of the issue": "ROOT CAUSE of the TheftConfirm dev-only 'Échec on valid token': React.StrictMode in /app/frontend/src/index.js line 12 wraps <App/>, which in dev intentionally double-invokes useEffect to surface side-effect bugs. The TheftConfirm useEffect calls axios.get('/auth/theft-email-confirm') without a useRef guard, so both renders fire the GET. The first GET succeeds → server marks the token used:True. The second GET returns 404 → state ends at 'error'. The `cancelled` flag only blocks setState from the FIRST request after unmount; it does not abort either network call. MITIGATION (canonical): add `const firedRef = useRef(false); useEffect(() => { if (firedRef.current) return; firedRef.current = true; … }, [token]);` — 3 lines. Or make the endpoint idempotent server-side. The bug does NOT manifest in production builds because StrictMode's double-fire is dev-only, but the underlying race (any legitimate remount burns the token) is real and warrants the fix."
+}
