@@ -17,6 +17,25 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 64 (Fix mobile toast "session expirée" + filtres ideas créatrice)
+
+**🐛 Hotfix critique signalé sur mobile** (screenshot user) :
+- Le toast « Ta session a expiré côté serveur » apparaissait toujours sur Android malgré le `sessionStorage` flag d'iter63 — cause : `sessionStorage` est éphémère (perdu à la fermeture d'onglet sur mobile).
+- **Correctif** :
+  1. Toast `?reason=session_expired` **complètement supprimé** de `Login.js` — l'URL est juste strippée silencieusement.
+  2. Flag `codeforge_session_pending` migré `sessionStorage` → `localStorage` avec **TTL 15 min** (JSON `{request_id, email, until}`).
+  3. **Restauration auto** du `pendingApproval` au mount de Login.js si le flag est encore valide → la polling reprend même après fermeture/réouverture d'onglet mobile.
+
+**✨ Filtres Idées/Bugs/Autres côté créatrice** (`IdeasButton.jsx`) :
+- Badges colorés par kind (Bug rouge, Idée jaune, Autre cyan) sur chaque message reçu.
+- 3 cases à cocher de filtre (Bug/Idée/Autre) + bouton « Tout cocher/décocher ».
+- Toggle « Trier par type » : groupe les messages dans l'ordre Bug → Idée → Autre, en préservant la chronologie dans chaque groupe.
+- Filtres + tri **persistés en localStorage** (codeforge_ideas_filters, codeforge_ideas_sort_kind) → survivent aux reloads.
+
+**Multi-device illimité confirmé** : 3 logins simultanés depuis 3 device_keys différents → 3 demandes pending parallèles en base, A peut les approuver indépendamment, les sessions cohabitent.
+
+**Tests iter64** : 17/17 backend pytest PASS (iter63 6/6 + iter62 11/11) · Frontend smoke mobile 420x900 PASS (zero toast) · Restauration pending banner + cleanup TTL expiré tous OK · IdeasButton filters/sort/persistence verified.
+
 ### 2026-02-15 — Iter 63 (Multi-device session-pending définitivement réparé)
 
 **🔧 Corrections critiques du flux multi-appareils** :
