@@ -17,6 +17,20 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 68 (Heartbeat 30s + threshold 60s + no toast B + mobile horizontal scroll)
+
+**🐛 Bug "phantom approval prompts" résolu pour de bon** :
+- **Cause** : threshold 3min + pas de heartbeat explicite → un onglet fermé gardait son `last_seen_at` frais pendant 3 min (via le cache de `/auth/me` au mount) → fausse demande d'approbation.
+- **Fix** : nouveau endpoint POST `/api/auth/heartbeat` + `AuthContext.js` ping toutes les 30s + threshold descendu à **60s**. Un onglet fermé arrête de pinger → stale en 60s → plus de fausse demande.
+- **Backfill** : 105 sessions live remises à `last_seen_at = -2h` pour partir propre.
+
+**✨ UX** :
+- Toast `"Connexion en attente d'approbation"` retiré côté B → seul le bandeau jaune reste (plus clean sur mobile).
+- Header Dashboard mobile : `overflow-x-auto` + `min-w-max` → swipe latéral pour voir les boutons qui débordent.
+- Main column : `overflow-x-hidden` → plus de scroll horizontal global parasite sur mobile.
+
+**Tests iter68** : **18/18 backend pytest PASS** (4 nouveaux test_iter68_heartbeat + 3 patché iter67 60s + 5 iter66 + 6 iter63) + frontend Playwright vérifié (heartbeat fires initial + ≥1 repeat sur 35s, toast retiré, header classes overflow OK).
+
 ### 2026-02-15 — Iter 67 (Sidebar mobile + i18n Menu + last_seen_at 3 min)
 
 **🐛 Bug critique mobile** : le bouton sidebar-toggle changeait juste l'icône mais la sidebar ne s'ouvrait pas (flex column 280px → mainContent poussé hors viewport). **Fix** : sur mobile (max-width:767px), la sidebar devient un **drawer overlay** (`fixed inset-y-0 left-0 z-40`) avec backdrop cliquable (`z-30 bg-black/60 backdrop-blur-sm md:hidden`). Default `isSidebarOpen=false` sur mobile, `true` sur desktop (matchMedia).

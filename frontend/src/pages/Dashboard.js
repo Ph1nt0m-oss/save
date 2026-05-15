@@ -742,7 +742,7 @@ export default function Dashboard() {
       </motion.aside>
 
       {/* Main Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu] */}
         <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4 overflow-x-auto md:overflow-x-visible">
           <div className="flex items-center justify-between gap-2 sm:gap-4 min-w-max md:min-w-0">
