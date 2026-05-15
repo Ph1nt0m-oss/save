@@ -1,0 +1,38 @@
+{
+  "summary": "iter62 — Mandatory device-capture screenshot during registration. Full backend + frontend e2e validation done. All 11 backend pytest cases pass: /auth/ocr-device-info (3 cases: empty rejected, data-URL accepted, bare-b64 accepted), /auth/register validation (6 cases: missing capture/kind/product/model/device_name/pseudo all return 400; valid phone + valid computer return 200 with verification_link), and full regression e2e (register → verify-email → login → 200). UI confirmed: tab-signup reveals DeviceCaptureField between pseudo (467px) and email (825px) at 576px, dropzone has data-testid='device-capture-dropzone', file input has 'device-capture-input'. Submit without capture displays sonner toast 'Capture de l'appareil requise…' and BLOCKS the /auth/register request (intercepted, not fired). Regression: legacy login for test_dash_1777658375@gmail.com / Pass1234 still returns 200 with session_token.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Login signup form", "issues": ["The Capture d'écran helper paragraph is only in French while the rest of the signup form uses i18n keys (Sign up / Create my account / Your pseudonym are English here). Minor i18n inconsistency — strings inside DeviceCaptureField.jsx are hardcoded French."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter62_device_capture.py",
+    "/app/test_reports/pytest/iter62_results.xml"
+  ],
+  "action_items": [
+    "(optional) i18n: translate DeviceCaptureField labels/help text via the t() helper to match the rest of /login.",
+    "(carried from iter59) server.py is now 7492 lines — strongly consider splitting auth into a module.",
+    "(carried from iter59) EMAIL_FROM fallback duplicated in 4 places — extract to constant."
+  ],
+  "critical_code_review_comments": [
+    "server.py:629-746 — RegisterRequest fields and the OCR endpoint are placed right above /auth/register which is good locality. The validations at L772-791 are clear and return explicit French messages — good UX.",
+    "DeviceCaptureField.jsx is well-structured (203 lines, single responsibility, exposes 5 data-testids). Paste listener attached to document is global; harmless on /login but consider scoping to the dropzone element if reused on pages where other paste handlers exist.",
+    "Frontend validation at Login.js:291-297 mirrors backend rules exactly — good defense in depth. Both server and client reject the same edge cases."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter62_device_capture.py (new — 11 pytest cases)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (dropzone visible, validation blocks submit, toast shown, request intercepted)"},
+  "test_credentials": "Existing user test_dash_1777658375@gmail.com / Pass1234 still valid (regression OK). Created throwaway TEST_iter62_*@example.com users via curl + pytest (unverified, will TTL-expire).",
+  "seed_data_creation": "11 TEST_iter62_<ts>@example.com accounts created by pytest (4 unverified, 1 verified+logged-in via full_flow test). They use the 'Galaxy S21 5G' / 'SM-G991U1' phone capture or 'DESKTOP-ABC123' computer capture.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter62 is fully green. Frontend integration confirmed via UI: signup → fill pseudo/email/password (no capture) → click 'Create my account' → toast 'Capture de l'appareil requise…' appears + /auth/register NOT called. The OCR endpoint /api/auth/ocr-device-info accepts both 'data:image/png;base64,...' and bare b64 forms; on unrecognizable input it returns kind='unknown' with confidence<0.3, which is the documented contract. The backend validation matrix in test_iter62_device_capture.py covers all the priority-0 cases from the ticket. Use the same patterns when adding new device kinds (tablet etc.) later.",
+  "rca of the issue": "N/A — this iteration was a feature addition (mandatory screenshot capture), not a bug fix. All P0 acceptance criteria from the ticket are met."
+}

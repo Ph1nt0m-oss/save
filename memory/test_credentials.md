@@ -1,8 +1,9 @@
 # Test Credentials
 
-## Email/Password Auth (flow principal — mode RÉEL Resend activé)
-- Inscription via `/login` → onglet **Inscription** → Email Gmail + Mot de passe (≥6 char) + Nom (optionnel)
-- Mode RÉEL : email Resend envoyé depuis `CodeForge AI <onboarding@resend.dev>` avec Reply-To silencieux vers `commandes.et.publicites@gmail.com`
+## Email/Password Auth (flow principal — mode RÉEL Gmail SMTP activé)
+- Inscription via `/login` → onglet **Inscription** → Pseudo (≥3 chars) + **Capture d'écran appareil OBLIGATOIRE (iter62)** + Email Gmail + Mot de passe (≥6 char)
+- iter62 : `/api/auth/register` exige `device_capture_kind` (`phone` | `computer`) + soit `device_capture_product`/`device_capture_model` (téléphone) soit `device_capture_name` (ordinateur). Champs extraits côté client par `/api/auth/ocr-device-info` (Gemini 2.5 Flash Vision)
+- Mode RÉEL : email envoyé via Gmail SMTP (aiosmtplib + GMAIL_USER/GMAIL_APP_PASSWORD)
 - Lien magique TTL **5 min** ; cliquer le lien certifie le compte → l'onglet d'origine se déverrouille automatiquement (polling 2s) et navigue vers `/dashboard`
 - Bouton **"Renvoyer le lien"** dans le banner d'attente (rate-limit 3/10 min/email)
 - Si banner déclenche un 429, bouton désactivé visuellement pendant 10 min
@@ -35,9 +36,9 @@
 ```bash
 API=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d '=' -f2)
 EMAIL="test_$(date +%s)@gmail.com"
-# 1. Register
+# 1. Register (iter62 — device_capture obligatoire)
 curl -s -X POST "$API/api/auth/register" -H "Content-Type: application/json" \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"Pass1234\",\"frontend_url\":\"$API\"}"
+  -d "{\"email\":\"$EMAIL\",\"password\":\"Pass1234\",\"pseudo\":\"tester\",\"frontend_url\":\"$API\",\"device_capture_kind\":\"phone\",\"device_capture_product\":\"Galaxy S21 5G\",\"device_capture_model\":\"SM-G991U1\"}"
 # Avec RESEND_API_KEY active : email envoyé. Sinon mode démo : verification_link dans la réponse.
 # 2. Verify avec le token reçu par email ou dans la réponse
 # 3. Login

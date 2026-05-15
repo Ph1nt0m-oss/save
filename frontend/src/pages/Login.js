@@ -14,6 +14,7 @@ import MessageButton from '../components/MessageButton';
 import AccountsButton from '../components/AccountsButton';
 import TheftButton from '../components/TheftButton';
 import DeviceKeyCopyButton from '../components/DeviceKeyCopyButton';
+import DeviceCaptureField from '../components/DeviceCaptureField';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { rememberEmailForDevice, recallEmailForDevice } from '../lib/deviceIdentity';
 import { detectDeviceLabel } from '../lib/deviceLabel';
@@ -81,6 +82,9 @@ export default function Login() {
   const [pendingApproval, setPendingApproval] = useState(null);
   const [sessionUiState, setSessionUiState] = useState(null); // 'pending' | 'denied' | 'expired'
   const [theftOpen, setTheftOpen] = useState(false);
+  // iter62 — mandatory device capture (OCR via Gemini Vision) collected
+  // before /auth/register can succeed.
+  const [deviceCapture, setDeviceCapture] = useState(null);
 
   // Verification polling state (active between /register and the user
   // clicking the magic link in their email / the demo link).
@@ -756,6 +760,14 @@ export default function Login() {
                     </div>
                     <p className="text-[10px] text-[#71717A] mt-1">{t('signup_pseudo_hint')}</p>
                   </div>
+                )}
+
+                {mode === 'signup' && (
+                  <DeviceCaptureField
+                    value={deviceCapture}
+                    onChange={setDeviceCapture}
+                    disabled={submitting}
+                  />
                 )}
 
                 <div>
