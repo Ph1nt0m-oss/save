@@ -17,6 +17,24 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 66 (Le bug 202 / pendingApproval enfin résolu)
+
+**🐛 RCA confirmé** : axios traite `HTTP 202` comme un succès par défaut. Le code Login.js d'avant cherchait le 202 dans le `catch(err2)` → **jamais exécuté** → `setPendingApproval()` jamais appelé → bandeau jamais visible sur B → polling jamais lancé. **C'est pour ça que B ne recevait rien**.
+
+**🔧 Correctifs** :
+
+1. **Fix critique** — `Login.js` : `validateStatus` autorise 202 dans le success branch + check `res.status === 202` explicite avant `data.session_token`. Re-throw manuel pour 4xx pour préserver l'error handling.
+
+2. **`last_seen_at` heartbeat backend** : `get_current_user()` met à jour `user_sessions.last_seen_at` à chaque requête authentifiée. Le check `active_other` exige désormais `last_seen_at > now - 10min` → une session avec un cookie 7 jours mais onglet fermé n'envoie plus de fausse demande d'approbation.
+
+3. **Refus → onglet Mot de Passe direct** : `SessionRequestNotifier` navigue vers `/profile?tab=password` (au lieu de `?section=security` qui retombait sur l'onglet Info). `Profile.js` parse `?tab=` au mount avec allowlist + fallback.
+
+4. **Localisation « Inconnue » → « Localisation non disponible »** (FR/EN cohérents).
+
+5. **Backfill prod** : 79 anciennes sessions `last_seen_at`-less mises à jour pour ne pas se faire flagger stale par accident.
+
+**Tests iter66** : 16/16 backend pytest PASS (5 nouveaux + 11 régression) + **E2E mobile 412x915 RÉEL** confirme : 202 → bandeau pending VISIBLE + countdown + localStorage{request_id,email,until} populé. C'est exactement la régression qu'avait l'utilisateur — **maintenant reproductible et fixée**.
+
 ### 2026-02-15 — Iter 65 (Validation E2E multi-device + auto-purge legacy state)
 
 **🔬 Diagnostic du bug "mobile login ne marche pas"** :
