@@ -17,6 +17,25 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-15 — Iter 65 (Validation E2E multi-device + auto-purge legacy state)
+
+**🔬 Diagnostic du bug "mobile login ne marche pas"** :
+- 5/5 nouveaux tests pytest E2E backend PASS (`/app/backend/tests/test_iter65_multi_device_e2e.py`) → flux pending/approve/deny/expire **rock solid**, idempotent.
+- Régression iter63 6/6 PASS.
+- Frontend mobile 412x915 charge propre, **zéro toast** "session expirée" même avec `?reason=session_expired`.
+
+**🧹 Hypothèse retenue** : cache navigateur stale chez l'utilisateur (entrées legacy pre-iter64 dans sessionStorage/localStorage avec ancien schema). **Solution proactive** : `AuthContext.js` exécute un **auto-purge one-shot** au boot — si `codeforge_build !== 'iter65'`, le client wipe les `codeforge_session_pending` malformés (string brut au lieu de JSON envelope) et marque le build. L'utilisateur n'a rien à faire — la prochaine visite nettoie automatiquement.
+
+**🧽 Hygiène base** : 8 anciennes pending requests expirées purgées + binding device→email rétabli pour le device PC Firefox de l'utilisatrice (cohérence iter63 1=1).
+
+**✨ IdeasButton (créatrice) — affinage filtres** :
+- ❌ Bouton « Tout cocher/décocher » retiré.
+- ✅ Nouveau toggle **« Trier par date »** ajouté à côté de « Trier par type », mutuellement exclusifs (radio-like).
+- ✅ « Trier par date » est **actif par défaut** au premier load.
+- ✅ Les 2 toggles + filtres persistés dans localStorage.
+
+**Tests iter65** : 11/11 backend pytest PASS + frontend e2e smoke PASS + legacy state purge round-trip vérifié.
+
 ### 2026-02-15 — Iter 64 (Fix mobile toast "session expirée" + filtres ideas créatrice)
 
 **🐛 Hotfix critique signalé sur mobile** (screenshot user) :

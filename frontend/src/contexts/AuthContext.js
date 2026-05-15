@@ -1,6 +1,34 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 
+// iter65: one-shot purge of legacy pre-iter64 client state. Old builds
+// stored the session-pending flag as plain '1' in sessionStorage (instead
+// of a JSON {request_id, email, until} in localStorage). On older mobile
+// browsers this orphan state could survive across visits and keep the
+// AuthContext interceptor mis-suppressing 401-redirects, leading the
+// user to see ghost "session expirée" toasts. Wipe it the first time the
+// new build runs in this browser.
+try {
+  const BUILD = 'iter65';
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('codeforge_build') !== BUILD) {
+    try { sessionStorage.removeItem('codeforge_session_pending'); } catch (_) {}
+    try {
+      // Drop any legacy pending entry whose value is not a JSON envelope
+      // with a still-valid `until`. Anything malformed → kill it.
+      const raw = localStorage.getItem('codeforge_session_pending');
+      if (raw) {
+        let ok = false;
+        try {
+          const j = JSON.parse(raw);
+          if (j && j.until && Date.now() < j.until) ok = true;
+        } catch (_) {}
+        if (!ok) localStorage.removeItem('codeforge_session_pending');
+      }
+    } catch (_) {}
+    try { localStorage.setItem('codeforge_build', BUILD); } catch (_) {}
+  }
+} catch (_) {}
+
 const AuthContext = createContext(null);
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
