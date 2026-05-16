@@ -128,20 +128,18 @@ export default function AnnouncementsBanner() {
   return (
     <>
       {fullscreenAnn && (
-        <div className="fixed inset-x-2 top-16 sm:top-20 bottom-2 z-[120] flex items-start justify-center pointer-events-none" data-testid={`ann-fullscreen-${fullscreenAnn.announce_id}`}>
-          <div className="pointer-events-auto w-full max-w-2xl bg-[#0A0A0A]/97 border-2 border-[#E4FF00]/60 rounded-md p-5 backdrop-blur-md shadow-[0_20px_60px_rgba(228,255,0,0.25)] max-h-[80vh] overflow-y-auto">
-            <div className="flex items-start gap-3">
-              <Megaphone className="w-6 h-6 text-[#E4FF00] flex-shrink-0 mt-1" />
-              <div className="flex-1 min-w-0">
-                <h2 className="text-xl font-['Chivo'] font-black text-white">{fullscreenAnn.title}</h2>
-                {fullscreenAnn.body && <p className="text-sm text-[#A1A1AA] mt-2 whitespace-pre-wrap break-words leading-relaxed">{fullscreenAnn.body}</p>}
-                <div className="text-[10px] text-[#71717A] uppercase tracking-widest mt-3">{formatTs(fullscreenAnn.ts)}{fullscreenAnn.updated_at ? ' · modifiée' : ''}</div>
-              </div>
-              <button onClick={() => markFsSeen(fullscreenAnn.announce_id)} data-testid="ann-fullscreen-close" className="text-[#A1A1AA] hover:text-white p-1" aria-label="J'ai vu">
-                <X className="w-5 h-5" />
-              </button>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 backdrop-blur-md p-3 sm:p-6" data-testid={`ann-fullscreen-${fullscreenAnn.announce_id}`}>
+          <div className="w-full max-w-3xl bg-[#0A0A0A] border-2 border-[#E4FF00]/60 rounded-md p-6 sm:p-10 shadow-[0_20px_80px_rgba(228,255,0,0.3)] max-h-[95vh] overflow-y-auto relative">
+            <button onClick={() => markFsSeen(fullscreenAnn.announce_id)} data-testid="ann-fullscreen-close" className="absolute top-3 right-3 text-[#A1A1AA] hover:text-white p-2" aria-label="J'ai vu">
+              <X className="w-6 h-6" />
+            </button>
+            <div className="flex flex-col items-center text-center gap-4">
+              <Megaphone className="w-12 h-12 text-[#E4FF00]" />
+              <h2 className="text-3xl sm:text-5xl font-['Chivo'] font-black text-white leading-tight">{fullscreenAnn.title}</h2>
+              {fullscreenAnn.body && <p className="text-base sm:text-lg text-[#E4E4E7] mt-2 whitespace-pre-wrap break-words leading-relaxed">{fullscreenAnn.body}</p>}
+              <div className="text-xs text-[#71717A] uppercase tracking-widest mt-4">{formatTs(fullscreenAnn.ts)}{fullscreenAnn.updated_at ? ' · modifiée' : ''}</div>
+              <div className="text-[11px] text-[#71717A] italic mt-6">Clique sur X pour passer en bandeau (reste visible jusqu'à ce que tu le fermes complètement).</div>
             </div>
-            <div className="mt-3 text-[10px] text-[#71717A] italic">Clique sur X pour passer en bandeau (reste visible jusqu'à ce que tu le fermes complètement).</div>
           </div>
         </div>
       )}
@@ -175,7 +173,8 @@ export default function AnnouncementsBanner() {
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-['Chivo'] font-bold text-white truncate">{p.question}{p.updated_at && <span className="text-[9px] text-amber-300 ml-1.5">(modifié)</span>}</div>
                   <div className="text-[9px] text-[#71717A] uppercase tracking-widest">
-                    Publié {formatTs(p.ts)} · {total} vote{total > 1 ? 's' : ''} · {max === 0 ? 'choix illimités' : `max ${max}`}
+                    Publié {formatTs(p.ts)} · {total} vote{total > 1 ? 's' : ''} · {max === 0 ? '∞ choix possibles' : `tu peux choisir ${max} option${max > 1 ? 's' : ''}`}
+                    {allowSugg && <span className="ml-1 text-amber-300 normal-case">· tu peux écrire ta propre réponse</span>}
                   </div>
                   <div className="mt-1 space-y-1">
                     {p.options.map((opt, idx) => {

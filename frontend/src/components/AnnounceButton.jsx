@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { Megaphone, X, Plus, Trash2, BarChart3, Edit3, Check, AlertTriangle, KeyRound, RotateCcw } from 'lucide-react';
+import { Megaphone, X, Plus, Trash2, BarChart3, Edit3, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
@@ -162,14 +162,6 @@ export default function AnnounceButton() {
     } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
   };
 
-  const setAnnState = async (announce_id, state) => {
-    try {
-      const body = await withCreatorProof(API, axios, { announce_id, state });
-      await axios.post(`${API}/announcements/set-state`, body);
-      loadManage();
-    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
-  };
-
   const clearAnnHistory = async () => {
     if (!window.confirm('Supprimer TOUT l\'historique des annonces et leurs états ? Action irréversible.')) return;
     try {
@@ -319,10 +311,6 @@ export default function AnnounceButton() {
                     <div className="text-xs text-[#A1A1AA] py-4 text-center">{t('ann_empty')}</div>
                   )}
                   {items.announcements.map((a) => {
-                    const staffStates = a.staff_states || [];
-                    const counts = { validated: 0, refused: 0, orange: 0 };
-                    staffStates.forEach((s) => { if (counts[s.state] !== undefined) counts[s.state]++; });
-                    const my = a.my_state;
                     return (
                       <div key={a.announce_id} data-testid={`manage-ann-${a.announce_id}`} className="bg-black/30 border border-white/10 rounded-sm p-2.5">
                         <div className="flex items-center justify-between gap-2">
@@ -332,21 +320,6 @@ export default function AnnounceButton() {
                         </div>
                         {a.body && <div className="text-xs text-[#A1A1AA] mt-1 whitespace-pre-wrap break-words">{a.body}</div>}
                         <div className="text-[9px] text-[#71717A] mt-1 uppercase tracking-widest">→ {formatAud(a.audience)} · {new Date(a.ts).toLocaleString()}{a.updated_at ? ' (modifiée)' : ''}</div>
-                        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                          <button onClick={() => setAnnState(a.announce_id, 'validated')} data-testid={`manage-ann-validate-${a.announce_id}`} className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${my === 'validated' ? 'border-green-500 bg-green-500/15 text-green-300' : 'border-green-500/40 text-green-300 hover:bg-green-500/10'}`} title="Validé">✅</button>
-                          <button onClick={() => setAnnState(a.announce_id, 'refused')} data-testid={`manage-ann-refuse-${a.announce_id}`} className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${my === 'refused' ? 'border-red-500 bg-red-500/15 text-red-300' : 'border-red-500/40 text-red-300 hover:bg-red-500/10'}`} title="Refusé">❌</button>
-                          <button onClick={() => setAnnState(a.announce_id, 'orange')} data-testid={`manage-ann-orange-${a.announce_id}`} className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${my === 'orange' ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-orange-500/40 text-orange-300 hover:bg-orange-500/10'}`} title="Seule la créa peut"><KeyRound className="w-3 h-3 inline" /></button>
-                          {(my || staffStates.length > 0) && (
-                            <button onClick={() => setAnnState(a.announce_id, 'reset')} data-testid={`manage-ann-reset-${a.announce_id}`} className="text-[10px] px-1.5 py-0.5 rounded-sm border border-white/15 text-[#A1A1AA] hover:bg-white/5" title="Réinitialiser"><RotateCcw className="w-3 h-3 inline" /></button>
-                          )}
-                          {(counts.validated + counts.refused + counts.orange) > 0 && (
-                            <span className="text-[10px] text-[#A1A1AA] inline-flex items-center gap-1.5 ml-1">
-                              <Check className="w-3 h-3 text-green-400" />{counts.validated}
-                              <X className="w-3 h-3 text-red-400" />{counts.refused}
-                              <AlertTriangle className="w-3 h-3 text-orange-400" />{counts.orange}
-                            </span>
-                          )}
-                        </div>
                       </div>
                     );
                   })}

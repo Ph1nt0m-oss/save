@@ -7258,7 +7258,7 @@ class IdeasSendIn(BaseModel):
     nonce: Optional[str] = None
     signature: Optional[str] = None
     content: str = ""
-    kind: str = "idea"   # 'idea' | 'bug' | 'other'
+    kind: str = "idea"   # 'idea' | 'bug' | 'report' | 'other'
 
 @api_router.post("/ideas/send")
 async def ideas_send(request: Request, payload: IdeasSendIn):
@@ -7283,7 +7283,7 @@ async def ideas_send(request: Request, payload: IdeasSendIn):
             pass
     # iter55: no minimum length, empty allowed.
     content = (payload.content or "").strip()
-    kind = payload.kind if payload.kind in ("idea", "bug", "other") else "idea"
+    kind = payload.kind if payload.kind in ("idea", "bug", "report", "other") else "idea"
     ip = request.client.host if request and request.client else None
     await db.ideas.insert_one({
         "idea_id": f"idea_{uuid.uuid4().hex[:14]}",
@@ -7310,14 +7310,24 @@ async def ideas_mine(payload: _CreatorSigIn):
 
 @api_router.post("/ideas/inbox")
 async def ideas_inbox(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter78 — Inbox accessible créa + admin + modo."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role")
+    sk = dev.get("staff_kind")
+    if role != "creator" and sk not in ("admin", "modo"):
+        raise HTTPException(status_code=403, detail="Réservé staff (admin/modo) et créatrice.")
     rows = await db.ideas.find({}, {"_id": 0}).sort("ts", -1).to_list(length=500)
     return {"ideas": rows}
 
 
 @api_router.post("/ideas/mark-read")
 async def ideas_mark_read(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter78 — Mark-read accessible créa + admin + modo."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role")
+    sk = dev.get("staff_kind")
+    if role != "creator" and sk not in ("admin", "modo"):
+        raise HTTPException(status_code=403, detail="Réservé staff (admin/modo) et créatrice.")
     await db.ideas.update_many({"read": False}, {"$set": {"read": True}})
     return {"success": True}
 

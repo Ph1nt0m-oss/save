@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { Users, X, Search, MessageCircle, Edit3, Ban, ShieldCheck, BellOff, Bell, Clock, Skull, ShieldOff, Eye, Crown, History as HistoryIcon, Download, Trash2 } from 'lucide-react';
+import { Users, X, Search, MessageCircle, Edit3, Ban, ShieldCheck, BellOff, Bell, Clock, Skull, ShieldOff, Eye, EyeOff, Crown, History as HistoryIcon, Download, Trash2, Shield, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
@@ -31,7 +31,7 @@ function downloadText(filename, content) {
  * exposes moderation actions (rename, mute, block, exclude, ban, visit).
  * Also hosts the "Remove creator mode" button.
  */
-export default function AccountsButton({ onVisitAccount }) {
+export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
   const device = useDeviceIdentity();
   const { t } = useLanguage();
   const isCreator = device.role === 'creator' && device.viewMode !== 'guest';
@@ -154,6 +154,24 @@ export default function AccountsButton({ onVisitAccount }) {
     downloadText(`accounts-history-${ts}.txt`, lines.join('\n') + '\n');
   };
 
+  const setStaffKind = async (a, staff_kind) => {
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id: a.key_id, staff_kind });
+      await axios.post(`${API}/accounts/set-staff-kind`, body);
+      toast.success(staff_kind ? `Promu ${staff_kind}` : 'Badge staff retiré');
+      await load();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
+  };
+
+  const setForceVisitor = async (a, force) => {
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id: a.key_id, force });
+      await axios.post(`${API}/accounts/force-visitor`, body);
+      toast.success(force ? 'Mode visiteur forcé activé' : 'Mode visiteur retiré');
+      await load();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
+  };
+
   const removeCreatorMode = async (target) => {
     // target = null → demote SELF (legacy bottom button). target = row →
     // demote that specific creator device. Both paths take the caller's
@@ -240,22 +258,44 @@ export default function AccountsButton({ onVisitAccount }) {
                               {a.model}
                             </div>
                           )}
+                          {/* iter78 — Affiche clé device (préfixe 14 chars) */}
+                          <div className="text-[9px] text-[#52525B] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-key-${a.key_id}`}>
+                            🔑 {a.key_id.slice(0, 24)}…
+                          </div>
                         </div>
                         {isSelf && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">{t('acc_you')}</span>}
                         {a.email && <span className="text-[10px] text-[#71717A] truncate font-['IBM_Plex_Mono']">{a.email}</span>}
                         {a.role === 'creator' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm inline-flex items-center gap-1"><Crown className="w-2.5 h-2.5" />creator</span>}
-                        {a.role === 'approved' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-emerald-400/40 text-emerald-300 bg-emerald-400/10 rounded-sm">approved</span>}
+                        {a.staff_kind === 'admin' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 rounded-sm inline-flex items-center gap-1"><Shield className="w-2.5 h-2.5" />admin</span>}
+                        {a.staff_kind === 'modo' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-violet-400/40 text-violet-300 bg-violet-400/10 rounded-sm inline-flex items-center gap-1"><Star className="w-2.5 h-2.5" />modo</span>}
+                        {a.role === 'approved' && !a.staff_kind && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-emerald-400/40 text-emerald-300 bg-emerald-400/10 rounded-sm">approved</span>}
                         {a.role === 'pending' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-amber-400/40 text-amber-300 bg-amber-400/10 rounded-sm">pending</span>}
                         {a.role === 'blocked' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-400/40 text-red-300 bg-red-400/10 rounded-sm">blocked</span>}
+                        {a.is_inactive && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-zinc-400/40 text-zinc-300 bg-zinc-400/10 rounded-sm">inactif</span>}
+                        {a.force_visitor && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">visiteur forcé</span>}
                         {a.banned && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">banned</span>}
                         {a.excluded_until && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">excluded</span>}
                         {a.muted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-purple-400/40 text-purple-300 bg-purple-400/10 rounded-sm">muted</span>}
                       </div>
                       <div className="mt-2 flex items-center gap-1 flex-wrap">
                         {!isSelf && (
-                          <button title={t('acc_action_visit')} data-testid={`acc-visit-${a.key_id}`} onClick={() => { setOpen(false); onVisitAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Eye className="w-3.5 h-3.5" /></button>
+                          <button title="Visiter le compte" data-testid={`acc-visit-${a.key_id}`} onClick={() => { setOpen(false); onVisitAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Eye className="w-3.5 h-3.5" /></button>
+                        )}
+                        {!isSelf && onMessageAccount && (
+                          <button title="Message" data-testid={`acc-message-${a.key_id}`} onClick={() => { setOpen(false); onMessageAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#00D4FF]/40 text-[#A1A1AA] hover:text-[#00D4FF] rounded-sm transition"><MessageCircle className="w-3.5 h-3.5" /></button>
                         )}
                         <button title={t('acc_action_rename')} onClick={() => renameContact(a)} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Edit3 className="w-3.5 h-3.5" /></button>
+                        {/* iter78 — Promotions staff */}
+                        {!isSelf && a.role === 'approved' && (
+                          <>
+                            <button title={a.staff_kind === 'admin' ? 'Retirer admin' : 'Mettre admin'} data-testid={`acc-admin-${a.key_id}`} onClick={() => setStaffKind(a, a.staff_kind === 'admin' ? null : 'admin')} className={`p-1.5 border rounded-sm transition ${a.staff_kind === 'admin' ? 'border-cyan-400/60 text-cyan-300 bg-cyan-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-cyan-400/40 hover:text-cyan-300'}`}><Shield className="w-3.5 h-3.5" /></button>
+                            <button title={a.staff_kind === 'modo' ? 'Retirer modo' : 'Mettre modo'} data-testid={`acc-modo-${a.key_id}`} onClick={() => setStaffKind(a, a.staff_kind === 'modo' ? null : 'modo')} className={`p-1.5 border rounded-sm transition ${a.staff_kind === 'modo' ? 'border-violet-400/60 text-violet-300 bg-violet-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-violet-400/40 hover:text-violet-300'}`}><Star className="w-3.5 h-3.5" /></button>
+                          </>
+                        )}
+                        {/* iter78 — Force visiteur (lecture seule sans déco) */}
+                        {!isSelf && a.role !== 'creator' && (
+                          <button title={a.force_visitor ? 'Retirer mode visiteur' : 'Forcer mode visiteur'} data-testid={`acc-visitor-${a.key_id}`} onClick={() => setForceVisitor(a, !a.force_visitor)} className={`p-1.5 border rounded-sm transition ${a.force_visitor ? 'border-orange-400/60 text-orange-300 bg-orange-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-orange-400/40 hover:text-orange-300'}`}><EyeOff className="w-3.5 h-3.5" /></button>
+                        )}
                         {!isSelf && (a.muted ? (
                           <button title={t('acc_action_unmute')} onClick={() => doAction('/accounts/unmute', a.key_id)} className="p-1.5 border border-purple-400/40 text-purple-300 rounded-sm"><Bell className="w-3.5 h-3.5" /></button>
                         ) : (

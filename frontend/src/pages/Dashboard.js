@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
+import ExportInReviewModal from '../components/ExportInReviewModal';
 import { toast } from 'sonner';
 import Onboarding from '../components/Onboarding';
 import UserMenu from '../components/UserMenu';
@@ -71,6 +72,8 @@ export default function Dashboard() {
   // Filtre de la sidebar — 'all' | 'chat-online' | 'chat-offline' | 'web-online' | 'web-offline'
   const [sidebarFilter, setSidebarFilter] = useState('all');
   const [visiting, setVisiting] = useState(null);
+  // iter78 — fullscreen modal pour export pending/approved/rejected
+  const [exportReview, setExportReview] = useState(null);  // {kind, status, request_id}
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -429,22 +432,28 @@ export default function Dashboard() {
         });
         const r = await axios.post(`${API}/exports/request`, body);
         if (!r.data?.approved) {
-          toast.warning(t('exp_pending_title'), { description: t('exp_pending_body'), duration: 9000 });
+          // iter78 — affiche modal plein écran (pas juste un toast).
+          setExportReview({ kind: exportType, status: 'pending', request_id: r.data?.request_id });
           // Poll for decision (max 90 polls × 4s = 6 min).
           let attempts = 0;
+          let resolved = false;
           const poll = setInterval(async () => {
             attempts += 1;
             try {
               const b = await withCreatorProof(API, axios, { request_id: r.data?.request_id });
               const s = await axios.post(`${API}/exports/status`, b);
               if (s.data?.status === 'approved') {
+                resolved = true;
                 clearInterval(poll);
-                toast.success(t('exp_approved_title'), { description: t('exp_approved_body'), duration: 9000 });
+                setExportReview({ kind: exportType, status: 'approved', request_id: r.data?.request_id });
+                setTimeout(() => setExportReview(null), 2500);
               } else if (s.data?.status === 'rejected') {
+                resolved = true;
                 clearInterval(poll);
-                toast.error(t('exp_rejected_title'), { description: t('exp_rejected_body'), duration: 12000 });
+                setExportReview({ kind: exportType, status: 'rejected', request_id: r.data?.request_id });
               } else if (attempts > 90) {
                 clearInterval(poll);
+                if (!resolved) setExportReview(null);
               }
             } catch (_) {}
           }, 4000);
@@ -882,7 +891,25 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* (Assistant Guidé retiré du dashboard sur demande utilisateur — la route /wizard reste accessible) */}
+            {/* iter78 — Assistant Guidé remis sur demande utilisatrice (création 100% accompagnée IA) */}
+            <motion.button
+              whileHover={{ y: -2, scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => { if (requireWrite()) navigate('/wizard'); }}
+              data-testid="guided-wizard-btn"
+              className="group w-full bg-gradient-to-br from-fuchsia-500/[0.08] via-purple-500/[0.05] to-cyan-500/[0.08] border-2 border-fuchsia-400/40 rounded-lg p-6 backdrop-blur-xl hover:border-fuchsia-400 hover:shadow-[0_8px_40px_rgba(232,121,249,0.3)] transition-all mb-6"
+            >
+              <div className="flex items-center gap-4 text-left">
+                <div className="w-14 h-14 bg-gradient-to-br from-fuchsia-400 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Wand2 className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-['Chivo'] font-bold text-white mb-1">Création rapide accompagnée</h3>
+                  <p className="text-sm text-[#A1A1AA]">100% guidé par l'IA — choisis ton type d'app, on s'occupe du reste.</p>
+                </div>
+                <Sparkles className="w-5 h-5 text-fuchsia-300 group-hover:rotate-12 transition-transform" />
+              </div>
+            </motion.button>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Bouton Chat (en ligne uniquement) */}
@@ -1109,6 +1136,13 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      {/* iter78 — Export in-review fullscreen */}
+      <ExportInReviewModal
+        open={!!exportReview}
+        status={exportReview?.status}
+        kind={exportReview?.kind}
+        onClose={() => setExportReview(null)}
+      />
     </div>
   );
 }

@@ -17,6 +17,41 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-02-16 — Iter 78 (Fullscreen export review + Iris vol + staff inbox + Reports + comptes enrichis)
+
+**📢 Annonce fullscreen vraiment plein écran** :
+- `AnnouncementsBanner` repositionné en `fixed inset-0` centré, contenu max-w-3xl, padding 10, titre `text-3xl→5xl`.
+- 1ʳᵉ vue = modal plein écran centré. Click X → bandeau haut. Click X bandeau → dismiss.
+
+**🧹 Retrait icônes ✅❌🟠 des annonces & sondages** :
+- Plus de boutons d'état dans la bannière ni dans le panneau "Gérer" pour annonces. Les icônes restent exclusivement sur les **bugs/idées** (IdeasButton) — staff+créa.
+
+**📦 Export review fullscreen** :
+- Nouveau composant `ExportInReviewModal` : message centré multi-lignes "Votre projet est en cours d'examination par la communauté administrative".
+- Remplace l'ancien toast côté Dashboard. Affiche `pending → approved → rejected`.
+- Polling 4s × 90 (≈6 min). User peut fermer le modal, polling continue en BG.
+
+**📨 Inbox staff (admin/modo) + onglet Report** :
+- `/ideas/inbox`, `/ideas/mark-read` ouverts aux admins et modos (en plus de la créa).
+- Nouveau kind `report` (signalement de problème) ajouté avant `other`. `/ideas/send` accepte désormais `kind ∈ {idea, bug, report, other}`.
+- IdeasButton composer : picker de type bug/report/idée/autre. Filter bar côté inbox également mis à jour.
+
+**🗳️ UX sondages enrichie** :
+- Bannière sondage affiche désormais "tu peux choisir N option(s)" ou "∞ choix possibles" (lisible).
+- Si `allow_user_suggestions` → mention "tu peux écrire ta propre réponse" en jaune ambre.
+
+**👥 AccountsButton (comptes) enrichi** :
+- Affichage de la **clé** device (préfixe 24 chars) en monospace.
+- Badges `admin` (cyan) / `modo` (violet) / `inactif` (zinc) / `visiteur forcé` (orange).
+- Nouveaux boutons : `Mettre admin`, `Mettre modo`, `Forcer visiteur`, `Message` (callback `onMessageAccount`).
+- Backend `/accounts/set-staff-kind` + `/accounts/force-visitor` (iter77) maintenant wirés côté UI.
+
+**🪄 Création rapide accompagnée par l'IA** :
+- Bouton **Wand2 + Sparkles** remis sur le Dashboard (au-dessus des deux cards Chat / Création).
+- Route `/wizard` (GuidedWizard) toujours en place.
+
+**Tests** : 22/22 backend pytest régression PASS (iter66/67/68/76 toujours verts). Frontend smoke OK.
+
 ### 2026-02-15 — Iter 77 (Multi-audience + sondages illimités + rôles staff + Iris vol + comptes complets)
 
 **🎯 Multi-audience cases à cocher (annonces / sondages / déco-programmée)** :

@@ -9,9 +9,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const KIND_META = {
-  bug:   { label: 'Bug',    icon: Bug,             color: '#FF6B6B' },
-  idea:  { label: 'Idée',   icon: Lightbulb,       color: '#E4FF00' },
-  other: { label: 'Autre',  icon: MoreHorizontal,  color: '#00D4FF' },
+  bug:    { label: 'Bug',    icon: Bug,             color: '#FF6B6B' },
+  report: { label: 'Report', icon: AlertTriangle,   color: '#FF8800' },
+  idea:   { label: 'Idée',   icon: Lightbulb,       color: '#E4FF00' },
+  other:  { label: 'Autre',  icon: MoreHorizontal,  color: '#00D4FF' },
 };
 
 /**
@@ -28,18 +29,21 @@ export default function IdeasButton() {
   const device = useDeviceIdentity();
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
+  const [draftKind, setDraftKind] = useState('idea');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [ideas, setIdeas] = useState([]);
   const isCreator = device.role === 'creator';
+  // iter78 — Staff (admin+modo) ouvre aussi la boîte à idées en mode "Inbox".
+  const isStaff = isCreator || device.staffKind === 'admin' || device.staffKind === 'modo';
   const [unread, setUnread] = useState(0);
   // iter64 — creator-side filters (persisted in localStorage so they survive reloads)
   const [filters, setFilters] = useState(() => {
     try {
       const raw = localStorage.getItem('codeforge_ideas_filters');
-      if (raw) return { bug: true, idea: true, other: true, ...JSON.parse(raw) };
+      if (raw) return { bug: true, idea: true, report: true, other: true, ...JSON.parse(raw) };
     } catch (_) {}
-    return { bug: true, idea: true, other: true };
+    return { bug: true, idea: true, report: true, other: true };
   });
   const [sortByKind, setSortByKind] = useState(() => {
     try { return localStorage.getItem('codeforge_ideas_sort_kind') === '1'; } catch (_) { return false; }
@@ -60,9 +64,9 @@ export default function IdeasButton() {
   const visibleIdeas = useMemo(() => {
     const filtered = ideas.filter((x) => filters[(x.kind || 'idea')] !== false);
     if (sortByKind) {
-      // bugs first, then ideas, then others — preserve ts order within each group
-      const order = { bug: 0, idea: 1, other: 2 };
-      return [...filtered].sort((a, b) => (order[a.kind || 'idea'] ?? 3) - (order[b.kind || 'idea'] ?? 3));
+      // iter78 — bugs > reports > ideas > others (preserve ts order within each group)
+      const order = { bug: 0, report: 1, idea: 2, other: 3 };
+      return [...filtered].sort((a, b) => (order[a.kind || 'idea'] ?? 4) - (order[b.kind || 'idea'] ?? 4));
     }
     if (sortByDate) {
       return [...filtered].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
@@ -70,10 +74,10 @@ export default function IdeasButton() {
     return filtered;
   }, [ideas, filters, sortByKind, sortByDate]);
 
-  const allOn = filters.bug && filters.idea && filters.other;
+  const allOn = filters.bug && filters.idea && filters.report && filters.other;
 
   useEffect(() => {
-    if (!isCreator || !device.keyId) return undefined;
+    if (!isStaff || !device.keyId) return undefined;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -95,9 +99,10 @@ export default function IdeasButton() {
     if (!content || sending) return;
     setSending(true);
     try {
-      const body = await withCreatorProof(API, axios, { content });
+      const body = await withCreatorProof(API, axios, { content, kind: draftKind });
       await axios.post(`${API}/ideas/send`, body);
       setDraft('');
+      setDraftKind('idea');
       toast.success(t('ideas_sent'));
       setOpen(false);
     } catch (e) {
@@ -133,8 +138,6 @@ export default function IdeasButton() {
     }
   };
 
-  const isStaff = isCreator || device.staffKind === 'admin' || device.staffKind === 'modo';
-
   if (!device.keyId) {
     return (
       <button
@@ -153,13 +156,13 @@ export default function IdeasButton() {
     <>
       <button
         type="button"
-        onClick={() => { setOpen(true); if (isCreator) markAllRead(); }}
+        onClick={() => { setOpen(true); if (isStaff) markAllRead(); }}
         data-testid="ideas-btn"
         title={t('ideas_title')}
         className="relative inline-flex items-center justify-center w-9 h-9 rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:text-amber-300 hover:border-amber-400/40 transition-colors"
       >
         <Lightbulb className="w-4 h-4" />
-        {isCreator && unread > 0 && (
+        {isStaff && unread > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-amber-400 text-[#050505] text-[9px] font-bold rounded-full inline-flex items-center justify-center px-1">
             {unread > 99 ? '99+' : unread}
           </span>
@@ -179,8 +182,30 @@ export default function IdeasButton() {
               </button>
             </header>
 
-            {!isCreator && (
+            {!isStaff && (
               <div className="p-3 space-y-3 flex flex-col flex-1 min-h-0">
+                {/* iter78 — kind picker */}
+                <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                  <span className="text-[#A1A1AA] mr-1">Type :</span>
+                  {(['bug', 'report', 'idea', 'other']).map((k) => {
+                    const meta = KIND_META[k];
+                    const Icon = meta.icon;
+                    const on = draftKind === k;
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setDraftKind(k)}
+                        data-testid={`ideas-kind-${k}`}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-sm border transition ${on ? 'border-white/30 bg-white/[0.05] text-white' : 'border-white/10 text-[#71717A] hover:text-white'}`}
+                        style={on ? { color: meta.color, borderColor: `${meta.color}66`, background: `${meta.color}12` } : undefined}
+                      >
+                        <Icon className="w-3 h-3" />
+                        {meta.label}
+                      </button>
+                    );
+                  })}
+                </div>
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -201,12 +226,12 @@ export default function IdeasButton() {
               </div>
             )}
 
-            {isCreator && (
+            {isStaff && (
               <>
                 {/* iter64 — filter bar */}
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-wrap text-[11px]">
                   <ListFilter className="w-3 h-3 text-[#A1A1AA] flex-shrink-0" />
-                  {(['bug', 'idea', 'other']).map((k) => {
+                  {(['bug', 'report', 'idea', 'other']).map((k) => {
                     const meta = KIND_META[k];
                     const Icon = meta.icon;
                     const on = filters[k];
