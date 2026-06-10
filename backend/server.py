@@ -3011,6 +3011,7 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                 # Model routing — user can pick a model at runtime via input.model.
                 model_choice = (input.model or "gpt-5.2").lower()
                 MODEL_ROUTES = {
+                    # Legacy IDs (compat)
                     "gpt-5.2":         ("openai",    "gpt-5.2"),
                     "gpt-5.1":         ("openai",    "gpt-5.1"),
                     "gpt-5":           ("openai",    "gpt-5"),
@@ -3025,13 +3026,39 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                     "gemini-3-pro":    ("gemini",    "gemini-3.1-pro-preview"),
                     "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
                     "gemini-2.5-pro":  ("gemini",    "gemini-2.5-pro"),
+                    # iter87 — Nouveaux IDs Emergent (best-of-each-family).
+                    "claude-5-fable":     ("anthropic", "claude-5-fable"),
+                    "claude-4.8-opus":    ("anthropic", "claude-opus-4-8"),
+                    "claude-4.7-opus":    ("anthropic", "claude-opus-4-7"),
+                    "claude-4.7-opus-1m": ("anthropic", "claude-opus-4-7-1m"),
+                    "claude-4.6-opus":    ("anthropic", "claude-opus-4-6"),
+                    "claude-4.6-opus-1m": ("anthropic", "claude-opus-4-6-1m"),
+                    "claude-4.6-sonnet":  ("anthropic", "claude-sonnet-4-6"),
+                    "claude-4.6-sonnet-1m": ("anthropic", "claude-sonnet-4-6-1m"),
+                    "claude-4.5-sonnet":  ("anthropic", "claude-sonnet-4-5-20250929"),
+                    "claude-4.5-opus":    ("anthropic", "claude-opus-4-5-20251101"),
+                    "gpt-5.5":            ("openai",    "gpt-5.5"),
+                    "gpt-5.4":            ("openai",    "gpt-5.4"),
+                    "gpt-5.4-1m":         ("openai",    "gpt-5.4-1m"),
+                    "gpt-5.3-codex":      ("openai",    "gpt-5.3-codex"),
+                    "gemini-3.1-pro":     ("gemini",    "gemini-3.1-pro-preview"),
                 }
-                provider, model_id = MODEL_ROUTES.get(model_choice, ("openai", "gpt-5.2"))
+                provider, model_id = MODEL_ROUTES.get(model_choice, ("anthropic", "claude-sonnet-4-5-20250929"))
                 ai_source = f"emergent:{provider}:{model_id}"
 
                 # Track which model answered each historical message (with ai_source).
-                history_cursor = db.chat_messages.find(history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1, "ai_source": 1}).sort("timestamp", 1)
-                history_docs_all = await history_cursor.to_list(length=None)
+                # iter87 — Distinction public/privé : MÊME moteur IA, mais policy
+                # de contexte différente. Public = mémoire courte (50 derniers),
+                # Privé = continuité étendue (500 derniers messages, inter-sessions).
+                _current_site_mode = await _get_site_modes_list()
+                _is_private_only = ("private" in _current_site_mode) and not any(
+                    m in _current_site_mode for m in ("public", "guest")
+                )
+                _context_limit = 500 if _is_private_only else 50
+                history_cursor = db.chat_messages.find(
+                    history_q, {"_id": 0, "role": 1, "content": 1, "timestamp": 1, "ai_source": 1},
+                ).sort("timestamp", 1).limit(_context_limit)
+                history_docs_all = await history_cursor.to_list(length=_context_limit)
                 history_docs = history_docs_all[:-1] if history_docs_all else []
                 transcript = ""
                 if history_docs:
@@ -3609,71 +3636,90 @@ async def list_chat_models(request: Request):
     is_create = context == "create"
 
     # Descriptions adaptées au contexte d'utilisation
+    # iter87 — Liste mise à jour avec les meilleures versions de chaque famille
+    # Emergent. Les anciens IDs (gpt-5.2/claude-opus/claude-sonnet/gemini-3-pro/
+    # gemini-3-flash) restent supportés via MODEL_ROUTES — ces entrées sont
+    # purement UI (le mapping provider/model_id côté backend doit suivre).
     online = [
         {
-            "id": "gpt-5.2", "name": "Caly (GPT-5.2)", "provider": "OpenAI", "badge": "Défaut", "color": "yellow",
+            "id": "claude-5-fable", "name": "Claude 5 Fable", "provider": "Anthropic", "badge": "Le plus capable", "color": "fuchsia",
             "description": (
-                "Discussion généraliste : brainstorm, écriture, analyse, rebond rapide. Mémoire complète de la conversation."
+                "Le modèle le plus puissant et le plus sécurisé d'Anthropic. Recommandé pour les décisions critiques, audits, raisonnements complexes."
+                if not is_create else
+                "Génère le code le plus robuste et le plus sûr. Idéal pour apps sensibles (auth, paiements, médical, juridique)."
+            ),
+            "good_for": (["Décisions critiques", "Audit sécurité", "Analyse longue", "Raisonnement multi-étape"]
+                if not is_create else ["Apps sensibles", "Production-ready", "Sécurité élevée"]),
+        },
+        {
+            "id": "gpt-5.5", "name": "GPT 5.5", "provider": "OpenAI", "badge": "Défaut", "color": "yellow",
+            "description": (
+                "Le dernier modèle d'OpenAI. Conversation généraliste rapide et fluide, mémoire complète, raisonnement solide."
                 if not is_create else
                 "Génère le code complet du projet (FastAPI + React + DB). Hypothèses intelligentes, README clair, prêt à exécuter."
             ),
-            "good_for": (
-                ["Brainstormer", "Écrire un email/texte", "Analyser un fichier", "Conversation longue"]
-                if not is_create else
-                ["App complète", "Projet équilibré", "Site web standard"]
-            ),
+            "good_for": (["Brainstormer", "Écrire un email/texte", "Analyser un fichier", "Conversation longue"]
+                if not is_create else ["App complète", "Projet équilibré", "Site web standard"]),
         },
         {
-            "id": "claude-opus", "name": "Claude Opus 4.5", "provider": "Anthropic", "badge": "Thinking", "color": "amber",
+            "id": "claude-4.8-opus", "name": "Claude 4.8 Opus", "provider": "Anthropic", "badge": "Thinking", "color": "amber",
             "description": (
-                "Raisonne pas-à-pas avant de répondre. Idéale pour problèmes complexes, décisions importantes, longues analyses, dilemmes."
+                "Performance frontière d'Anthropic. Raisonne avant de répondre. Idéal pour problèmes complexes, dilemmes, longues analyses."
                 if not is_create else
                 "Architecte avant de coder. Meilleure pour projets multi-fichiers, logique métier complexe, sécurité."
             ),
-            "good_for": (
-                ["Problèmes complexes", "Dilemmes", "Code review profond", "Recherche approfondie"]
-                if not is_create else
-                ["Architecture complexe", "Backend avec règles métier", "Apps multi-modules", "Logique sensible"]
-            ),
+            "good_for": (["Problèmes complexes", "Dilemmes", "Code review profond", "Recherche approfondie"]
+                if not is_create else ["Architecture complexe", "Backend avec règles métier", "Apps multi-modules"]),
         },
         {
-            "id": "claude-sonnet", "name": "Claude Sonnet 4.5", "provider": "Anthropic", "badge": "Code", "color": "orange",
+            "id": "claude-4.7-opus-1m", "name": "Claude 4.7 Opus (1M)", "provider": "Anthropic", "badge": "Contexte long", "color": "indigo",
             "description": (
-                "Excellente pour ÉCRIRE DU CODE dans le chat — clique sur ▶ Exécuter pour le lancer dans le sandbox Python. Pour générer un projet complet à télécharger, va plutôt dans Création."
+                "Contexte d'1 million de tokens. Idéal pour analyser un repo entier, plusieurs PDFs, ou des conversations très longues."
+                if not is_create else
+                "Pour porter un projet existant volumineux : repo legacy, refactor complet, lecture de gros datasets."
+            ),
+            "good_for": (["Analyser un repo", "Lire 100+ pages", "Conversation infinie"]
+                if not is_create else ["Refactor legacy", "Migration de framework", "Audit codebase"]),
+        },
+        {
+            "id": "claude-4.6-sonnet", "name": "Claude 4.6 Sonnet", "provider": "Anthropic", "badge": "Code", "color": "orange",
+            "description": (
+                "Excellente pour ÉCRIRE DU CODE dans le chat — clique sur ▶ Exécuter pour le lancer dans le sandbox Python."
                 if not is_create else
                 "Le PLUS RAPIDE pour générer un projet complet propre, exécutable, prêt à pousser sur GitHub. Recommandée par défaut."
             ),
-            "good_for": (
-                ["Snippets de code", "Refactor", "Debug ligne par ligne", "Réécrire un texte"]
-                if not is_create else
-                ["App standard", "Site marketing", "Outil CRUD", "Recommandé par défaut"]
-            ),
+            "good_for": (["Snippets de code", "Refactor", "Debug ligne par ligne", "Réécrire un texte"]
+                if not is_create else ["App standard", "Site marketing", "Outil CRUD", "Recommandé par défaut"]),
         },
         {
-            "id": "gemini-3-pro", "name": "Gemini 3 Pro", "provider": "Google", "badge": "Multimodal", "color": "blue",
+            "id": "gpt-5.3-codex", "name": "GPT 5.3 Codex", "provider": "OpenAI", "badge": "Code", "color": "emerald",
             "description": (
-                "Le meilleur quand tu joins une IMAGE — décrit, analyse, extrait du texte (OCR), explique des schémas, identifie."
+                "Modèle flagship OpenAI spécialisé code. Idéal pour write/debug/refactor complexe avec exécution."
+                if not is_create else
+                "Optimisé pour les patterns Python/JS/TS modernes. Code propre, idiomatique, testé."
+            ),
+            "good_for": (["Debug complexe", "Tests unitaires", "Architecture code"]
+                if not is_create else ["Backend Python", "Frontend TS", "API REST/GraphQL"]),
+        },
+        {
+            "id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "provider": "Google", "badge": "Multimodal", "color": "blue",
+            "description": (
+                "Le meilleur de Google. Idéal quand tu joins une IMAGE — décrit, analyse, OCR, explique des schémas."
                 if not is_create else
                 "Plus créative visuellement. Idéale pour UI originales, design audacieux, identité visuelle marquée."
             ),
-            "good_for": (
-                ["Analyser une image", "OCR (extraire texte image)", "Lire un schéma", "Décrire une photo"]
-                if not is_create else
-                ["UI design original", "Landing page", "Portfolio créatif", "App au look unique"]
-            ),
+            "good_for": (["Analyser une image", "OCR", "Lire un schéma", "Décrire une photo"]
+                if not is_create else ["UI design original", "Landing page", "Portfolio créatif"]),
         },
         {
-            "id": "gemini-3-flash", "name": "Gemini 3 Flash", "provider": "Google", "badge": "Ultra-rapide", "color": "cyan",
+            "id": "gpt-5.4-1m", "name": "GPT 5.4 (1M)", "provider": "OpenAI", "badge": "Contexte long", "color": "cyan",
             "description": (
-                "Réponses en quelques secondes. Parfait pour ping-pong rapide, questions courtes, vérifications express."
+                "Variante 1M tokens de GPT 5.4. Pour ingérer de grandes quantités de docs en une seule passe."
                 if not is_create else
-                "Pour prototypes rapides et MVPs simples. Code moins poli mais livré en quelques secondes."
+                "Pour projets nécessitant un contexte massif (specs longues, multiples APIs externes)."
             ),
-            "good_for": (
-                ["Question rapide", "Vérification express", "Définition", "Conversion d'unité"]
-                if not is_create else
-                ["Prototype rapide", "MVP simple", "Démo express", "Page unique"]
-            ),
+            "good_for": (["Analyse docs volumineux", "Multi-PDF", "Conversation sans coupure"]
+                if not is_create else ["Projet enterprise", "Specs complexes"]),
         },
     ]
     offline = [
@@ -9134,10 +9180,9 @@ class PrivateReadFileIn(BaseModel):
 
 @api_router.post("/private/code/read-file")
 async def private_read_file(payload: PrivateReadFileIn):
-    """Creator-only : lit un fichier source du repo /app (read-only)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    from orchestrator import _read_file_safe
-    return _read_file_safe(payload.path)
+    """iter87 — Endpoint désactivé pour des raisons de sécurité.
+    Le code du site n'est visible par personne, même la créatrice."""
+    raise HTTPException(status_code=403, detail="Accès refusé pour des raisons de sécurité.")
 
 
 class PrivateGrepIn(BaseModel):
@@ -9149,10 +9194,8 @@ class PrivateGrepIn(BaseModel):
 
 @api_router.post("/private/code/grep")
 async def private_grep(payload: PrivateGrepIn):
-    """Creator-only : grep dans le code source."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    from orchestrator import _grep_safe
-    return _grep_safe(payload.pattern)
+    """iter87 — Endpoint désactivé pour des raisons de sécurité."""
+    raise HTTPException(status_code=403, detail="Accès refusé pour des raisons de sécurité.")
 
 
 # ==========================================================================

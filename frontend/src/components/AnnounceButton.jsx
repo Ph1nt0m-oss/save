@@ -54,9 +54,7 @@ function formatAud(aud) {
 export default function AnnounceButton() {
   const device = useDeviceIdentity();
   const { t } = useLanguage();
-  // iter85 — Annonces : créa (vue creator) OU staff réel ou simulé peut publier
-  // selon l'audience choisie. La créa qui simule guest/user n'a pas accès.
-  const isCreator = device.role === 'creator' && device.viewMode === 'creator';
+  const isCreator = device.role === 'creator' && (!device.viewMode || device.viewMode === 'creator');
   const isStaff = isCreator || ['modo', 'admin'].includes(device.effectiveStaffKind);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('announce'); // 'announce' | 'poll' | 'manage'

@@ -141,10 +141,11 @@ class TestViewModePickerCheckbox:
     def test_picker_decoche_creator(self):
         path = "/app/frontend/src/components/ViewModePicker.jsx"
         content = open(path).read()
-        # Click sur case active = decoche (retour creator)
+        # iter87 — Click sur case active = decoche → setStoredViewMode(null)
+        # (mode écriture, plus 'creator').
         assert "if (mode === viewMode)" in content
-        assert "setStoredViewMode('creator')" in content
-        # Bouton "Revenir à la vue Créatrice" présent
+        assert "setStoredViewMode(null)" in content
+        # Bouton "Désactiver toutes les vues" présent
         assert "view-mode-revert-creator" in content
 
     def test_simulation_banner_exists(self):

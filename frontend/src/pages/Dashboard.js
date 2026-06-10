@@ -799,7 +799,7 @@ export default function Dashboard() {
               {/* iter86 — La créatrice en vue créa n'a pas besoin du système
                   d'amis (elle peut DM directement). Seules les vues simulées
                   (user/modo/admin) affichent le bouton Amis. */}
-              {device.viewMode !== 'creator' && (
+              {device.viewMode && device.viewMode !== 'creator' && (
                 <button
                   onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
                   data-testid="open-friends-btn"

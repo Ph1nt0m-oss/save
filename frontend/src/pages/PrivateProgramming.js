@@ -21,13 +21,13 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  * viewMode==='creator'). Tout autre cas → écran "Accès refusé".
  */
 export default function PrivateProgramming() {
-  const device = useDeviceIdentity();
   const navigate = useNavigate();
   const location = useLocation();
   const isAI = location.pathname.includes('ai-programming');
   const title = isAI ? 'Programmation des IA' : 'Programmation du site';
-  const allowed = device.role === 'creator' && device.viewMode === 'creator';
 
+  // iter87 — Sécurité : le code du site et la config des IA ne sont visibles
+  // par PERSONNE, même la créatrice. Affichage permanent de l'écran de garde.
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6" data-testid="private-programming-page">
       <div className="max-w-7xl mx-auto">
@@ -36,23 +36,16 @@ export default function PrivateProgramming() {
             <ArrowLeft className="w-4 h-4" /> Retour
           </button>
           <h1 className="text-2xl font-['Chivo'] font-black">{title}</h1>
-          {allowed && (
-            <span className="ml-auto text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/5 rounded-sm">
-              Accès créatrice
-            </span>
-          )}
         </div>
-
-        {!allowed ? (
-          <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-6 text-center max-w-md mx-auto" data-testid="private-access-denied">
-            <Lock className="w-12 h-12 mx-auto text-red-300 mb-3" />
-            <p className="text-base text-red-200 leading-relaxed">
-              Accès refusé pour des raisons de sécurité.
-            </p>
-          </div>
-        ) : (
-          isAI ? <AIProgrammingPanel /> : <SiteProgrammingPanel />
-        )}
+        <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-8 text-center max-w-md mx-auto" data-testid="private-access-denied">
+          <Lock className="w-14 h-14 mx-auto text-red-300 mb-4" />
+          <h2 className="text-lg font-bold text-red-200 mb-2">Accès refusé</h2>
+          <p className="text-sm text-red-100/90 leading-relaxed">
+            Pour des raisons de sécurité, le code du site et la configuration des IA
+            ne sont visibles par personne — pas même la créatrice — depuis cette
+            interface.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,0 +1,38 @@
+{
+  "summary": "iter87 GREEN end-to-end. Backend : 11/11 PASS sur test_iter87_public_private_and_models.py + 89/89 régression cumulée (iter81+82+83+84+85+86+87) en 74s sans casse. Tous les 7 features iter87 validés : (1) ViewModePicker iter87 — ORDER inclut ['creator','user','modo','admin','guest'] (creator au début, cochable). setStoredViewMode(null) supprime la clé. (2) useDeviceIdentity — viewMode peut être null (localStorage.removeItem + return null). isCreatorView true si !viewMode OU viewMode==='creator'. (3) i18n FR+EN : sm_guest_view_force_modo = 'Forcer la vue modo' / 'Force modo view' + idem admin. (4) /private/code/read-file + /private/code/grep : 403 systématique (test runtime POST sans signature → 403, plus aucun gating creator). (5) PrivateProgramming.js : écran de garde permanent avec data-testid='private-access-denied' + texte 'Accès refusé'. (6) Chat history : _context_limit = 500 si _is_private_only else 50 — distinction public/privé EN CONTEXTE uniquement (même moteur IA). (7) MODEL_ROUTES iter87 : les 8 nouveaux IDs Emergent présents (claude-5-fable, claude-4.8-opus, claude-4.7-opus-1m, claude-4.6-sonnet, gpt-5.5, gpt-5.3-codex, gemini-3.1-pro, gpt-5.4-1m) + default switched gpt-5.2 → claude-sonnet-4-5-20250929. Frontend smoke /login : 200 OK, CodeForge AI render correct, formulaire signin/signup visible, seuls 2 logs 401 attendus (/auth/me sans cookie). Test account non-créa donc ViewModePicker + PrivateProgramming invisibles by design — audit code suffit conforme brief.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter87_public_private_and_models.py",
+    "/app/test_reports/pytest/iter87_results.xml",
+    "/app/test_reports/pytest/iter87_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ViewModePicker iter87 : pattern décochable correct — un re-clic sur la vue active appelle setStoredViewMode(null) qui supprime la clé localStorage. Le bug 'coincée en simulation' est résolu : la créa peut désactiver toutes les vues simulées et retourner en mode écriture (viewMode=null). L'ordre ['creator','user','modo','admin','guest'] place 'creator' en premier, cochable comme les autres — symétrie cognitive propre.",
+    "useDeviceIdentity iter87 : readViewMode() retourne null si rien en localStorage (au lieu de la valeur défaut 'creator' précédente). setStoredViewMode(null) appelle localStorage.removeItem(VIEW_MODE_KEY) — pas de string 'null' parasite stockée. isCreatorView = !viewMode || viewMode==='creator' — cohérent (null = mode écriture créa par défaut).",
+    "PrivateProgramming.js : écran 'Accès refusé pour des raisons de sécurité' rendu en permanence avec data-testid='private-access-denied'. Aucune logique conditionnelle creator-only — sécurité maximale, le code privé n'est visible par PERSONNE depuis l'UI, même la créatrice. Cohérent avec /private/code/* qui renvoie 403 systématique côté backend.",
+    "Backend /private/code/read-file et /private/code/grep : retournent désormais 403 immédiat (plus de _verify_signed + creator gating). Sécurité défensive — si jamais un attaquant obtenait une signature, il n'y a aucune voie pour lire le code privé via l'API. Test runtime POST sans payload signé → 403 conforme.",
+    "Chat history context_limit : implémenté via _is_private_only = computed from _get_site_modes_list() — 500 messages si site_mode = ['private'] exclusivement (sans 'public' ou 'guest'), sinon 50. Distinction EN CONTEXTE seulement, MÊME moteur IA — exactement comme demandé par le brief (pas en puissance).",
+    "MODEL_ROUTES iter87 : 8 nouveaux IDs Emergent (claude-5-fable, claude-4.8-opus, claude-4.7-opus-1m, claude-4.6-sonnet, gpt-5.5, gpt-5.3-codex, gemini-3.1-pro, gpt-5.4-1m) + legacy (gpt-5.2, claude-opus, claude-sonnet, gemini-3-pro, gemini-3-flash) gardés pour compat. Default switched de gpt-5.2 vers claude-sonnet-4-5-20250929 — Emergent recommended.",
+    "i18n LanguageContext.js : clés sm_guest_view_force_modo + sm_guest_view_force_admin présentes en FR et EN, mappées dans SiteModeBadge.jsx → guest_view options. Symétrie linguistique complète."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (11/11 iter87 + 89/89 régression cumulée iter81+82+83+84+85+86+87 en 74s)",
+    "frontend": "100% sur smoke /login (CodeForge AI render OK, formulaire signin présent, seuls 2 logs 401 attendus de /auth/me sans cookie). ViewModePicker + PrivateProgramming invisibles by design (test account non-créa) — audit code conforme brief."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (non-créatrice — ViewModePicker invisible by design)",
+  "seed_data_creation": "Aucune donnée seed créée.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter87 GREEN (11 nouveaux + 78 régression = 89/89). IMPORTANT : pour faire passer la régression cumulée, lancer pytest depuis /app/backend (cwd) — la conftest.py local ajoute /app/backend au sys.path. Si lancé depuis /app, ModuleNotFoundError sur 'server' et 'orchestrator'. Tous les 7 features iter87 du brief validés : ViewModePicker décochable + creator dans ORDER, useDeviceIdentity viewMode=null, i18n force_modo/admin FR+EN, /private/code/* 403 systématique (sécurité même créa), PrivateProgramming écran de garde permanent, history limit 50 public vs 500 private-only (contexte seulement même moteur), MODEL_ROUTES étendu 8 nouveaux IDs Emergent + default claude-sonnet-4-5. Test account non-créa donc ViewModePicker/PrivateProgramming invisibles ; pour tester en runtime créa il faut un device avec role=creator.",
+  "rca of the issue": "Aucun bug. iter87 corrige le bug de verrouillage de vue (la créa était bloquée en vue modo) — maintenant viewMode peut être null = mode écriture créa par défaut. Sécurise PrivateProgramming pour TOUS (même créa). Étend MODEL_ROUTES avec les vraies IDs Emergent listées par l'user. Distinction public/privé EN CONTEXTE uniquement (50 vs 500 messages) — pas en puissance, exactement comme demandé."
+}

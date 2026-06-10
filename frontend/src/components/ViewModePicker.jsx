@@ -14,14 +14,16 @@ import { useLanguage } from '../contexts/LanguageContext';
  * Visible uniquement pour les devices créatrice (early return sinon).
  */
 const VIEW_META = {
-  creator: { Icon: Crown, labelKey: 'view_creator', color: 'text-[#E4FF00]', desc: 'Accès total (par défaut)' },
+  creator: { Icon: Crown, labelKey: 'view_creator', color: 'text-[#E4FF00]', desc: 'Comme la créatrice' },
   user:    { Icon: User, labelKey: 'view_user', color: 'text-sky-300', desc: 'Comme un membre approved' },
   modo:    { Icon: Shield, labelKey: 'view_modo', color: 'text-cyan-300', desc: 'Comme un modérateur' },
   admin:   { Icon: ShieldCheck, labelKey: 'view_admin', color: 'text-orange-300', desc: 'Comme un administrateur' },
   guest:   { Icon: EyeOff, labelKey: 'view_guest', color: 'text-amber-300', desc: 'Comme un visiteur public' },
 };
 
-const ORDER = ['user', 'modo', 'admin', 'guest'];  // 'creator' = défaut implicite, pas dans les cases
+// iter87 — Toutes les vues (y compris creator) sont coches optionnelles.
+// Si AUCUNE n'est cochée → mode "écriture" (pas en simulation).
+const ORDER = ['creator', 'user', 'modo', 'admin', 'guest'];
 
 export default function ViewModePicker({ role, viewMode }) {
   const { t } = useLanguage();
@@ -29,14 +31,16 @@ export default function ViewModePicker({ role, viewMode }) {
 
   if (role !== 'creator') return null;
 
-  const current = VIEW_META[viewMode] || VIEW_META.creator;
-  const CIcon = current.Icon;
-  const isSimulating = viewMode && viewMode !== 'creator';
+  // iter87 — viewMode peut être null (= aucune simulation, mode écriture).
+  // L'affichage du label change : si aucune vue cochée, on dit "Aucune vue".
+  const current = viewMode && VIEW_META[viewMode];
+  const CIcon = current ? current.Icon : Eye;
+  const isSimulating = !!viewMode && viewMode !== '';
 
   const toggle = (mode) => {
-    // Cliquer sur la case déjà active = décocher (retour creator)
+    // Cliquer sur la case déjà active = décocher (retour mode écriture, viewMode=null)
     if (mode === viewMode) {
-      setStoredViewMode('creator');
+      setStoredViewMode(null);
     } else {
       setStoredViewMode(mode);
     }
@@ -56,7 +60,7 @@ export default function ViewModePicker({ role, viewMode }) {
         }`}
       >
         <CIcon className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{t(current.labelKey)}</span>
+        <span className="hidden sm:inline">{current ? t(current.labelKey) : 'Aucune vue'}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -97,15 +101,15 @@ export default function ViewModePicker({ role, viewMode }) {
           {isSimulating && (
             <div className="border-t border-white/10 mt-1 px-3 py-2 space-y-1.5">
               <div className="text-[10px] text-amber-200">
-                ⚠ Simulation active. Clique sur la case active pour la décocher et revenir à la vue créa.
+                ⚠ Simulation active. Clique sur la case active pour la décocher (aucune vue = mode écriture).
               </div>
               <button
                 type="button"
-                onClick={() => { setStoredViewMode('creator'); setOpen(false); }}
+                onClick={() => { setStoredViewMode(null); setOpen(false); }}
                 data-testid="view-mode-revert-creator"
                 className="w-full px-2 py-1 text-[11px] bg-[#E4FF00]/15 text-[#E4FF00] border border-[#E4FF00]/40 rounded-sm hover:bg-[#E4FF00]/25"
               >
-                Revenir à la vue Créatrice
+                Désactiver toutes les vues (mode écriture)
               </button>
             </div>
           )}
