@@ -17,6 +17,38 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 80 (Quick-wins commentaires user C13/C14/C17/C18/C20/C2)
+
+**C13 — Vue créateur sans expositions sensibles** :
+- `IdeasButton` : `isCreator` désormais `device.role === 'creator' && viewMode !== 'guest'` → la boîte à idées en mode inbox n'apparaît pas en vue invitée.
+- AccountsButton + AnnounceButton déjà cachés en viewMode='guest' depuis iter77.
+
+**C14 — Vider la boîte à idées avec confirmation password** :
+- Nouveau endpoint `/ideas/clear` (créa-only) avec `scope ∈ {all, resolved, unresolved}`.
+- Si le scope inclut des retours **non-traités** (state ≠ validated), exige `password`. Retourne 428 si manquant, 403 « Mot de passe incorrect. Veuillez réessayer » si faux.
+- IdeasButton : 3 boutons rangés dans la barre filter (créa-only) : « Traités », « Non-traités », « Tout ». Modal de confirmation Oui/Non, puis champ mot de passe si requis.
+
+**C17 — Export ZIP avec cases à cocher** :
+- Modèle backend `ExportRequest` étendu avec `include_code: bool` (défaut true) et `include_chat: bool` (défaut false).
+- `/export/download` honore ces flags : génère code source ET/OU transcript chat (markdown + DOCX inclus dans le ZIP).
+- Dashboard frontend : `askExportProjectZip()` ouvre un modal avec 2 checkboxes (code source / discussions .docx) avant le download.
+
+**C18 — Confirmation : C18 reste comme iter79 (admin+créa choisissent modos, créa choisit admins)**.
+
+**C20 — Visite compte complète + items supprimés en contraste foncé** :
+- `/accounts/visit` (créa-only) enrichi : retourne **TOUS** les projets/messages (incluant deleted soft) avec `is_deleted: true|false`.
+- Retourne aussi `target.staff_kind` pour permettre badge admin/modo dans la vue.
+- Le user lui-même ne voit PAS les éléments supprimés en vue créateur (logique pure côté UI à brancher).
+- Liste agrandie : projects=500, messages=2000.
+
+**C2 — Suggestion IA et pièces jointes des 2 côtés du wizard** :
+- Bloc **Design** : conserve « Suggestion IA » + ajoute **AttachMenu** (pièces jointes).
+- Bloc **Fonctionnement** : ajoute **« Suggestion IA »** vert (askMagicFunc) + conserve AttachMenu.
+- Backend `wizard-suggest` : nouveau `kind='function'` → renvoie `{ "func": "description" }`. Fallback déterministe.
+- Texte ajouté en append (concaténation), pas écrasement, pour permettre plusieurs cycles d'inspiration.
+
+**Tests** : 22/22 backend pytest régression PASS. Endpoints nouveaux validés via curl (sans signature → 403). Frontend smoke OK (Landing rendue).
+
 ### 2026-06-10 — Iter 79 (Pseudos variés, staff inbox + permissions, DOCX, blocs privés créa)
 
 **🪄 Pseudo wizard variety** :

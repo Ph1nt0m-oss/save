@@ -51,7 +51,7 @@ export default function GuidedWizard() {
   const [appTypes, setAppTypes] = useState([]);              // multi-select
   const [appName, setAppName] = useState('');
   const [nameSuggestions, setNameSuggestions] = useState([]);
-  const [magicLoading, setMagicLoading] = useState({ name: false, design: false });
+  const [magicLoading, setMagicLoading] = useState({ name: false, design: false, func: false });
   const [designText, setDesignText] = useState('');          // visuel
   const [funcText, setFuncText] = useState('');              // fonctionnement
   const [attachments, setAttachments] = useState([]);        // [{kind, name?, text?, url?}]
@@ -93,7 +93,7 @@ export default function GuidedWizard() {
     setMagicLoading(s => ({ ...s, design: true }));
     try {
       const r = await axios.post(`${API}/ai/wizard-suggest`,
-        { kind: 'design', platforms, app_type: appTypes[0] || null, description: funcText || appName, language },
+        { kind: 'design', platforms, app_type: appTypes[0] || null, description: funcText || appName, language, seed: Math.random() },
         { withCredentials: true });
       const text = (r.data?.design || '').trim();
       if (text) {
@@ -104,6 +104,25 @@ export default function GuidedWizard() {
       toast.error('Suggestion impossible');
     } finally {
       setMagicLoading(s => ({ ...s, design: false }));
+    }
+  };
+
+  // iter80 C2 — Suggestion IA pour le bloc Fonctionnement.
+  const askMagicFunc = async () => {
+    setMagicLoading(s => ({ ...s, func: true }));
+    try {
+      const r = await axios.post(`${API}/ai/wizard-suggest`,
+        { kind: 'function', platforms, app_type: appTypes[0] || null, description: designText || appName, language, seed: Math.random() },
+        { withCredentials: true });
+      const text = (r.data?.func || r.data?.design || '').trim();
+      if (text) {
+        setFuncText(prev => prev ? `${prev}\n\n${text}` : text);
+        toast.success('🪄 Fonctionnement ajouté');
+      }
+    } catch (_) {
+      toast.error('Suggestion impossible');
+    } finally {
+      setMagicLoading(s => ({ ...s, func: false }));
     }
   };
 
@@ -189,7 +208,7 @@ export default function GuidedWizard() {
           </section>
 
           <section>
-            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">Type(s) d'application</h3>
+            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">Type(s) d&apos;application</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="wizard-types">
               {APP_TYPES.map(t => {
                 const active = appTypes.includes(t.id);
@@ -218,7 +237,7 @@ export default function GuidedWizard() {
         <div className="space-y-8 max-w-xl mx-auto">
           <header className="text-center">
             <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Donne-lui un nom</h2>
-            <p className="text-[#A1A1AA]">Tape un nom — ou laisse l'IA t'en proposer.</p>
+            <p className="text-[#A1A1AA]">Tape un nom — ou laisse l&apos;IA t&apos;en proposer.</p>
           </header>
 
           <div className="relative">
@@ -252,7 +271,7 @@ export default function GuidedWizard() {
           )}
 
           <p className="text-xs text-[#A1A1AA] text-center">
-            La baguette magique a besoin d'au moins une plateforme à l'étape précédente.
+            La baguette magique a besoin d&apos;au moins une plateforme à l&apos;étape précédente.
           </p>
         </div>
       );
@@ -263,20 +282,24 @@ export default function GuidedWizard() {
         <div className="space-y-8 max-w-3xl mx-auto">
           <header className="text-center">
             <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Décris ton app</h2>
-            <p className="text-[#A1A1AA]">Sépare l'apparence (design) du comportement (fonctionnement). Tu peux joindre des fichiers.</p>
+            <p className="text-[#A1A1AA]">Sépare l&apos;apparence (design) du comportement (fonctionnement). Tu peux joindre des fichiers.</p>
           </header>
 
           <div className="grid md:grid-cols-2 gap-5">
             <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Paintbrush className="w-4 h-4 text-[#E4FF00]" /> Design / Visuel</h3>
-                <button onClick={askMagicDesign}
-                  data-testid="wizard-magic-design-btn"
-                  disabled={magicLoading.design}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#E4FF00] text-[#050505] font-bold rounded-sm hover:scale-105 transition-transform disabled:opacity-40">
-                  {magicLoading.design ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                  Suggestion IA
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={askMagicDesign}
+                    data-testid="wizard-magic-design-btn"
+                    disabled={magicLoading.design}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#E4FF00] text-[#050505] font-bold rounded-sm hover:scale-105 transition-transform disabled:opacity-40">
+                    {magicLoading.design ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                    Suggestion IA
+                  </button>
+                  {/* iter80 C2 — Pièces jointes possibles aussi dans Design */}
+                  <AttachMenu onResult={handleAttach} />
+                </div>
               </div>
               <textarea
                 value={designText} onChange={(e) => setDesignText(e.target.value)}
@@ -289,7 +312,17 @@ export default function GuidedWizard() {
             <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Cog className="w-4 h-4 text-[#00FF66]" /> Fonctionnement</h3>
-                <AttachMenu onResult={handleAttach} />
+                <div className="flex items-center gap-1.5">
+                  {/* iter80 C2 — Suggestion IA possible aussi dans Fonctionnement */}
+                  <button onClick={askMagicFunc}
+                    data-testid="wizard-magic-func-btn"
+                    disabled={magicLoading.func}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#00FF66] text-[#050505] font-bold rounded-sm hover:scale-105 transition-transform disabled:opacity-40">
+                    {magicLoading.func ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                    Suggestion IA
+                  </button>
+                  <AttachMenu onResult={handleAttach} />
+                </div>
               </div>
               <textarea
                 value={funcText} onChange={(e) => setFuncText(e.target.value)}
@@ -345,7 +378,7 @@ export default function GuidedWizard() {
           </motion.div>
           <div>
             <h2 className="text-3xl font-['Chivo'] font-black mb-2">Application générée !</h2>
-            <p className="text-[#A1A1AA]">"{appName}" est prête.</p>
+            <p className="text-[#A1A1AA]">&quot;{appName}&quot; est prête.</p>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <Button onClick={() => window.open(`${API}/export/mobile/${generatedProject?.project?.id}`, '_blank')}
@@ -425,7 +458,7 @@ export default function GuidedWizard() {
                 data-testid="wizard-generate-btn"
                 className="bg-[#00FF66] text-[#050505] px-6 sm:px-8 font-['Chivo'] font-bold">
                 {isGenerating ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Génération…</>
-                  : <><Sparkles className="w-5 h-5 mr-2" /> Générer l'application</>}
+                  : <><Sparkles className="w-5 h-5 mr-2" /> Générer l&apos;application</>}
               </Button>
             )}
           </div>

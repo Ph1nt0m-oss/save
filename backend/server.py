@@ -252,6 +252,8 @@ class GenerateCodeRequest(BaseModel):
 class ExportRequest(BaseModel):
     project_id: str
     export_type: str  # 'apk', 'exe', 'web', 'source'
+    include_code: bool = True   # iter80 C17 — case « code source »
+    include_chat: bool = False  # iter80 C17 — case « discussions / .docx »
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -4006,6 +4008,14 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
             f"Aléa #{seed_val:.6f}. Réponds UNIQUEMENT en JSON: "
             f"{{\"suggestions\": [\"...\", \"...\", \"...\"]}}"
         )
+    elif payload.kind == 'function':
+        # iter80 C2 — Suggestion IA pour le bloc Fonctionnement du wizard.
+        prompt = (
+            f"Propose en 80 mots maximum quelles fonctionnalités, écrans et règles métier "
+            f"devrait avoir une app {payload.app_type or 'générique'} ciblant {plats}. "
+            f"Contexte design : {desc or 'aucun'}. Aléa #{seed_val:.6f}. "
+            f"Réponds UNIQUEMENT en JSON : {{\"func\": \"description claire en plusieurs phrases\"}}"
+        )
     else:
         prompt = (
             f"Propose une direction visuelle (palette, typographie, ambiance, mots-clés) "
@@ -4039,6 +4049,8 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
         if payload.kind == 'name':
             pool = _fallback_name_pool()
             data = {"suggestions": _rnd.sample(pool, 3)}
+        elif payload.kind == 'function':
+            data = {"func": "Trois écrans principaux : accueil avec actions rapides, écran central interactif et un profil utilisateur. Une authentification simple, des notifications discrètes et une sauvegarde locale automatique. Possibilité d'inviter des amis et de partager du contenu."}
         else:
             data = {"design": "Interface sombre élégante, accent jaune-vert vif, typographie sans-serif moderne, ambiance high-tech bienveillante."}
 
@@ -6042,29 +6054,50 @@ async def download_export(request: Request, export_req: ExportRequest):
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         generated_code = project["generated_code"]
-        for file_data in generated_code.get("files", []):
-            zip_file.writestr(file_data["path"], file_data["content"])
-        # Always include a README at the root if not already present.
-        existing_paths = {f.get("path") for f in generated_code.get("files", [])}
-        if "README.md" not in existing_paths and "readme.md" not in existing_paths:
-            readme = (
-                f"# {project['name']}\n\n"
-                f"{project.get('description', '')}\n\n"
-                f"---\nGénéré par CodeForge AI · ID `{project['project_id']}`\n"
-                f"Créé le : {project.get('created_at')}\n"
-            )
-            zip_file.writestr("README.md", readme)
-        # If this project is a saved chat, append a transcript file.
-        if project.get("project_type") == "chat":
+        if export_req.include_code:
+            for file_data in generated_code.get("files", []):
+                zip_file.writestr(file_data["path"], file_data["content"])
+            # Always include a README at the root if not already present.
+            existing_paths = {f.get("path") for f in generated_code.get("files", [])}
+            if "README.md" not in existing_paths and "readme.md" not in existing_paths:
+                readme = (
+                    f"# {project['name']}\n\n"
+                    f"{project.get('description', '')}\n\n"
+                    f"---\nGénéré par CodeForge AI · ID `{project['project_id']}`\n"
+                    f"Créé le : {project.get('created_at')}\n"
+                )
+                zip_file.writestr("README.md", readme)
+        # If this project is a saved chat OR include_chat is true, append a transcript.
+        if export_req.include_chat or project.get("project_type") == "chat":
             msgs = await db.chat_messages.find(
                 {"user_id": user_id, "project_id": export_req.project_id},
-                {"_id": 0, "role": 1, "content": 1, "timestamp": 1},
+                {"_id": 0, "role": 1, "content": 1, "timestamp": 1, "created_at": 1},
             ).sort("timestamp", 1).to_list(length=10000)
+            # Format markdown
             transcript = "\n\n".join(
-                f"### {('Toi' if m.get('role') == 'user' else 'CodeForge')} — {m.get('timestamp', '')}\n{m.get('content', '')}"
+                f"### {('Toi' if m.get('role') == 'user' else 'CodeForge')} — {m.get('timestamp', m.get('created_at', ''))}\n{m.get('content', '')}"
                 for m in msgs
             )
             zip_file.writestr("chat-transcript.md", transcript or "(empty)")
+            # iter80 C17 — also a .docx file inside the ZIP
+            try:
+                from docx import Document
+                from docx.shared import RGBColor
+                doc = Document()
+                doc.add_heading(project.get("name") or export_req.project_id, 0)
+                doc.add_paragraph(f"Exporté le {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')} — {len(msgs)} message(s)")
+                for m in msgs:
+                    speaker = "Utilisateur" if m.get("role") == "user" else "IA"
+                    p = doc.add_paragraph()
+                    run = p.add_run(f"[{speaker}] ")
+                    run.bold = True
+                    run.font.color.rgb = RGBColor(0xE4, 0xFF, 0x00) if m.get("role") != "user" else RGBColor(0x00, 0xD4, 0xFF)
+                    p.add_run((m.get("content") or "")[:50000])
+                doc_buf = io.BytesIO()
+                doc.save(doc_buf)
+                zip_file.writestr("chat-transcript.docx", doc_buf.getvalue())
+            except Exception:
+                pass
     
     zip_buffer.seek(0)
     
@@ -7196,7 +7229,11 @@ async def accounts_history_clear(payload: _CreatorSigIn):
 
 @api_router.post("/accounts/visit")
 async def accounts_visit(payload: _TargetCreatorSigIn):
-    """Creator-only — view a user's projects + chat history (read for review)."""
+    """iter80 C20 — Creator-only : voir le compte d'un user comme s'il s'agissait
+    de son propre dashboard (projets, messages, group chats). Les éléments
+    supprimés (deleted_by_user, deleted_by_creator, deleted=True) sont retournés
+    avec un flag `is_deleted: true` pour permettre au frontend d'appliquer un
+    contraste foncé. Le user lui-même ne voit pas ces éléments en vue créateur."""
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
     if not target:
@@ -7209,15 +7246,26 @@ async def accounts_visit(payload: _TargetCreatorSigIn):
     projects = []
     messages = []
     if user_id:
-        # Include "deleted" projects (soft-deleted) so creator can review.
-        projects = await db.projects.find(
+        raw_projects = await db.projects.find(
             {"user_id": user_id}, {"_id": 0, "generated_code": 0},
-        ).sort("created_at", -1).to_list(length=200)
-        messages = await db.chat_messages.find(
+        ).sort("created_at", -1).to_list(length=500)
+        for p in raw_projects:
+            p["is_deleted"] = bool(p.get("deleted_by_user") or p.get("deleted_by_creator") or p.get("deleted"))
+            projects.append(p)
+        raw_messages = await db.chat_messages.find(
             {"user_id": user_id}, {"_id": 0},
-        ).sort("timestamp", -1).to_list(length=500)
+        ).sort("timestamp", -1).to_list(length=2000)
+        for m in raw_messages:
+            m["is_deleted"] = bool(m.get("deleted"))
+            messages.append(m)
     return {
-        "target": {"key_id": payload.target_key_id, "email": target.get("email"), "pseudo": target.get("pseudo") or target.get("label")},
+        "target": {
+            "key_id": payload.target_key_id,
+            "email": target.get("email"),
+            "pseudo": target.get("pseudo") or target.get("label"),
+            "role": target.get("role"),
+            "staff_kind": target.get("staff_kind"),
+        },
         "projects": projects,
         "messages": list(reversed(messages)),
     }
@@ -7420,6 +7468,61 @@ async def ideas_inbox(payload: _CreatorSigIn):
         raise HTTPException(status_code=403, detail="Réservé staff (admin/modo) et créatrice.")
     rows = await db.ideas.find({}, {"_id": 0}).sort("ts", -1).to_list(length=500)
     return {"ideas": rows}
+
+
+# iter80 — Clear ideas (créa only, password-protected if any unresolved)
+class IdeasClearIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    key_id: str
+    nonce: str
+    signature: str
+    scope: str  # 'all' | 'resolved' | 'unresolved'
+    password: Optional[str] = None  # required if scope includes unresolved
+
+
+def _idea_is_resolved(idea: Dict[str, Any]) -> bool:
+    """iter80 — Une idée est 'résolue' quand son state vaut validated.
+    'refused' compte comme refusé (non-résolu). 'orange' = escalade créa,
+    'reset' / pas de state = non-traité."""
+    return idea.get("state") == "validated"
+
+
+@api_router.post("/ideas/clear")
+async def ideas_clear(payload: IdeasClearIn):
+    """iter80 — Vide tout / résolus / non-résolus. Si le scope inclut des
+    non-traités/refusés, exige le mot de passe créatrice."""
+    dev = await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    scope = payload.scope
+    if scope not in ("all", "resolved", "unresolved"):
+        raise HTTPException(status_code=400, detail="scope invalide.")
+    # Look at remaining unresolved counts (avant suppression)
+    rows = await db.ideas.find({}, {"_id": 0}).to_list(length=2000)
+    unresolved_ids = [i["idea_id"] for i in rows if not _idea_is_resolved(i)]
+    resolved_ids = [i["idea_id"] for i in rows if _idea_is_resolved(i)]
+    # Check password if scope touches unresolved.
+    if scope in ("all", "unresolved") and unresolved_ids:
+        if not payload.password:
+            raise HTTPException(status_code=428, detail="Mot de passe requis pour effacer des retours non-traités.")
+        user = await db.users.find_one({"email": dev.get("email")}, {"_id": 0, "password_hash": 1})
+        ok = False
+        if user and user.get("password_hash"):
+            try:
+                ok = bcrypt.checkpw(payload.password.encode("utf-8"), user["password_hash"].encode("utf-8"))
+            except Exception:
+                ok = False
+        if not ok:
+            raise HTTPException(status_code=403, detail="Mot de passe incorrect. Veuillez réessayer.")
+    # Apply deletion
+    if scope == "all":
+        await db.ideas.delete_many({})
+        deleted = len(rows)
+    elif scope == "resolved":
+        await db.ideas.delete_many({"idea_id": {"$in": resolved_ids}})
+        deleted = len(resolved_ids)
+    else:  # unresolved
+        await db.ideas.delete_many({"idea_id": {"$in": unresolved_ids}})
+        deleted = len(unresolved_ids)
+    return {"success": True, "deleted": deleted, "scope": scope}
 
 
 @api_router.post("/ideas/mark-read")

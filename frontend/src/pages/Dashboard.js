@@ -126,13 +126,22 @@ export default function Dashboard() {
 
   const askDelete = (project) => { setDeleteTarget(project); setCtxMenu(null); };
 
-  const exportProjectZip = async (project) => {
+  // iter80 — C17: dialog "Inclure dans le ZIP" (code source + conversations)
+  const [zipOptions, setZipOptions] = useState(null);  // { project, includeCode, includeChat }
+
+  const askExportProjectZip = (project) => {
     setCtxMenu(null);
     if (!project?.project_id) return;
+    setZipOptions({ project, includeCode: true, includeChat: false });
+  };
+
+  const exportProjectZip = async (project, opts) => {
+    if (!project?.project_id) return;
+    const o = opts || { includeCode: true, includeChat: false };
     try {
       const r = await axios.post(
         `${API}/export/download`,
-        { project_id: project.project_id, export_type: 'source' },
+        { project_id: project.project_id, export_type: 'source', include_code: !!o.includeCode, include_chat: !!o.includeChat },
         { withCredentials: true, responseType: 'blob' }
       );
       const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/zip' }));
@@ -1093,7 +1102,7 @@ export default function Dashboard() {
           )}
           <button
             type="button"
-            onClick={() => exportProjectZip(ctxMenu.project)}
+            onClick={() => askExportProjectZip(ctxMenu.project)}
             data-testid="project-ctx-export-zip"
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
           >
@@ -1181,6 +1190,47 @@ export default function Dashboard() {
         kind={exportReview?.kind}
         onClose={() => setExportReview(null)}
       />
+      {/* iter80 — C17 ZIP include checkboxes */}
+      {zipOptions && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" data-testid="zip-options-modal" onClick={() => setZipOptions(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="max-w-md w-full bg-[#0A0A0A] border border-cyan-400/40 rounded-md p-5 space-y-4">
+            <h3 className="text-lg font-['Chivo'] font-bold text-white inline-flex items-center gap-2">
+              <Download className="w-5 h-5 text-cyan-400" />
+              Que veux-tu inclure dans le ZIP ?
+            </h3>
+            <p className="text-xs text-[#A1A1AA]">Projet : <strong className="text-white">{zipOptions.project?.name || zipOptions.project?.project_id}</strong></p>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={zipOptions.includeCode}
+                onChange={(e) => setZipOptions((o) => ({ ...o, includeCode: e.target.checked }))}
+                data-testid="zip-include-code"
+                className="accent-cyan-400 w-4 h-4"
+              />
+              <span className="text-sm text-white">Code source (le dossier pour pousser sur GitHub)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={zipOptions.includeChat}
+                onChange={(e) => setZipOptions((o) => ({ ...o, includeChat: e.target.checked }))}
+                data-testid="zip-include-chat"
+                className="accent-cyan-400 w-4 h-4"
+              />
+              <span className="text-sm text-white">Les discussions / conversations (.docx)</span>
+            </label>
+            <div className="flex items-center gap-2 pt-2">
+              <button onClick={() => setZipOptions(null)} data-testid="zip-cancel" className="flex-1 px-3 py-2 border border-white/15 text-[#A1A1AA] hover:text-white rounded-sm text-sm">Annuler</button>
+              <button
+                onClick={() => { const o = zipOptions; setZipOptions(null); exportProjectZip(o.project, { includeCode: o.includeCode, includeChat: o.includeChat }); }}
+                disabled={!zipOptions.includeCode && !zipOptions.includeChat}
+                data-testid="zip-confirm"
+                className="flex-1 px-3 py-2 bg-cyan-500 hover:bg-cyan-600 text-white font-bold rounded-sm text-sm disabled:opacity-40"
+              >Télécharger</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

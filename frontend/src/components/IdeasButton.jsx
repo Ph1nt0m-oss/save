@@ -33,7 +33,7 @@ export default function IdeasButton() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [ideas, setIdeas] = useState([]);
-  const isCreator = device.role === 'creator';
+  const isCreator = device.role === 'creator' && device.viewMode !== 'guest';
   // iter78 — Staff (admin+modo) ouvre aussi la boîte à idées en mode "Inbox".
   const isStaff = isCreator || device.staffKind === 'admin' || device.staffKind === 'modo';
   const [unread, setUnread] = useState(0);
@@ -42,7 +42,7 @@ export default function IdeasButton() {
     try {
       const raw = localStorage.getItem('codeforge_ideas_filters');
       if (raw) return { bug: true, idea: true, report: true, other: true, ...JSON.parse(raw) };
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
     return { bug: true, idea: true, report: true, other: true };
   });
   const [sortByKind, setSortByKind] = useState(() => {
@@ -52,13 +52,13 @@ export default function IdeasButton() {
     try { return localStorage.getItem('codeforge_ideas_sort_date') !== '0'; } catch (_) { return true; }
   });
   useEffect(() => {
-    try { localStorage.setItem('codeforge_ideas_filters', JSON.stringify(filters)); } catch (_) {}
+    try { localStorage.setItem('codeforge_ideas_filters', JSON.stringify(filters)); } catch (_) { /* ignore */ }
   }, [filters]);
   useEffect(() => {
-    try { localStorage.setItem('codeforge_ideas_sort_kind', sortByKind ? '1' : '0'); } catch (_) {}
+    try { localStorage.setItem('codeforge_ideas_sort_kind', sortByKind ? '1' : '0'); } catch (_) { /* ignore */ }
   }, [sortByKind]);
   useEffect(() => {
-    try { localStorage.setItem('codeforge_ideas_sort_date', sortByDate ? '1' : '0'); } catch (_) {}
+    try { localStorage.setItem('codeforge_ideas_sort_date', sortByDate ? '1' : '0'); } catch (_) { /* ignore */ }
   }, [sortByDate]);
 
   const visibleIdeas = useMemo(() => {
@@ -116,7 +116,7 @@ export default function IdeasButton() {
       await axios.post(`${API}/ideas/mark-read`, body);
       setUnread(0);
       setIdeas((ls) => ls.map((x) => ({ ...x, read: true })));
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
   };
 
   const deleteIdea = async (idea_id) => {
@@ -124,7 +124,7 @@ export default function IdeasButton() {
       const body = await withCreatorProof(API, axios, { idea_id });
       await axios.post(`${API}/ideas/delete`, body);
       setIdeas((ls) => ls.filter((x) => x.idea_id !== idea_id));
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
   };
 
   const setIdeaState = async (idea_id, state) => {
@@ -135,6 +135,54 @@ export default function IdeasButton() {
       setIdeas((ls) => ls.map((x) => x.idea_id === idea_id ? { ...x, state: state === 'reset' ? null : state } : x));
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Erreur');
+    }
+  };
+
+  // iter80 — Clear modal (créa-only). scope: 'all'|'resolved'|'unresolved'.
+  // Demande mot de passe uniquement si le scope inclut des non-traités.
+  const [clearStep, setClearStep] = useState(null);  // {scope, requiresPwd, error}
+  const [clearPwd, setClearPwd] = useState('');
+
+  const unresolvedCount = useMemo(() => ideas.filter((i) => i.state !== 'validated').length, [ideas]);
+  const resolvedCount = ideas.length - unresolvedCount;
+
+  const doClear = async (scope) => {
+    try {
+      const body = await withCreatorProof(API, axios, { scope });
+      await axios.post(`${API}/ideas/clear`, body);
+      toast.success('Retours vidés');
+      setIdeas([]);
+      setClearStep(null);
+      setClearPwd('');
+    } catch (e) {
+      const code = e?.response?.status;
+      if (code === 428) {
+        // Need password.
+        setClearStep((s) => ({ ...(s || { scope }), requiresPwd: true, error: null }));
+      } else if (code === 403 && /Mot de passe incorrect/i.test(e?.response?.data?.detail || '')) {
+        setClearStep((s) => ({ ...(s || { scope }), requiresPwd: true, error: 'Mot de passe incorrect. Veuillez réessayer' }));
+      } else {
+        toast.error(e?.response?.data?.detail || 'Erreur');
+      }
+    }
+  };
+
+  const doClearWithPwd = async () => {
+    if (!clearStep) return;
+    try {
+      const body = await withCreatorProof(API, axios, { scope: clearStep.scope, password: clearPwd });
+      await axios.post(`${API}/ideas/clear`, body);
+      toast.success('Retours vidés');
+      setIdeas([]);
+      setClearStep(null);
+      setClearPwd('');
+    } catch (e) {
+      const code = e?.response?.status;
+      if (code === 403 && /Mot de passe incorrect/i.test(e?.response?.data?.detail || '')) {
+        setClearStep((s) => ({ ...s, error: 'Mot de passe incorrect. Veuillez réessayer' }));
+      } else {
+        toast.error(e?.response?.data?.detail || 'Erreur');
+      }
     }
   };
 
@@ -256,6 +304,14 @@ export default function IdeasButton() {
                     );
                   })}
                   <div className="ml-auto flex items-center gap-2">
+                    {/* iter80 — Tri résolus / non-traités (créa-only — staff voit le contenu mais ne peut pas clear) */}
+                    {isCreator && ideas.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setClearStep({ scope: 'resolved', requiresPwd: false })} data-testid="ideas-clear-resolved" title="Vider les retours traités" disabled={resolvedCount === 0} className="text-[10px] px-1.5 py-0.5 rounded-sm border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-30">Traités ({resolvedCount})</button>
+                        <button onClick={() => setClearStep({ scope: 'unresolved', requiresPwd: unresolvedCount > 0 })} data-testid="ideas-clear-unresolved" title="Vider les retours non-traités (mot de passe requis)" disabled={unresolvedCount === 0} className="text-[10px] px-1.5 py-0.5 rounded-sm border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-30">Non-traités ({unresolvedCount})</button>
+                        <button onClick={() => setClearStep({ scope: 'all', requiresPwd: unresolvedCount > 0 })} data-testid="ideas-clear-all" title="Vider tous les retours" className="text-[10px] px-1.5 py-0.5 rounded-sm border border-red-500/40 text-red-300 hover:bg-red-500/10">Tout</button>
+                      </div>
+                    )}
                     <label
                       data-testid="ideas-sort-by-kind"
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-white/10 text-[#A1A1AA] cursor-pointer"
@@ -337,6 +393,48 @@ export default function IdeasButton() {
                   })}
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+      {/* iter80 — Clear confirmation modal */}
+      {clearStep && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" data-testid="ideas-clear-modal" onClick={() => { setClearStep(null); setClearPwd(''); }}>
+          <div onClick={(e) => e.stopPropagation()} className="max-w-md w-full bg-[#0A0A0A] border border-red-500/40 rounded-md p-5 space-y-4">
+            <h3 className="text-lg font-['Chivo'] font-bold text-white">
+              {clearStep.scope === 'resolved' && 'Vider les retours traités ?'}
+              {clearStep.scope === 'unresolved' && 'Vider les retours non-traités ?'}
+              {clearStep.scope === 'all' && 'Vider TOUS les retours ?'}
+            </h3>
+            <p className="text-sm text-[#A1A1AA] leading-relaxed">
+              {clearStep.scope === 'all'
+                ? 'Cette case supprimera les retours actuellement non-traités ou en cours. Êtes-vous sûre de vouloir faire ceci ?'
+                : clearStep.scope === 'unresolved'
+                  ? 'Tu supprimes les retours en attente ou refusés non traités par le staff. Cette action est irréversible.'
+                  : 'Tu supprimes les retours marqués validés. Pas de mot de passe requis.'}
+            </p>
+            {clearStep.requiresPwd ? (
+              <>
+                <input
+                  type="password"
+                  value={clearPwd}
+                  onChange={(e) => setClearPwd(e.target.value)}
+                  placeholder="Mot de passe créatrice"
+                  data-testid="ideas-clear-pwd"
+                  className="w-full bg-black/40 border border-white/15 rounded-sm px-3 py-2 text-sm text-white focus:outline-none focus:border-red-400"
+                  autoFocus
+                />
+                {clearStep.error && <p className="text-xs text-red-300" data-testid="ideas-clear-err">{clearStep.error}</p>}
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setClearStep(null); setClearPwd(''); }} data-testid="ideas-clear-cancel" className="flex-1 px-3 py-2 border border-white/15 text-[#A1A1AA] hover:text-white rounded-sm text-sm">Non</button>
+                  <button onClick={doClearWithPwd} disabled={!clearPwd} data-testid="ideas-clear-confirm-pwd" className="flex-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-sm text-sm disabled:opacity-40">Oui — confirmer</button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setClearStep(null)} data-testid="ideas-clear-no" className="flex-1 px-3 py-2 border border-white/15 text-[#A1A1AA] hover:text-white rounded-sm text-sm">Non</button>
+                <button onClick={() => doClear(clearStep.scope)} data-testid="ideas-clear-yes" className="flex-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-sm text-sm">Oui</button>
+              </div>
             )}
           </div>
         </div>
