@@ -34,7 +34,8 @@ function downloadText(filename, content) {
 export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
   const device = useDeviceIdentity();
   const { t } = useLanguage();
-  const isCreator = device.role === 'creator' && device.viewMode !== 'guest';
+  // iter85 — Visite de compte : créatrice uniquement, et seulement en vue créa.
+  const isCreator = device.role === 'creator' && device.viewMode === 'creator';
   const [open, setOpen] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [filter, setFilter] = useState('');

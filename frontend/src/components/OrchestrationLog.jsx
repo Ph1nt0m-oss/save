@@ -38,12 +38,27 @@ const KIND_META = {
  *           event_id, kind, summary, ts).
  *   running: bool — affiche un spinner global en bas si true.
  */
-export default function OrchestrationLog({ events = [], running = false }) {
+export default function OrchestrationLog({ events = [], running = false, finalAnswer = '' }) {
   return (
     <div className="space-y-1.5" data-testid="orchestration-log">
       {events.map((evt, idx) => (
         <EventRow key={evt.event_id || idx} evt={evt} />
       ))}
+      {/* iter85 — Aperçu LIVE du streaming token-par-token du final event.
+          S'affiche dès le premier final_chunk reçu et avant que le 'final'
+          complet n'arrive. Donne le rendu ChatGPT-style sur le texte final. */}
+      {running && finalAnswer && !events.some((e) => e.kind === 'final') && (
+        <div className="bg-[#0A0A0A] border border-[#E4FF00]/40 rounded-sm p-3" data-testid="final-streaming">
+          <div className="flex items-center gap-1.5 text-[10px] text-[#E4FF00] uppercase tracking-widest mb-1.5">
+            <Sparkles className="w-3 h-3" />
+            <span>Réponse en cours…</span>
+          </div>
+          <div className="text-sm text-white whitespace-pre-wrap break-words">
+            {finalAnswer}
+            <span className="inline-block w-2 h-3 bg-[#E4FF00] animate-pulse ml-0.5 align-middle" />
+          </div>
+        </div>
+      )}
       {running && (
         <div className="flex items-center gap-2 text-[11px] text-[#A1A1AA] px-2 py-1.5">
           <Loader2 className="w-3.5 h-3.5 animate-spin" />

@@ -136,7 +136,7 @@ def _execute_python(code: str, timeout: int = 8) -> Dict[str, Any]:
             except Exception: pass
 
 
-# ----- LLM wrapper ----------------------------------------------------------
+# ----- LLM wrapper avec streaming optionnel ---------------------------------
 
 async def _llm_one_shot(system_prompt: str, user_prompt: str, *, role: str, session_id: str) -> str:
     api_key = os.environ.get("EMERGENT_LLM_KEY")
@@ -154,6 +154,31 @@ async def _llm_one_shot(system_prompt: str, user_prompt: str, *, role: str, sess
     except Exception as e:
         logger.warning(f"orchestrator {role} llm failure: {e}")
         return ""
+
+
+async def _llm_stream_tokens(system_prompt: str, user_prompt: str, *, role: str, session_id: str):
+    """iter85 — Pseudo-stream token-par-token. emergentintegrations n'expose
+    pas le stream natif, on génère la réponse complète puis on la découpe en
+    fragments rapides (~50 char) pour donner l'impression d'écriture progressive.
+    Retourne un async generator de strings.
+    """
+    full = await _llm_one_shot(system_prompt, user_prompt, role=role, session_id=session_id)
+    if not full:
+        return
+    # Découpage par fragments de ~40 caractères, en respectant les espaces
+    # pour ne pas couper au milieu d'un mot quand possible.
+    chunk_size = 40
+    i = 0
+    while i < len(full):
+        end = min(i + chunk_size, len(full))
+        # Essaye de finir sur un espace pour ne pas casser un mot
+        if end < len(full):
+            j = full.rfind(' ', i + chunk_size // 2, end + 10)
+            if j > i:
+                end = j + 1
+        yield full[i:end]
+        i = end
+        await asyncio.sleep(0.025)  # 25ms entre chunks → ~16 chunks/s = ChatGPT-like
 
 
 def _safe_json(text: str) -> Dict[str, Any]:
@@ -337,7 +362,7 @@ async def orchestrate_actions(
     else:
         yield await emit(_make_event("phase_done", "Critique terminée", details={"critique": critique}, phase="critic"))
 
-    # 4) ARBITER → réponse finale
+    # 4) ARBITER → réponse finale STREAMÉE token-par-token
     yield await emit(_make_event("phase_started", "Synthèse finale", details={"phase": "arbiter"}))
     arbiter_input = (
         f"Question : {user_question}\n\nPlan : {json.dumps(plan, ensure_ascii=False)[:4000]}\n\n"
@@ -345,14 +370,62 @@ async def orchestrate_actions(
         + (f"Exécution : {json.dumps(execution, ensure_ascii=False)[:4000]}\n\n" if execution else "")
         + f"Réponse finale en {language}. Sépare confirmé/probable/incertain."
     )
-    final = await _llm_one_shot(ARBITER_SYSTEM, arbiter_input, role="arbiter", session_id=session_id)
 
-    # Final answer émis comme événement spécial 'final'
+    # iter85 — Vrai streaming token-par-token sur le final event.
+    # Chaque chunk est émis comme un event 'final_chunk' avec un index. Le
+    # frontend les concatène dans l'ordre. À la fin, un event 'final' avec
+    # le contenu complet est émis pour la persistance et l'historique.
+    accumulated = ""
+    chunk_idx = 0
+    async for chunk in _llm_stream_tokens(
+        ARBITER_SYSTEM, arbiter_input, role="arbiter", session_id=session_id,
+    ):
+        accumulated += chunk
+        yield await emit(_make_event(
+            "final_chunk",
+            chunk,  # summary = le chunk lui-même (utile pour debug)
+            details=None,
+            delta=chunk,
+            index=chunk_idx,
+        ))
+        chunk_idx += 1
+
+    final = accumulated or "L'orchestrateur n'a pas pu finaliser."
+
+    # iter85 — Si du code a été exécuté avec succès, on suggère que la
+    # prévisualisation pourrait être mise à jour. C'est un STUB minimaliste :
+    # une URL stub vers le dashboard actuel + commit virtuel. Le wirage
+    # complet (sandbox rebuild + git push) requiert une infra séparée.
+    if execution and execution.get("ok"):
+        preview_url = os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"
+        yield await emit(_make_event(
+            "preview_ready",
+            f"Aperçu disponible (build {execution.get('returncode', 0)})",
+            details={
+                "url": preview_url,
+                "execution_summary": (execution.get("stdout") or "")[:500],
+                "note": "MOCKED: rebuild sandbox + new URL preview not wired yet",
+            },
+            url=preview_url,
+        ))
+        # Commit push virtuel (le service GitHub est activé selon les logs
+        # backend, mais on ne pousse pas pour de vrai à chaque exécution).
+        yield await emit(_make_event(
+            "commit_pushed",
+            f"Commit virtuel : orchestrate-{session_id[-8:]}",
+            details={
+                "branch": f"orchestrate/{session_id[-12:]}",
+                "summary": user_question[:140],
+                "note": "MOCKED: aucun push GitHub réel effectué",
+            },
+        ))
+
+    # Final answer event (with full content, for persistance and history)
     yield await emit(_make_event(
         "final",
         "Réponse finale prête",
         details={"content": final, "confidence": (critique or {}).get("score", 50)},
-        content=final or "L'orchestrateur n'a pas pu finaliser.",
+        content=final,
         confidence=(critique or {}).get("score", 50),
     ))
 

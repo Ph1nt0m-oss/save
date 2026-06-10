@@ -3,6 +3,7 @@ import axios from 'axios';
 import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw, Undo2, ShieldOff, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import SiteModeBadge from './SiteModeBadge';
+import ViewModePicker from './ViewModePicker';
 import useDeviceIdentity, { setStoredViewMode } from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -152,6 +153,16 @@ export default function CreatorToolbar() {
         viewMode={device.viewMode}
         guestView={device.guestView}
         onChange={() => device.refresh()}
+      />
+
+      {/* iter85 — Pour la créatrice : picker pour simuler n'importe quelle vue
+          (user / modo / admin / guest). Pour les non-créa : le toggle
+          original visible/locked selon guest_view. */}
+      <ViewModePicker
+        role={device.role}
+        viewMode={device.viewMode}
+        siteMode={device.siteMode}
+        guestView={device.guestView}
       />
 
       {/* History panel removed in iter57: the right-side panel is now

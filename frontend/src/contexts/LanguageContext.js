@@ -205,6 +205,12 @@ const translations = {
  ctx_share_disable: 'Désactiver le partage',
  ctx_delete: 'Supprimer',
  ctx_delete_confirm_title: 'Supprimer ce projet ?',
+ // iter85 — Vues de la créatrice (pour confirmer répartition tâches)
+ view_creator: 'Vue Créatrice',
+ view_user: 'Vue Utilisateur',
+ view_modo: 'Vue Modo',
+ view_admin: 'Vue Admin',
+ view_guest: 'Vue Invitée',
 
  // Landing page
  l_navDiscover: 'Découvrir',
@@ -807,6 +813,11 @@ pseudo_changed: 'Pseudo mis à jour.',
  ctx_share_disable: 'Disable sharing',
  ctx_delete: 'Delete',
  ctx_delete_confirm_title: 'Delete this project?',
+ view_creator: 'Creator view',
+ view_user: 'User view',
+ view_modo: 'Modo view',
+ view_admin: 'Admin view',
+ view_guest: 'Guest view',
 
  // Landing page
  l_navDiscover: 'Discover',

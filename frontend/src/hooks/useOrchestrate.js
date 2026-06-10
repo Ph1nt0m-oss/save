@@ -62,9 +62,19 @@ export default function useOrchestrate() {
           if (!payload) continue;
           try {
             const evt = JSON.parse(payload);
+            // iter85 — final_chunk : accumule le streaming token-par-token
+            // dans finalAnswer SANS l'ajouter à events (pour éviter de polluer
+            // le journal d'actions avec des dizaines de lignes). Seul l'event
+            // 'final' (avec le contenu complet) sera ajouté au journal.
+            if (evt.kind === 'final_chunk') {
+              setFinalAnswer((prev) => prev + (evt.delta || ''));
+              continue;
+            }
             setEvents((prev) => [...prev, evt]);
             if (evt.kind === 'final') {
-              setFinalAnswer(evt.content || '');
+              // Le contenu peut différer légèrement de l'accumulé si chunks
+              // perdus ; on prend le content authoritative du final event.
+              if (evt.content) setFinalAnswer(evt.content);
               setConfidence(evt.confidence ?? null);
             }
           } catch (e) {

@@ -8767,35 +8767,9 @@ GROUP_TYPES = {
 }
 
 
-def _groups_for_device(dev: Dict[str, Any]) -> List[str]:
-    """Retourne la liste des groupes auxquels CE device a accès."""
-    role = dev.get("role")
-    sk = dev.get("staff_kind")
-    if role == "creator":
-        # La créatrice voit TOUT.
-        return list(GROUP_TYPES)
-    if role == "blocked":
-        return []
-    is_staff = sk in ("admin", "modo")
-    is_modo = sk == "modo"
-    is_admin = sk == "admin"
-    is_private = role == "approved" and not is_staff  # approved-non-staff = "privé"
-    is_public = role in ("pending", "approved")
-    out = []
-    if is_public and not is_staff and not is_private:
-        out.append("public")
-        out.append("public_staff")
-        out.append("public_private")
-    if is_private:
-        out.append("private")
-        out.append("public_staff")  # publics+staff inclut tt
-        out.append("public_private")
-    if is_staff:
-        out.append("staff")
-        out.append("public_staff")
-    if is_modo:
-        out.append("modo")
-    return list(set(out))
+# iter85 — 1ère slice du refacto : helper _groups_for_device extrait dans
+# routes/social_routes.py. server.py importe directement.
+from routes.social_routes import _groups_for_device  # noqa: E402
 
 
 class GroupListIn(BaseModel):
@@ -9040,6 +9014,107 @@ async def orchestrate_event_details(event_id: str, request: Request):
 class OrchestrateHistoryIn(BaseModel):
     project_id: Optional[str] = None
     limit: int = 50
+
+
+# iter85 — Testing-agents-en-boucle : endpoint qui lance pytest sur les tests
+# backend et émet des événements test_run (start/passed/failed/done) via SSE.
+class TestLoopIn(BaseModel):
+    target: Optional[str] = "backend"   # 'backend' (pytest) | 'sandbox' (orchestrator._execute_python)
+    path: Optional[str] = "tests/"      # filtre pytest
+    project_id: Optional[str] = None
+
+
+@api_router.post("/orchestrate/test-loop")
+async def orchestrate_test_loop(request: Request, payload: TestLoopIn):
+    """iter85 — Pipeline de validation automatique en boucle. Lance pytest
+    en interne et émet des événements test_run au fur et à mesure. Le
+    frontend peut afficher ces events dans OrchestrationLog.
+
+    Best-effort : si pytest échoue, on émet `test_run failed` mais on ne
+    relance pas automatiquement (la boucle de correction est laissée au
+    chat orchestrator pour l'instant)."""
+    user_id = await get_current_user(request)
+    session_id = f"testloop_{user_id}_{payload.project_id or 'global'}"
+
+    async def event_gen():
+        import subprocess as _sub
+        evt0 = {
+            "event_id": f"evt_{uuid.uuid4().hex[:16]}",
+            "kind": "test_run",
+            "summary": f"Lancement des tests : {payload.target}/{payload.path}",
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        await _persist_event(evt0, user_id=user_id, session_id=session_id, project_id=payload.project_id)
+        yield f"data: {json.dumps(evt0, ensure_ascii=False)}\n\n"
+
+        try:
+            if payload.target == "backend":
+                # Lancement pytest restreint à un path safe sous /app/backend
+                safe_path = (payload.path or "tests/").lstrip("/")
+                if ".." in safe_path:
+                    raise HTTPException(status_code=400, detail="Path invalide.")
+                full_path = os.path.normpath(os.path.join("/app/backend", safe_path))
+                if not full_path.startswith("/app/backend"):
+                    raise HTTPException(status_code=400, detail="Path hors backend.")
+
+                proc = _sub.run(
+                    ["python", "-m", "pytest", full_path, "-q", "--tb=short", "--no-header"],
+                    capture_output=True, text=True, timeout=90, cwd="/app/backend",
+                )
+                # Extrait des stats du dernier passage : "X passed, Y failed"
+                summary_line = ""
+                for line in (proc.stdout or "").splitlines()[::-1]:
+                    if "passed" in line or "failed" in line or "error" in line:
+                        summary_line = line.strip(); break
+                kind = "test_run" if proc.returncode in (0, 5) else "error"
+                summary = summary_line or (f"pytest exit {proc.returncode}")
+                evt1 = {
+                    "event_id": f"evt_{uuid.uuid4().hex[:16]}",
+                    "kind": kind,
+                    "summary": summary,
+                    "details": {
+                        "returncode": proc.returncode,
+                        "stdout": (proc.stdout or "")[-8000:],
+                        "stderr": (proc.stderr or "")[-2000:],
+                    },
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                await _persist_event(evt1, user_id=user_id, session_id=session_id, project_id=payload.project_id)
+                # Stream payload sans details (lazy via /orchestrate/event/{id})
+                p1 = {k: v for k, v in evt1.items() if k != "details"}
+                yield f"data: {json.dumps(p1, ensure_ascii=False)}\n\n"
+            else:
+                evt1 = {
+                    "event_id": f"evt_{uuid.uuid4().hex[:16]}",
+                    "kind": "error",
+                    "summary": f"target inconnu : {payload.target}",
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                await _persist_event(evt1, user_id=user_id, session_id=session_id, project_id=payload.project_id)
+                yield f"data: {json.dumps(evt1, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            evt_err = {
+                "event_id": f"evt_{uuid.uuid4().hex[:16]}",
+                "kind": "error",
+                "summary": f"test-loop crash : {str(e)[:200]}",
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+            yield f"data: {json.dumps(evt_err, ensure_ascii=False)}\n\n"
+
+        evt_done = {
+            "event_id": f"evt_{uuid.uuid4().hex[:16]}",
+            "kind": "complete",
+            "summary": "Test-loop terminé",
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        await _persist_event(evt_done, user_id=user_id, session_id=session_id, project_id=payload.project_id)
+        yield f"data: {json.dumps(evt_done, ensure_ascii=False)}\n\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+    })
 
 
 # iter84 — Observabilité vidéo mobile (logs structurés en cas d'échec)

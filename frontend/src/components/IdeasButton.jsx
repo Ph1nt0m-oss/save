@@ -33,7 +33,9 @@ export default function IdeasButton() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [ideas, setIdeas] = useState([]);
-  const isCreator = device.role === 'creator' && device.viewMode !== 'guest';
+  // iter85 — Boîte à idées : visible uniquement en vue créatrice complète
+  // (la créa qui simule modo/admin/user/guest ne doit pas la voir).
+  const isCreator = device.role === 'creator' && device.viewMode === 'creator';
   // iter78 — Staff (admin+modo) ouvre aussi la boîte à idées en mode "Inbox".
   const isStaff = isCreator || device.staffKind === 'admin' || device.staffKind === 'modo';
   const [unread, setUnread] = useState(0);

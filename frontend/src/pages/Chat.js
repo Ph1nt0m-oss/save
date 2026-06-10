@@ -346,7 +346,7 @@ export default function Chat() {
                 <span className="ml-auto text-[10px] text-[#A1A1AA]">Confiance : {orch.confidence}/100</span>
               )}
             </div>
-            <OrchestrationLog events={orch.events} running={orch.running} />
+            <OrchestrationLog events={orch.events} running={orch.running} finalAnswer={orch.finalAnswer} />
           </div>
         )}
         <ScrollArea className="flex-1 mb-6">
