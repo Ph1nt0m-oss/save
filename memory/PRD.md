@@ -17,6 +17,28 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 86 (Bugs UX fixes + 3 reportés livrés)
+
+**Fixes UX user-signalés** :
+- **ViewModePicker refonte cases à cocher décochables** : bug du verrou résolu. Click sur case active = retour `creator`. Bouton "Revenir à la vue Créatrice" visible si simulation active.
+- **ViewSimulationBanner** : bandeau amber persistant en haut quand créa simule un rôle. Croix de revert 1-click.
+- **Tchat admin manquant ajouté** : `GROUP_TYPES` étendu à 7 (ajout 'admin'). `_groups_for_device` mis à jour : admin a {admin, staff, public_staff}, modo a {modo, staff, public_staff}, créa voit tout (y compris admin chat).
+- **Distinction public/private vs staff stricte** : `_device_matches_mode` exige que staff/admin/modo soient explicitement cochés pour qu'un device staff passe (cocher 'public' seul EXCLUT le staff). UX cohérente avec la sémantique demandée.
+- **guest_view étendu modo/admin** : la créa peut maintenant forcer la vue Modo ou Admin sur les visiteurs invités (5 options : free/user/modo/admin/creator).
+- **Friends panel caché en vue créa pure** : `open-friends-btn` visible uniquement si `viewMode !== 'creator'` (la créa peut DM directement sans demande).
+- **LanguageToggle dropdown** : `max-w-[calc(100vw-1rem)]` pour éviter débordement viewport mobile.
+
+**3 reportés livrés** :
+1. ✅ **Push GitHub RÉEL (opt-in)** : nouveau hook `on_commit` dans `orchestrate_actions`. server.py wire `on_commit_real` qui appelle `push_to_github()` SI `payload.enable_commit=true` (opt-in). Push réel sur `Ph1nt0m-oss/save:main` dans `orchestrate-runs/{branch}.py`.
+2. ✅ **Correction loop planner-fix** : quand `code_executed` échoue (stderr non vide), l'orchestrator demande un nouveau plan corrigé au planner avec stderr en contexte, re-exécute UNE FOIS max (anti-divergence), émet `phase_done({recovered: bool})`.
+3. ✅ **Refacto slice 2** : `/api/friends/{request,decide,list}` extraits dans `routes/social_routes.py` via factory `build_friends_router(db, verify_signed, device_by_key)`. Inclus dans `app.include_router(...)`. Régression intacte (sig HTTP préservée).
+
+**Implémentation `PrivateProgramming` réelle (plus de placeholder)** :
+- **SiteProgrammingPanel** : grep (`/private/code/grep`) + viewer fichier (`/private/code/read-file`) creator-only.
+- **AIProgrammingPanel** : doc des 4 agents prompts + bouton "Lancer pytest backend" (`/orchestrate/test-loop`) + historique d'exécution (`/orchestrate/history`).
+
+**Tests** : **110/110 PASS** cumulé (14 nouveaux iter86 + 96 régression iter77/79/81/82/83/84/85). Aucun action item du testing agent.
+
 ### 2026-06-10 — Iter 85 (4 reportés livrés + fix verrou de vue + vues modo/admin)
 
 **Fix verrou de vue (bug user-signalé) + ajout vues modo/admin/user** :
