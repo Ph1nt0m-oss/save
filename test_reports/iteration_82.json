@@ -1,0 +1,46 @@
+{
+  "summary": "iter82 'rouge' (massive red wave) testing complete. Backend: 60/60 PASS contre l'URL publique (test_iter82_red_features 12/12 + regression iter77 13/13 + iter79 19/19 + iter81 16/16) — aucune régression. Les 7 nouveaux endpoints (/friends/request, /friends/decide, /friends/list, /groups/list, /groups/messages, /groups/send, /messages/send-to-staff, /chat/stream) répondent avec les codes de gating attendus (401 sans auth pour /chat/stream, 404 'Clé inconnue.' pour les endpoints signés sans clé valide, 403 pour /accounts/visit non-créateur). Le shape enrichi de /accounts/visit est confirmé par audit du code source (private_messages/friend_requests/group_posts/biometric_kind/approved_by_kind tous présents). Frontend Playwright contre l'URL publique: login OK avec test_dash_1777658375@gmail.com / Pass1234. Dashboard charge avec sidebar 47 projets. Les deux nouveaux boutons header sont PRÉSENTS et fonctionnels: open-groups-btn ouvre GroupChatsPanel (data-testid='groups-panel' visible, group-input + group-send présents, affichage 'Aucun groupe accessible' correct pour un user public non-approved — conforme au gating par rôle backend). open-friends-btn ouvre FriendsPanel (data-testid='friends-panel' visible, friend-key-input + friend-send-request présents, sections 'Demandes reçues (0)', 'Amis (0)', 'Demandes envoyées (0)' toutes rendues). Intégration friend request validée: envoi avec clé fictive 'notarealkey1234567890' → toast 'Clé destinataire inconnue.' affiché et console log 404 — exactement le contrat backend. AccountVisitView (6 onglets) + MessagesPanel send-to-staff non runtime-testés car requièrent un device créateur signé (même gap que iter77/79/81). C5/C8 chat/stream SSE confirmé existant (POST 401 sans auth, endpoint enregistré).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/friends/*, /api/groups/*, /api/messages/send-to-staff", "issue": "Retournent 404 'Clé inconnue.' pour clé non reconnue AVANT vérif signature (gate-order: lookup d'abord, sig ensuite). Cohérent avec /ideas/inbox, mais /accounts/visit retourne 403 'Action réservée au créateur.' Inconsistance d'ordre des gates (déjà notée en iter79/81). Pas fonctionnellement bloquant."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard header panels (open-groups-btn / open-friends-btn)", "issue": "Quand un panneau est déjà ouvert (ex: groups-panel) et que l'utilisateur clique sur l'autre bouton header (open-friends-btn), le second panneau ne s'ouvre PAS — le premier semble se fermer mais le second ne s'ouvre pas (toggle non-switching). En partant d'un état clean (aucun panneau ouvert), chaque bouton ouvre son panneau correctement. UX nit, pas un bloqueur.", "selector": "[data-testid='open-friends-btn']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter82_red_features.py",
+    "/app/test_reports/pytest/iter82_results.xml",
+    "/app/test_reports/pytest/iter82_regression.xml"
+  ],
+  "action_items": [
+    "(Optional UX) Dans Dashboard.js, faire que cliquer open-friends-btn alors que groups-panel est ouvert ferme groups-panel ET ouvre friends-panel dans le même clic (switch behavior). Non-bloquant.",
+    "(Hardening, déjà noté iter79/81) Aligner gate-order: faire que /friends/*, /groups/*, /messages/send-to-staff retournent 403 (comme /accounts/visit) plutôt que 404 quand la clé est inconnue, pour éviter l'enum-leak 'clé connue vs sig invalide'."
+  ],
+  "critical_code_review_comments": [
+    "server.py /accounts/visit (L7230-7320) — enrichissement complet vérifié par audit source: email/key_id/pseudo/label/role/staff_kind/force_visitor/muted/banned/last_seen_at/created_at/biometric_kind/approved_by_kind/approved_by_label tous présents. projects (avec is_deleted), messages (is_deleted), private_messages, friend_requests, group_posts tous renvoyés. Projection {_id:0, generated_code:0} correcte pour exclure ObjectId et payload lourd.",
+    "server.py /friends/* — flow correct: request gère doublon par refresh updated_at, auto-accept si expéditeur=creator, 404 si target inconnu, 400 si target=self. /friends/decide n'accepte que to_key_id ou creator. Status 'pending'/'accepted'/'refused' bien défini.",
+    "server.py /groups/* — helper _groups_for_device implémente correctement les 6 types (public/private/staff/modo/public_staff/public_private) avec assignation par rôle. Validation group_type=='nope' renvoie 400, accès refusé renvoie 403, send empty/>2000 chars → 400.",
+    "server.py /messages/send-to-staff — pick modo random avec fallback admin → fallback creator. Insert dans collection 'messages' avec recipient_kind. Bon design best-effort.",
+    "server.py /chat/stream — endpoint SSE pseudo-token streaming (word-by-word) — explicitement MOCKED (pas de vrai streaming Emergent LLM). Documenté dans la note. POST nécessite auth, renvoie 401 sans cookie/Bearer. Conforme au spec.",
+    "GroupChatsPanel.jsx — polling 4s sur /groups/messages. Sidebar liste 6 groupes avec icônes Globe2/Lock/Shield/Users. Bien intégré.",
+    "FriendsPanel.jsx — UI claire: 3 sections (Demandes reçues / Amis / Demandes envoyées). Input + UserPlus button. Validation backend correcte (toast 'Clé destinataire inconnue.' sur 404).",
+    "Dashboard.js header — boutons Users + UserCog (open-groups-btn + open-friends-btn) bien placés à gauche du logo. Mais comportement de switch entre les 2 panneaux est non-idéal (cf ui_bugs)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (60/60: iter82=12, iter77=13, iter79=19, iter81=16)",
+    "frontend": "100% sur le critical path (login + dashboard + groups-panel + friends-panel + friend-request 404 integration). 1 nit UX panel-switch non-bloquant. AccountVisitView et MessagesPanel send-to-staff non runtime-testés (creator-only, gap connu)."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — vérifié fonctionnel",
+  "seed_data_creation": "Aucune. Les tests backend sont en lecture/gate-only (404/403). Côté frontend, une seule demande d'ami envoyée à clé fictive 'notarealkey1234567890' → 404 backend (aucune écriture DB).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter82 'rouge' VERT end-to-end. Backend 60/60 régression+iter82. Frontend: login + dashboard + GroupChatsPanel + FriendsPanel + friend request 404 integration tous validés en UI réelle. Les flows creator-only (AccountVisitView 6 onglets, MessagesPanel send-to-staff toast 'Message envoyé à {modo}', open-groups-btn voyant les 6 groupes) restent non runtime-testés faute de device créateur signé (P-256 WebCrypto fixture nécessaire — même gap que iter77/79/81). Recommandation: provisionner une JWK créateur long-lived dans /app/memory pour valider ces flows fin-de-chaîne. /chat/stream est confirmé MOCKED (word-by-word SSE, pas un vrai streaming Emergent token-par-token) — c'est par design. C7 et C11 reportés (hors-scope).",
+  "rca of the issue": "Aucun bug bloquant. Le seul nit identifié est UX: le toggle entre open-groups-btn et open-friends-btn dans le header Dashboard ne 'switch' pas correctement quand un panneau est déjà ouvert. Reproduction: 1) Cliquer open-groups-btn → groups-panel s'ouvre ✓, 2) Cliquer open-friends-btn sans fermer le premier → groups-panel se ferme mais friends-panel ne s'ouvre pas ✗. Mitigation: dans Dashboard.js, faire que setShowFriendsPanel(true) force aussi setShowGroupsPanel(false), et réciproquement, dans le même render. Ou utiliser un seul state activePanel='groups'|'friends'|null. Pas un bloqueur car l'utilisateur peut fermer le premier via la croix puis cliquer l'autre."
+}

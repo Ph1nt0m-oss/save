@@ -30,6 +30,8 @@ import AnnounceButton from '../components/AnnounceButton';
 import AccountsButton from '../components/AccountsButton';
 import AccountVisitView from '../components/AccountVisitView';
 import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
+import GroupChatsPanel from '../components/GroupChatsPanel';
+import FriendsPanel from '../components/FriendsPanel';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -74,6 +76,9 @@ export default function Dashboard() {
   const [visiting, setVisiting] = useState(null);
   // iter78 — fullscreen modal pour export pending/approved/rejected
   const [exportReview, setExportReview] = useState(null);  // {kind, status, request_id}
+  // iter82 — Group chats + Friend system
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -780,6 +785,22 @@ export default function Dashboard() {
               <LanguageToggle placement="bottom" />
               <TheftButton variant="labelled" />
               <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
+              <button
+                onClick={() => setGroupsOpen(true)}
+                data-testid="open-groups-btn"
+                title="Tchats de groupe"
+                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
+              >
+                <Users className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setFriendsOpen(true)}
+                data-testid="open-friends-btn"
+                title="Amis & demandes"
+                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
+              >
+                <UserCog className="w-4 h-4" />
+              </button>
             </div>
 
             {/* CENTER */}
@@ -1190,6 +1211,10 @@ export default function Dashboard() {
         kind={exportReview?.kind}
         onClose={() => setExportReview(null)}
       />
+      {/* iter82 — Group chats panel */}
+      <GroupChatsPanel open={groupsOpen} onClose={() => setGroupsOpen(false)} />
+      {/* iter82 — Friend system */}
+      <FriendsPanel open={friendsOpen} onClose={() => setFriendsOpen(false)} />
       {/* iter80 — C17 ZIP include checkboxes */}
       {zipOptions && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" data-testid="zip-options-modal" onClick={() => setZipOptions(null)}>

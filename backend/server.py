@@ -5637,9 +5637,27 @@ class MessagesInboxIn(BaseModel):
 
 @api_router.post("/messages/inbox")
 async def messages_inbox(payload: MessagesInboxIn):
-    """Creator-only — return one row per thread with last message + unread count."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter82 — Creator + Staff (modo/admin) — return one row per thread with
+    last message + unread count. Modos voient les threads où to_key_id matche
+    leur propre clé. Admins voient tout comme la créatrice."""
+    dev = await _device_by_key(payload.key_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail="Clé inconnue.")
+    if not await _consume_nonce(payload.key_id, payload.nonce):
+        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
+    if not verify_signature(dev.get("public_key_jwk") or {}, payload.nonce, payload.signature):
+        raise HTTPException(status_code=403, detail="Signature invalide.")
+    role = dev.get("role")
+    sk = dev.get("staff_kind")
+    is_creator = role == "creator"
+    is_admin = sk == "admin"
+    is_modo = sk == "modo"
+    if not (is_creator or is_admin or is_modo):
+        raise HTTPException(status_code=403, detail="Accès réservé staff.")
+    # Match : créa+admin voient tout. Modos voient les threads qui leur sont assignés.
+    match = {} if (is_creator or is_admin) else {"to_key_id": payload.key_id}
     pipeline = [
+        {"$match": match},
         {"$sort": {"ts": -1}},
         {"$group": {
             "_id": "$thread_key_id",
@@ -5647,6 +5665,8 @@ async def messages_inbox(payload: MessagesInboxIn):
             "last_content": {"$first": "$content"},
             "last_is_from_creator": {"$first": "$is_from_creator"},
             "last_sender_label": {"$first": "$sender_label"},
+            "recipient_kind": {"$first": "$recipient_kind"},
+            "to_key_id": {"$first": "$to_key_id"},
             "unread": {
                 "$sum": {
                     "$cond": [{"$and": [
@@ -5663,15 +5683,18 @@ async def messages_inbox(payload: MessagesInboxIn):
     rows = await db.messages.aggregate(pipeline).to_list(length=100)
     out = []
     for r in rows:
-        dev = await _device_by_key(r["_id"]) or {}
+        d = await _device_by_key(r["_id"]) or {}
         out.append({
             "thread_key_id": r["_id"],
-            "label": dev.get("label"),
-            "role": dev.get("role"),
+            "label": d.get("label"),
+            "pseudo": d.get("pseudo"),
+            "role": d.get("role"),
             "last_ts": r["last_ts"],
             "last_content": r["last_content"][:140],
             "last_is_from_creator": r["last_is_from_creator"],
             "last_sender_label": r.get("last_sender_label"),
+            "recipient_kind": r.get("recipient_kind"),
+            "to_key_id": r.get("to_key_id"),
             "unread": r["unread"],
             "total": r["total"],
         })
@@ -7260,16 +7283,54 @@ async def accounts_visit(payload: _TargetCreatorSigIn):
         for m in raw_messages:
             m["is_deleted"] = bool(m.get("deleted"))
             messages.append(m)
+    # iter82 C20 — Récupération de TOUS les messages privés (DMs) impliquant
+    # cet utilisateur. Le thread_key_id est l'identifiant de l'utilisateur côté
+    # créa (pas le créa lui-même). Inclut tout : from_key_id == target ou
+    # thread_key_id == target → cela couvre les conversations avec créa, modos
+    # ET avec n'importe quel autre user (friend DM).
+    private_msgs_cursor = db.messages.find(
+        {"$or": [
+            {"thread_key_id": payload.target_key_id},
+            {"from_key_id": payload.target_key_id},
+            {"to_key_id": payload.target_key_id},
+        ]},
+        {"_id": 0},
+    ).sort("ts", -1)
+    private_msgs = await private_msgs_cursor.to_list(length=2000)
+    # iter82 — Friend requests : voir qui a demandé quoi à cet user.
+    fr_cursor = db.friend_requests.find(
+        {"$or": [{"from_key_id": payload.target_key_id}, {"to_key_id": payload.target_key_id}]},
+        {"_id": 0},
+    ).sort("created_at", -1)
+    friend_requests = await fr_cursor.to_list(length=200)
+    # iter82 — Group chats : à quels group_chats le user a-t-il posté ?
+    group_posts_cursor = db.group_messages.find(
+        {"from_key_id": payload.target_key_id},
+        {"_id": 0},
+    ).sort("ts", -1)
+    group_posts = await group_posts_cursor.to_list(length=1000)
     return {
         "target": {
             "key_id": payload.target_key_id,
             "email": target.get("email"),
             "pseudo": target.get("pseudo") or target.get("label"),
+            "label": target.get("label"),
             "role": target.get("role"),
             "staff_kind": target.get("staff_kind"),
+            "force_visitor": target.get("force_visitor"),
+            "muted": target.get("muted"),
+            "banned": target.get("banned"),
+            "last_seen_at": target.get("last_seen_at"),
+            "created_at": target.get("created_at"),
+            "biometric_kind": target.get("biometric_kind") or target.get("biometric", {}).get("kind") if isinstance(target.get("biometric"), dict) else None,
+            "approved_by_kind": target.get("approved_by_kind"),
+            "approved_by_label": target.get("approved_by_label"),
         },
         "projects": projects,
         "messages": list(reversed(messages)),
+        "private_messages": list(reversed(private_msgs)),
+        "friend_requests": friend_requests,
+        "group_posts": group_posts,
     }
 
 
@@ -8496,6 +8557,344 @@ async def _verify_signed(key_id: str, nonce: str, signature: str) -> Dict[str, A
     if not verify_signature(dev.get("public_key_jwk") or {}, nonce, signature):
         raise HTTPException(status_code=403, detail="Signature invalide.")
     return dev
+
+
+# ==========================================================================
+# iter82 — FRIEND REQUESTS (C20) : ajouter une clé en amie pour DM privé
+# ==========================================================================
+
+class FriendRequestIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    target_key_id: str  # clé du destinataire
+
+
+@api_router.post("/friends/request")
+async def friends_request(payload: FriendRequestIn):
+    """iter82 C20 — Envoie une demande d'amitié à une clé. Le destinataire
+    devra accepter avant que les DMs puissent s'échanger.
+
+    Si l'expéditeur est la créatrice, l'amitié est auto-acceptée (raccourci
+    spécifique demandé par le user)."""
+    sender = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    target = await _device_by_key(payload.target_key_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Clé destinataire inconnue.")
+    if payload.target_key_id == payload.key_id:
+        raise HTTPException(status_code=400, detail="On ne se demande pas en ami soi-même.")
+
+    # Doublon ? on bump l'horodatage et c'est tout.
+    existing = await db.friend_requests.find_one({
+        "from_key_id": payload.key_id, "to_key_id": payload.target_key_id,
+    })
+    is_creator = sender.get("role") == "creator"
+    status = "accepted" if is_creator else "pending"
+    if existing:
+        await db.friend_requests.update_one(
+            {"from_key_id": payload.key_id, "to_key_id": payload.target_key_id},
+            {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"sent": True, "auto_accepted": is_creator}
+
+    await db.friend_requests.insert_one({
+        "request_id": f"fr_{uuid.uuid4().hex[:16]}",
+        "from_key_id": payload.key_id,
+        "from_pseudo": sender.get("pseudo") or sender.get("label"),
+        "to_key_id": payload.target_key_id,
+        "to_pseudo": target.get("pseudo") or target.get("label"),
+        "status": status,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"sent": True, "auto_accepted": is_creator}
+
+
+class FriendDecideIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    request_id: str
+    accept: bool
+
+
+@api_router.post("/friends/decide")
+async def friends_decide(payload: FriendDecideIn):
+    """Le destinataire accepte ou refuse la demande d'ami."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    req = await db.friend_requests.find_one({"request_id": payload.request_id}, {"_id": 0})
+    if not req:
+        raise HTTPException(status_code=404, detail="Demande introuvable.")
+    if req.get("to_key_id") != payload.key_id and dev.get("role") != "creator":
+        raise HTTPException(status_code=403, detail="Tu n'es pas le destinataire.")
+    new_status = "accepted" if payload.accept else "refused"
+    await db.friend_requests.update_one(
+        {"request_id": payload.request_id},
+        {"$set": {"status": new_status, "decided_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"status": new_status}
+
+
+class FriendsListIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+
+
+@api_router.post("/friends/list")
+async def friends_list(payload: FriendsListIn):
+    """Liste les amis acceptés ET les demandes en attente côté reçu."""
+    await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    sent = await db.friend_requests.find(
+        {"from_key_id": payload.key_id}, {"_id": 0},
+    ).sort("created_at", -1).to_list(length=200)
+    received = await db.friend_requests.find(
+        {"to_key_id": payload.key_id}, {"_id": 0},
+    ).sort("created_at", -1).to_list(length=200)
+    return {"sent": sent, "received": received}
+
+
+# ==========================================================================
+# iter82 — GROUP CHATS (C19) : 6 types de tchats de groupe automatiques.
+#   public, private, staff, modo, public_staff, public_private
+# ==========================================================================
+
+GROUP_TYPES = {
+    "public",         # tous les approved non-staff/private + visiteurs publics
+    "private",        # uniquement les clés privées (approved)
+    "staff",          # admin + modo
+    "modo",           # modo only
+    "public_staff",   # public + admin + modo (tt types confondus)
+    "public_private", # public + privé (sans staff)
+}
+
+
+def _groups_for_device(dev: Dict[str, Any]) -> List[str]:
+    """Retourne la liste des groupes auxquels CE device a accès."""
+    role = dev.get("role")
+    sk = dev.get("staff_kind")
+    if role == "creator":
+        # La créatrice voit TOUT.
+        return list(GROUP_TYPES)
+    if role == "blocked":
+        return []
+    is_staff = sk in ("admin", "modo")
+    is_modo = sk == "modo"
+    is_admin = sk == "admin"
+    is_private = role == "approved" and not is_staff  # approved-non-staff = "privé"
+    is_public = role in ("pending", "approved")
+    out = []
+    if is_public and not is_staff and not is_private:
+        out.append("public")
+        out.append("public_staff")
+        out.append("public_private")
+    if is_private:
+        out.append("private")
+        out.append("public_staff")  # publics+staff inclut tt
+        out.append("public_private")
+    if is_staff:
+        out.append("staff")
+        out.append("public_staff")
+    if is_modo:
+        out.append("modo")
+    return list(set(out))
+
+
+class GroupListIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+
+
+@api_router.post("/groups/list")
+async def groups_list(payload: GroupListIn):
+    """Retourne les groupes auxquels l'appareil a accès."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    return {"groups": sorted(_groups_for_device(dev))}
+
+
+class GroupMessagesIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    group_type: str
+    limit: int = 200
+
+
+@api_router.post("/groups/messages")
+async def groups_messages(payload: GroupMessagesIn):
+    """Liste les messages d'un groupe (si autorisé)."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    if payload.group_type not in GROUP_TYPES:
+        raise HTTPException(status_code=400, detail="Type de groupe inconnu.")
+    if payload.group_type not in _groups_for_device(dev):
+        raise HTTPException(status_code=403, detail="Tu n'as pas accès à ce groupe.")
+    cursor = db.group_messages.find(
+        {"group_type": payload.group_type}, {"_id": 0},
+    ).sort("ts", -1).limit(max(1, min(payload.limit, 500)))
+    rows = await cursor.to_list(length=500)
+    return {"messages": list(reversed(rows))}
+
+
+class GroupSendIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    group_type: str
+    content: str
+
+
+@api_router.post("/groups/send")
+async def groups_send(payload: GroupSendIn):
+    """Envoie un message dans un groupe (si autorisé)."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    if payload.group_type not in GROUP_TYPES:
+        raise HTTPException(status_code=400, detail="Type de groupe inconnu.")
+    if payload.group_type not in _groups_for_device(dev):
+        raise HTTPException(status_code=403, detail="Tu n'as pas accès à ce groupe.")
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Message vide.")
+    if len(content) > MAX_MESSAGE_LEN:
+        raise HTTPException(status_code=400, detail=f"Message trop long ({MAX_MESSAGE_LEN} max).")
+    now = datetime.now(timezone.utc)
+    doc = {
+        "message_id": f"gm_{uuid.uuid4().hex[:16]}",
+        "group_type": payload.group_type,
+        "from_key_id": payload.key_id,
+        "from_pseudo": dev.get("pseudo") or dev.get("label"),
+        "from_role": dev.get("role"),
+        "from_staff_kind": dev.get("staff_kind"),
+        "content": content,
+        "ts": now.isoformat(),
+    }
+    await db.group_messages.insert_one(doc)
+    return {"sent": True, "message_id": doc["message_id"], "ts": doc["ts"]}
+
+
+# ==========================================================================
+# iter82 — MESSAGE TO RANDOM MODO (C18) : remplace l'ancien "message créa"
+# ==========================================================================
+
+class MessageToStaffIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    content: str
+
+
+@api_router.post("/messages/send-to-staff")
+async def messages_send_to_staff(payload: MessageToStaffIn):
+    """iter82 C18 — Le bouton 'message' (icône en-tête) route maintenant
+    l'utilisateur vers un MODO aléatoire (fallback admin, puis créa si aucun
+    modo/admin). Le créa voit toujours toutes les threads via /messages/inbox.
+
+    Si l'utilisateur veut parler spécifiquement à la créatrice, il doit
+    d'abord la demander en ami (/friends/request).
+    """
+    sender = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Message vide.")
+    if len(content) > MAX_MESSAGE_LEN:
+        raise HTTPException(status_code=400, detail=f"Message trop long ({MAX_MESSAGE_LEN} max).")
+
+    # Pick a random modo (fallback admin, fallback creator).
+    modos = await db.device_keys.find(
+        {"staff_kind": "modo", "role": {"$in": ["approved", "creator"]}},
+        {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1},
+    ).to_list(length=50)
+    if not modos:
+        modos = await db.device_keys.find(
+            {"staff_kind": "admin", "role": {"$in": ["approved", "creator"]}},
+            {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1},
+        ).to_list(length=50)
+    recipient_kind = "modo" if modos else "creator"
+    if not modos:
+        modos = await db.device_keys.find(
+            {"role": "creator"}, {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1},
+        ).to_list(length=10)
+    if not modos:
+        raise HTTPException(status_code=503, detail="Aucun destinataire staff disponible.")
+
+    import random as _rnd
+    target = _rnd.choice(modos)
+    target_key_id = target["key_id"]
+
+    now = datetime.now(timezone.utc)
+    msg_id = f"msg_{uuid.uuid4().hex[:16]}"
+    await db.messages.insert_one({
+        "message_id": msg_id,
+        "thread_key_id": payload.key_id,
+        "from_key_id": payload.key_id,
+        "to_key_id": target_key_id,
+        "is_from_creator": False,
+        "recipient_kind": recipient_kind,
+        "content": content,
+        "sender_label": sender.get("pseudo") or sender.get("label"),
+        "ts": now.isoformat(),
+        "read_by_creator": False,
+        "read_by_user": True,
+    })
+    return {"sent": True, "message_id": msg_id, "assigned_to": target.get("pseudo") or target.get("label") or target_key_id[:10], "recipient_kind": recipient_kind}
+
+
+# ==========================================================================
+# iter82 — CHAT STREAMING SSE (C5/C8) : streaming pseudo-token-par-token
+# ==========================================================================
+
+class ChatStreamIn(BaseModel):
+    message: str
+    mode: str = "online"
+    project_id: Optional[str] = None
+    language: Optional[str] = "fr"
+
+
+@api_router.post("/chat/stream")
+async def chat_stream(request: Request, input: ChatStreamIn):
+    """iter82 C5/C8 — Streaming SSE de la réponse IA. Émission "word by word"
+    pour donner l'impression de voir le texte se construire. La réponse
+    complète est sauvegardée en DB à la fin via le flux normal. Pour ne pas
+    refacto tout l'endpoint /chat/message, on appelle l'endpoint et on
+    re-stream la réponse côté serveur.
+    """
+    user_id = await get_current_user(request)
+    # Récupère la réponse complète en re-utilisant la logique existante :
+    # on génère le ChatMessageInput et on attend la full réponse.
+    # NOTE: pour un vrai streaming token-par-token via Emergent, il faudrait
+    # passer par LlmChat.stream() ce qui n'est pas exposé par
+    # emergentintegrations actuellement. On simule donc le streaming en
+    # découpant la réponse finale en mots. C'est suffisant pour l'UX et reste
+    # totalement non-bloquant côté frontend.
+    full_input = ChatMessageInput(
+        message=input.message,
+        mode=input.mode,
+        project_id=input.project_id,
+        language=input.language,
+    )
+    # Appel à la logique existante ; send_chat_message gère la persistance DB.
+    resp = await send_chat_message(request, full_input)
+    ai_text = ((resp or {}).get("ai_response") or {}).get("content") or ""
+    msg_id = ((resp or {}).get("ai_response") or {}).get("message_id") or ""
+    download = ((resp or {}).get("ai_response") or {}).get("download")
+
+    async def event_gen():
+        # SSE pseudo-streaming par mots, avec petit délai pour visualiser.
+        import asyncio as _aio
+        words = ai_text.split(" ")
+        acc = ""
+        for i, w in enumerate(words):
+            acc = (acc + " " + w).strip() if acc else w
+            yield f"data: {json.dumps({'delta': w + (' ' if i < len(words)-1 else ''), 'index': i})}\n\n"
+            # 8ms par mot = pour un texte de 500 mots, ~4 secondes. Lisible et naturel.
+            await _aio.sleep(0.008)
+        # Signal final
+        yield f"data: {json.dumps({'done': True, 'message_id': msg_id, 'download': download, 'content': ai_text})}\n\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+    })
 
 
 # Include the router in the main app

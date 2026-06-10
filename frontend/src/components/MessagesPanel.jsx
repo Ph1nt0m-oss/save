@@ -71,11 +71,22 @@ export default function MessagesPanel({ open, onClose, isCreator, currentKeyId }
     if (!content || sending) return;
     setSending(true);
     try {
-      const body = await withCreatorProof(API, axios, {
-        content,
-        target_key_id: isCreator ? selected : undefined,
-      });
-      await axios.post(`${API}/messages/send`, body);
+      if (isCreator) {
+        const body = await withCreatorProof(API, axios, {
+          content,
+          target_key_id: selected,
+        });
+        await axios.post(`${API}/messages/send`, body);
+      } else {
+        // iter82 C18 — User non-créa : route vers un modo random via le
+        // nouveau endpoint dédié /messages/send-to-staff. Le thread reste
+        // côté thread_key_id = user (sa propre clé).
+        const body = await withCreatorProof(API, axios, { content });
+        const r = await axios.post(`${API}/messages/send-to-staff`, body);
+        if (r.data?.assigned_to) {
+          toast.success(`Message envoyé à ${r.data.assigned_to}`);
+        }
+      }
       setDraft('');
       await loadThread(selected);
       if (isCreator) await loadInbox();
