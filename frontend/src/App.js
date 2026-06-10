@@ -15,6 +15,7 @@ import ResetPassword from './pages/ResetPassword';
 import HowItWorks from './pages/HowItWorks';
 import Legal from './pages/Legal';
 import Discover from './pages/Discover';
+import PrivateProgramming from './pages/PrivateProgramming';
 import FeedbackButton from './components/FeedbackButton';
 import SiteLockedOverlay from './components/SiteLockedOverlay';
 import ViewModePreviewBanner from './components/ViewModePreviewBanner';
@@ -105,7 +106,7 @@ function AppRouter() {
   // hash and continue rendering the normal app — the user lands on /login
   // and can sign in with email/password.
   if (typeof window !== 'undefined' && window.location.hash?.includes('session_id=')) {
-    try { window.history.replaceState(null, '', window.location.pathname); } catch (_) {}
+    try { window.history.replaceState(null, '', window.location.pathname); } catch (_) { /* ignore */ }
   }
 
   return (
@@ -155,6 +156,15 @@ function AppRouter() {
               <GuidedWizard />
             </ProtectedRoute>
           } 
+        />
+        {/* iter79 — Pages privées créa (le composant gère le 403 visuel lui-même) */}
+        <Route
+          path="/private/site-programming"
+          element={<ProtectedRoute><PrivateProgramming /></ProtectedRoute>}
+        />
+        <Route
+          path="/private/ai-programming"
+          element={<ProtectedRoute><PrivateProgramming /></ProtectedRoute>}
         />
         <Route 
           path="/profile" 

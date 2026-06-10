@@ -257,31 +257,34 @@ export default function Chat() {
           )}
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
             <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
-            <Button
-              onClick={async () => {
-                try {
-                  await axios.post(`${API}/sandbox/reset`, { session_id: replSessionId }, { withCredentials: true });
-                  toast.success('État REPL réinitialisé');
-                } catch (e) { toast.error('Échec reset REPL'); }
-              }}
-              variant="ghost" size="sm"
-              title="Effacer les variables persistantes du sandbox Python"
-              data-testid="chat-repl-reset-btn"
-              className="px-2 text-[#A1A1AA] hover:text-white"
-            >
-              <RotateCcw className="w-4 h-4 sm:mr-1.5" />
-              <span className="hidden md:inline text-xs">Reset REPL</span>
-            </Button>
+            {/* iter79 — Reset REPL retiré pour le mode Ollama (hors-ligne) sur demande. Conservé pour 'online'. */}
+            {mode !== 'offline' && (
+              <Button
+                onClick={async () => {
+                  try {
+                    await axios.post(`${API}/sandbox/reset`, { session_id: replSessionId }, { withCredentials: true });
+                    toast.success('État REPL réinitialisé');
+                  } catch (e) { toast.error('Échec reset REPL'); }
+                }}
+                variant="ghost" size="sm"
+                title="Effacer les variables persistantes du sandbox Python"
+                data-testid="chat-repl-reset-btn"
+                className="px-2 text-[#A1A1AA] hover:text-white"
+              >
+                <RotateCcw className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden md:inline text-xs">Reset REPL</span>
+              </Button>
+            )}
             {project?.project_id && messages.length > 0 && (
               <a
-                href={`${API}/chat/export-ipynb/${project.project_id}`}
+                href={`${API}/chat/export-docx/${project.project_id}`}
                 download
-                data-testid="chat-export-ipynb-btn"
-                title="Exporter la conversation en notebook Jupyter"
+                data-testid="chat-export-docx-btn"
+                title="Exporter la conversation en .docx (Word)"
                 className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-sm border border-purple-400/30 text-purple-300 hover:bg-purple-500/10 transition-colors"
               >
                 <BookOpen className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Export .ipynb</span>
+                <span className="hidden md:inline">Export .docx</span>
               </a>
             )}
           </div>

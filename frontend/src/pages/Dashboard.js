@@ -455,7 +455,7 @@ export default function Dashboard() {
                 clearInterval(poll);
                 if (!resolved) setExportReview(null);
               }
-            } catch (_) {}
+            } catch (_) { /* ignore polling errors */ }
           }, 4000);
           return;
         }
@@ -905,7 +905,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex-1">
                   <h3 className="text-xl font-['Chivo'] font-bold text-white mb-1">Création rapide accompagnée</h3>
-                  <p className="text-sm text-[#A1A1AA]">100% guidé par l'IA — choisis ton type d'app, on s'occupe du reste.</p>
+                  <p className="text-sm text-[#A1A1AA]">100% guidé par l&apos;IA — choisis ton type d&apos;app, on s&apos;occupe du reste.</p>
                 </div>
                 <Sparkles className="w-5 h-5 text-fuchsia-300 group-hover:rotate-12 transition-transform" />
               </div>
@@ -989,6 +989,52 @@ export default function Dashboard() {
                 </div>
               </motion.button>
             </div>
+
+            {/* iter79 — Blocs privés créa (visibles côté UI, refusent l'accès en vue créateur) */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  if (device.role !== 'creator' || device.viewMode === 'guest') {
+                    toast.error('Accès refusé pour des raisons de sécurité.');
+                    return;
+                  }
+                  navigate('/private/site-programming');
+                }}
+                data-testid="creator-private-site-btn"
+                className="group bg-gradient-to-br from-rose-500/[0.06] to-orange-500/[0.06] border border-rose-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-rose-400 hover:shadow-[0_8px_30px_rgba(244,114,182,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-rose-500/20 border border-rose-400/40 rounded-full flex items-center justify-center"><Code2 className="w-6 h-6 text-rose-300" /></div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation du site</h3>
+                    <p className="text-xs text-[#A1A1AA]">Code de fonctionnement de CodeForge AI</p>
+                  </div>
+                </div>
+              </motion.button>
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  if (device.role !== 'creator' || device.viewMode === 'guest') {
+                    toast.error('Accès refusé pour des raisons de sécurité.');
+                    return;
+                  }
+                  navigate('/private/ai-programming');
+                }}
+                data-testid="creator-private-ai-btn"
+                className="group bg-gradient-to-br from-indigo-500/[0.06] to-blue-500/[0.06] border border-indigo-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-indigo-400 hover:shadow-[0_8px_30px_rgba(99,102,241,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-indigo-500/20 border border-indigo-400/40 rounded-full flex items-center justify-center"><Sparkles className="w-6 h-6 text-indigo-300" /></div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation des IA</h3>
+                    <p className="text-xs text-[#A1A1AA]">Architecture, prompts, modules de vérification</p>
+                  </div>
+                </div>
+              </motion.button>
+            </div>
           </div>
         </div>
       </div>
@@ -1052,17 +1098,9 @@ export default function Dashboard() {
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
           >
             <Download className="w-4 h-4 text-cyan-400" />
-            <span>Télécharger ZIP</span>
+            <span>Télécharger ZIP (code source)</span>
           </button>
-          <button
-            type="button"
-            onClick={() => exportProjectGithub(ctxMenu.project)}
-            data-testid="project-ctx-export-github"
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
-          >
-            <BookOpen className="w-4 h-4 text-purple-400" />
-            <span>Pousser vers GitHub</span>
-          </button>
+          {/* iter79 — GitHub push retiré côté UI (le ZIP suffit pour push manuel) */}
           <button
             type="button"
             onClick={() => duplicateProject(ctxMenu.project)}

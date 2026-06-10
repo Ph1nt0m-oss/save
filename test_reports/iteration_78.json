@@ -1,0 +1,41 @@
+{
+  "summary": "iter79 backend testing — 16/16 new iter79 tests PASS + 22/22 regression (iter66/67/68/76) PASS = 38/38 total. Covered: (a) GET /announcements/list, /polls/list, /system/scheduled-kicks all return 200 with array payloads ; (b) /ai/wizard-suggest requires auth (401) — fallback name pool validated via direct import: 55 entries, lengths 3-12 chars, 200/200 random 3-sample seeds yield at least one >6-char name (iter79 variety rule honored) ; (c) signature gating on /accounts/{mute,unmute,ban,unban,exclude,set-staff-kind} and /devices/{block,unblock,approve} all return 403 on unsigned payloads (staff now opens to admin+modo+creator via _require_staff_signature) ; (d) /chat/export-docx/{project_id} returns 401 'Non authentifié' for unauthenticated requests. Backend supervisor RUNNING, no startup errors, MongoDB indexes + kick sweeper + Resend + GitHub all initialized cleanly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter79_staff_permissions.py",
+    "/app/test_reports/pytest/iter79_results.xml",
+    "/app/test_reports/pytest/iter79_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py _require_staff_signature (L4451-4465): clean role+staff_kind gating with tuple-based allow_kinds. Default ('admin','modo') correctly opens mute/ban/exclude/block/approve to staff per iter79 spec. Returns 403 uniformly — good (no enumeration leak via 404 vs 403 inconsistency).",
+  "server.py /accounts/set-staff-kind (L7070-7095): nice tiered RBAC (creator: any; admin: only modo). Edge: actor.get('staff_kind') is checked AFTER role!='creator' branch, so a creator with stale staff_kind='admin' still wins via role short-circuit — correct. But: an admin trying to CLEAR a modo (sk=None) is allowed — which is the intended UX per the docstring. If you ever want 'admin cannot demote another admin', add a check on target.staff_kind before $set. Currently an admin can set sk=None on an *admin* target, effectively demoting them. May or may not be wanted.",
+    "server.py /devices/approve (L4871-4891): approved_by_kind correctly tracks 'creator'|'admin'|'modo' via the actor doc. Returned in response too — UI can color-code border (jaune/orange/bleu) from this. Good.",
+    "server.py /chat/export-docx (L3903-3938): uses python-docx, scoped to user_id ownership. Content truncated at 50k chars per message — sensible. No streaming for huge convos but acceptable. Filename sanitized via _sanitize_filename — good.",
+    "server.py /ai/wizard-suggest (L3985-4050): seed-driven pool sampling fallback works. The fallback pool (_fallback_name_pool L3967-3982) has 55 varied entries (3-12 chars, mix of cases/numbers/styles per iter79 spec). One minor: when both the LLM call AND the JSON parse fail, the placeholder ['NovaApp','PixelForge','Lumino'] at L4046 is used — these are the EXACT names iter79 said to AVOID ('Évite les noms génériques comme NovaApp ou PixelForge'). Consider replacing that last-resort placeholder with another _rnd.sample(_fallback_name_pool(), 3) so the variety rule holds even on validation-failure paths.",
+    "server.py /accounts/exclude (L7126-7144): max duration 90 days, no infinite — good. minutes=0 properly rejected. Wipes user_sessions on exclude — correct kick-out behavior.",
+    "server.py /devices/block (L5065-5093): creates a 'blocked shell' device_keys row with empty public_key_jwk if target was missing. Defensive but creates a row with kty-less JWK — any future code path that assumes public_key_jwk.kty == 'EC' must guard for {}. Consider storing public_key_jwk: None and adding a sentinel field block_reason='preemptive' for clarity.",
+    "iter79 spec calls out account_history events tagged with actor_kind (creator/admin/modo). _log_account_event is invoked with actor_key_id but I don't see actor_kind being derived/persisted in the call sites here. Worth confirming _log_account_event resolves the actor's role/staff_kind into the persisted event — if not, the UI color-coding requested in iter79 (e) won't work."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter79_staff_permissions.py (new — 16 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (38/38: 16 iter79 + 22 regression iter66/67/68/76)",
+    "frontend": "skipped per request (testing_type=backend only)"
+  },
+  "test_credentials": "Not exercised — all gating tests use unsigned ephemeral payloads with TEST_iter79_-prefixed key_ids. No DB writes made.",
+  "seed_data_creation": "None — all tests are read-only or rejected-at-gate. No cleanup fixtures needed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter79 backend is GREEN (16/16 new + 22/22 regression iter66/67/68/76). The wizard-suggest endpoint is auth-gated; we couldn't exercise the LLM happy path or the fallback path through HTTP — instead we imported _fallback_name_pool() directly and stress-tested it (200 random seeds, >=190 must contain a >6-char name; got 200/200). For real end-to-end ECDSA signature testing on /accounts/* and /devices/* (mute, ban, exclude, set-staff-kind, block, approve), you would need a Python WebCrypto-compatible signer that loads a test creator JWK and signs nonces with P-256 ECDSA — same gap as iter76/iter77. The iter79 spec item (e) 'account_history events tagged with actor_kind (creator/admin/modo)' is NOT directly verified — the _log_account_event call sites pass actor_key_id but I didn't trace whether the function looks up actor.staff_kind/role before persisting; recommend a unit test that signs as an admin and asserts the resulting history row has actor_kind=='admin'. /chat/export-docx happy-path (authenticated user with seeded chat_messages) also not tested — only the 401-gate.",
+  "rca of the issue": "N/A — no failures."
+}

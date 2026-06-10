@@ -72,12 +72,14 @@ export default function GuidedWizard() {
     setMagicLoading(s => ({ ...s, name: true }));
     try {
       const r = await axios.post(`${API}/ai/wizard-suggest`,
-        { kind: 'name', platforms, app_type: appTypes[0] || null, description: funcText, language },
+        { kind: 'name', platforms, app_type: appTypes[0] || null, description: funcText, language, seed: Math.random() },
         { withCredentials: true });
       const list = Array.isArray(r.data?.suggestions) ? r.data.suggestions.slice(0, 3) : [];
       setNameSuggestions(list);
+      // iter79 — Toujours écraser le nom existant à chaque clic de la baguette
+      // pour proposer un nouveau pseudo, même si l'utilisateur a déjà saisi/choisi.
       if (list[0]) {
-        setAppName(prev => prev || list[0]);
+        setAppName(list[0]);
         toast.success('🪄 ' + list.join(' · '));
       }
     } catch (_) {

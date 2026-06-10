@@ -3900,6 +3900,44 @@ async def export_chat_as_ipynb(project_id: str, request: Request):
     )
 
 
+@api_router.get("/chat/export-docx/{project_id}")
+async def export_chat_as_docx(project_id: str, request: Request):
+    """iter79 — Exporte une conversation chat en .docx (Microsoft Word)."""
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    import io as _io
+
+    user_id = await get_current_user(request)
+    proj = await db.projects.find_one({"project_id": project_id, "user_id": user_id}, {"_id": 0})
+    if not proj:
+        raise HTTPException(status_code=404, detail="Projet introuvable.")
+    msgs = await db.chat_messages.find(
+        {"project_id": project_id, "user_id": user_id}, {"_id": 0},
+    ).sort("created_at", 1).to_list(length=10000)
+
+    doc = Document()
+    doc.add_heading(proj.get("name") or project_id, 0)
+    doc.add_paragraph(f"Exporté le {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}")
+    doc.add_paragraph(f"{len(msgs)} message(s)")
+    doc.add_paragraph()
+    for m in msgs:
+        speaker = "Utilisateur" if m.get("role") == "user" else "IA"
+        p = doc.add_paragraph()
+        run = p.add_run(f"[{speaker}] ")
+        run.bold = True
+        run.font.color.rgb = RGBColor(0xE4, 0xFF, 0x00) if m.get("role") != "user" else RGBColor(0x00, 0xD4, 0xFF)
+        p.add_run((m.get("content") or "")[:50000])
+    buf = _io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    safe_name = _sanitize_filename(proj.get("name") or project_id) + ".docx"
+    return Response(
+        content=buf.read(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
+
+
 @api_router.get("/download/generated/{file_id}")
 async def download_generated_file(file_id: str, request: Request):
     """Ownership-checked download endpoint for AI-generated files."""
@@ -3918,38 +3956,61 @@ async def download_generated_file(file_id: str, request: Request):
 
 
 class WizardSuggestInput(BaseModel):
-    kind: str  # 'name' | 'design'
+    kind: str
     platforms: List[str] = []
     app_type: Optional[str] = None
     description: Optional[str] = None
     language: Optional[str] = 'fr'
+    seed: Optional[float] = None  # iter79 — pour forcer une variation du LLM
+
+
+def _fallback_name_pool():
+    """iter79 — Pool varié de pseudos avec longueurs et styles différents.
+    S'inspire des pseudos Among Us : 3-12 caractères, mix de mots/numbers/refs."""
+    return [
+        "Nox", "Vrael", "Kiri", "Zorn", "Quil",
+        "Aetheris", "Mavrik", "Pyx", "Lumin", "Velvox",
+        "Bleeptron", "GrumpCat", "Skyforger", "VoidNomad", "PixelMite",
+        "Phantmly", "Echoflux", "Nimbo", "Ironpup", "Tessera",
+        "Kazimir77", "Marlow", "OBLIVION", "tinypaws", "RustyBolt",
+        "Vespera", "ZippyZuko", "ChromaQT", "Mossbeard", "Solitaria",
+        "Klaxon", "Whisperdrop", "Glitchgrove", "Nebbie", "QuarkLad",
+        "S0larPunk", "Mythra", "Bytewolf", "Coldscape", "Veneer",
+        "AzureFox", "FlintGhost", "NotKai", "Murmurine", "Wickerlight",
+        "JuneberryX", "PrettyPanik", "DustGremlin", "Sunken", "Ororo",
+        "EmberLark", "MidnightVole", "ShinyBean", "ImLost", "ravenmint",
+    ]
+
 
 @api_router.post("/ai/wizard-suggest")
 async def wizard_suggest(request: Request, payload: WizardSuggestInput):
-    """🪄 Magic-wand helper for the wizard: suggest a project name or a design brief.
-
-    Returns short JSON the frontend can use directly.
-      - kind='name'   → { "suggestions": ["AppName1", "AppName2", "AppName3"] }
-      - kind='design' → { "design": "courte description visuelle, palette, ambiance" }
-    """
+    """🪄 Magic-wand helper. iter79 — pool de noms variés en longueur/style."""
     user_id = await get_current_user(request)
-    _ = user_id  # auth gate only
+    _ = user_id
 
     plats = ", ".join(payload.platforms) if payload.platforms else "non spécifié"
     desc = (payload.description or "").strip()[:600]
+    # iter79 — seed-driven randomization pour LLM + fallback.
+    import random as _rnd
+    seed_val = payload.seed or _rnd.random()
+    _rnd.seed(seed_val)
 
     if payload.kind == 'name':
         prompt = (
-            f"Propose 3 noms courts et originaux pour une application "
-            f"({payload.app_type or 'générique'}) ciblant {plats}. "
-            f"Contexte utilisateur : {desc or 'aucun'}. "
-            f"Réponds UNIQUEMENT en JSON : {{\"suggestions\": [\"...\", \"...\", \"...\"]}}"
+            f"Propose 3 pseudos d'application ORIGINAUX et VARIÉS en longueur et en style "
+            f"(certains courts 3-5 lettres, d'autres plus longs 8-12 caractères, parfois avec "
+            f"un chiffre ou un mix de mots inattendus). Inspire-toi des pseudos joueurs (Among Us, "
+            f"Discord) — NE TE limite PAS à 6 lettres max. App : {payload.app_type or 'générique'} "
+            f"ciblant {plats}. Contexte : {desc or 'aucun'}. "
+            f"Évite les noms génériques comme 'NovaApp' ou 'PixelForge'. "
+            f"Aléa #{seed_val:.6f}. Réponds UNIQUEMENT en JSON: "
+            f"{{\"suggestions\": [\"...\", \"...\", \"...\"]}}"
         )
     else:
         prompt = (
             f"Propose une direction visuelle (palette, typographie, ambiance, mots-clés) "
             f"pour une app {payload.app_type or 'générique'} ciblant {plats}. "
-            f"Contexte : {desc or 'aucun'}. "
+            f"Contexte : {desc or 'aucun'}. Aléa #{seed_val:.6f}. "
             f"Réponds UNIQUEMENT en JSON : {{\"design\": \"description courte (<60 mots)\"}}"
         )
 
@@ -3975,9 +4036,9 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
         data = json.loads(text[start:end]) if start >= 0 and end > start else {}
     except Exception as exc:
         logger.warning(f"wizard-suggest failure: {exc}")
-        # Lightweight fallback so the UI never feels stuck.
         if payload.kind == 'name':
-            data = {"suggestions": ["NovaApp", "PixelForge", "Lumino"]}
+            pool = _fallback_name_pool()
+            data = {"suggestions": _rnd.sample(pool, 3)}
         else:
             data = {"design": "Interface sombre élégante, accent jaune-vert vif, typographie sans-serif moderne, ambiance high-tech bienveillante."}
 
@@ -4380,6 +4441,23 @@ async def _require_creator_signature(key_id: str, nonce: str, signature: str) ->
     dev = await _device_by_key(key_id)
     if not dev or dev.get("role") != "creator":
         raise HTTPException(status_code=403, detail="Action réservée au créateur.")
+    if not await _consume_nonce(key_id, nonce):
+        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
+    if not verify_signature(dev.get("public_key_jwk") or {}, nonce, signature):
+        raise HTTPException(status_code=403, detail="Signature invalide.")
+    return dev
+
+
+async def _require_staff_signature(
+    key_id: str, nonce: str, signature: str,
+    allow_kinds: tuple = ("admin", "modo"),
+) -> dict:
+    """iter79 — Vérifie que le caller est créa OU staff (admin/modo selon allow_kinds)."""
+    dev = await _device_by_key(key_id)
+    role = (dev or {}).get("role")
+    sk = (dev or {}).get("staff_kind")
+    if not dev or (role != "creator" and sk not in allow_kinds):
+        raise HTTPException(status_code=403, detail="Action réservée au staff (admin/modo) et créatrice.")
     if not await _consume_nonce(key_id, nonce):
         raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
     if not verify_signature(dev.get("public_key_jwk") or {}, nonce, signature):
@@ -4792,17 +4870,25 @@ class DeviceTargetIn(CreatorOnlyIn):
 
 @api_router.post("/devices/approve")
 async def devices_approve(payload: DeviceTargetIn):
-    """Creator promotes a pending device to 'approved'."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter79 — Staff (admin/modo) ou créatrice approuve. La décision tracke
+    qui a accepté (couleur d'encadrement: créa=jaune, admin=orange, modo=bleu).
+    Si modo accepte, l'appareil passe en `approved` ; la créa garde la notif
+    pour pouvoir override (refuser, ce qui annule la décision)."""
+    actor = await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     target = await _device_by_key(payload.target_key_id)
     res = await db.device_keys.update_one(
         {"key_id": payload.target_key_id, "role": "pending"},
-        {"$set": {"role": "approved", "approved_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {
+            "role": "approved",
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "approved_by_key_id": payload.key_id,
+            "approved_by_kind": "creator" if actor.get("role") == "creator" else actor.get("staff_kind"),
+        }},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Aucun appareil en attente avec cette clé.")
     await _log_decision("approve", payload.target_key_id, payload.key_id, (target or {}).get("label"))
-    return {"success": True}
+    return {"success": True, "approved_by_kind": "creator" if actor.get("role") == "creator" else actor.get("staff_kind")}
 
 
 @api_router.post("/devices/revoke")
@@ -4978,10 +5064,8 @@ async def devices_send_to_creator(payload: SendToCreatorIn):
 
 @api_router.post("/devices/block")
 async def devices_block(payload: DeviceTargetIn):
-    """Creator-only — hard-block a device. Blocked devices can never make
-    /devices/send-to-creator calls anymore. Their `role` becomes 'blocked'
-    (instead of being deleted, so the block survives unblock+reapprove)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter79 — Block. Ouvert au staff."""
+    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     if payload.target_key_id == payload.key_id:
         raise HTTPException(status_code=400, detail="Tu ne peux pas te bloquer toi-même.")
     target = await _device_by_key(payload.target_key_id)
@@ -5011,9 +5095,8 @@ async def devices_block(payload: DeviceTargetIn):
 
 @api_router.post("/devices/unblock")
 async def devices_unblock(payload: DeviceTargetIn):
-    """Creator-only — unblock a previously-blocked device. The device's role
-    becomes 'pending' so the creator can decide again."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter79 — Unblock. Ouvert au staff."""
+    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     target = await _device_by_key(payload.target_key_id)
     if not target or target.get("role") != "blocked":
         raise HTTPException(status_code=404, detail="Appareil non bloqué.")
@@ -6858,7 +6941,8 @@ class _TargetCreatorSigIn(_CreatorSigIn):
 
 
 async def _log_account_event(event: str, target_key_id: str, target_label: Optional[str] = None,
-                              extra: Optional[Dict[str, Any]] = None):
+                              extra: Optional[Dict[str, Any]] = None,
+                              actor_key_id: Optional[str] = None):
     doc = {
         "event_id": f"ah_{uuid.uuid4().hex[:14]}",
         "event": event,
@@ -6866,6 +6950,13 @@ async def _log_account_event(event: str, target_key_id: str, target_label: Optio
         "target_label": target_label,
         "ts": datetime.now(timezone.utc).isoformat(),
     }
+    # iter79 — tag who did the action (creator/admin/modo) for color-coded UI.
+    if actor_key_id:
+        doc["actor_key_id"] = actor_key_id
+        actor = await db.device_keys.find_one({"key_id": actor_key_id}, {"_id": 0, "role": 1, "staff_kind": 1, "pseudo": 1, "label": 1})
+        if actor:
+            doc["actor_kind"] = "creator" if actor.get("role") == "creator" else (actor.get("staff_kind") or actor.get("role"))
+            doc["actor_label"] = actor.get("pseudo") or actor.get("label")
     if extra:
         doc.update(extra)
     await db.account_history.insert_one(doc)
@@ -6946,24 +7037,24 @@ async def accounts_rename_pseudo(payload: _TargetCreatorSigIn):
 
 @api_router.post("/accounts/mute")
 async def accounts_mute(payload: _TargetCreatorSigIn):
-    """Creator-only — mute a peer (creator no longer gets unread notif)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter79 — Mute. Ouvert à staff (admin/modo) et créatrice."""
+    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     await db.device_keys.update_one(
         {"key_id": payload.target_key_id},
         {"$set": {"muted": True, "muted_at": datetime.now(timezone.utc).isoformat()}},
     )
-    await _log_account_event("mute", payload.target_key_id)
+    await _log_account_event("mute", payload.target_key_id, actor_key_id=payload.key_id)
     return {"success": True}
 
 
 @api_router.post("/accounts/unmute")
 async def accounts_unmute(payload: _TargetCreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     await db.device_keys.update_one(
         {"key_id": payload.target_key_id},
         {"$set": {"muted": False}, "$unset": {"muted_at": ""}},
     )
-    await _log_account_event("unmute", payload.target_key_id)
+    await _log_account_event("unmute", payload.target_key_id, actor_key_id=payload.key_id)
     return {"success": True}
 
 
@@ -6978,17 +7069,29 @@ class _SetStaffKindIn(BaseModel):
 
 @api_router.post("/accounts/set-staff-kind")
 async def accounts_set_staff_kind(payload: _SetStaffKindIn):
-    """iter77 — Créa promeut/rétrograde un compte staff en 'admin' ou 'modo'."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter77/79 — Promote / demote a target between approved/admin/modo.
+
+    Permissions :
+    - Créatrice : peut tout définir (admin, modo, null).
+    - Admin : peut uniquement définir/retirer 'modo' (pas admin, pas créa).
+    """
+    actor = await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     sk = (payload.staff_kind or None)
     if sk not in (None, "admin", "modo"):
         raise HTTPException(status_code=400, detail="staff_kind invalide ('admin'|'modo'|null).")
+    if actor.get("role") != "creator":
+        # Admin: only allowed to set/clear 'modo'
+        actor_sk = actor.get("staff_kind")
+        if actor_sk != "admin":
+            raise HTTPException(status_code=403, detail="Seuls les admins et créatrice peuvent promouvoir.")
+        if sk == "admin":
+            raise HTTPException(status_code=403, detail="Seule la créatrice peut nommer un admin.")
     target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0, "role": 1})
     if not target:
         raise HTTPException(status_code=404, detail="Compte introuvable.")
     update = {"$set": {"staff_kind": sk}} if sk else {"$unset": {"staff_kind": ""}}
     await db.device_keys.update_one({"key_id": payload.target_key_id}, update)
-    await _log_account_event(f"staff_kind_{sk or 'clear'}", payload.target_key_id)
+    await _log_account_event(f"staff_kind_{sk or 'clear'}", payload.target_key_id, actor_key_id=payload.key_id)
     return {"success": True, "staff_kind": sk}
 
 
@@ -7022,8 +7125,8 @@ async def accounts_force_visitor(payload: _ForceVisitorIn):
 
 @api_router.post("/accounts/exclude")
 async def accounts_exclude(payload: _TargetCreatorSigIn):
-    """Creator-only — temporary exclusion. duration_minutes mandatory, no infinite."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter79 — Exclusion temporaire. Ouvert au staff."""
+    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     body = payload.model_dump() if hasattr(payload, "model_dump") else {}
     minutes = int(body.get("duration_minutes") or 0)
     if minutes <= 0 or minutes > 60 * 24 * 90:  # max 90 days, no infinite
@@ -7037,14 +7140,14 @@ async def accounts_exclude(payload: _TargetCreatorSigIn):
     target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0, "email": 1})
     if target and target.get("email"):
         await db.user_sessions.delete_many({"email": target["email"]})
-    await _log_account_event("exclude", payload.target_key_id, extra={"until": until.isoformat(), "minutes": minutes})
+    await _log_account_event("exclude", payload.target_key_id, extra={"until": until.isoformat(), "minutes": minutes}, actor_key_id=payload.key_id)
     return {"success": True, "excluded_until": until.isoformat()}
 
 
 @api_router.post("/accounts/ban")
 async def accounts_ban(payload: _TargetCreatorSigIn):
-    """Creator-only — permanent ban on the account's email."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    """iter79 — Bannissement permanent. Ouvert au staff."""
+    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Compte introuvable.")
@@ -7053,20 +7156,19 @@ async def accounts_ban(payload: _TargetCreatorSigIn):
         {"$set": {"banned": True, "banned_at": datetime.now(timezone.utc).isoformat()}},
     )
     if target.get("email"):
-        # Mark email-level ban so future re-registrations stay banned.
         await db.banned_emails.update_one(
             {"email": target["email"]},
             {"$set": {"email": target["email"], "banned_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
         await db.user_sessions.delete_many({"email": target["email"]})
-    await _log_account_event("ban", payload.target_key_id, extra={"email": target.get("email")})
+    await _log_account_event("ban", payload.target_key_id, extra={"email": target.get("email")}, actor_key_id=payload.key_id)
     return {"success": True}
 
 
 @api_router.post("/accounts/unban")
 async def accounts_unban(payload: _TargetCreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
     await db.device_keys.update_one(
         {"key_id": payload.target_key_id},
@@ -7074,7 +7176,7 @@ async def accounts_unban(payload: _TargetCreatorSigIn):
     )
     if target and target.get("email"):
         await db.banned_emails.delete_many({"email": target["email"]})
-    await _log_account_event("unban", payload.target_key_id)
+    await _log_account_event("unban", payload.target_key_id, actor_key_id=payload.key_id)
     return {"success": True}
 
 
