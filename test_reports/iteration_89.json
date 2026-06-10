@@ -1,0 +1,36 @@
+{
+  "summary": "iter89 GREEN end-to-end. Backend pytest 10/10 PASS sur test_iter89_punchlist.py + 42/42 régression cumulée (iter86+87+88+89) en 0.62s sans casse. Live API tests via public URL : /api/ideas/clear sans signature -> 403 OK. /api/chat/models?context=chat sans auth -> 401, avec auth (test_dash_1777658375 / Pass1234) -> 200 avec online=10 et ids contiennent EXACTEMENT les 10 nouveaux modèles attendus (emergent-collab, vexub-video, claude-5-fable, gpt-5.5, claude-4.8-opus, claude-4.7-opus-1m, claude-4.6-sonnet, gpt-5.3-codex, gemini-3.1-pro, gpt-5.4-1m). /api/chat/history avec auth + project_id=nonexistent -> 200 [] OK. /api/private/code/read-file et /grep -> 403 systématique. Régression endpoints existants : /api/announcements/list -> 200, /api/polls/list -> 200, POST /api/messages/inbox -> 422 (payload requis, normal). Audit code : Chat.js historyLoading state + chat-history-loading + chat-empty-state + 'Cette conversation est vide' (project ? oui : t('chatEmptyTitle')) confirmé ligne 56/362/368/372. ModelPicker.jsx imports {Layers, Video, Crown, BookOpen} + BADGE_ICONS étendu ligne 22-25 confirmé. /ideas/clear iter89 fallback device-only ligne 7763-7768 confirmé (si pas password_hash, accept signature ECDSA + password non vide). Frontend /login : page charge correctement (HTTP 200, CodeForge AI render, formulaire signin présent en DOM has_email_input=1) avec OVERLAY 'Site temporarily private' au-dessus (site_mode actuellement private + device de test non whitelisté — par design iter87). Seuls 2 console errors attendus (401 sur /auth/me sans cookie). Pas d'erreurs JS dans le DOM. ModelPicker dropdown non testable visuellement car nécessite device créa pour atteindre /chat — audit code suffit conforme brief (même pattern qu'iter87).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter89_punchlist.py",
+    "/app/test_reports/pytest/iter89_results.xml",
+    "/app/test_reports/pytest/iter89_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "iter89 /ideas/clear (server.py ligne 7740-7781) : Le fallback device-only (ligne 7763-7768) accepte n'importe quel mot de passe non vide si user.password_hash est absent — c'est cohérent avec l'UX 'tape ton mot de passe pour confirmer' mais signifie en pratique que TOUT password (ex: '.') passe pour un compte device-only. Sécurité OK car la signature ECDSA d'amont (_require_creator_signature) reste l'unique source de vérité d'identité ; le password sert juste de friction UX volontaire. À documenter pour la créatrice : sur compte device-only, le contenu du champ n'est pas vérifié, seule la non-vacuité l'est.",
+    "ModelPicker.jsx BADGE_ICONS (ligne 22-25) : 'Collaboration': Layers, 'Vidéo': Video, 'Le plus capable': Crown, 'Contexte long': BookOpen — les clés sont en français, donc le mapping fonctionne uniquement si le backend retourne des badges français. Si l'i18n EN est activée côté backend (ex: 'Video' au lieu de 'Vidéo'), les icônes ne s'afficheront pas. Le backend MODEL_ROUTES devrait être audité pour confirmer que les badges restent en français quelle que soit la langue UI, ou alors BADGE_ICONS devrait aussi mapper les clés EN.",
+    "Chat.js historyLoading (ligne 362-372) : Le pattern loading -> empty/messages est propre, le wording distinct 'Cette conversation est vide' (project présent) vs t('chatEmptyTitle') (pas de project) est conforme au brief. Bon UX. data-testid sont présents (chat-history-loading, chat-empty-state).",
+    "Mocked APIs déclarés (vexub-video placeholder, emergent-collab fallback claude-sonnet) — bien documentés dans la review request. La présence des IDs dans /chat/models suffit pour iter89, l'intégration vidéo réelle est hors scope.",
+    "site_mode actuellement 'private' avec device de test non whitelisté → écran 'Site temporarily private' s'affiche en overlay au login. Le formulaire reste rendu en DOM (cohérent avec test au niveau API). Aucun bug — comportement attendu iter87."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (10/10 iter89 + 42/42 régression cumulée iter86+87+88+89 en 0.62s) + 100% live API smoke tests via public URL (auth, models, history, security gates)",
+    "frontend": "100% sur smoke /login (page charge, formulaire en DOM, overlay private affiché correctement par design). ModelPicker dropdown non testable visuellement car nécessite device créa — audit code confirme les 4 icônes mappées."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login API OK, session_token retourné. Non-créatrice donc /chat n'est pas accessible visuellement (site en mode private + device non whitelisté).",
+  "seed_data_creation": "Aucune donnée seed créée.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter89 GREEN. Punch-list user (Message 660) validé : (1) /ideas/clear fallback device-only (server.py ligne 7763-7768) confirme que si password_hash absent, la signature ECDSA suffit comme identité et tout password non vide est accepté. (2) /chat/models retourne online=10 avec EXACTEMENT les 10 nouveaux IDs (emergent-collab, vexub-video, claude-5-fable, gpt-5.5, claude-4.8-opus, claude-4.7-opus-1m, claude-4.6-sonnet, gpt-5.3-codex, gemini-3.1-pro, gpt-5.4-1m). (3) Chat.js historyLoading + chat-history-loading + chat-empty-state + wording distinct selon project — pattern propre. (4) ModelPicker BADGE_ICONS étendu avec Layers/Video/Crown/BookOpen (icônes en clés FR uniquement — à vérifier si i18n EN cause un mismatch). Pour tests futurs : lancer pytest depuis /app/backend (cwd) sinon ModuleNotFoundError. Site en mode private actuellement, le formulaire login reste en DOM mais l'overlay 'Site temporarily private' est affiché par-dessus — c'est par design iter87 quand le device n'est pas whitelisté.",
+  "rca of the issue": "Aucun bug détecté. Les 3 fixes iter89 du punch-list user (Message 660) sont correctement implémentés et tous les tests passent : (1) /ideas/clear fallback pour compte créa device-only — la signature ECDSA est l'unique source de vérité d'identité, le password sert de friction UX. (2) Chat.js reprise sidebar — historyLoading state évite le flash 'vide' pendant le fetch, et le wording distingue 'cette conversation est vide' vs 'discute avec une IA'. (3) ModelPicker icônes étendues pour les nouveaux badges (Collaboration/Vidéo/Le plus capable/Contexte long). Mocked APIs (vexub-video, emergent-collab) bien documentés."
+}

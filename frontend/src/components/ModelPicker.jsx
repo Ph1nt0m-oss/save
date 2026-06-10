@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { Cpu, ChevronDown, Loader2, Sparkles, Brain, Code, Zap, Globe } from 'lucide-react';
+import { Cpu, ChevronDown, Loader2, Sparkles, Brain, Code, Zap, Globe, Layers, Video, Crown, BookOpen } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -18,6 +18,11 @@ const BADGE_ICONS = {
   'Multilingue': Globe,
   'Européen': Sparkles,
   'Compact': Cpu,
+  // iter89 — Nouveaux badges (Vexub, Emergent Collab, Claude 5 Fable, etc.)
+  'Collaboration': Layers,
+  'Vidéo': Video,
+  'Le plus capable': Crown,
+  'Contexte long': BookOpen,
 };
 
 const COLOR_RING = {

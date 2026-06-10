@@ -53,6 +53,7 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [pinning, setPinning] = useState(false);
   // Pending attachments for the NEXT message (analyzed by the backend).
   const [pendingAtts, setPendingAtts] = useState([]); // [{kind, filename, mime_type, content, data_base64}]
@@ -75,11 +76,18 @@ export default function Chat() {
 
   // Load chat history when a project is provided.
   useEffect(() => {
-    if (!project?.project_id) return;
+    if (!project?.project_id) {
+      // Pas de projet → conversation neuve, on s'assure que le state est vierge.
+      setMessages([]);
+      setHistoryLoading(false);
+      return;
+    }
     let cancelled = false;
+    setHistoryLoading(true);
+    setMessages([]);  // Reset visuel immédiat pour éviter le flash d'ancienne convo
     (async () => {
       try {
-        const r = await axios.get(`${API}/chat/history?project_id=${project.project_id}`, { withCredentials: true });
+        const r = await axios.get(`${API}/chat/history?project_id=${project.project_id}&limit=500`, { withCredentials: true });
         if (!cancelled && Array.isArray(r.data)) {
           setMessages(r.data.map(m => ({
             ...m,
@@ -90,6 +98,7 @@ export default function Chat() {
           })));
         }
       } catch (_) { /* silent */ }
+      finally { if (!cancelled) setHistoryLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [project?.project_id]);
@@ -350,14 +359,22 @@ export default function Chat() {
           </div>
         )}
         <ScrollArea className="flex-1 mb-6">
-          {messages.length === 0 && (
-            <div className="text-center py-20">
+          {historyLoading && (
+            <div className="text-center py-20" data-testid="chat-history-loading">
+              <Loader2 className="w-10 h-10 mx-auto mb-4 animate-spin" style={{ color: modeColor }} />
+              <p className="text-[#A1A1AA] text-sm">{t('chatLoadingHistory') || 'Chargement de la conversation…'}</p>
+            </div>
+          )}
+          {!historyLoading && messages.length === 0 && (
+            <div className="text-center py-20" data-testid="chat-empty-state">
               <Sparkles className="w-20 h-20 mx-auto mb-6" style={{ color: modeColor }} />
               <h2 className="text-2xl font-['Chivo'] font-bold mb-3">
-                {t('chatEmptyTitle')}
+                {project?.project_id ? (t('chatResumedEmptyTitle') || 'Cette conversation est vide') : t('chatEmptyTitle')}
               </h2>
               <p className="text-[#A1A1AA] mb-4">
-                {mode === 'online' ? t('chatEmptyOnline') : t('chatEmptyOffline')}
+                {project?.project_id
+                  ? (t('chatResumedEmptyBody') || 'Aucun message archivé. Reprends la discussion en envoyant un nouveau message.')
+                  : (mode === 'online' ? t('chatEmptyOnline') : t('chatEmptyOffline'))}
               </p>
             </div>
           )}
