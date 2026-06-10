@@ -17,6 +17,22 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 81 (C20 visite créa style Dashboard + finalisation des items orange)
+
+**C20 — AccountVisitView réécrit pour mimer le Dashboard du user visité** :
+- Layout 2 colonnes (sidebar projets + main chat) au lieu de 2 cards juxtaposées.
+- Sidebar reproduit le code couleur Dashboard : dot jaune=chat-online, sky=chat-offline, emerald=web-online, violet=web-offline.
+- Projets supprimés (`is_deleted=true`) en `opacity-30 grayscale` + badge rouge « supprimé ». Idem messages (opacity-25).
+- Bandeau « Mode visite » jaune persistant en haut avec rôle (créatrice/admin/modo) du compte visité.
+- Click sur un projet filtre les messages liés à ce `project_id`. Click sur « Tous les messages » affiche le full chat history.
+
+**Quick wins finalisés** :
+- Démo link bleu retiré de la page Login (mode signup) — l'utilisatrice doit passer par sa boîte Gmail réelle (commit iter80, vérifié iter81 par testing agent).
+- Badges colorés admin (orange) / modo (cyan) / créatrice (jaune) dans DeviceManager pour la décision d'approbation des appareils.
+- `_fallback_name_pool` final purge : ancien placeholder `['NovaApp','PixelForge','Lumino']` (qui contredisait le prompt) remplacé par `_rnd.sample(pool, 3)` quand la validation JSON échoue.
+
+**Tests** : 16/16 backend `test_iter81_orange_fixes.py` PASS (C2 wizard variety + C17 export flags + C20 visit gate + C13/ideas/clear scope validation). Frontend Playwright PASS sur C17 modal complet et démo-link absence vérifiée.
+
 ### 2026-06-10 — Iter 80 (Quick-wins commentaires user C13/C14/C17/C18/C20/C2)
 
 **C13 — Vue créateur sans expositions sensibles** :

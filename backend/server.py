@@ -4055,7 +4055,9 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
             data = {"design": "Interface sombre élégante, accent jaune-vert vif, typographie sans-serif moderne, ambiance high-tech bienveillante."}
 
     if payload.kind == 'name' and not isinstance(data.get('suggestions'), list):
-        data = {"suggestions": ["NovaApp", "PixelForge", "Lumino"]}
+        # iter81 — Évite les noms génériques (NovaApp/PixelForge/Lumino), pioche
+        # dans le pool varié pour respecter le prompt.
+        data = {"suggestions": _rnd.sample(_fallback_name_pool(), 3)}
     if payload.kind == 'design' and not isinstance(data.get('design'), str):
         data = {"design": "Interface sombre élégante, accent jaune-vert vif, ambiance moderne."}
 
