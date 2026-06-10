@@ -148,6 +148,7 @@ export default function CreatorToolbar() {
       <SiteModeBadge
         role={device.role}
         siteMode={device.siteMode}
+        siteModes={device.siteModes}
         viewMode={device.viewMode}
         guestView={device.guestView}
         onChange={() => device.refresh()}

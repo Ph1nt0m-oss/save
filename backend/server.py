@@ -4382,22 +4382,85 @@ async def ollama_status():
 from device_auth import compute_key_id, new_nonce, verify_signature  # noqa: E402
 
 
-VALID_SITE_MODES = {"public", "private", "creator", "guest"}
+VALID_SITE_MODES = {"public", "private", "creator", "guest", "staff", "admin", "modo"}
 VALID_DEVICE_ROLES = {"creator", "approved", "pending", "revoked"}
 
 
-async def _get_site_mode() -> str:
+def _normalize_modes(mode_value) -> List[str]:
+    """iter83 C11 — Accepte mode_value en str OU list[str] et retourne
+    toujours une liste de modes valides. Conserve la rétro-compatibilité avec
+    l'ancien stockage str unique. Si la valeur est vide ou invalide,
+    retourne ['public'] par défaut."""
+    if isinstance(mode_value, str):
+        modes = [mode_value]
+    elif isinstance(mode_value, (list, tuple)):
+        modes = [str(m) for m in mode_value]
+    else:
+        modes = []
+    modes = [m for m in modes if m in VALID_SITE_MODES]
+    return modes or ["public"]
+
+
+def _device_matches_mode(dev: Dict[str, Any], modes: List[str]) -> bool:
+    """iter83 C11 — Vrai si le device match au moins un mode actif.
+
+      - 'public' : tout le monde (sauf banni / revoked)
+      - 'private' : approved + creator
+      - 'creator' : creator only
+      - 'guest' : tout le monde (lecture seule, géré UI-side)
+      - 'staff' : admin + modo
+      - 'admin' : admin only
+      - 'modo' : modo only
+    """
+    if not dev:
+        return False
+    if dev.get("role") in ("revoked",) or dev.get("banned"):
+        return False
+    role = dev.get("role")
+    sk = dev.get("staff_kind")
+    is_creator = role == "creator"
+    is_approved = role in ("approved", "creator")
+    is_admin = sk == "admin"
+    is_modo = sk == "modo"
+    for m in modes:
+        if m == "public" or m == "guest":
+            return True
+        if m == "private" and is_approved:
+            return True
+        if m == "creator" and is_creator:
+            return True
+        if m == "staff" and (is_admin or is_modo or is_creator):
+            return True
+        if m == "admin" and (is_admin or is_creator):
+            return True
+        if m == "modo" and (is_modo or is_creator):
+            return True
+    return False
+
+
+async def _get_site_mode():
     """Returns the current site_mode. Cached in-memory for 30 seconds to
     avoid hitting Mongo on every /auth/login + /devices/verify call. The
-    cache is bypassed by /system/site-mode PUT which invalidates it."""
+    cache is bypassed by /system/site-mode PUT which invalidates it.
+
+    iter83 C11 — Peut retourner str (legacy) OU list[str] (nouveau multi)."""
     global _site_mode_cache
     now = time.monotonic()
     if _site_mode_cache and now - _site_mode_cache[0] < 30.0:
         return _site_mode_cache[1]
-    doc = await db.site_config.find_one({"_id": "site_mode"}, {"_id": 0, "mode": 1})
-    mode = (doc or {}).get("mode") or "public"
+    doc = await db.site_config.find_one({"_id": "site_mode"}, {"_id": 0, "mode": 1, "modes": 1})
+    if doc and isinstance(doc.get("modes"), list) and doc.get("modes"):
+        mode = doc["modes"]
+    else:
+        mode = (doc or {}).get("mode") or "public"
     _site_mode_cache = (now, mode)
     return mode
+
+
+async def _get_site_modes_list() -> List[str]:
+    """iter83 — Helper qui retourne TOUJOURS la liste des modes actifs."""
+    m = await _get_site_mode()
+    return _normalize_modes(m)
 
 
 def _invalidate_site_mode_cache():
@@ -4622,29 +4685,40 @@ async def device_verify(payload: DeviceVerifyIn):
     elif role == "revoked":
         can_access = False
         kick_reason = "kick_revoked"
-    elif site_mode == "private":
-        if role not in ("creator", "approved"):
-            # In private, non-approved devices are kicked AS WRITERS but can
-            # still browse read-only via the explicit "Guest view" link the
-            # frontend shows in the kick overlay.
+    elif True:
+        # iter83 C11 — Multi-mode gating. Le device passe si AU MOINS un mode
+        # actif lui est accessible (via _device_matches_mode). Sinon kick avec
+        # raison spécifique au mode dominant.
+        modes_active = _normalize_modes(site_mode)
+        if not _device_matches_mode(dev, modes_active):
             can_access = False
+            # Priorité de raison : creator > admin > modo > staff > private > guest
+            if "creator" in modes_active:
+                kick_reason = "kick_creator_only"
+            elif "admin" in modes_active or "modo" in modes_active or "staff" in modes_active:
+                kick_reason = "kick_staff_only"
+            elif "private" in modes_active:
+                kick_reason = "kick_private"
+                effective_role = "guest"
+            else:
+                kick_reason = "kick_blocked"
+        elif "guest" in modes_active and role not in ("creator", "approved"):
+            # 'guest' actif : tout le monde en read-only.
             effective_role = "guest"
-            kick_reason = "kick_private"
-    elif site_mode == "creator":
-        if role != "creator":
-            can_access = False
-            kick_reason = "kick_creator_only"
-    elif site_mode == "guest":
-        # Whole site is read-only. Everyone allowed.
-        if role not in ("creator", "approved"):
-            effective_role = "guest"
+        elif "private" in modes_active and role not in ("creator", "approved") and "public" not in modes_active:
+            # Private uniquement (sans public) → kicked unless approved.
+            # (déjà géré par _device_matches_mode ci-dessus, fallback safe)
+            pass
 
+    # iter83 C11 — Renvoie aussi site_modes (liste) pour le frontend.
+    site_modes_list = _normalize_modes(site_mode)
     return {
         "verified": True,
         "role": role,
         "effective_role": effective_role,
         "can_access": can_access,
-        "site_mode": site_mode,
+        "site_mode": site_modes_list[0],  # legacy str = premier mode
+        "site_modes": site_modes_list,    # nouveau : liste complète
         "kick_reason": kick_reason,
         "excluded_until": excluded_until,
         "force_visitor": bool(dev.get("force_visitor", False)),  # iter77
@@ -4655,16 +4729,26 @@ async def device_verify(payload: DeviceVerifyIn):
 @api_router.get("/system/site-mode")
 async def get_site_mode_public():
     """Public — anyone can read the current site mode + (in guest mode)
-    the optional view-forcing setting set by the creator."""
-    doc = await db.site_config.find_one({"_id": "site_mode"}, {"_id": 0, "mode": 1, "guest_view": 1})
+    the optional view-forcing setting set by the creator.
+
+    iter83 C11 — Renvoie maintenant aussi `modes` (liste). `mode` reste pour
+    compat ascendante = première entrée de la liste."""
+    doc = await db.site_config.find_one(
+        {"_id": "site_mode"}, {"_id": 0, "mode": 1, "guest_view": 1, "modes": 1},
+    )
+    raw = doc or {}
+    modes = _normalize_modes(raw.get("modes") if isinstance(raw.get("modes"), list) and raw.get("modes") else raw.get("mode"))
     return {
-        "mode": (doc or {}).get("mode") or "public",
-        "guest_view": (doc or {}).get("guest_view"),
+        "mode": modes[0],
+        "modes": modes,
+        "guest_view": raw.get("guest_view"),
     }
 
 
 class SiteModeSetIn(BaseModel):
-    mode: str
+    # iter83 — Accepte soit `mode` (legacy str) soit `modes` (list).
+    mode: Optional[str] = None
+    modes: Optional[List[str]] = None
     key_id: str
     nonce: str
     signature: str
@@ -4677,48 +4761,48 @@ async def set_site_mode(payload: SiteModeSetIn):
     access under the new mode (their next /devices/verify poll will return
     can_access=False with a localized kick_reason).
 
-    On switching to:
-      - 'creator' → all non-creator user_sessions are deleted (full lockout)
-      - 'private' → non-(creator|approved) user_sessions are deleted
-      - 'public'  → nothing forced
-      - 'guest'   → nothing forced (everyone goes read-only via UI)
+    iter83 C11 — Supporte multi-checkbox via `payload.modes` (liste). Kick
+    appliqué pour les devices qui n'ont aucun mode actif compatible.
     """
-    if payload.mode not in VALID_SITE_MODES:
-        raise HTTPException(status_code=400, detail="Mode invalide.")
+    # Détermine la liste finale.
+    if payload.modes is not None:
+        modes = _normalize_modes(payload.modes)
+    elif payload.mode is not None:
+        if payload.mode not in VALID_SITE_MODES:
+            raise HTTPException(status_code=400, detail="Mode invalide.")
+        modes = [payload.mode]
+    else:
+        raise HTTPException(status_code=400, detail="Aucun mode fourni.")
+    # Validation : tous les modes doivent être valides.
+    for m in modes:
+        if m not in VALID_SITE_MODES:
+            raise HTTPException(status_code=400, detail=f"Mode invalide : {m}")
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
 
-    # Optional sub-view forcing for guest mode. The client may send
-    #   {mode:"guest", guest_view:"creator"|"user"|null}
-    # to lock visitors into a specific view; null = visitor's choice.
+    # Optional sub-view forcing for guest mode.
     guest_view = getattr(payload, 'guest_view', None)
+    is_guest_mode = "guest" in modes
 
     await db.site_config.update_one(
         {"_id": "site_mode"},
         {"$set": {
-            "mode": payload.mode,
-            "guest_view": guest_view if payload.mode == "guest" else None,
+            "mode": modes[0],            # legacy str pour compat
+            "modes": modes,              # nouvelle source de vérité
+            "guest_view": guest_view if is_guest_mode else None,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
         upsert=True,
     )
     _invalidate_site_mode_cache()
 
-    # Kick affected sessions.
-    if payload.mode == "creator":
-        # Find all device_keys that are NOT creator and delete their sessions.
-        non_creator = await db.device_keys.find(
-            {"role": {"$ne": "creator"}}, {"_id": 0, "key_id": 1},
-        ).to_list(length=1000)
-        for d in non_creator:
-            await db.user_sessions.delete_many({"device_key_id": d["key_id"]})
-    elif payload.mode == "private":
-        non_approved = await db.device_keys.find(
-            {"role": {"$nin": ["creator", "approved"]}}, {"_id": 0, "key_id": 1},
-        ).to_list(length=1000)
-        for d in non_approved:
+    # iter83 — Kick : on supprime les sessions des devices qui ne matchent
+    # AUCUN des modes actifs. Approche défensive.
+    all_devs = await db.device_keys.find({}, {"_id": 0, "key_id": 1, "role": 1, "staff_kind": 1, "banned": 1}).to_list(length=2000)
+    for d in all_devs:
+        if not _device_matches_mode(d, modes):
             await db.user_sessions.delete_many({"device_key_id": d["key_id"]})
 
-    return {"mode": payload.mode, "guest_view": guest_view}
+    return {"mode": modes[0], "modes": modes, "guest_view": guest_view}
 
 
 class CreatorOnlyIn(BaseModel):
@@ -5212,11 +5296,26 @@ async def session_request_status(payload: SessionRequestStatusIn, response: Resp
 @api_router.get("/auth/session-pending")
 async def list_pending_session_requests(request: Request):
     """Listed by the currently-connected user — pending requests on their
-    account from other devices."""
+    account from other devices.
+
+    iter83 — Fix bug "demande fantôme récurrente" : on auto-expire les
+    requests pending de plus de 90 secondes. La race condition se produisait
+    quand un device demandait l'accès puis fermait l'onglet sans approval :
+    la request restait `pending` jusqu'à `expires_at` (potentiellement
+    plusieurs minutes), apparaissant comme un prompt fantôme à chaque poll
+    sur le device connecté.
+    """
     user_id = await get_current_user(request)
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    stale_threshold = (now - timedelta(seconds=90)).isoformat()
+    # Auto-expire stale pending requests.
+    await db.session_requests.update_many(
+        {"user_id": user_id, "status": "pending", "created_at": {"$lt": stale_threshold}},
+        {"$set": {"status": "expired", "expired_at": now_iso}},
+    )
     rows = await db.session_requests.find(
-        {"user_id": user_id, "status": "pending", "expires_at": {"$gt": now_iso}},
+        {"user_id": user_id, "status": "pending", "expires_at": {"$gt": now_iso}, "created_at": {"$gte": stale_threshold}},
         {"_id": 0},
     ).sort("created_at", -1).to_list(length=50)
     return {"requests": rows}
@@ -8836,6 +8935,69 @@ async def messages_send_to_staff(payload: MessageToStaffIn):
         "read_by_user": True,
     })
     return {"sent": True, "message_id": msg_id, "assigned_to": target.get("pseudo") or target.get("label") or target_key_id[:10], "recipient_kind": recipient_kind}
+
+
+# ==========================================================================
+# iter83 C7 — ORCHESTRATEUR MULTI-AGENTS (planner/critic/executor/arbiter)
+# ==========================================================================
+
+from orchestrator import orchestrate as _run_orchestrate
+from orchestrator import orchestrate_stream as _stream_orchestrate
+
+
+class OrchestrateIn(BaseModel):
+    message: str
+    project_id: Optional[str] = None
+    language: Optional[str] = "fr"
+
+
+@api_router.post("/chat/orchestrate")
+async def chat_orchestrate(request: Request, payload: OrchestrateIn):
+    """C7 — Lance la pipeline complète planner→executor→critic→arbiter.
+
+    Retourne un JSON avec chaque étape + la réponse finale destinée à l'user."""
+    user_id = await get_current_user(request)
+    session_id = f"orch_{user_id}_{payload.project_id or 'global'}"
+    result = await _run_orchestrate(
+        payload.message, session_id=session_id, language=payload.language or "fr",
+    )
+    # Persistance minimale pour la mémoire de validation/erreurs.
+    try:
+        await db.orchestrator_runs.insert_one({
+            "run_id": f"run_{uuid.uuid4().hex[:16]}",
+            "user_id": user_id,
+            "project_id": payload.project_id,
+            "session_id": session_id,
+            "question": payload.message,
+            "plan": result.get("plan"),
+            "critique": result.get("critique"),
+            "execution_ok": (result.get("execution") or {}).get("ok"),
+            "confidence": result.get("confidence"),
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+    return result
+
+
+@api_router.post("/chat/orchestrate-stream")
+async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
+    """C7 + C5/C8 — Variante streaming SSE : émet un event par phase
+    (planner_start, planner_done, executor_*, critic_*, arbiter_*, complete).
+    Permet à l'UI d'afficher 'En train de planifier...' etc en temps réel."""
+    user_id = await get_current_user(request)
+    session_id = f"orch_{user_id}_{payload.project_id or 'global'}"
+    lang = payload.language or "fr"
+
+    async def event_gen():
+        async for evt in _stream_orchestrate(payload.message, session_id=session_id, language=lang):
+            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+    })
 
 
 # ==========================================================================

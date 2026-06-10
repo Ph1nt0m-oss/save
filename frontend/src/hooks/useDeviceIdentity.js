@@ -64,6 +64,7 @@ export default function useDeviceIdentity() {
         role: result.role || null,
         effectiveRole: effective,
         siteMode: result.site_mode || 'public',
+        siteModes: Array.isArray(result.site_modes) ? result.site_modes : (result.site_mode ? [result.site_mode] : ['public']),
         guestView: result.guest_view || null,
         canAccess: !!result.can_access,
         kickReason: result.kick_reason || null,

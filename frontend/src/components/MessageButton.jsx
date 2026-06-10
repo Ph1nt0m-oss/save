@@ -78,7 +78,7 @@ export default function MessageButton({ variant = 'icon' }) {
           className="inline-flex items-center gap-1.5 text-[11px] text-[#E4FF00]/80 hover:text-[#E4FF00] font-['IBM_Plex_Sans'] transition-colors"
         >
           <MessageCircle className="w-3.5 h-3.5" />
-          {device.role === 'creator' ? 'Messages reçus' : 'Envoyer un message à la créatrice'}
+          {device.role === 'creator' ? 'Messages reçus' : (device.staff_kind ? 'Messages staff' : 'Contacter un modo')}
           {unread > 0 && (
             <span className="text-[9px] bg-[#E4FF00] text-[#050505] font-bold px-1.5 rounded-full">{unread}</span>
           )}
