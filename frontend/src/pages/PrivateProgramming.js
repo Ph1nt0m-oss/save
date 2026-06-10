@@ -21,13 +21,18 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  * viewMode==='creator'). Tout autre cas → écran "Accès refusé".
  */
 export default function PrivateProgramming() {
+  const device = useDeviceIdentity();
   const navigate = useNavigate();
   const location = useLocation();
   const isAI = location.pathname.includes('ai-programming');
   const title = isAI ? 'Programmation des IA' : 'Programmation du site';
 
-  // iter87 — Sécurité : le code du site et la config des IA ne sont visibles
-  // par PERSONNE, même la créatrice. Affichage permanent de l'écran de garde.
+  // iter89 — Visible UNIQUEMENT pour les DEVICES créa et SEULEMENT quand la
+  // créatrice N'EST PAS en vue créa (pour éviter qu'un visiteur regarde
+  // par-dessus l'épaule et copie le code). Donc accessible si :
+  //   device.role === 'creator' && device.viewMode && device.viewMode !== 'creator'
+  const allowed = device.role === 'creator' && device.viewMode && device.viewMode !== 'creator';
+
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6" data-testid="private-programming-page">
       <div className="max-w-7xl mx-auto">
@@ -37,15 +42,23 @@ export default function PrivateProgramming() {
           </button>
           <h1 className="text-2xl font-['Chivo'] font-black">{title}</h1>
         </div>
-        <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-8 text-center max-w-md mx-auto" data-testid="private-access-denied">
-          <Lock className="w-14 h-14 mx-auto text-red-300 mb-4" />
-          <h2 className="text-lg font-bold text-red-200 mb-2">Accès refusé</h2>
-          <p className="text-sm text-red-100/90 leading-relaxed">
-            Pour des raisons de sécurité, le code du site et la configuration des IA
-            ne sont visibles par personne — pas même la créatrice — depuis cette
-            interface.
-          </p>
-        </div>
+        {!allowed ? (
+          <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-8 text-center max-w-md mx-auto" data-testid="private-access-denied">
+            <Lock className="w-14 h-14 mx-auto text-red-300 mb-4" />
+            <h2 className="text-lg font-bold text-red-200 mb-2">Accès refusé</h2>
+            <p className="text-sm text-red-100/90 leading-relaxed">
+              Pour des raisons de sécurité, le code n&apos;est accessible que pour les
+              appareils créateurs et uniquement quand la vue créatrice n&apos;est pas
+              active (anti-copie par-dessus l&apos;épaule).
+            </p>
+            <p className="text-xs text-amber-200/90 mt-3">
+              Active une vue simulée (user/modo/admin/guest) depuis le ViewModePicker
+              pour débloquer cette page.
+            </p>
+          </div>
+        ) : (
+          isAI ? <AIProgrammingPanel /> : <SiteProgrammingPanel />
+        )}
       </div>
     </div>
   );

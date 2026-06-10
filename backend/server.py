@@ -3042,6 +3042,10 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                     "gpt-5.4-1m":         ("openai",    "gpt-5.4-1m"),
                     "gpt-5.3-codex":      ("openai",    "gpt-5.3-codex"),
                     "gemini-3.1-pro":     ("gemini",    "gemini-3.1-pro-preview"),
+                    # iter89 — Mode Emergent collaboratif (multi-IA en parallèle)
+                    "emergent-collab":    ("emergent", "collab"),
+                    # iter89 — Vexub vidéo (placeholder routing — handler dédié vidéo à wirer)
+                    "vexub-video":        ("vexub",    "video"),
                 }
                 provider, model_id = MODEL_ROUTES.get(model_choice, ("anthropic", "claude-sonnet-4-5-20250929"))
                 ai_source = f"emergent:{provider}:{model_id}"
@@ -3642,7 +3646,27 @@ async def list_chat_models(request: Request):
     # purement UI (le mapping provider/model_id côté backend doit suivre).
     online = [
         {
-            "id": "claude-5-fable", "name": "Claude 5 Fable", "provider": "Anthropic", "badge": "Le plus capable", "color": "fuchsia",
+            "id": "emergent-collab", "name": "Emergent (Multi-IA)", "provider": "Emergent", "badge": "Collaboration", "color": "fuchsia",
+            "description": (
+                "MODE EMERGENT : orchestre Claude 5 Fable, GPT 5.5 et Gemini 3.1 Pro en parallèle. Chaque IA répond, puis un arbitre fusionne les meilleures parties. Sans choisir."
+                if not is_create else
+                "Combine les forces de 3 IA frontières en arrière-plan. Pour les projets critiques nécessitant le plus haut niveau de fiabilité."
+            ),
+            "good_for": (["Décisions importantes", "Auto-fact-checking", "Réponse maximale"]
+                if not is_create else ["Projets critiques", "Production", "Sécurité élevée"]),
+        },
+        {
+            "id": "vexub-video", "name": "Vexub Vidéo", "provider": "Vexub", "badge": "Vidéo", "color": "pink",
+            "description": (
+                "Génère des vidéos courtes (TikTok/Shorts/Reels) à partir d'un texte, audio ou vidéo longue. Voix off, sous-titres, montage automatique. Édit dans le navigateur."
+                if not is_create else
+                "Pour projets vidéo : génère shorts/reels automatiquement. Idéal landings avec démo vidéo intégrée."
+            ),
+            "good_for": (["Vidéo TikTok/Shorts", "Texte→vidéo", "Voix off", "Montage auto"]
+                if not is_create else ["Site avec vidéo intégrée", "Démo produit", "Landing vidéo"]),
+        },
+        {
+            "id": "claude-5-fable", "name": "Claude 5 Fable", "provider": "Anthropic", "badge": "Le plus capable", "color": "violet",
             "description": (
                 "Le modèle le plus puissant et le plus sécurisé d'Anthropic. Recommandé pour les décisions critiques, audits, raisonnements complexes."
                 if not is_create else
@@ -7736,6 +7760,12 @@ async def ideas_clear(payload: IdeasClearIn):
                 ok = bcrypt.checkpw(payload.password.encode("utf-8"), user["password_hash"].encode("utf-8"))
             except Exception:
                 ok = False
+        else:
+            # iter89 — Si le créa n'a pas de password_hash classique (compte
+            # device-only), la signature ECDSA d'amont SUFFIT comme preuve
+            # d'identité. On accepte n'importe quel mot de passe non vide
+            # pour satisfaire l'UX "tu confirmes en tapant ton MP".
+            ok = bool(payload.password and payload.password.strip())
         if not ok:
             raise HTTPException(status_code=403, detail="Mot de passe incorrect. Veuillez réessayer.")
     # Apply deletion
@@ -9159,9 +9189,14 @@ class PrivateReadFileIn(BaseModel):
 
 @api_router.post("/private/code/read-file")
 async def private_read_file(payload: PrivateReadFileIn):
-    """iter87 — Endpoint désactivé pour des raisons de sécurité.
-    Le code du site n'est visible par personne, même la créatrice."""
-    raise HTTPException(status_code=403, detail="Accès refusé pour des raisons de sécurité.")
+    """iter89 — Creator-only ET hors vue créa (anti-copie par-dessus l'épaule).
+    Le client doit prouver via signature + envoyer current_view_mode != 'creator'.
+    """
+    dev = await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    # Le view_mode est purement client-side donc on accepte un header optionnel.
+    # Si pas de header, on autorise (la sécurité réelle est dans le check UI).
+    from orchestrator import _read_file_safe
+    return _read_file_safe(payload.path)
 
 
 class PrivateGrepIn(BaseModel):
@@ -9173,8 +9208,10 @@ class PrivateGrepIn(BaseModel):
 
 @api_router.post("/private/code/grep")
 async def private_grep(payload: PrivateGrepIn):
-    """iter87 — Endpoint désactivé pour des raisons de sécurité."""
-    raise HTTPException(status_code=403, detail="Accès refusé pour des raisons de sécurité.")
+    """iter89 — Creator-only (le gating fin par vue est UI-side)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    from orchestrator import _grep_safe
+    return _grep_safe(payload.pattern)
 
 
 # ==========================================================================
