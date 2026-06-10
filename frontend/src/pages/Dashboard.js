@@ -32,6 +32,7 @@ import AccountVisitView from '../components/AccountVisitView';
 import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
+import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -554,7 +555,9 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-screen bg-[#050505] text-white flex overflow-hidden">
+    <div className="h-screen bg-[#050505] text-white flex flex-col overflow-hidden">
+      <ViewSimulationBanner role={device.role} viewMode={device.viewMode} />
+      <div className="flex-1 flex overflow-hidden">
       <SiteLockedOverlay siteMode={device.siteMode} role={device.role} kickReason={device.kickReason} onRetry={() => device.refresh()} />
       <ExportApprovalNotifier onOpenAccount={(o) => setVisiting({ key_id: o.key_id })} />
       {visiting && <AccountVisitView target={visiting} onClose={() => setVisiting(null)} />}
@@ -793,14 +796,19 @@ export default function Dashboard() {
               >
                 <Users className="w-4 h-4" />
               </button>
-              <button
-                onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
-                data-testid="open-friends-btn"
-                title="Amis & demandes"
-                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
-              >
-                <UserCog className="w-4 h-4" />
-              </button>
+              {/* iter86 — La créatrice en vue créa n'a pas besoin du système
+                  d'amis (elle peut DM directement). Seules les vues simulées
+                  (user/modo/admin) affichent le bouton Amis. */}
+              {device.viewMode !== 'creator' && (
+                <button
+                  onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
+                  data-testid="open-friends-btn"
+                  title="Amis & demandes"
+                  className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
+                >
+                  <UserCog className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
             {/* CENTER */}
@@ -1256,6 +1264,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

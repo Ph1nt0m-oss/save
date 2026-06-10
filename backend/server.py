@@ -4402,15 +4402,21 @@ def _normalize_modes(mode_value) -> List[str]:
 
 
 def _device_matches_mode(dev: Dict[str, Any], modes: List[str]) -> bool:
-    """iter83 C11 — Vrai si le device match au moins un mode actif.
+    """iter86 C11 — Vrai si le device match au moins un mode actif.
 
-      - 'public' : tout le monde (sauf banni / revoked)
-      - 'private' : approved + creator
-      - 'creator' : creator only
-      - 'guest' : tout le monde (lecture seule, géré UI-side)
-      - 'staff' : admin + modo
-      - 'admin' : admin only
-      - 'modo' : modo only
+      - 'public' : visiteurs + clés publiques. PAS le staff (sauf cumul).
+      - 'private' : clés validées (approved). PAS le staff seul (sauf cumul).
+      - 'creator' : creator only.
+      - 'guest' : tout le monde (lecture seule, géré UI-side).
+      - 'staff' : admin + modo (admins/modos n'ont alors PAS besoin de clé
+                  validée pour bosser).
+      - 'admin' : admin only.
+      - 'modo' : modo only.
+
+    Sémantique : un device match si AU MOINS un mode lui est accordé.
+    Donc cocher "private + staff" laisse passer clés validées ET staff.
+    Cocher "private" seul → staff seul est BLOQUÉ (sauf si admin/modo se
+    sont approvalés normalement comme privé, ce qui est rare).
     """
     if not dev:
         return False
@@ -4419,22 +4425,34 @@ def _device_matches_mode(dev: Dict[str, Any], modes: List[str]) -> bool:
     role = dev.get("role")
     sk = dev.get("staff_kind")
     is_creator = role == "creator"
-    is_approved = role in ("approved", "creator")
     is_admin = sk == "admin"
     is_modo = sk == "modo"
+    is_staff_only = (is_admin or is_modo) and role not in ("creator",)
+    is_approved_clean = role == "approved" and not is_admin and not is_modo
     for m in modes:
-        if m == "public" or m == "guest":
+        if m == "public":
+            # public seul = visiteurs + clés publiques NON-staff
+            if not is_staff_only:
+                return True
+        elif m == "guest":
             return True
-        if m == "private" and is_approved:
-            return True
-        if m == "creator" and is_creator:
-            return True
-        if m == "staff" and (is_admin or is_modo or is_creator):
-            return True
-        if m == "admin" and (is_admin or is_creator):
-            return True
-        if m == "modo" and (is_modo or is_creator):
-            return True
+        elif m == "private":
+            # private seul = clés validées NON-staff (ou créa)
+            if is_creator or is_approved_clean:
+                return True
+        elif m == "creator":
+            if is_creator:
+                return True
+        elif m == "staff":
+            # staff = admin + modo (créa passe car au-dessus)
+            if is_creator or is_admin or is_modo:
+                return True
+        elif m == "admin":
+            if is_creator or is_admin:
+                return True
+        elif m == "modo":
+            if is_creator or is_modo:
+                return True
     return False
 
 
@@ -4752,7 +4770,7 @@ class SiteModeSetIn(BaseModel):
     key_id: str
     nonce: str
     signature: str
-    guest_view: Optional[str] = None  # 'creator' | 'user' | None (free)
+    guest_view: Optional[str] = None  # 'creator' | 'user' | 'modo' | 'admin' | None (free)
 
 
 @api_router.put("/system/site-mode")
@@ -8659,97 +8677,10 @@ async def _verify_signed(key_id: str, nonce: str, signature: str) -> Dict[str, A
 
 
 # ==========================================================================
-# iter82 — FRIEND REQUESTS (C20) : ajouter une clé en amie pour DM privé
+# iter86 — FRIEND REQUESTS (C20) extraites dans routes/social_routes.py
+# Le router est inclus depuis ce module via build_friends_router(...) après
+# que tous les helpers soient définis.
 # ==========================================================================
-
-class FriendRequestIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    target_key_id: str  # clé du destinataire
-
-
-@api_router.post("/friends/request")
-async def friends_request(payload: FriendRequestIn):
-    """iter82 C20 — Envoie une demande d'amitié à une clé. Le destinataire
-    devra accepter avant que les DMs puissent s'échanger.
-
-    Si l'expéditeur est la créatrice, l'amitié est auto-acceptée (raccourci
-    spécifique demandé par le user)."""
-    sender = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    target = await _device_by_key(payload.target_key_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Clé destinataire inconnue.")
-    if payload.target_key_id == payload.key_id:
-        raise HTTPException(status_code=400, detail="On ne se demande pas en ami soi-même.")
-
-    # Doublon ? on bump l'horodatage et c'est tout.
-    existing = await db.friend_requests.find_one({
-        "from_key_id": payload.key_id, "to_key_id": payload.target_key_id,
-    })
-    is_creator = sender.get("role") == "creator"
-    status = "accepted" if is_creator else "pending"
-    if existing:
-        await db.friend_requests.update_one(
-            {"from_key_id": payload.key_id, "to_key_id": payload.target_key_id},
-            {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}},
-        )
-        return {"sent": True, "auto_accepted": is_creator}
-
-    await db.friend_requests.insert_one({
-        "request_id": f"fr_{uuid.uuid4().hex[:16]}",
-        "from_key_id": payload.key_id,
-        "from_pseudo": sender.get("pseudo") or sender.get("label"),
-        "to_key_id": payload.target_key_id,
-        "to_pseudo": target.get("pseudo") or target.get("label"),
-        "status": status,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-    return {"sent": True, "auto_accepted": is_creator}
-
-
-class FriendDecideIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    request_id: str
-    accept: bool
-
-
-@api_router.post("/friends/decide")
-async def friends_decide(payload: FriendDecideIn):
-    """Le destinataire accepte ou refuse la demande d'ami."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    req = await db.friend_requests.find_one({"request_id": payload.request_id}, {"_id": 0})
-    if not req:
-        raise HTTPException(status_code=404, detail="Demande introuvable.")
-    if req.get("to_key_id") != payload.key_id and dev.get("role") != "creator":
-        raise HTTPException(status_code=403, detail="Tu n'es pas le destinataire.")
-    new_status = "accepted" if payload.accept else "refused"
-    await db.friend_requests.update_one(
-        {"request_id": payload.request_id},
-        {"$set": {"status": new_status, "decided_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    return {"status": new_status}
-
-
-class FriendsListIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-
-
-@api_router.post("/friends/list")
-async def friends_list(payload: FriendsListIn):
-    """Liste les amis acceptés ET les demandes en attente côté reçu."""
-    await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    sent = await db.friend_requests.find(
-        {"from_key_id": payload.key_id}, {"_id": 0},
-    ).sort("created_at", -1).to_list(length=200)
-    received = await db.friend_requests.find(
-        {"to_key_id": payload.key_id}, {"_id": 0},
-    ).sort("created_at", -1).to_list(length=200)
-    return {"sent": sent, "received": received}
 
 
 # ==========================================================================
@@ -8762,6 +8693,7 @@ GROUP_TYPES = {
     "private",        # uniquement les clés privées (approved)
     "staff",          # admin + modo
     "modo",           # modo only
+    "admin",          # iter86 — admin only
     "public_staff",   # public + admin + modo (tt types confondus)
     "public_private", # public + privé (sans staff)
 }
@@ -8924,6 +8856,7 @@ class OrchestrateIn(BaseModel):
     message: str
     project_id: Optional[str] = None
     language: Optional[str] = "fr"
+    enable_commit: Optional[bool] = False  # iter86 — opt-in pour push GitHub réel
 
 
 async def _persist_event(event: Dict[str, Any], *, user_id: str, session_id: str, project_id: Optional[str]):
@@ -8965,10 +8898,9 @@ async def chat_orchestrate(request: Request, payload: OrchestrateIn):
 async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
     """iter84 C7+C5/C8 — Stream d'ACTIONS Emergent-style.
 
-    Au lieu de tokens, on émet des événements typés : phase_started,
-    file_viewed, code_executed, search_done, thought, final, complete.
-    Chaque event a un event_id que le client peut utiliser pour récupérer
-    le détail complet plus tard (via /orchestrate/event/{id}/details).
+    iter86 — Wirage on_commit RÉEL via push_to_github (si GITHUB_ENABLED).
+    Si l'utilisateur passe `enable_commit=true` dans le body, l'orchestrator
+    pousse le code généré sur une branche `orchestrate/{session_id[-12:]}`.
     """
     user_id = await get_current_user(request)
     session_id = f"orch_{user_id}_{payload.project_id or 'global'}"
@@ -8977,11 +8909,26 @@ async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
     async def persist(evt):
         await _persist_event(evt, user_id=user_id, session_id=session_id, project_id=payload.project_id)
 
+    # iter86 — Hook on_commit : push réel sur GitHub si activé + opt-in
+    async def on_commit_real(branch: str, summary: str, content: str):
+        if not GITHUB_ENABLED:
+            return {"ok": False, "error": "GITHUB_DISABLED"}
+        if not getattr(payload, "enable_commit", False):
+            return {"ok": False, "note": "enable_commit=false (opt-in)"}
+        # Stocke le code généré dans un fichier orchestrate-runs/{branch}.py
+        safe_branch = branch.replace("/", "-").replace(" ", "-")[:48]
+        file_path = f"orchestrate-runs/{safe_branch}.py"
+        # En-tête avec la question + le résumé
+        body = f"# Orchestrator run for: {summary}\n# Branch: {branch}\n\n{content}\n"
+        ok = await push_to_github(file_path, body, branch="main", retries=2)
+        return {"ok": bool(ok), "ref": file_path, "branch_label": branch}
+
     async def event_gen():
         try:
             async for evt in _stream_actions(
                 payload.message, session_id=session_id, language=lang,
                 persist_event=persist,
+                on_commit=on_commit_real,
             ):
                 # On retire `details` du payload SSE pour ne pas surcharger ;
                 # le client peut les fetch via /orchestrate/event/{id}/details
@@ -9175,6 +9122,40 @@ async def orchestrate_history(request: Request, payload: OrchestrateHistoryIn):
 
 
 # ==========================================================================
+# iter86 — PRIVATE CODE BROWSER (creator-only, read-only)
+# ==========================================================================
+
+class PrivateReadFileIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    path: str
+
+
+@api_router.post("/private/code/read-file")
+async def private_read_file(payload: PrivateReadFileIn):
+    """Creator-only : lit un fichier source du repo /app (read-only)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    from orchestrator import _read_file_safe
+    return _read_file_safe(payload.path)
+
+
+class PrivateGrepIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    pattern: str
+
+
+@api_router.post("/private/code/grep")
+async def private_grep(payload: PrivateGrepIn):
+    """Creator-only : grep dans le code source."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    from orchestrator import _grep_safe
+    return _grep_safe(payload.pattern)
+
+
+# ==========================================================================
 # iter82 — CHAT STREAMING SSE (C5/C8) : streaming pseudo-token-par-token
 # ==========================================================================
 
@@ -9235,6 +9216,10 @@ async def chat_stream(request: Request, input: ChatStreamIn):
 
 # Include the router in the main app
 app.include_router(api_router)
+
+# iter86 — Slice 2 du refacto : friends routes incluses depuis social_routes
+from routes.social_routes import build_friends_router  # noqa: E402
+app.include_router(build_friends_router(db, _verify_signed, _device_by_key), prefix="/api")
 
 # Include PWA routes under /api/pwa
 app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])

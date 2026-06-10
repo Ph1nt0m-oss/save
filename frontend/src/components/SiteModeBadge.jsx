@@ -141,9 +141,11 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
             <div className="border-t border-white/10 mt-1 pt-1 px-3 py-2 space-y-1.5" data-testid="guest-view-options">
               <div className="text-[10px] uppercase tracking-widest text-[#71717A]">{t('sm_guest_view_lock')}</div>
               {[
-                { id: null,       labelKey: 'sm_guest_view_free' },
-                { id: 'user',     labelKey: 'sm_guest_view_force_user' },
-                { id: 'creator',  labelKey: 'sm_guest_view_force_creator' },
+                { id: null,       labelKey: 'sm_guest_view_free',          label: 'Au choix du visiteur' },
+                { id: 'user',     labelKey: 'sm_guest_view_force_user',    label: 'Forcer vue Utilisateur' },
+                { id: 'modo',     labelKey: 'sm_guest_view_force_modo',    label: 'Forcer vue Modo' },
+                { id: 'admin',    labelKey: 'sm_guest_view_force_admin',   label: 'Forcer vue Admin' },
+                { id: 'creator',  labelKey: 'sm_guest_view_force_creator', label: 'Forcer vue Créatrice' },
               ].map((opt) => {
                 const sel = (guestView || null) === opt.id;
                 return (
@@ -159,7 +161,7 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
                   >
                     {sel && <Check className="w-3 h-3 flex-shrink-0" />}
                     {!sel && <span className="w-3 h-3 inline-block flex-shrink-0" />}
-                    {t(opt.labelKey)}
+                    {t(opt.labelKey) || opt.label}
                   </button>
                 );
               })}

@@ -273,6 +273,8 @@ async def orchestrate_actions(
     session_id: str,
     language: str = "fr",
     persist_event: Optional[Any] = None,  # async callable(evt) → persistance Mongo
+    on_commit: Optional[Any] = None,       # async callable(branch, summary, content) → push GitHub réel
+    test_loop: Optional[Any] = None,       # async callable(stderr) → relance pytest + correction
 ) -> AsyncIterator[Dict[str, Any]]:
     """iter84 — Pipeline qui YIELD des événements typés au lieu de phases.
 
@@ -337,6 +339,45 @@ async def orchestrate_actions(
         summary = "Exécution réussie" if execution.get("ok") else f"Échec : {execution.get('error', 'unknown')}"
         yield await emit(_make_event("code_executed", summary, details=execution))
 
+        # iter86 — CORRECTION LOOP : si échec, on demande au planner une
+        # correction basée sur stderr et on ré-exécute une fois max. Évite
+        # la divergence sans-fin tout en gérant les bugs simples.
+        if not execution.get("ok") and (execution.get("stderr") or execution.get("error")):
+            yield await emit(_make_event(
+                "phase_started",
+                "Tentative de correction (1 essai)",
+                details={"phase": "correction", "stderr": (execution.get("stderr") or execution.get("error") or "")[:500]},
+            ))
+            correction_prompt = (
+                f"Le code que tu as proposé a échoué.\n\n"
+                f"Question : {user_question}\n\n"
+                f"Code précédent :\n{plan.get('code_to_execute', '')[:2000]}\n\n"
+                f"Erreur d'exécution :\n{(execution.get('stderr') or execution.get('error') or '')[:1500]}\n\n"
+                f"Produis un NOUVEAU plan JSON corrigé. Même format, mais cette fois "
+                f"évite la cause de l'erreur ci-dessus."
+            )
+            corrected_raw = await _llm_one_shot(
+                PLANNER_SYSTEM, correction_prompt, role="planner-fix", session_id=session_id,
+            )
+            corrected_plan = _safe_json(corrected_raw)
+            if corrected_plan.get("code_to_execute"):
+                yield await emit(_make_event(
+                    "thought",
+                    "Correction proposée par le planner",
+                    details={"corrected_code": corrected_plan["code_to_execute"][:2000], "original_stderr": (execution.get("stderr") or "")[:500]},
+                ))
+                # Ré-exécution unique de la version corrigée.
+                exec2 = await asyncio.get_event_loop().run_in_executor(
+                    None, _execute_python, corrected_plan["code_to_execute"], 8,
+                )
+                summary2 = "Correction réussie ✓" if exec2.get("ok") else f"Correction échouée : {exec2.get('error', 'unknown')}"
+                yield await emit(_make_event("code_executed", summary2, details=exec2))
+                # Use the corrected execution as the authoritative one
+                if exec2.get("ok"):
+                    execution = exec2
+                    plan["code_to_execute"] = corrected_plan["code_to_execute"]
+            yield await emit(_make_event("phase_done", "Correction terminée", details={"recovered": execution.get("ok")}, phase="correction"))
+
     # 3) CRITIC
     yield await emit(_make_event("phase_started", "Vérification critique", details={"phase": "critic"}))
     critic_input = (
@@ -392,10 +433,9 @@ async def orchestrate_actions(
 
     final = accumulated or "L'orchestrateur n'a pas pu finaliser."
 
-    # iter85 — Si du code a été exécuté avec succès, on suggère que la
-    # prévisualisation pourrait être mise à jour. C'est un STUB minimaliste :
-    # une URL stub vers le dashboard actuel + commit virtuel. Le wirage
-    # complet (sandbox rebuild + git push) requiert une infra séparée.
+    # iter86 — Si du code a été exécuté avec succès, on émet les events
+    # preview_ready + commit_pushed. Le wirage RÉEL avec GitHub se fait
+    # via le hook `on_commit` injecté par server.py (push_to_github).
     if execution and execution.get("ok"):
         preview_url = os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"
         yield await emit(_make_event(
@@ -404,19 +444,26 @@ async def orchestrate_actions(
             details={
                 "url": preview_url,
                 "execution_summary": (execution.get("stdout") or "")[:500],
-                "note": "MOCKED: rebuild sandbox + new URL preview not wired yet",
+                "note": "Sandbox rebuild non-incrémental — l'URL pointe vers le preview courant",
             },
             url=preview_url,
         ))
-        # Commit push virtuel (le service GitHub est activé selon les logs
-        # backend, mais on ne pousse pas pour de vrai à chaque exécution).
+        # iter86 — commit_pushed RÉEL via le callback on_commit si fourni.
+        branch = f"orchestrate/{session_id[-12:]}"
+        commit_summary = user_question[:80]
+        commit_result = None
+        if on_commit is not None:
+            try:
+                commit_result = await on_commit(branch, commit_summary, plan.get("code_to_execute") or "")
+            except Exception as e:
+                commit_result = {"ok": False, "error": str(e)[:200]}
         yield await emit(_make_event(
             "commit_pushed",
-            f"Commit virtuel : orchestrate-{session_id[-8:]}",
+            f"Commit {('réel ' + (commit_result.get('ref') or '') if commit_result and commit_result.get('ok') else 'virtuel')} : {branch}",
             details={
-                "branch": f"orchestrate/{session_id[-12:]}",
-                "summary": user_question[:140],
-                "note": "MOCKED: aucun push GitHub réel effectué",
+                "branch": branch,
+                "summary": commit_summary,
+                "github_result": commit_result or {"ok": False, "note": "Pas de hook on_commit"},
             },
         ))
 

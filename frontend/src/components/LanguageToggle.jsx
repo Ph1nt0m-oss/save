@@ -51,7 +51,7 @@ export default function LanguageToggle({ className = '', placement = 'top' }) {
         <div
           role="listbox"
           data-testid="language-dropdown"
-          className={`absolute right-0 ${dropdownPos} w-56 max-h-72 overflow-auto bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl py-1 z-50`}
+          className={`absolute right-0 ${dropdownPos} w-56 max-w-[calc(100vw-1rem)] max-h-72 overflow-y-auto overflow-x-hidden bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl py-1 z-[60]`}
         >
           {SUPPORTED_LANGS.map((lang) => (
             <button

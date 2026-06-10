@@ -6,17 +6,18 @@ import { withCreatorProof } from '../lib/deviceIdentity';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// iter82 C19 — 6 types de tchats de groupe.
+// iter86 C19 — 6 → 7 types de tchats de groupe (ajout 'admin').
 const GROUP_META = {
   public: { label: 'Public', icon: Globe2, color: 'text-emerald-300', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
   private: { label: 'Privé', icon: Lock, color: 'text-violet-300', bg: 'bg-violet-500/10', border: 'border-violet-500/30' },
   staff: { label: 'Staff', icon: Shield, color: 'text-orange-300', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
   modo: { label: 'Modo', icon: Shield, color: 'text-cyan-300', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30' },
+  admin: { label: 'Admin', icon: Shield, color: 'text-orange-400', bg: 'bg-orange-500/15', border: 'border-orange-400/40' },
   public_staff: { label: 'Public + Staff', icon: Users, color: 'text-yellow-300', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
   public_private: { label: 'Public + Privé', icon: Users, color: 'text-sky-300', bg: 'bg-sky-500/10', border: 'border-sky-500/30' },
 };
 
-const ORDER = ['public', 'private', 'staff', 'modo', 'public_staff', 'public_private'];
+const ORDER = ['public', 'private', 'staff', 'modo', 'admin', 'public_staff', 'public_private'];
 
 export default function GroupChatsPanel({ open, onClose }) {
   const [groups, setGroups] = useState([]);
