@@ -17,6 +17,29 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 89 (Punch-list user Message 660 : /ideas/clear + Chat resume + Nouveaux modèles)
+
+**🔴 Issue 1 (P0) — /ideas/clear password validation** :
+- Fallback device-only ajouté (server.py ligne 7763-7768) : si le compte créatrice n'a PAS de `password_hash` classique (compte purement device-only sans mot de passe email/password), la signature ECDSA d'amont (`_require_creator_signature`) suffit comme preuve d'identité. Le champ password sert alors juste de friction UX volontaire — tout password non vide est accepté.
+- Comportement legacy préservé pour les comptes avec password_hash (bcrypt verify strict).
+
+**🔴 Issue 2 (P1) — Reprise chat depuis sidebar** :
+- Chat.js : nouveau state `historyLoading` + `setMessages([])` au mount avec project_id (évite le flash d'ancienne convo).
+- Placeholder distinct : `chat-history-loading` (spinner pendant fetch), puis `chat-empty-state` avec wording **'Cette conversation est vide'** si project existe (vs 'Discute avec une IA…' pour brand-new chat). Plus de confusion 'nouveau prompt vs reprise vide'.
+- Limite history augmentée à 500 (était 50) pour les chats longs.
+
+**🟡 Task 1 (P1) — Nouveaux modèles AI dans MODEL_ROUTES** :
+- Backend `/chat/models` retourne désormais 10 modèles online : `emergent-collab` (Multi-IA), `vexub-video` (Vidéo MOCKED), `claude-5-fable` (Le plus capable), `gpt-5.5` (Défaut), `claude-4.8-opus` (Thinking), `claude-4.7-opus-1m` (Contexte long), `claude-4.6-sonnet` (Code), `gpt-5.3-codex` (Code), `gemini-3.1-pro` (Multimodal), `gpt-5.4-1m` (Contexte long).
+- Frontend `ModelPicker.jsx` : BADGE_ICONS étendu avec les 4 nouveaux badges → `Layers` (Collaboration), `Video` (Vidéo), `Crown` (Le plus capable), `BookOpen` (Contexte long).
+- Note : badges en clés FR uniquement. Si i18n EN activé côté backend, mapping à étendre.
+
+**MOCKED** :
+- `vexub-video` : provider 'vexub' = placeholder routing (handler vidéo réel à wirer)
+- `emergent-collab` : provider 'emergent' = fallback vers claude-sonnet (logique de fusion multi-IA non implémentée)
+
+**Tests** : **52/52 PASS** cumulé (10 nouveaux iter89 + 42 régression iter86/87/88). Live API smoke OK : /ideas/clear 403 sans sig, /chat/models 200 avec les 10 IDs attendus, /chat/history avec auth OK, /private/code/* 403 systématique. Frontend /login charge sans page error.
+
+
 ### 2026-06-10 — Iter 88 (Fix bug Eye runtime + Refacto slice 3 + Preview RÉEL)
 
 **🔴 Bug critique corrigé** :
