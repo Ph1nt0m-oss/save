@@ -17,6 +17,35 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 85 (4 reportés livrés + fix verrou de vue + vues modo/admin)
+
+**Fix verrou de vue (bug user-signalé) + ajout vues modo/admin/user** :
+- Bug root cause : `CreatorToolbar` montrait le toggle de vue UNIQUEMENT pour `!isCreatorDevice` (inversé) → la créatrice ne pouvait jamais verrouiller sa vue. Le `setStoredViewMode` ne supportait que 2 valeurs (creator/guest).
+- Fix : nouveau composant `ViewModePicker.jsx` avec **5 vues distinctes** (creator/user/modo/admin/guest), visible UNIQUEMENT pour la créatrice. Dropdown avec couleurs distinctes par rôle + warning amber quand non-créa.
+- `useDeviceIdentity` étendu : `VALID_VIEW_MODES` = 5 entrées, expose `isRealCreator`, `isCreatorView`, `effectiveStaffKind` (override par viewMode si créa simule modo/admin).
+- IdeasButton + AccountsButton cachés sauf en vue créa pure. AnnounceButton accessible si créa OU staff réel/simulé. canWrite calculé selon viewMode.
+
+**Vrai streaming token-par-token DANS le final event (4ème reporté)** :
+- `_llm_stream_tokens` (async generator) découpe la réponse complète en chunks de ~40 chars (espace-aware), émet 25ms entre chunks → 16 chunks/s ChatGPT-style.
+- `orchestrate_actions` yield `final_chunk` events (delta + index). `final` event arrive à la fin avec contenu complet pour persistance.
+- Frontend `useOrchestrate` intercepte les `final_chunk` pour accumuler `finalAnswer` SANS les ajouter à `events[]` → journal d'actions reste propre.
+- `OrchestrationLog` affiche `finalAnswer` en temps réel avec cursor animé jaune `bg-[#E4FF00]` tant que l'event `final` n'est pas arrivé.
+
+**preview_ready + commit_pushed events (1er reporté, MOCKED)** :
+- Après `code_executed` réussi, l'orchestrateur émet `preview_ready` (URL stub vers preview frontend) et `commit_pushed` (branch virtuel `orchestrate/{session-id}`).
+- MOCKED clairement noté dans `details.note` — pas de vrai rebuild sandbox ni push GitHub réel.
+
+**Multiple testing-agents en boucle (2ème reporté)** :
+- Nouveau endpoint `POST /api/orchestrate/test-loop {target='backend', path='tests/', project_id?}` qui lance `pytest` interne en sub-process (cwd `/app/backend`, timeout 90s, path-traversal refused).
+- Émet events `test_run` (start/result avec stdout/stderr dans details) + `complete` via SSE. Auth requise → 401 sinon.
+
+**Refacto `server.py` slice 1 (3ème reporté)** :
+- Nouveau module `routes/social_routes.py` (118 lignes) avec `GROUP_TYPES` + `_groups_for_device` extraits.
+- `server.py` importe via `from routes.social_routes import _groups_for_device`. Aucun endpoint déplacé pour cette slice (pure helper extract pour valider le pattern avant de bouger les routes).
+- Régression : `/friends/*` et `/groups/*` fonctionnent identiquement (signatures HTTP intactes).
+
+**Tests** : **96/96 PASS** cumulé (13 nouveaux iter85 + 51 régression iter77/79/81/82/83/84). Frontend audit code 100% validé par testing agent. Aucun action item.
+
 ### 2026-06-10 — Iter 84 (Streaming d'ACTIONS Emergent-style + observabilité vidéo + i18n context menu)
 
 **Streaming d'ACTIONS au lieu de tokens (demande principale user)** :
