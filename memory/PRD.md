@@ -17,6 +17,35 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 84 (Streaming d'ACTIONS Emergent-style + observabilité vidéo + i18n context menu)
+
+**Streaming d'ACTIONS au lieu de tokens (demande principale user)** :
+- `orchestrator.py` réécrit en mode **YIELD événements typés** : `phase_started`, `phase_done`, `file_viewed`, `file_created`, `file_modified`, `code_executed_start`, `code_executed`, `search_done`, `thought`, `final`, `complete`, `error` (+ `commit_pushed`, `preview_ready` réservés MOCKED).
+- Chaque événement = `{event_id, kind, summary, details, ts}`. Le `details` est lazy-loaded via `/api/orchestrate/event/{id}/details` (économie bande passante SSE).
+- 3 helpers ajoutés : `_safe_path` (refuse paths absolus + `..`), `_read_file_safe` (60KB max), `_grep_safe` (restreint à `backend` + `frontend/src`, 8s timeout).
+- 3 nouveaux endpoints : `POST /chat/orchestrate-stream`, `GET /orchestrate/event/{id}/details`, `POST /orchestrate/history`.
+
+**UI temps réel (Emergent-style)** :
+- Composant `OrchestrationLog.jsx` : liste d'événements avec icône par kind (Loader2 spinning pour phase_started, FileText pour file_viewed, Lightbulb pour thought, Sparkles pour final, etc.) et **flèche dépliable** qui fetch le détail à la demande.
+- Hook `useOrchestrate.js` : consomme le SSE via `fetch + ReadableStream`, ajoute chaque event au state, expose `{events, running, finalAnswer, confidence, run, reset, abort}`.
+- Chat.js : nouveau toggle **Mode Pro** (icône Cpu, data-testid `chat-pro-mode-toggle`) à côté du ModelPicker. Quand actif, route les messages via l'orchestrateur multi-agents et affiche le journal d'actions au-dessus du chat.
+
+**Observabilité bug vidéo mobile** :
+- `BiometricEnrollmentField.jsx` émet des events structurés à `/api/observability/video-event` (iris_start, iris_stream_ok, iris_video_play_ok, iris_stream_error, iris_video_play_fail) avec UA / viewport / track_settings / readyState.
+- Endpoint `POST /observability/video-event` (no-auth, anti-flood 50/min/session_id, auto-purge si >5000 docs).
+
+**i18n context menu sidebar** :
+- 9 clés ajoutées (`ctx_rename`, `ctx_copy_link`, `ctx_live_preview`, `ctx_download_zip`, `ctx_duplicate`, `ctx_share_enable`, `ctx_share_disable`, `ctx_delete`, `ctx_delete_confirm_title`, `ctx_link_copied`, `ctx_link_copy_failed`) en `fr` + `en`. Dashboard.js context menu utilise désormais `t()` partout.
+
+**Tests** : **83/83 PASS** (12 nouveaux iter84 + 71 régression iter77/79/81/82/83). Frontend Playwright validé : login OK, toggle Mode Pro visible/fonctionnel, condition d'affichage OrchestrationLog correcte.
+
+**Reportés (à faire plus tard)** :
+- 🟡 Vrai streaming token-par-token DANS un événement `final` (besoin wrapper SSE direct Anthropic/OpenAI ; perte Universal Key)
+- 🟡 Prévisualisation interactive automatique : sandbox rebuild + URL preview + push GitHub auto sur branche (volumineux ; emit `preview_ready` + `commit_pushed` events est prêt côté types, à wirer)
+- 🟡 Multiple testing-agents en boucle dans l'app : génère → compile → routes → UI sim → corrige (architecture prête via orchestrator events, mais pas wired)
+- 🟢 Refacto `server.py` (>9200 lignes) — slice par slice (premiers candidats : extraire `friends`/`groups` dans `routes/social_routes.py`)
+- 🟢 Reste des strings hardcodés en FR dans Dashboard à passer en `t()`
+
 ### 2026-06-10 — Iter 83 ("Tout ce qu'il reste" : C11 multi-mode + bug fantôme + C7 orchestrateur)
 
 **C11 — Site mode multi-checkbox (refacto str→array)** :
