@@ -75,15 +75,42 @@ Tu produis la réponse finale DESTINÉE à l'utilisateur."""
 def _execute_python(code: str, timeout: int = 8) -> Dict[str, Any]:
     """Exécute du code Python dans un sandbox sub-process (kernel isolé).
 
+    iter83 durcissement : blocklist statique + AST scan pour bloquer les
+    contournements via __import__/eval/exec/open. Pas une sandbox parfaite
+    (pour ça il faudrait nsjail/Docker), mais réduit fortement la surface.
+
     Limites : timeout 8s, max 50KB stdout, pas de réseau (firewall pod), pas
     d'écriture en dehors de /tmp. Retourne {ok, stdout, stderr, returncode}."""
     if not code or not code.strip():
         return {"ok": False, "error": "empty_code"}
-    # Sécurité minimale : bloque les imports dangereux évidents.
-    banned = ("os.system", "subprocess.", "shutil.rmtree", "socket.", "import requests", "import urllib")
+    # Sécurité minimale : bloque les imports/appels dangereux.
+    banned_subs = (
+        "os.system", "subprocess.", "shutil.rmtree", "socket.", "import requests",
+        "import urllib", "__import__", "eval(", "exec(", "compile(", "open(",
+        "open ('", 'open ("',
+    )
     lowered = code.lower()
-    if any(b in lowered for b in banned):
-        return {"ok": False, "error": "banned_call", "detail": "Le code contient un appel interdit (réseau/system)."}
+    for b in banned_subs:
+        if b in lowered:
+            return {"ok": False, "error": "banned_call", "detail": f"Le code contient un appel interdit : {b}"}
+    # AST scan supplémentaire : refuse les noms 'os'/'subprocess'/'socket' utilisés comme calls
+    try:
+        import ast as _ast
+        tree = _ast.parse(code)
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Import) or isinstance(node, _ast.ImportFrom):
+                for alias in (getattr(node, 'names', []) or []):
+                    if (alias.name or '').split('.')[0] in {
+                        'os', 'subprocess', 'socket', 'requests', 'urllib', 'ctypes',
+                        'multiprocessing', 'threading', 'shutil',
+                    }:
+                        return {"ok": False, "error": "banned_import", "detail": f"Import interdit: {alias.name}"}
+            if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Name):
+                if node.func.id in {'eval', 'exec', '__import__', 'compile', 'open'}:
+                    return {"ok": False, "error": "banned_call", "detail": f"Appel interdit: {node.func.id}"}
+    except SyntaxError as e:
+        return {"ok": False, "error": "syntax_error", "detail": str(e)[:200]}
+    path = None
     try:
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
             f.write(code)
@@ -103,10 +130,11 @@ def _execute_python(code: str, timeout: int = 8) -> Dict[str, Any]:
     except Exception as e:
         return {"ok": False, "error": "exec_failure", "detail": str(e)[:500]}
     finally:
-        try:
-            os.unlink(path)
-        except Exception:
-            pass
+        if path:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
 
 
 # ----- LLM wrapper (Emergent) ------------------------------------------------

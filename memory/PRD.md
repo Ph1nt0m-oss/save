@@ -17,6 +17,35 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 83 ("Tout ce qu'il reste" : C11 multi-mode + bug fantôme + C7 orchestrateur)
+
+**C11 — Site mode multi-checkbox (refacto str→array)** :
+- Backend : `VALID_SITE_MODES` étendu à 7 entrées (+ staff/admin/modo). Nouveau helper `_normalize_modes()` accepte str OU list. `_device_matches_mode(dev, modes)` accorde l'accès si AU MOINS un mode actif matche le device.
+- `/system/site-mode` PUT accepte `modes: [...]` (et garde `mode: str` pour compat). `/devices/verify` renvoie `site_modes: [...]` en plus de `site_mode: str` (= premier élément).
+- Frontend `SiteModeBadge` refait : 7 checkboxes multi-sélection (data-testid `site-mode-option-{id}`). Bouton affiche "{n} audiences" si multi. Min 1 mode actif requis.
+- Hook `useDeviceIdentity` expose `siteModes` (array) propagé par `CreatorToolbar`.
+
+**Fix bug multi-device "Demande de connexion fantôme" (récurrent x4)** :
+- Root cause identifiée : `/auth/session-pending` filtrait par `expires_at > now` (15 min) mais les requests pending dont l'autre device n'avait jamais traité la demande restaient affichées en boucle.
+- Fix : auto-expire les pending requests de plus de **90s** (`stale_threshold`) via `update_many({status:'pending', created_at < now-90s}, $set:{status:'expired'})`.
+
+**C7 — Orchestrateur multi-agents (architecture planner/critic/executor/arbiter)** :
+- Module `/app/backend/orchestrator.py` (NEW, ~280 lignes) avec 4 rôles distincts, prompts spécialisés en JSON pur, mémoire de validation via collection `orchestrator_runs`.
+- Sandbox `_execute_python` : sub-process avec timeout 8s, blocklist string + **AST scan** des imports/calls dangereux (os/subprocess/socket/eval/exec/open).
+- 2 endpoints : `/api/chat/orchestrate` (one-shot) et `/api/chat/orchestrate-stream` (SSE phases). Cookie auth requise.
+- Validation runtime confirmée par testing agent : pipeline ~32s, 4 LLM calls Claude Sonnet 4.5, plan/critique/exécution/arbiter en français.
+
+**C18 quality-of-life** :
+- Label `MessageButton` : Creator='Messages reçus', Staff='Messages staff', User='Contacter un modo' (au lieu de 'à la créatrice').
+
+**Tests** : 71/71 PASS (11 nouveaux iter83 + 60 régression iter77/79/81/82). Frontend validé par testing agent.
+
+**Reportés (P1 hors-scope iter83)** :
+- Vrai streaming token-par-token (emergentintegrations n'expose pas le stream natif → besoin d'un wrapper SSE direct vers Anthropic/OpenAI). `/chat/stream` actuel = pseudo-streaming word-by-word.
+- Bug d'affichage vidéo mobile en mode Public (P1 — pas reproductible en l'état).
+- i18n sidebar tchats : MessageButton label corrigé ; autres traductions sidebar restent à passer en `t()`.
+- Refacto `server.py` (>9100 lignes maintenant) en sous-routers.
+
 ### 2026-06-10 — Iter 82 (ROUGE : amitiés C20 + 6 group chats C19 + send-to-modo C18 + SSE streaming C5/C8 + visite full)
 
 **Phase 1 — Vue de visite créatrice ENRICHIE (C13+C20)** :
