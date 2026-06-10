@@ -17,6 +17,60 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 79 (Pseudos variés, staff inbox + permissions, DOCX, blocs privés créa)
+
+**🪄 Pseudo wizard variety** :
+- `_fallback_name_pool()` backend = 50+ pseudos style Among Us, longueurs 3-12 caractères, mix mots/chiffres/styles (Vrael, Kazimir77, JuneberryX, ImLost, …).
+- Seed-driven random pour ne JAMAIS répéter le même résultat.
+- Frontend GuidedWizard : à chaque clic baguette, `setAppName(list[0])` écrase l'ancien nom (auparavant ne s'écrasait que si vide).
+
+**🛡️ Permissions staff (admin/modo)** :
+- Nouveau helper `_require_staff_signature(allow_kinds=('admin','modo'))`.
+- Ouvert au staff : `/accounts/mute|unmute|ban|unban|exclude`, `/devices/approve|block|unblock`, `/accounts/set-staff-kind` (admin peut set/clear modo uniquement).
+- `/devices/approve` tracke `approved_by_kind` (creator/admin/modo) pour le futur code couleur d'encadrement créa.
+- `account_history` events taggés `actor_kind` + `actor_label` pour permettre l'UI couleur côté créa (bleu=modo, orange=admin, jaune=créa).
+- `/ideas/inbox` + `/ideas/mark-read` (déjà ouverts en iter78) accessibles staff.
+
+**📄 Export conversations en DOCX** :
+- Endpoint `/chat/export-docx/{project_id}` utilisant `python-docx` (déjà installé).
+- Header Chat : bouton « Export .docx » remplace l'ancien « Export .ipynb ».
+- ZIP retiré GitHub (`/export/github`) côté UI (l'utilisateur garde le ZIP pour push manuel).
+
+**🧹 UX nettoyage** :
+- Bouton "Reset REPL" caché en mode `offline` (Ollama hors-ligne) — uniquement `online`.
+- LanguageContext: « au créatrice » → « à la créatrice » (4 occurrences) + MessageButton "au créateur" → "à la créatrice".
+
+**🪟 Annonce fullscreen vraiment plein écran** (iter78 corrigé) :
+- `fixed inset-0` centré avec `flex items-center justify-center`. Max-w-3xl, padding 10, titres `text-3xl→5xl`.
+
+**🔒 Blocs privés créa** (C15) :
+- Nouvelle page `/private/site-programming` et `/private/ai-programming`.
+- Visible dans Dashboard (sous les 4 cards Chat/Création), seulement la **créatrice** peut cliquer.
+- Sinon toast "Accès refusé pour des raisons de sécurité" et page guard avec message centré.
+
+**📋 IdeasButton (rappel iter78)** :
+- Onglet "Report" ajouté avant "Other" dans le picker du composer.
+- Inbox ouvert au staff (admin/modo) via /ideas/inbox patched.
+
+**Tests** : **38/38 backend tests PASS** (16 iter79 + 22 régression iter66/67/68/76). Aucun blocant.
+
+### Items reportés (besoin de plus de précisions ou sprint suivant)
+- **C2** Pièces jointes design + suggestion IA dans flux app
+- **C4** Liens / fichiers téléchargeables directement dans tchat
+- **C5/C8** Streaming token-par-token IA (refacto chat backend WS/SSE)
+- **C6** Multiligne code formatting GPT-style (affichage)
+- **C7** Orchestrateur Emergent intégré (architecture multi-agents)
+- **C9** (partiel) Sidebar langue mal défilable + tchats non traduits — investigation UI
+- **C11** Site modes Public/Privé/Créateur/Invité + Modos/Admins/Staff (multi-checkbox, gros refacto)
+- **C12** UI décision colorée bleu/orange dans demandes de clés
+- **C13** Visite créa invisible aux admins (refacto layer admin)
+- **C14** Boîte à idées : tri/vider créa avec confirmation password
+- **C16** Pseudos affichés au-dessus du type d'appareil — déjà fait pour /accounts/list, à vérifier ailleurs
+- **C17** ZIP différencié APK (apps) / EXE (logiciels) + ZIP avec discussions
+- **C18** Messages → modo random au lieu créa
+- **C19** 6 types de tchats de groupe (public, privé, staff, modo, public+staff, public+privé)
+- **C20** Visite compte = accès TOUT (projets/messages supprimés en contraste foncé, clé exposée, demande d'ami pour parler en privé)
+
 ### 2026-02-16 — Iter 78 (Fullscreen export review + Iris vol + staff inbox + Reports + comptes enrichis)
 
 **📢 Annonce fullscreen vraiment plein écran** :
