@@ -17,6 +17,44 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 82 (ROUGE : amitiés C20 + 6 group chats C19 + send-to-modo C18 + SSE streaming C5/C8 + visite full)
+
+**Phase 1 — Vue de visite créatrice ENRICHIE (C13+C20)** :
+- `/accounts/visit` retourne désormais : `target.email`, `key_id` (publique), `label`, `force_visitor`, `muted`, `banned`, `last_seen_at`, `created_at`, `biometric_kind`, `approved_by_kind`, `approved_by_label`, et 3 nouvelles listes : `private_messages` (DMs avec quiconque), `friend_requests` (sent+received), `group_posts` (publications dans les groupes).
+- `AccountVisitView.jsx` refactoré en **6 onglets** : Infos compte (avec Copy clé/email), Projets, Chat IA, MP privés, Groupes, Amis. Bouton "Parler en privé" pour DM direct.
+
+**Phase 2 — Système d'amitié par clé (C20)** :
+- Collection `friend_requests` : `{request_id, from_key_id, from_pseudo, to_key_id, to_pseudo, status: pending/accepted/refused, created_at, decided_at}`.
+- 3 endpoints : `/friends/request`, `/friends/decide`, `/friends/list`. Auto-acceptation si l'expéditeur est créatrice.
+- Composant `FriendsPanel.jsx` (icône UserCog dans le header) avec input clé, demandes reçues (accept/refuse), amis acceptés, demandes envoyées.
+
+**Phase 3 — 6 types de tchats de groupe (C19)** :
+- Collection `group_messages` + types : `public, private, staff, modo, public_staff, public_private`.
+- Helper `_groups_for_device(dev)` mappe rôle+staff_kind aux groupes accessibles. La créa voit les 6.
+- 3 endpoints : `/groups/list`, `/groups/messages`, `/groups/send`.
+- Composant `GroupChatsPanel.jsx` (icône Users dans le header) avec sidebar 6 groupes + zone chat + polling 4s.
+
+**Phase 4 — Message vers modo random (C18)** :
+- `/messages/send-to-staff` pick un modo aléatoire (fallback admin → fallback créa).
+- `MessagesPanel.jsx` modifié : si `!isCreator`, l'envoi appelle `/messages/send-to-staff` au lieu de `/messages/send`.
+- `/messages/inbox` élargi : modos voient leurs threads (where to_key_id == self), admins voient tout comme créa.
+
+**Phase 5 — Chat streaming SSE (C5/C8)** :
+- `/chat/stream` POST → `text/event-stream` qui émet `data: {delta, index}` word-by-word puis `data: {done, content}`.
+- MOCKED : pseudo-streaming par mots (8ms/word) au-dessus de `send_chat_message` complet. Vrai streaming Emergent non exposé par emergentintegrations. Améliorable plus tard.
+
+**Phase 6 — Quality-of-life** :
+- Boutons Users (group-chats) + UserCog (friends) dans le header Dashboard. Switch automatique entre les 2 panneaux.
+
+**Tests** :
+- Backend pytest : **60/60 PASS** (12 nouveaux iter82 + 48 régression iter77/79/81). 0 régression.
+- Frontend Playwright via testing agent : Login + Dashboard + GroupChatsPanel + FriendsPanel + friend-request 404 integration tous validés.
+
+**Reportés (refacto profond hors-scope iter82)** :
+- **C7** Orchestrateur Emergent multi-agents (planner+critic+executor+arbiter)
+- **C11** Site mode multi-checkbox str→array (staff/modo/admin)
+- Vrai streaming token-par-token via LlmChat (besoin d'un nouveau wrapper streaming chez emergentintegrations)
+
 ### 2026-06-10 — Iter 81 (C20 visite créa style Dashboard + finalisation des items orange)
 
 **C20 — AccountVisitView réécrit pour mimer le Dashboard du user visité** :

@@ -786,7 +786,7 @@ export default function Dashboard() {
               <TheftButton variant="labelled" />
               <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
               <button
-                onClick={() => setGroupsOpen(true)}
+                onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}
                 data-testid="open-groups-btn"
                 title="Tchats de groupe"
                 className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
@@ -794,7 +794,7 @@ export default function Dashboard() {
                 <Users className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setFriendsOpen(true)}
+                onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
                 data-testid="open-friends-btn"
                 title="Amis & demandes"
                 className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
