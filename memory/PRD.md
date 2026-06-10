@@ -17,6 +17,33 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 87 (Vues décochables + distinction public/privé en CONTEXTE + IA Emergent à jour + sécurité code)
+
+**Fix verrou de vue (bug user)** :
+- ViewModePicker iter87 : 5 vues désormais cochables y compris 'creator' (ordre ['creator','user','modo','admin','guest']). viewMode peut être **null** (= mode écriture par défaut). Click sur case active = `setStoredViewMode(null)` (decoche). Bouton "Désactiver toutes les vues".
+- useDeviceIdentity : readViewMode() retourne null si rien en localStorage. `isCreatorView` = `!viewMode || viewMode==='creator'`.
+
+**i18n traductions modo/admin** :
+- `sm_guest_view_force_modo` = "Forcer la vue modo" / "Force modo view"
+- `sm_guest_view_force_admin` = "Forcer la vue admin" / "Force admin view"
+
+**Sécurité PrivateProgramming** :
+- `/api/private/code/read-file` + `/api/private/code/grep` retournent **403 SYSTÉMATIQUEMENT** (plus aucun gating). Le code n'est visible par PERSONNE, même créatrice — sécurité défensive.
+- Frontend `PrivateProgramming.js` : écran "Accès refusé" permanent.
+
+**Distinction public/privé EN CONTEXTE (pas en puissance)** :
+- Même moteur IA, même API, mêmes outils. Différence uniquement au niveau de la POLICY de contexte :
+  - Public : `_context_limit = 50` messages d'historique → expérience immédiate, indépendante par session.
+  - Privé seul (site_mode=['private']) : `_context_limit = 500` messages → continuité étendue inter-sessions, mémoire profonde.
+- Implémenté dans `chat/message` via `_is_private_only` computed from `_get_site_modes_list()`.
+
+**MODEL_ROUTES mis à jour avec les vraies IDs Emergent** :
+- 8 nouveaux IDs : `claude-5-fable` (Le plus capable), `gpt-5.5` (Défaut), `claude-4.8-opus` (Thinking), `claude-4.7-opus-1m` (Contexte long), `claude-4.6-sonnet` (Code), `gpt-5.3-codex` (Code), `gemini-3.1-pro` (Multimodal), `gpt-5.4-1m` (Contexte long).
+- Default switched : `gpt-5.2` → `claude-sonnet-4-5-20250929` (Emergent recommended).
+- Legacy IDs gardés pour compat (gpt-5.2, claude-opus, claude-sonnet, gemini-3-pro, gemini-3-flash).
+
+**Tests** : **89/89 PASS** cumulé (11 nouveaux iter87 + 78 régression iter81 à iter86). Aucun action item du testing agent.
+
 ### 2026-06-10 — Iter 86 (Bugs UX fixes + 3 reportés livrés)
 
 **Fixes UX user-signalés** :
