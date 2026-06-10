@@ -242,6 +242,29 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
   useEffect(() => {
     let mounted = true;
     (async () => {
+      const sessionId = `iris_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const reportEvt = (kind, extra = {}) => {
+        // iter84 — Observabilité bug vidéo mobile : on poste l'événement à un
+        // endpoint de log côté backend pour debug ultérieur. Best-effort.
+        const payload = {
+          kind,
+          session_id: sessionId,
+          ua: navigator.userAgent.slice(0, 300),
+          viewport: { w: window.innerWidth, h: window.innerHeight },
+          is_secure: window.isSecureContext,
+          ts: new Date().toISOString(),
+          ...extra,
+        };
+        try {
+          fetch(`${process.env.REACT_APP_BACKEND_URL}/api/observability/video-event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true,
+          }).catch(() => null);
+        } catch (_) { /* silent */ }
+      };
+      reportEvt('iris_start');
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -249,13 +272,33 @@ export function IrisFullscreenWizard({ onCancel, onDone }) {
         });
         if (!mounted) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
+        const track = stream.getVideoTracks()[0];
+        const settings = track ? track.getSettings() : {};
+        reportEvt('iris_stream_ok', {
+          track_label: track?.label,
+          track_state: track?.readyState,
+          settings: {
+            width: settings.width, height: settings.height,
+            frame_rate: settings.frameRate, facing: settings.facingMode,
+          },
+        });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          try {
+            await videoRef.current.play();
+            reportEvt('iris_video_play_ok', { ready_state: videoRef.current.readyState });
+          } catch (playErr) {
+            reportEvt('iris_video_play_fail', { error: String(playErr).slice(0, 300) });
+            throw playErr;
+          }
         }
         setStreamReady(true);
         setAlignment('no_face');
       } catch (e) {
+        reportEvt('iris_stream_error', {
+          error: String(e?.message || e).slice(0, 300),
+          name: e?.name,
+        });
         setStreamError('Impossible d\'accéder à la caméra. Vérifie les permissions et recommence.');
       }
     })();

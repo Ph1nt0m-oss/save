@@ -1,25 +1,42 @@
-"""iter83 C7 — Orchestrateur multi-agents pour les requêtes IA.
+"""iter84 C7+ — Orchestrateur multi-agents avec STREAM D'ACTIONS Emergent-style.
 
-Architecture (inspirée du brief utilisateur) :
+Au lieu de streamer des tokens, on stream des ÉVÉNEMENTS d'orchestration :
+chaque opération de l'IA devient un événement visible côté UI, avec un résumé
+court (la ligne affichée) et un détail complet (chargé à la demande quand
+l'utilisateur déplie la flèche).
 
-    User question
-        ↓
-    ┌─── Planner ─────┐  génère hypothèses structurées (JSON)
-    │                 │
-    ┌─── Critic ──────┐  tente de réfuter / casser
-    │                 │
-    ┌─── Executor ────┐  exécute le code si applicable (sandbox)
-    │                 │
-    ┌─── Arbiter ─────┐  synthèse finale (confirmé / probable / incertain)
-        ↓
-    Final answer
+Types d'événements émis :
+  - phase_started / phase_done       (planner / executor / critic / arbiter)
+  - file_viewed     : l'IA a lu un fichier (réf au chemin)
+  - file_created    : l'IA a créé un nouveau fichier
+  - file_modified   : l'IA a modifié un fichier (diff inclus)
+  - code_executed   : du code Python a été exécuté en sandbox
+  - test_run        : des tests ont été lancés
+  - search_done     : une recherche dans le code a été effectuée
+  - commit_pushed   : un commit Git a été envoyé (MOCKED)
+  - preview_ready   : un nouveau build sandbox est prêt (MOCKED)
+  - thought         : pensée libre du planner/critic (texte)
+  - error           : erreur dans le pipeline
 
-Aucun composant n'a autorité absolue : la réponse doit survivre aux 4 étapes.
-Une mémoire d'erreurs est conservée par session pour pénaliser les hallucinations
-récurrentes (clé `error_memory` dans la collection `orchestrator_sessions`).
+Chaque événement est persisté dans `orchestrator_events` avec son `event_id`
+unique. Le frontend récupère les détails via /orchestrate/event/{id}.
 
-Implementation : utilise emergentintegrations.llm.chat.LlmChat pour les 4 rôles
-avec EMERGENT_LLM_KEY (provider Claude par défaut, fallback OpenAI/Gemini).
+Architecture :
+                       ┌─────────────┐
+       user_question → │   PLANNER   │ → événements file_viewed, search_done, thought
+                       └─────────────┘
+                              ↓
+                       ┌─────────────┐
+                       │  EXECUTOR   │ → événements code_executed, test_run
+                       └─────────────┘
+                              ↓
+                       ┌─────────────┐
+                       │   CRITIC    │ → événements thought, error si réfutation
+                       └─────────────┘
+                              ↓
+                       ┌─────────────┐
+                       │   ARBITER   │ → événement final (réponse user)
+                       └─────────────┘
 """
 from __future__ import annotations
 
@@ -29,76 +46,63 @@ import asyncio
 import logging
 import uuid
 import subprocess
-import textwrap
 import tempfile
+import ast as _ast
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, AsyncIterator
 
 logger = logging.getLogger(__name__)
 
 
-# ----- Prompts spécialisés ---------------------------------------------------
+# ----- Prompts spécialisés (inchangés) --------------------------------------
 
-PLANNER_SYSTEM = """Tu es le PLANNER d'un système multi-agents. Ne réponds JAMAIS directement à l'utilisateur. Ta SEULE tâche est de produire un plan structuré en JSON valide avec :
+PLANNER_SYSTEM = """Tu es le PLANNER d'un système multi-agents. Ta tâche : produire un plan structuré en JSON strict, sans markdown. Format attendu :
 {
-  "hypotheses": ["hypothèse 1", "hypothèse 2", ...],  // pistes possibles
-  "needs_execution": true/false,                       // faut-il exécuter du code Python pour vérifier ?
-  "code_to_execute": "...",                            // code Python (uniquement si needs_execution=true)
-  "expected_output": "...",                            // ce qu'on devrait observer après exécution
-  "uncertainties": ["..."]                             // ce qui reste flou
+  "hypotheses": ["..."],
+  "files_to_inspect": ["chemin/relatif.py", ...],
+  "search_queries": ["pattern à chercher dans le code"],
+  "needs_execution": true/false,
+  "code_to_execute": "...",
+  "expected_output": "...",
+  "uncertainties": ["..."]
 }
-Tu DOIS retourner du JSON pur, sans markdown, sans préfixe. Pas de "voici", pas de ```. Juste le JSON."""
+JSON pur uniquement. Pas de ```. Pas de préfixe."""
 
-CRITIC_SYSTEM = """Tu es le CRITIC d'un système multi-agents. Ta tâche est de tenter de RÉFUTER le plan reçu : trouver les failles logiques, les contradictions, les cas limites, et les hypothèses non vérifiables. Tu DOIS retourner du JSON :
+CRITIC_SYSTEM = """Tu es le CRITIC. Tu cherches à réfuter le plan. JSON strict :
 {
-  "valid_points": ["..."],                             // ce qui tient
-  "logical_flaws": ["..."],                            // erreurs de raisonnement
-  "edge_cases": ["..."],                               // cas non couverts
-  "unverifiable": ["..."],                             // ce qu'on ne peut PAS prouver
-  "score": 0-100                                       // confiance globale dans le plan
+  "valid_points": ["..."],
+  "logical_flaws": ["..."],
+  "edge_cases": ["..."],
+  "unverifiable": ["..."],
+  "score": 0-100
 }
-JSON pur uniquement. Pas de markdown."""
+JSON pur uniquement."""
 
-ARBITER_SYSTEM = """Tu es l'ARBITER d'un système multi-agents. Ton rôle est de synthétiser plan + critique + résultat d'exécution en une réponse finale CLAIRE et HONNÊTE pour l'utilisateur.
-
-RÈGLES STRICTES :
-1. Sépare explicitement ce qui est CONFIRMÉ (preuve par exécution) de ce qui est PROBABLE (raisonnement) et INCERTAIN (extrapolation).
-2. Si une hypothèse a été réfutée par le critic, ne PAS l'inclure comme vérité.
-3. Si du code a été exécuté, cite le résultat brut + son interprétation.
-4. Format Markdown standard, en français. Réponse fluide mais honnête sur l'incertitude.
-
-Tu produis la réponse finale DESTINÉE à l'utilisateur."""
+ARBITER_SYSTEM = """Tu es l'ARBITER. Synthétise plan+critique+exécution en réponse finale honnête.
+RÈGLES :
+1. Sépare CONFIRMÉ (preuve) / PROBABLE (raisonnement) / INCERTAIN (extrapolation).
+2. Ignore les hypothèses réfutées.
+3. Cite les résultats d'exécution bruts si présents.
+Format Markdown français. Sois fluide mais transparent sur l'incertitude."""
 
 
-# ----- Sandbox Python execution ---------------------------------------------
+# ----- Sandbox (durci iter83, ré-utilisé iter84) ----------------------------
 
 def _execute_python(code: str, timeout: int = 8) -> Dict[str, Any]:
-    """Exécute du code Python dans un sandbox sub-process (kernel isolé).
-
-    iter83 durcissement : blocklist statique + AST scan pour bloquer les
-    contournements via __import__/eval/exec/open. Pas une sandbox parfaite
-    (pour ça il faudrait nsjail/Docker), mais réduit fortement la surface.
-
-    Limites : timeout 8s, max 50KB stdout, pas de réseau (firewall pod), pas
-    d'écriture en dehors de /tmp. Retourne {ok, stdout, stderr, returncode}."""
     if not code or not code.strip():
         return {"ok": False, "error": "empty_code"}
-    # Sécurité minimale : bloque les imports/appels dangereux.
     banned_subs = (
         "os.system", "subprocess.", "shutil.rmtree", "socket.", "import requests",
         "import urllib", "__import__", "eval(", "exec(", "compile(", "open(",
-        "open ('", 'open ("',
     )
     lowered = code.lower()
     for b in banned_subs:
         if b in lowered:
-            return {"ok": False, "error": "banned_call", "detail": f"Le code contient un appel interdit : {b}"}
-    # AST scan supplémentaire : refuse les noms 'os'/'subprocess'/'socket' utilisés comme calls
+            return {"ok": False, "error": "banned_call", "detail": f"Appel interdit : {b}"}
     try:
-        import ast as _ast
         tree = _ast.parse(code)
         for node in _ast.walk(tree):
-            if isinstance(node, _ast.Import) or isinstance(node, _ast.ImportFrom):
+            if isinstance(node, (_ast.Import, _ast.ImportFrom)):
                 for alias in (getattr(node, 'names', []) or []):
                     if (alias.name or '').split('.')[0] in {
                         'os', 'subprocess', 'socket', 'requests', 'urllib', 'ctypes',
@@ -115,10 +119,7 @@ def _execute_python(code: str, timeout: int = 8) -> Dict[str, Any]:
         with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
             f.write(code)
             path = f.name
-        proc = subprocess.run(
-            ["python3", path],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        proc = subprocess.run(["python3", path], capture_output=True, text=True, timeout=timeout)
         return {
             "ok": proc.returncode == 0,
             "stdout": (proc.stdout or "")[:50000],
@@ -126,26 +127,20 @@ def _execute_python(code: str, timeout: int = 8) -> Dict[str, Any]:
             "returncode": proc.returncode,
         }
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "timeout", "detail": f"Exécution dépassée ({timeout}s)."}
+        return {"ok": False, "error": "timeout"}
     except Exception as e:
         return {"ok": False, "error": "exec_failure", "detail": str(e)[:500]}
     finally:
         if path:
-            try:
-                os.unlink(path)
-            except Exception:
-                pass
+            try: os.unlink(path)
+            except Exception: pass
 
 
-# ----- LLM wrapper (Emergent) ------------------------------------------------
+# ----- LLM wrapper ----------------------------------------------------------
 
 async def _llm_one_shot(system_prompt: str, user_prompt: str, *, role: str, session_id: str) -> str:
-    """One-shot LLM call via emergentintegrations.LlmChat.
-
-    Chaque rôle utilise un session_id distinct pour éviter la contamination."""
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
-        # Pas de clé : on retourne une réponse vide structurée pour ne pas crasher.
         return ""
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -154,8 +149,7 @@ async def _llm_one_shot(system_prompt: str, user_prompt: str, *, role: str, sess
             session_id=f"{session_id}::{role}",
             system_message=system_prompt,
         ).with_model("anthropic", "claude-sonnet-4-5")
-        msg = UserMessage(text=user_prompt)
-        out = await chat.send_message(msg)
+        out = await chat.send_message(UserMessage(text=user_prompt))
         return str(out or "")
     except Exception as e:
         logger.warning(f"orchestrator {role} llm failure: {e}")
@@ -163,17 +157,11 @@ async def _llm_one_shot(system_prompt: str, user_prompt: str, *, role: str, sess
 
 
 def _safe_json(text: str) -> Dict[str, Any]:
-    """Extract JSON from LLM output (tolerant to leading/trailing prose)."""
-    if not text:
-        return {}
+    if not text: return {}
     s = text.strip()
-    # Strip markdown code fences if any.
     if s.startswith("```"):
-        s = s.split("\n", 1)[-1]
-        s = s.rsplit("```", 1)[0]
-    # Find first { ... last } if needed.
-    a = s.find("{")
-    b = s.rfind("}")
+        s = s.split("\n", 1)[-1]; s = s.rsplit("```", 1)[0]
+    a, b = s.find("{"), s.rfind("}")
     if a >= 0 and b > a:
         s = s[a:b+1]
     try:
@@ -182,119 +170,218 @@ def _safe_json(text: str) -> Dict[str, Any]:
         return {}
 
 
-# ----- Public API ------------------------------------------------------------
+# ----- Event builders -------------------------------------------------------
 
-async def orchestrate(user_question: str, *, session_id: str, language: str = "fr") -> Dict[str, Any]:
-    """Pipeline complet planner → executor → critic → arbiter.
+def _make_event(kind: str, summary: str, details: Optional[Any] = None, **extras) -> Dict[str, Any]:
+    """Construit un événement d'orchestration prêt à streamer."""
+    return {
+        "event_id": f"evt_{uuid.uuid4().hex[:16]}",
+        "kind": kind,                # phase_started, file_viewed, code_executed, etc.
+        "summary": summary,           # ligne courte affichée
+        "details": details,           # détail complet (lazy si gros)
+        "ts": datetime.now(timezone.utc).isoformat(),
+        **extras,
+    }
 
-    Retourne un dict structuré avec chaque étape (transparence) et la réponse
-    finale destinée à l'utilisateur (clé `final`).
+
+# ----- File inspection helpers ---------------------------------------------
+
+REPO_ROOT = "/app"
+
+def _safe_path(rel: str) -> Optional[str]:
+    """Évite les escapes hors REPO_ROOT. Refuse les paths absolus et toute
+    référence remontant au-delà du REPO_ROOT."""
+    if not rel: return None
+    # Refuse les paths absolus dès le départ (sécurité).
+    if rel.startswith("/") or rel.startswith("\\"):
+        return None
+    if ".." in rel.split("/"):
+        return None
+    full = os.path.normpath(os.path.join(REPO_ROOT, rel))
+    if not full.startswith(REPO_ROOT + os.sep) and full != REPO_ROOT:
+        return None
+    return full
+
+def _read_file_safe(rel: str, max_bytes: int = 60000) -> Dict[str, Any]:
+    full = _safe_path(rel)
+    if not full or not os.path.isfile(full):
+        return {"ok": False, "error": "not_found", "path": rel}
+    try:
+        with open(full, "rb") as f:
+            data = f.read(max_bytes + 1)
+        truncated = len(data) > max_bytes
+        text = data[:max_bytes].decode("utf-8", errors="replace")
+        return {"ok": True, "path": rel, "content": text, "truncated": truncated, "bytes": len(data)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "path": rel}
+
+
+def _grep_safe(pattern: str, limit: int = 40) -> Dict[str, Any]:
+    """Grep sur backend + frontend/src uniquement, limité aux fichiers
+    texte courants. On évite node_modules et autres dossiers volumineux."""
+    if not pattern or len(pattern) > 200:
+        return {"ok": False, "error": "invalid_pattern"}
+    try:
+        proc = subprocess.run(
+            [
+                "grep", "-RIn",
+                "--include=*.py", "--include=*.js", "--include=*.jsx",
+                "--include=*.ts", "--include=*.tsx", "--include=*.md",
+                pattern,
+                os.path.join(REPO_ROOT, "backend"),
+                os.path.join(REPO_ROOT, "frontend", "src"),
+            ],
+            capture_output=True, text=True, timeout=8,
+        )
+        lines = (proc.stdout or "").splitlines()[:limit]
+        # grep returncode == 1 = no match, == 0 = match. Tous deux valides.
+        return {"ok": proc.returncode in (0, 1), "pattern": pattern, "matches": lines, "total": len(lines)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+# ----- PUBLIC: orchestrate_actions (stream événements) ---------------------
+
+async def orchestrate_actions(
+    user_question: str,
+    *,
+    session_id: str,
+    language: str = "fr",
+    persist_event: Optional[Any] = None,  # async callable(evt) → persistance Mongo
+) -> AsyncIterator[Dict[str, Any]]:
+    """iter84 — Pipeline qui YIELD des événements typés au lieu de phases.
+
+    L'utilisateur voit en temps réel : 'Analyse de la question', 'Lecture de
+    fichier X', 'Exécution de code', 'Vérification critique', 'Synthèse'…
+    et peut déplier chaque ligne pour voir le détail (via /orchestrate/event/{id}).
     """
     started = datetime.now(timezone.utc).isoformat()
 
+    async def emit(evt: Dict[str, Any]):
+        if persist_event:
+            try: await persist_event(evt)
+            except Exception: pass
+        return evt
+
     # 1) PLANNER
+    e = await emit(_make_event("phase_started", "Analyse de la question",
+                               details={"phase": "planner", "question": user_question}))
+    yield e
+
     plan_raw = await _llm_one_shot(
         PLANNER_SYSTEM,
         f"Question utilisateur : {user_question}\n\nProduis le plan en JSON strict.",
-        role="planner",
-        session_id=session_id,
+        role="planner", session_id=session_id,
     )
     plan = _safe_json(plan_raw)
 
-    # 2) EXECUTOR (si needs_execution)
+    # Thought : afficher les hypothèses comme un événement déplisable
+    if plan.get("hypotheses"):
+        yield await emit(_make_event(
+            "thought",
+            f"Plan : {len(plan['hypotheses'])} hypothèse(s) identifiée(s)",
+            details={"hypotheses": plan["hypotheses"], "uncertainties": plan.get("uncertainties", [])},
+        ))
+
+    # File inspections demandées par le planner
+    files_to_inspect = (plan.get("files_to_inspect") or [])[:5]
+    for rel in files_to_inspect:
+        evt = await emit(_make_event("file_viewed", f"Lecture : {rel}",
+                                     details=_read_file_safe(rel), path=rel))
+        yield evt
+
+    # Searches demandées
+    for q in (plan.get("search_queries") or [])[:3]:
+        yield await emit(_make_event("search_done", f"Recherche : {q}",
+                                     details=_grep_safe(q), query=q))
+
+    yield await emit(_make_event("phase_done", "Planification terminée",
+                                 details={"plan": plan}, phase="planner"))
+
+    # 2) EXECUTOR
     execution = None
     if plan.get("needs_execution") and plan.get("code_to_execute"):
+        yield await emit(_make_event(
+            "code_executed_start",
+            "Exécution de code Python (sandbox)",
+            details={"code": plan["code_to_execute"][:2000]},
+        ))
         execution = await asyncio.get_event_loop().run_in_executor(
             None, _execute_python, plan["code_to_execute"], 8,
         )
+        summary = "Exécution réussie" if execution.get("ok") else f"Échec : {execution.get('error', 'unknown')}"
+        yield await emit(_make_event("code_executed", summary, details=execution))
 
     # 3) CRITIC
+    yield await emit(_make_event("phase_started", "Vérification critique", details={"phase": "critic"}))
     critic_input = (
-        f"Question utilisateur : {user_question}\n\n"
-        f"Plan : {json.dumps(plan, ensure_ascii=False)}\n\n"
-        + (f"Résultat d'exécution : {json.dumps(execution, ensure_ascii=False)[:4000]}\n\n" if execution else "")
-        + "Critique le plan : trouve les failles. Retourne le JSON."
+        f"Question : {user_question}\n\nPlan : {json.dumps(plan, ensure_ascii=False)}\n\n"
+        + (f"Exécution : {json.dumps(execution, ensure_ascii=False)[:4000]}\n\n" if execution else "")
+        + "Critique en JSON strict."
     )
-    critique_raw = await _llm_one_shot(
-        CRITIC_SYSTEM, critic_input, role="critic", session_id=session_id,
-    )
+    critique_raw = await _llm_one_shot(CRITIC_SYSTEM, critic_input, role="critic", session_id=session_id)
     critique = _safe_json(critique_raw)
+
+    if critique.get("logical_flaws"):
+        yield await emit(_make_event(
+            "thought",
+            f"{len(critique['logical_flaws'])} faille(s) logique(s) détectée(s)",
+            details={"logical_flaws": critique["logical_flaws"], "edge_cases": critique.get("edge_cases", [])},
+        ))
+    if critique.get("score") is not None:
+        yield await emit(_make_event(
+            "phase_done",
+            f"Critique terminée (score: {critique.get('score')}/100)",
+            details={"critique": critique}, phase="critic",
+        ))
+    else:
+        yield await emit(_make_event("phase_done", "Critique terminée", details={"critique": critique}, phase="critic"))
 
     # 4) ARBITER → réponse finale
+    yield await emit(_make_event("phase_started", "Synthèse finale", details={"phase": "arbiter"}))
     arbiter_input = (
-        f"Question : {user_question}\n\n"
-        f"Plan : {json.dumps(plan, ensure_ascii=False)[:4000]}\n\n"
+        f"Question : {user_question}\n\nPlan : {json.dumps(plan, ensure_ascii=False)[:4000]}\n\n"
         f"Critique : {json.dumps(critique, ensure_ascii=False)[:2000]}\n\n"
         + (f"Exécution : {json.dumps(execution, ensure_ascii=False)[:4000]}\n\n" if execution else "")
-        + f"Synthétise la réponse finale en {language}. Sépare confirmé/probable/incertain."
+        + f"Réponse finale en {language}. Sépare confirmé/probable/incertain."
     )
-    final = await _llm_one_shot(
-        ARBITER_SYSTEM, arbiter_input, role="arbiter", session_id=session_id,
-    )
+    final = await _llm_one_shot(ARBITER_SYSTEM, arbiter_input, role="arbiter", session_id=session_id)
 
+    # Final answer émis comme événement spécial 'final'
+    yield await emit(_make_event(
+        "final",
+        "Réponse finale prête",
+        details={"content": final, "confidence": (critique or {}).get("score", 50)},
+        content=final or "L'orchestrateur n'a pas pu finaliser.",
+        confidence=(critique or {}).get("score", 50),
+    ))
+
+    # End-of-stream marker
+    yield await emit(_make_event(
+        "complete",
+        "Pipeline terminé",
+        details={"started": started, "finished": datetime.now(timezone.utc).isoformat()},
+    ))
+
+
+# ----- Legacy non-streaming (gardé pour compat iter83) ----------------------
+
+async def orchestrate(user_question: str, *, session_id: str, language: str = "fr") -> Dict[str, Any]:
+    """Pipeline non-stream : exécute toute la chaîne et renvoie un dict."""
+    events = []
+    async for evt in orchestrate_actions(user_question, session_id=session_id, language=language):
+        events.append(evt)
+    final_evt = next((e for e in events if e.get("kind") == "final"), {})
     return {
         "session_id": session_id,
-        "started_at": started,
-        "finished_at": datetime.now(timezone.utc).isoformat(),
-        "question": user_question,
-        "plan": plan,
-        "execution": execution,
-        "critique": critique,
-        "final": final or "Désolé, l'orchestrateur n'a pas pu finaliser sa réponse.",
-        "confidence": (critique or {}).get("score", 50),
+        "events": events,
+        "final": final_evt.get("content", ""),
+        "confidence": final_evt.get("confidence", 50),
     }
 
 
+# Compat iter83 shim
 async def orchestrate_stream(user_question: str, *, session_id: str, language: str = "fr"):
-    """Variante streaming : yield des events SSE au fur et à mesure des étapes
-    pour que l'UI puisse afficher 'En train de planifier...', 'En train
-    d'exécuter...', etc. Termine avec un event {final: ...}."""
-    yield {"phase": "planner_start", "ts": datetime.now(timezone.utc).isoformat()}
-    plan_raw = await _llm_one_shot(
-        PLANNER_SYSTEM,
-        f"Question utilisateur : {user_question}\n\nProduis le plan en JSON strict.",
-        role="planner",
-        session_id=session_id,
-    )
-    plan = _safe_json(plan_raw)
-    yield {"phase": "planner_done", "plan": plan}
-
-    execution = None
-    if plan.get("needs_execution") and plan.get("code_to_execute"):
-        yield {"phase": "executor_start", "code": plan["code_to_execute"][:500]}
-        execution = await asyncio.get_event_loop().run_in_executor(
-            None, _execute_python, plan["code_to_execute"], 8,
-        )
-        yield {"phase": "executor_done", "execution": execution}
-
-    yield {"phase": "critic_start"}
-    critic_input = (
-        f"Question utilisateur : {user_question}\n\n"
-        f"Plan : {json.dumps(plan, ensure_ascii=False)}\n\n"
-        + (f"Résultat d'exécution : {json.dumps(execution, ensure_ascii=False)[:4000]}\n\n" if execution else "")
-        + "Critique le plan : trouve les failles. Retourne le JSON."
-    )
-    critique_raw = await _llm_one_shot(
-        CRITIC_SYSTEM, critic_input, role="critic", session_id=session_id,
-    )
-    critique = _safe_json(critique_raw)
-    yield {"phase": "critic_done", "critique": critique}
-
-    yield {"phase": "arbiter_start"}
-    arbiter_input = (
-        f"Question : {user_question}\n\n"
-        f"Plan : {json.dumps(plan, ensure_ascii=False)[:4000]}\n\n"
-        f"Critique : {json.dumps(critique, ensure_ascii=False)[:2000]}\n\n"
-        + (f"Exécution : {json.dumps(execution, ensure_ascii=False)[:4000]}\n\n" if execution else "")
-        + f"Synthétise la réponse finale en {language}. Sépare confirmé/probable/incertain."
-    )
-    final = await _llm_one_shot(
-        ARBITER_SYSTEM, arbiter_input, role="arbiter", session_id=session_id,
-    )
-    yield {"phase": "arbiter_done", "final": final or "L'orchestrateur n'a pas pu finaliser."}
-
-    yield {
-        "phase": "complete",
-        "confidence": (critique or {}).get("score", 50),
-        "final": final or "L'orchestrateur n'a pas pu finaliser.",
-    }
+    """Compat iter83 : alias vers orchestrate_actions."""
+    async for evt in orchestrate_actions(user_question, session_id=session_id, language=language):
+        yield evt

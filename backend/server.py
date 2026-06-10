@@ -8943,6 +8943,7 @@ async def messages_send_to_staff(payload: MessageToStaffIn):
 
 from orchestrator import orchestrate as _run_orchestrate
 from orchestrator import orchestrate_stream as _stream_orchestrate
+from orchestrator import orchestrate_actions as _stream_actions
 
 
 class OrchestrateIn(BaseModel):
@@ -8951,30 +8952,36 @@ class OrchestrateIn(BaseModel):
     language: Optional[str] = "fr"
 
 
+async def _persist_event(event: Dict[str, Any], *, user_id: str, session_id: str, project_id: Optional[str]):
+    """Sauvegarde un événement d'orchestration en DB pour rappel ultérieur via
+    /orchestrate/event/{event_id}/details."""
+    try:
+        await db.orchestrator_events.insert_one({
+            "event_id": event.get("event_id"),
+            "user_id": user_id,
+            "session_id": session_id,
+            "project_id": project_id,
+            "kind": event.get("kind"),
+            "summary": event.get("summary"),
+            "details": event.get("details"),
+            "ts": event.get("ts"),
+        })
+    except Exception:
+        pass
+
+
 @api_router.post("/chat/orchestrate")
 async def chat_orchestrate(request: Request, payload: OrchestrateIn):
-    """C7 — Lance la pipeline complète planner→executor→critic→arbiter.
-
-    Retourne un JSON avec chaque étape + la réponse finale destinée à l'user."""
+    """C7 — Lance la pipeline planner→executor→critic→arbiter et persiste
+    tous les événements en base. Retourne aussi la liste pour le client."""
     user_id = await get_current_user(request)
     session_id = f"orch_{user_id}_{payload.project_id or 'global'}"
     result = await _run_orchestrate(
         payload.message, session_id=session_id, language=payload.language or "fr",
     )
-    # Persistance minimale pour la mémoire de validation/erreurs.
     try:
-        await db.orchestrator_runs.insert_one({
-            "run_id": f"run_{uuid.uuid4().hex[:16]}",
-            "user_id": user_id,
-            "project_id": payload.project_id,
-            "session_id": session_id,
-            "question": payload.message,
-            "plan": result.get("plan"),
-            "critique": result.get("critique"),
-            "execution_ok": (result.get("execution") or {}).get("ok"),
-            "confidence": result.get("confidence"),
-            "ts": datetime.now(timezone.utc).isoformat(),
-        })
+        for evt in (result.get("events") or []):
+            await _persist_event(evt, user_id=user_id, session_id=session_id, project_id=payload.project_id)
     except Exception:
         pass
     return result
@@ -8982,22 +8989,114 @@ async def chat_orchestrate(request: Request, payload: OrchestrateIn):
 
 @api_router.post("/chat/orchestrate-stream")
 async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
-    """C7 + C5/C8 — Variante streaming SSE : émet un event par phase
-    (planner_start, planner_done, executor_*, critic_*, arbiter_*, complete).
-    Permet à l'UI d'afficher 'En train de planifier...' etc en temps réel."""
+    """iter84 C7+C5/C8 — Stream d'ACTIONS Emergent-style.
+
+    Au lieu de tokens, on émet des événements typés : phase_started,
+    file_viewed, code_executed, search_done, thought, final, complete.
+    Chaque event a un event_id que le client peut utiliser pour récupérer
+    le détail complet plus tard (via /orchestrate/event/{id}/details).
+    """
     user_id = await get_current_user(request)
     session_id = f"orch_{user_id}_{payload.project_id or 'global'}"
     lang = payload.language or "fr"
 
+    async def persist(evt):
+        await _persist_event(evt, user_id=user_id, session_id=session_id, project_id=payload.project_id)
+
     async def event_gen():
-        async for evt in _stream_orchestrate(payload.message, session_id=session_id, language=lang):
-            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        try:
+            async for evt in _stream_actions(
+                payload.message, session_id=session_id, language=lang,
+                persist_event=persist,
+            ):
+                # On retire `details` du payload SSE pour ne pas surcharger ;
+                # le client peut les fetch via /orchestrate/event/{id}/details
+                payload_evt = {k: v for k, v in evt.items() if k != "details"}
+                yield f"data: {json.dumps(payload_evt, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'kind': 'error', 'summary': str(e)[:300]}, ensure_ascii=False)}\n\n"
 
     from fastapi.responses import StreamingResponse
     return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
     })
+
+
+@api_router.get("/orchestrate/event/{event_id}/details")
+async def orchestrate_event_details(event_id: str, request: Request):
+    """iter84 — Récupère le détail complet d'un événement d'orchestration.
+    L'UI appelle cet endpoint quand l'utilisateur déplie la flèche de
+    l'événement."""
+    user_id = await get_current_user(request)
+    doc = await db.orchestrator_events.find_one(
+        {"event_id": event_id, "user_id": user_id}, {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Événement introuvable.")
+    return doc
+
+
+class OrchestrateHistoryIn(BaseModel):
+    project_id: Optional[str] = None
+    limit: int = 50
+
+
+# iter84 — Observabilité vidéo mobile (logs structurés en cas d'échec)
+class VideoEventIn(BaseModel):
+    kind: str
+    session_id: str
+    ua: Optional[str] = None
+    viewport: Optional[Dict[str, Any]] = None
+    is_secure: Optional[bool] = None
+    ts: Optional[str] = None
+    error: Optional[str] = None
+    name: Optional[str] = None
+    track_label: Optional[str] = None
+    track_state: Optional[str] = None
+    settings: Optional[Dict[str, Any]] = None
+    ready_state: Optional[int] = None
+
+
+@api_router.post("/observability/video-event")
+async def observability_video_event(payload: VideoEventIn, request: Request):
+    """iter84 — Endpoint d'observabilité pour le bug 'vidéo mobile en mode
+    Public'. Aucune auth requise : on log tout pour debug. Anti-flood : on
+    ne garde que 5000 events max et on rejette si même session_id émet >50
+    events dans la même minute."""
+    now = datetime.now(timezone.utc)
+    minute_ago = (now - timedelta(seconds=60)).isoformat()
+    recent_count = await db.video_events.count_documents({
+        "session_id": payload.session_id, "ts_server": {"$gt": minute_ago},
+    })
+    if recent_count > 50:
+        raise HTTPException(status_code=429, detail="Trop d'événements pour cette session.")
+    doc = payload.model_dump()
+    doc["ts_server"] = now.isoformat()
+    doc["ip"] = (request.client.host if request.client else None)
+    await db.video_events.insert_one(doc)
+    # Auto-purge anciens events (>5000 lignes)
+    if recent_count == 0:
+        cnt = await db.video_events.estimated_document_count()
+        if cnt > 5000:
+            cursor = db.video_events.find({}, {"_id": 1}).sort("ts_server", 1).limit(cnt - 5000)
+            ids = [d["_id"] for d in await cursor.to_list(length=cnt - 5000)]
+            if ids:
+                await db.video_events.delete_many({"_id": {"$in": ids}})
+    return {"recorded": True}
+
+
+@api_router.post("/orchestrate/history")
+async def orchestrate_history(request: Request, payload: OrchestrateHistoryIn):
+    """iter84 — Récupère l'historique des événements d'orchestration d'une
+    session pour cet utilisateur. Permet de réafficher le journal après
+    un refresh ou switch de projet."""
+    user_id = await get_current_user(request)
+    q = {"user_id": user_id}
+    if payload.project_id:
+        q["project_id"] = payload.project_id
+    rows = await db.orchestrator_events.find(q, {"_id": 0, "details": 0}).sort("ts", -1).limit(max(1, min(payload.limit, 200))).to_list(length=200)
+    return {"events": list(reversed(rows))}
 
 
 # ==========================================================================

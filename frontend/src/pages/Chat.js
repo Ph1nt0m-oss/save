@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw, Lock } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw, Lock, Brain, Cpu } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -10,7 +10,9 @@ import VoiceRecorder from '../components/VoiceRecorder';
 import AttachMenu from '../components/AttachMenu';
 import MessageContent from '../components/MessageContent';
 import ModelPicker from '../components/ModelPicker';
+import OrchestrationLog from '../components/OrchestrationLog';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import useOrchestrate from '../hooks/useOrchestrate';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -61,6 +63,11 @@ export default function Chat() {
   // Selected AI model — defaults differ for online vs offline.
   const [selectedModel, setSelectedModel] = useState(mode === 'offline' ? 'gemma' : 'gpt-5.2');
   const messagesEndRef = useRef(null);
+
+  // iter84 — Mode "Pro" : route les messages via l'orchestrateur multi-agents
+  // au lieu du chat classique. L'utilisateur voit les actions en temps réel.
+  const [proMode, setProMode] = useState(false);
+  const orch = useOrchestrate();
 
   useEffect(() => {
     scrollToBottom();
@@ -142,6 +149,29 @@ export default function Chat() {
       isVoice: !!opts.isVoice,
       timestamp: new Date()
     }]);
+
+    // iter84 — Mode Pro : route vers l'orchestrateur multi-agents.
+    if (proMode) {
+      try {
+        await orch.run(userMessage, { projectId: project?.project_id, language });
+        // L'orchestrateur affiche les events. On ajoute le final dans la liste
+        // des messages aussi pour l'historique chat.
+        if (orch.finalAnswer) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: orch.finalAnswer,
+            ai_source: 'orchestrator',
+            confidence: orch.confidence,
+            timestamp: new Date(),
+          }]);
+        }
+      } catch (err) {
+        toast.error(err.message || t('error'));
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
 
     try {
       const response = await axios.post(
@@ -256,6 +286,20 @@ export default function Chat() {
             </Button>
           )}
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+            {/* iter84 — Toggle Mode Pro : route via orchestrateur multi-agents */}
+            <button
+              onClick={() => setProMode((p) => !p)}
+              data-testid="chat-pro-mode-toggle"
+              title={proMode ? 'Désactiver le mode Pro (orchestrateur multi-agents)' : 'Activer le mode Pro : l\'IA travaille via 4 agents (Planner → Executor → Critic → Arbiter)'}
+              className={`px-2 py-1.5 rounded-sm border text-xs inline-flex items-center gap-1.5 transition-colors ${
+                proMode
+                  ? 'bg-[#E4FF00]/15 border-[#E4FF00]/60 text-[#E4FF00]'
+                  : 'border-white/20 text-[#A1A1AA] hover:text-white hover:border-white/30'
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Mode Pro</span>
+            </button>
             <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
             {/* iter79 — Reset REPL retiré pour le mode Ollama (hors-ligne) sur demande. Conservé pour 'online'. */}
             {mode !== 'offline' && (
@@ -292,6 +336,19 @@ export default function Chat() {
       </header>
 
       <div className="flex-1 max-w-5xl w-full mx-auto flex flex-col p-6">
+        {/* iter84 — Journal d'actions de l'orchestrateur (Mode Pro) */}
+        {proMode && (orch.events.length > 0 || orch.running) && (
+          <div className="mb-4 p-3 bg-[#0A0A0A] border border-[#E4FF00]/30 rounded-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <Brain className="w-4 h-4 text-[#E4FF00]" />
+              <span className="text-xs font-['Chivo'] font-bold text-[#E4FF00]">Journal d&apos;orchestration</span>
+              {orch.confidence !== null && (
+                <span className="ml-auto text-[10px] text-[#A1A1AA]">Confiance : {orch.confidence}/100</span>
+              )}
+            </div>
+            <OrchestrationLog events={orch.events} running={orch.running} />
+          </div>
+        )}
         <ScrollArea className="flex-1 mb-6">
           {messages.length === 0 && (
             <div className="text-center py-20">
