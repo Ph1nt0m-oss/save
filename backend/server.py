@@ -8756,13 +8756,9 @@ class GroupListIn(BaseModel):
     signature: str
 
 
-@api_router.post("/groups/list")
-async def groups_list(payload: GroupListIn):
-    """Retourne les groupes auxquels l'appareil a accès."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    return {"groups": sorted(_groups_for_device(dev))}
-
-
+# iter88 — Slice 3 du refacto : /groups/* extraits dans routes/social_routes.py
+# Les classes Pydantic et les routes sont déplacées. Le router est inclus
+# en bas de server.py via build_groups_router(...).
 class GroupMessagesIn(BaseModel):
     key_id: str
     nonce: str
@@ -8771,55 +8767,12 @@ class GroupMessagesIn(BaseModel):
     limit: int = 200
 
 
-@api_router.post("/groups/messages")
-async def groups_messages(payload: GroupMessagesIn):
-    """Liste les messages d'un groupe (si autorisé)."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    if payload.group_type not in GROUP_TYPES:
-        raise HTTPException(status_code=400, detail="Type de groupe inconnu.")
-    if payload.group_type not in _groups_for_device(dev):
-        raise HTTPException(status_code=403, detail="Tu n'as pas accès à ce groupe.")
-    cursor = db.group_messages.find(
-        {"group_type": payload.group_type}, {"_id": 0},
-    ).sort("ts", -1).limit(max(1, min(payload.limit, 500)))
-    rows = await cursor.to_list(length=500)
-    return {"messages": list(reversed(rows))}
-
-
 class GroupSendIn(BaseModel):
     key_id: str
     nonce: str
     signature: str
     group_type: str
     content: str
-
-
-@api_router.post("/groups/send")
-async def groups_send(payload: GroupSendIn):
-    """Envoie un message dans un groupe (si autorisé)."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    if payload.group_type not in GROUP_TYPES:
-        raise HTTPException(status_code=400, detail="Type de groupe inconnu.")
-    if payload.group_type not in _groups_for_device(dev):
-        raise HTTPException(status_code=403, detail="Tu n'as pas accès à ce groupe.")
-    content = (payload.content or "").strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Message vide.")
-    if len(content) > MAX_MESSAGE_LEN:
-        raise HTTPException(status_code=400, detail=f"Message trop long ({MAX_MESSAGE_LEN} max).")
-    now = datetime.now(timezone.utc)
-    doc = {
-        "message_id": f"gm_{uuid.uuid4().hex[:16]}",
-        "group_type": payload.group_type,
-        "from_key_id": payload.key_id,
-        "from_pseudo": dev.get("pseudo") or dev.get("label"),
-        "from_role": dev.get("role"),
-        "from_staff_kind": dev.get("staff_kind"),
-        "content": content,
-        "ts": now.isoformat(),
-    }
-    await db.group_messages.insert_one(doc)
-    return {"sent": True, "message_id": doc["message_id"], "ts": doc["ts"]}
 
 
 # ==========================================================================
@@ -8903,6 +8856,7 @@ class OrchestrateIn(BaseModel):
     project_id: Optional[str] = None
     language: Optional[str] = "fr"
     enable_commit: Optional[bool] = False  # iter86 — opt-in pour push GitHub réel
+    enable_preview_rebuild: Optional[bool] = False  # iter88 — opt-in pour rebuild yarn
 
 
 async def _persist_event(event: Dict[str, Any], *, user_id: str, session_id: str, project_id: Optional[str]):
@@ -8961,13 +8915,37 @@ async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
             return {"ok": False, "error": "GITHUB_DISABLED"}
         if not getattr(payload, "enable_commit", False):
             return {"ok": False, "note": "enable_commit=false (opt-in)"}
-        # Stocke le code généré dans un fichier orchestrate-runs/{branch}.py
         safe_branch = branch.replace("/", "-").replace(" ", "-")[:48]
         file_path = f"orchestrate-runs/{safe_branch}.py"
-        # En-tête avec la question + le résumé
         body = f"# Orchestrator run for: {summary}\n# Branch: {branch}\n\n{content}\n"
         ok = await push_to_github(file_path, body, branch="main", retries=2)
         return {"ok": bool(ok), "ref": file_path, "branch_label": branch}
+
+    # iter88 — Hook on_preview : rebuild RÉEL du frontend si opt-in
+    async def on_preview_real():
+        if not getattr(payload, "enable_preview_rebuild", False):
+            return {"ok": False, "note": "enable_preview_rebuild=false (opt-in)", "url": os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"}
+        import subprocess as _sub
+        import asyncio as _aio
+        try:
+            # Best-effort yarn build dans /app/frontend, timeout 90s.
+            loop = _aio.get_event_loop()
+            proc = await loop.run_in_executor(
+                None,
+                lambda: _sub.run(
+                    ["yarn", "build"],
+                    capture_output=True, text=True, timeout=90, cwd="/app/frontend",
+                ),
+            )
+            base_url = os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"
+            return {
+                "ok": proc.returncode == 0,
+                "url": base_url,
+                "returncode": proc.returncode,
+                "build_summary": ((proc.stdout or "")[-2000:] + (("\n" + (proc.stderr or "")[-1000:]) if proc.stderr else "")),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:300]}
 
     async def event_gen():
         try:
@@ -8975,6 +8953,7 @@ async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
                 payload.message, session_id=session_id, language=lang,
                 persist_event=persist,
                 on_commit=on_commit_real,
+                on_preview=on_preview_real,
             ):
                 # On retire `details` du payload SSE pour ne pas surcharger ;
                 # le client peut les fetch via /orchestrate/event/{id}/details
@@ -9261,8 +9240,10 @@ async def chat_stream(request: Request, input: ChatStreamIn):
 app.include_router(api_router)
 
 # iter86 — Slice 2 du refacto : friends routes incluses depuis social_routes
-from routes.social_routes import build_friends_router  # noqa: E402
+# iter88 — Slice 3 : groups routes également depuis social_routes
+from routes.social_routes import build_friends_router, build_groups_router  # noqa: E402
 app.include_router(build_friends_router(db, _verify_signed, _device_by_key), prefix="/api")
+app.include_router(build_groups_router(db, _verify_signed, MAX_MESSAGE_LEN), prefix="/api")
 
 # Include PWA routes under /api/pwa
 app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])

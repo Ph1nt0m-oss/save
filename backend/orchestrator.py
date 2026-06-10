@@ -272,9 +272,10 @@ async def orchestrate_actions(
     *,
     session_id: str,
     language: str = "fr",
-    persist_event: Optional[Any] = None,  # async callable(evt) → persistance Mongo
-    on_commit: Optional[Any] = None,       # async callable(branch, summary, content) → push GitHub réel
-    test_loop: Optional[Any] = None,       # async callable(stderr) → relance pytest + correction
+    persist_event: Optional[Any] = None,
+    on_commit: Optional[Any] = None,
+    on_preview: Optional[Any] = None,      # iter88 — async callable() → rebuild sandbox réel
+    test_loop: Optional[Any] = None,
 ) -> AsyncIterator[Dict[str, Any]]:
     """iter84 — Pipeline qui YIELD des événements typés au lieu de phases.
 
@@ -433,18 +434,25 @@ async def orchestrate_actions(
 
     final = accumulated or "L'orchestrateur n'a pas pu finaliser."
 
-    # iter86 — Si du code a été exécuté avec succès, on émet les events
-    # preview_ready + commit_pushed. Le wirage RÉEL avec GitHub se fait
-    # via le hook `on_commit` injecté par server.py (push_to_github).
+    # iter88 — Si du code a été exécuté avec succès, on émet les events
+    # preview_ready (avec rebuild OPT-IN via on_preview) + commit_pushed.
     if execution and execution.get("ok"):
-        preview_url = os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"
+        # iter88 — Si on_preview est fourni, on déclenche un VRAI rebuild
+        # (yarn build front). Sinon URL stub. Best-effort, timeout court.
+        preview_result = None
+        if on_preview is not None:
+            try:
+                preview_result = await on_preview()
+            except Exception as e:
+                preview_result = {"ok": False, "error": str(e)[:200]}
+        preview_url = (preview_result or {}).get("url") or os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"
         yield await emit(_make_event(
             "preview_ready",
-            f"Aperçu disponible (build {execution.get('returncode', 0)})",
+            f"Aperçu {('rebuild ' + ('OK' if (preview_result or {}).get('ok') else 'échec')) if preview_result else 'disponible'}",
             details={
                 "url": preview_url,
+                "rebuild_result": preview_result,
                 "execution_summary": (execution.get("stdout") or "")[:500],
-                "note": "Sandbox rebuild non-incrémental — l'URL pointe vers le preview courant",
             },
             url=preview_url,
         ))

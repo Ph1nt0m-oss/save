@@ -17,6 +17,26 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-10 — Iter 88 (Fix bug Eye runtime + Refacto slice 3 + Preview RÉEL)
+
+**🔴 Bug critique corrigé** :
+- `Eye is not defined` runtime crash dans ViewModePicker.jsx → import ajouté (`import { ..., Eye, ... } from 'lucide-react'`).
+- Smoke test : `page_errors: []` → plus aucune erreur runtime. App rend impeccablement.
+
+**Refacto slice 3 — `/groups/*` extrait** :
+- Routes `/groups/list`, `/groups/messages`, `/groups/send` déplacées dans `routes/social_routes.py` via `build_groups_router(db, verify_signed, max_message_len)`.
+- Pydantic schemas `GroupListIn / GroupMessagesIn / GroupSendIn` également déplacés (gardés en compat dans server.py).
+- server.py inclut via `app.include_router(build_groups_router(...), prefix='/api')`.
+- Régression intacte : les 3 endpoints répondent identiquement (sig HTTP préservée).
+
+**Preview RÉEL (Reporté livré)** :
+- Hook `on_preview` ajouté à `orchestrate_actions(on_preview=callable)`.
+- server.py wire `on_preview_real` qui lance **`yarn build`** réel dans `/app/frontend` (timeout 90s, capture stdout/stderr).
+- Opt-in via `payload.enable_preview_rebuild=true` (sinon URL stub).
+- Event `preview_ready` enrichi avec `rebuild_result: {ok, returncode, build_summary, url}`.
+
+**Tests** : **80/80 PASS cumulé** (7 nouveaux iter88 + 73 régression iter82-iter87). Aucun action item.
+
 ### 2026-06-10 — Iter 87 (Vues décochables + distinction public/privé en CONTEXTE + IA Emergent à jour + sécurité code)
 
 **Fix verrou de vue (bug user)** :

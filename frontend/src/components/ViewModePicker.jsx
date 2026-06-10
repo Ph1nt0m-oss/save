@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Crown, User, Shield, ShieldCheck, EyeOff, Check } from 'lucide-react';
+import { ChevronDown, Crown, User, Shield, ShieldCheck, EyeOff, Eye, Check } from 'lucide-react';
 import { setStoredViewMode } from '../hooks/useDeviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 

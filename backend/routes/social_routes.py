@@ -145,3 +145,83 @@ def build_friends_router(db, verify_signed, device_by_key) -> APIRouter:
         return {"sent": sent, "received": received}
 
     return router
+
+
+# ==========================================================================
+# iter88 — Slice 3 du refacto : /groups/* extraits
+# ==========================================================================
+
+class GroupListIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+
+
+class GroupMessagesIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    group_type: str
+    limit: int = 200
+
+
+class GroupSendIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    group_type: str
+    content: str
+
+
+def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRouter:
+    """Construit un APIRouter pour /groups/list, /groups/messages, /groups/send."""
+    import uuid as _uuid
+    from fastapi import HTTPException as _HTTPException
+
+    router = APIRouter(tags=["Social"])
+
+    @router.post("/groups/list")
+    async def groups_list(payload: GroupListIn):
+        dev = await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        return {"groups": sorted(_groups_for_device(dev))}
+
+    @router.post("/groups/messages")
+    async def groups_messages(payload: GroupMessagesIn):
+        dev = await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        if payload.group_type not in GROUP_TYPES:
+            raise _HTTPException(status_code=400, detail="Type de groupe inconnu.")
+        if payload.group_type not in _groups_for_device(dev):
+            raise _HTTPException(status_code=403, detail="Tu n'as pas accès à ce groupe.")
+        cursor = db.group_messages.find(
+            {"group_type": payload.group_type}, {"_id": 0},
+        ).sort("ts", -1).limit(max(1, min(payload.limit, 500)))
+        rows = await cursor.to_list(length=500)
+        return {"messages": list(reversed(rows))}
+
+    @router.post("/groups/send")
+    async def groups_send(payload: GroupSendIn):
+        dev = await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        if payload.group_type not in GROUP_TYPES:
+            raise _HTTPException(status_code=400, detail="Type de groupe inconnu.")
+        if payload.group_type not in _groups_for_device(dev):
+            raise _HTTPException(status_code=403, detail="Tu n'as pas accès à ce groupe.")
+        content = (payload.content or "").strip()
+        if not content:
+            raise _HTTPException(status_code=400, detail="Message vide.")
+        if len(content) > max_message_len:
+            raise _HTTPException(status_code=400, detail=f"Message trop long ({max_message_len} max).")
+        now = datetime.now(timezone.utc)
+        doc = {
+            "message_id": f"gm_{_uuid.uuid4().hex[:16]}",
+            "group_type": payload.group_type,
+            "from_key_id": payload.key_id,
+            "from_pseudo": dev.get("pseudo") or dev.get("label"),
+            "from_role": dev.get("role"),
+            "from_staff_kind": dev.get("staff_kind"),
+            "content": content,
+            "ts": now.isoformat(),
+        }
+        await db.group_messages.insert_one(doc)
+        return {"sent": True, "message_id": doc["message_id"], "ts": doc["ts"]}
+
+    return router
