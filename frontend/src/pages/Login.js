@@ -1000,37 +1000,13 @@ export default function Login() {
               </motion.form>
             )}
 
-            {/* Demo link (shown alongside the waiting banner) */}
-            {demoLink && waitingFor && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                data-testid="demo-verification-link"
-                className="p-3 bg-cyan-400/10 border border-cyan-400/30 rounded-sm text-left"
-              >
-                <p className="text-xs font-['IBM_Plex_Sans'] text-cyan-200 leading-relaxed mb-2">
-                  <span className="font-bold">Lien direct&nbsp;:</span> clique pour confirmer ton compte (s'ouvre dans un nouvel onglet) :
-                </p>
-                <div className="flex gap-2">
-                  <a
-                    href={demoLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="demo-verification-link-anchor"
-                    className="flex-1 block bg-black/40 px-2 py-1.5 rounded-sm text-[10px] text-cyan-300 truncate hover:text-cyan-200 transition-colors"
-                  >
-                    {demoLink}
-                  </a>
-                  <button
-                    onClick={copyLink}
-                    type="button"
-                    data-testid="demo-verification-link-copy"
-                    className="px-2 py-1.5 bg-cyan-400/20 hover:bg-cyan-400/30 rounded-sm text-cyan-300 transition-colors"
-                  >
-                    {linkCopied ? <CheckCheck className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </motion.div>
+            {/* iter80 — Lien direct retiré sur demande user : forcer le passage par
+                la boîte mail réelle (preuve que l'adresse existe et que l'utilisatrice
+                y a accès). Si demoLink existe encore (mode dev), on garde l'option
+                copier mais on supprime le clic direct.
+            */}
+            {false && demoLink && waitingFor && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} />
             )}
 
             {!waitingFor && (

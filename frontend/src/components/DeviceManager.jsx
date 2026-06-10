@@ -201,7 +201,12 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                       <div
                         key={d.key_id}
                         data-testid={`device-row-${d.key_id}`}
-                        className="bg-black/30 border border-white/10 rounded-sm p-3 flex items-start gap-3"
+                        className={`bg-black/30 border-2 rounded-sm p-3 flex items-start gap-3 ${
+                          d.approved_by_kind === 'admin' ? 'border-orange-400/60'
+                          : d.approved_by_kind === 'modo' ? 'border-cyan-400/60'
+                          : d.approved_by_kind === 'creator' ? 'border-[#E4FF00]/40'
+                          : 'border-white/10'
+                        }`}
                       >
                         <Mi className="w-4 h-4 text-[#A1A1AA] mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
@@ -209,7 +214,25 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                             <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm ${meta.color}`}>
                               {t(meta.tk)}
                             </span>
-                            {d.label && <span className="text-xs text-white truncate">{d.label}</span>}
+                            {/* iter80 C12 — Pseudo affiché au-dessus du label/type d'appareil */}
+                            {d.pseudo && <span className="text-sm text-white font-bold truncate">{d.pseudo}</span>}
+                            {d.label && <span className="text-xs text-[#A1A1AA] truncate">{d.label}</span>}
+                            {/* iter80 C12 — Badge décision colorée (orange=admin, bleu=modo, jaune=créa) */}
+                            {d.approved_by_kind === 'admin' && (
+                              <span data-testid={`approved-by-admin-${d.key_id}`} className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/60 text-orange-300 bg-orange-400/10 rounded-sm">
+                                Décidé par admin{d.approved_by_label ? ` · ${d.approved_by_label}` : ''}
+                              </span>
+                            )}
+                            {d.approved_by_kind === 'modo' && (
+                              <span data-testid={`approved-by-modo-${d.key_id}`} className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-cyan-400/60 text-cyan-300 bg-cyan-400/10 rounded-sm">
+                                Décidé par modo
+                              </span>
+                            )}
+                            {d.approved_by_kind === 'creator' && (
+                              <span className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/60 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">
+                                Décidé par créa
+                              </span>
+                            )}
                           </div>
                           <code className="block text-[10px] text-[#71717A] truncate mt-1">{d.key_id}</code>
                           <div className="text-[10px] text-[#71717A] mt-0.5">

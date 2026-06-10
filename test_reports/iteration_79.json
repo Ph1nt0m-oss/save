@@ -1,0 +1,41 @@
+{
+  "summary": "iter81 testing of the 'orange' fixes (C2/C13/C17/C20). Backend: 16/16 PASS in /app/backend/tests/test_iter81_orange_fixes.py — covers C2 wizard-suggest variety (3 suggestions per call, length variety across seeds, design kind, auth gate), _fallback_name_pool source-level audit (55 names, 5+ distinct lengths, min≤4 and max≥9), C20 /accounts/visit creator-signature gate (unsigned → 404 'Clé inconnue'/403), /ideas/inbox gate, /ideas/clear scope validation, C17 /export/download include_code/include_chat schema acceptance + 401 unauth + 404 unknown-project. Frontend Playwright: Login page in EN locale (langue par défaut) — démo link is FULLY REMOVED from /login signup flow ✓ (false-gated by iter80 code). Logged in as test_dash_1777658375@gmail.com → /dashboard loads with 47 projects in sidebar (data-testid=project-{project_id} pattern). Right-click on project 'Bonjour' opens context menu in French ('Renommer / Copier le lien / Télécharger ZIP (code source) / Cloner ce projet / Supprimer') → click 'Télécharger ZIP' → ZIP options modal (data-testid='zip-options-modal') opens with title 'Que veux-tu inclure dans le ZIP ?', shows 'Projet : Bonjour', two checkboxes (zip-include-code DEFAULT CHECKED, zip-include-chat DEFAULT UNCHECKED), buttons 'Annuler' + 'Télécharger' (zip-confirm). Confirmed: confirm-button is ENABLED when at least one checkbox checked, DISABLED when both unchecked. C17 fully functional ✓. C2 backend variety verified via 5-seed sweep + 7-seed length-set ≥3 distinct lengths. C20 AccountVisitView and C13 IdeasButton (creator-only with viewMode!=guest) NOT runtime-tested in UI because test account is non-creator — same gap as iter77/iter78. Backend gate on /accounts/visit is verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/ideas/inbox", "issue": "Returns 404 'Clé inconnue.' for unknown key_id before signature verify, while /accounts/visit returns 403 first. Inconsistent gate-order — fine functionally (both reject), but 404 could be considered enum-leak (signal that key_id is unknown vs invalid sig). Low priority."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter81_orange_fixes.py",
+    "/app/test_reports/pytest/iter81_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L3987-4062 /api/ai/wizard-suggest — seed-driven fallback works: _rnd.seed(seed_val) gives reproducible variety across seeds. _fallback_name_pool has 55 entries spanning lengths 3-12. Good. Minor: when LLM JSON parse succeeds but lacks 'suggestions' key for kind=='name', the last-resort placeholder at L4058 is ['NovaApp','PixelForge','Lumino'] — these are the EXACT names the prompt tells GPT to avoid. Recommend replacing with another _rnd.sample(_fallback_name_pool(),3) so variety holds even on validation failure paths.",
+    "server.py L6032-6110 /api/export/download — pydantic ExportRequest correctly accepts include_code and include_chat with defaults (True, False). Backend honors both flags: include_code gates the file writes + README, include_chat appends chat-transcript.md + chat-transcript.docx. project_type=='chat' forces transcript inclusion. Clean implementation.",
+    "server.py L7230-7271 /accounts/visit — creator-signature gated, projects/messages tagged with is_deleted flag derived from deleted_by_user/deleted_by_creator/deleted. {'_id':0,'generated_code':0} projection rightly strips ObjectId and heavy code blob from payload. Messages limited to 2000 most recent — reasonable.",
+    "AccountVisitView.jsx — sidebar-style layout mirrors the Dashboard (project dot colors: jaune chat-online, sky chat-offline, emerald web-online, violet web-offline). Deleted projects render with opacity-30 grayscale + red 'supprimé' badge. Deleted messages render with opacity-25 grayscale + red badge and content prefixed by visit_msg_deleted translation key. Click on project filters messages by project_id. Good UX.",
+    "Dashboard.js L1194-1233 zip-options modal — z-[130], backdrop-blur-sm, onClick(backdrop)=close, project name displayed, two checkboxes with correct defaults (code=true, chat=false), 'Télécharger' button .disabled when (!includeCode && !includeChat). All data-testid attributes present: zip-options-modal, zip-include-code, zip-include-chat, zip-confirm. C17 spec fully honored.",
+    "Login.js L1003-1010 — démo link wrapped in `false && demoLink && waitingFor` so it can NEVER render. Confirms iter80 requirement that user must use real Gmail inbox. The comment block is explicit about why.",
+    "IdeasButton.jsx L36 isCreator gate: `device.role === 'creator' && device.viewMode !== 'guest'` — correctly hides button when creator simulates a guest view via CreatorToolbar."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter81_orange_fixes.py (new — 16 tests, 16/16 pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 iter81)",
+    "frontend": "100% on C17 ZIP modal + démo-link absence + login + dashboard load; C20/C13 not runtime-tested (creator-only flows require WebCrypto signing setup — same gap as iter77/78)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (verified working)",
+  "seed_data_creation": "None — tests are read-only or gate-rejected. No DB writes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter81 'orange fixes' are GREEN end-to-end on the backend (16/16) and UI-validated for C17 + démo-link removal. The two items still requiring a creator-signed device to fully exercise are: (1) C20 — AccountVisitView happy path (opens /accounts/visit and renders sidebar+chat layout). The backend endpoint and gate are verified; the React component AccountVisitView.jsx is unchanged from iter81 spec and matches the dashboard layout idiom. (2) C13 — IdeasButton hide-on-guest-mode toggle, which needs viewMode='guest' set via CreatorToolbar. Both require WebCrypto P-256 signing setup for the test creator key — same gap as iter77/iter78. Recommended next step: provision a long-lived creator JWK fixture so creator-gated flows can be fuzzed without manual signing.",
+  "rca of the issue": "No bugs. One minor consistency item flagged: /ideas/inbox returns 404 'Clé inconnue' for unknown key_id while /accounts/visit returns 403 — both reject correctly but the inbox 404 leaks 'key is unknown' vs 'sig invalid' (enum). Not a functional bug, just a hardening opportunity."
+}
