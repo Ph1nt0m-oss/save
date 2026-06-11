@@ -12,8 +12,10 @@ import MessageContent from '../components/MessageContent';
 import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
 import OfflineAIInstaller from '../components/OfflineAIInstaller';
+import LivePreviewPanel from '../components/LivePreviewPanel';
 import EnhancementSuggestionsWidget from '../components/EnhancementSuggestionsWidget';
 import MessageTTSButton from '../components/MessageTTSButton';
+import TypewriterEffect from '../components/TypewriterEffect';
 import { useTranslatedMessages } from '../hooks/useTranslatedMessages';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useOrchestrate from '../hooks/useOrchestrate';
@@ -79,6 +81,11 @@ export default function Chat() {
 
   // iter94 — Suggestions d'améliorations à la Emergent (générées après réponse IA).
   const [enhancementSuggestions, setEnhancementSuggestions] = useState([]);
+
+  // iter98 — Preview interactive (œil sous chaque création depuis Dashboard sidebar)
+  const [showCreationPreview, setShowCreationPreview] = useState(() => {
+    return Boolean(location.state?.openPreview);
+  });
 
   const handleEnhancementProceed = (selectedIds) => {
     const selected = enhancementSuggestions.filter((s) => selectedIds.includes(s.id));
@@ -266,6 +273,7 @@ export default function Chat() {
         download: response.data.ai_response.download || null,
         ai_source: response.data.ai_response.ai_source || null,
         model_id: selectedModel,
+        _just_arrived: true,  // iter98 — déclenche TypewriterEffect
         timestamp: new Date()
       }]);
       setPendingAtts([]);
@@ -344,6 +352,12 @@ export default function Chat() {
         open={showOfflineInstaller}
         onClose={() => setShowOfflineInstaller(false)}
         onInstalled={() => setOllamaAvailable(true)}
+      />
+      {/* iter98 — Preview interactive de la création courante (déclenchée par œil sidebar) */}
+      <LivePreviewPanel
+        open={showCreationPreview}
+        onClose={() => setShowCreationPreview(false)}
+        defaultPath="/dashboard"
       />
       <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
@@ -444,7 +458,14 @@ export default function Chat() {
                     <span style={{ fontSize: 0, lineHeight: 0, opacity: 0 }} aria-hidden="true" data-copy-prefix>
                       {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
                     </span>
-                    <MessageContent content={displayContent} isUser={isUser} replSessionId={replSessionId} />
+                    {/* iter98 — TypewriterEffect pour les messages IA récents (skip pour Emergent qui rend code par code). */}
+                    {!isUser && msg._just_arrived && !(msg.ai_source || '').includes('emergent') ? (
+                      <div data-testid="chat-typewriter">
+                        <TypewriterEffect text={displayContent} skip={false} speed={12} />
+                      </div>
+                    ) : (
+                      <MessageContent content={displayContent} isUser={isUser} replSessionId={replSessionId} />
+                    )}
                     {msg._is_translated && (
                       <div className="mt-1 text-[10px] text-[#71717A] italic flex items-center gap-1" data-testid="chat-translated-badge">
                         <Languages className="w-3 h-3" />

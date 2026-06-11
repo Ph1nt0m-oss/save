@@ -8005,6 +8005,117 @@ class TranslateProjectNameIn(BaseModel):
     name: str  # fallback si pas en cache
 
 
+# iter98 — Communauté de bots façon Top.gg pour admins.
+# Les admins peuvent créer/modifier/évaluer des bots utilisables dans les chats publics.
+# La créatrice contrôle quel bot est mis en avant.
+class CommunityBotIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    bot_id: Optional[str] = None
+    name: str
+    description: str
+    kind: str = "assistance"  # 'assistance' | 'animation' | 'jeu' | 'information' | 'modération'
+    prompt: str  # Le system prompt qui définit le comportement du bot
+    triggers: Optional[List[str]] = None  # Mots-clés qui déclenchent le bot dans les chats
+    is_published: bool = False
+
+
+class BotRateIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    bot_id: str
+    rating: int  # 1-5
+
+
+@api_router.post("/community-bots/create")
+async def community_bots_create(payload: CommunityBotIn):
+    """Admin/Créa créent un bot."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role")
+    sk = dev.get("staff_kind")
+    if not (role == "creator" or sk == "admin"):
+        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
+    if not payload.name.strip() or not payload.prompt.strip():
+        raise HTTPException(status_code=400, detail="Nom et prompt requis.")
+    bot_id = payload.bot_id or f"bot_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "bot_id": bot_id,
+        "name": payload.name.strip()[:60],
+        "description": payload.description.strip()[:500],
+        "kind": payload.kind,
+        "prompt": payload.prompt.strip()[:4000],
+        "triggers": [t.strip().lower() for t in (payload.triggers or []) if t.strip()][:20],
+        "is_published": payload.is_published,
+        "creator_key_id": payload.key_id,
+        "ratings": [],
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "updated_at": None,
+    }
+    if payload.bot_id:
+        # update existant
+        res = await db.community_bots.update_one(
+            {"bot_id": payload.bot_id, "creator_key_id": payload.key_id},
+            {"$set": {**doc, "updated_at": doc["ts"]}},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Bot introuvable ou non possédé.")
+        return {"success": True, "bot_id": payload.bot_id, "updated": True}
+    await db.community_bots.insert_one(doc)
+    try:
+        await _log_change("model", f"Nouveau bot communautaire : {doc['name']}", {"bot_id": bot_id})
+    except Exception: pass
+    return {"success": True, "bot_id": bot_id}
+
+
+@api_router.get("/community-bots/list")
+async def community_bots_list(only_published: bool = True):
+    q = {"is_published": True} if only_published else {}
+    rows = await db.community_bots.find(q, {"_id": 0, "prompt": 0}).sort("ts", -1).to_list(length=100)
+    for b in rows:
+        ratings = b.get("ratings") or []
+        b["avg_rating"] = round(sum(r.get("rating", 0) for r in ratings) / len(ratings), 1) if ratings else None
+        b["rating_count"] = len(ratings)
+        b.pop("ratings", None)  # don't leak full list
+    return {"bots": rows}
+
+
+class BotDeleteIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    bot_id: str
+
+
+@api_router.post("/community-bots/delete")
+async def community_bots_delete(payload: BotDeleteIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    await db.community_bots.delete_one({"bot_id": payload.bot_id})
+    return {"success": True}
+
+
+@api_router.post("/community-bots/rate")
+async def community_bots_rate(payload: BotRateIn):
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    if payload.rating < 1 or payload.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating 1-5 requis.")
+    await db.community_bots.update_one(
+        {"bot_id": payload.bot_id, "ratings.key_id": {"$ne": payload.key_id}},
+        {"$push": {"ratings": {
+            "key_id": payload.key_id,
+            "pseudo": dev.get("pseudo") or dev.get("label") or "Anonyme",
+            "rating": payload.rating,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }}},
+    )
+    return {"success": True}
+
+
+# ===================================================================
+# iter98 — Endpoint pour préparer la spec d'inscription GitHub
+# (utilisé côté frontend pour le lien officiel)
+# ===================================================================
 @api_router.post("/projects/translate-name")
 async def translate_project_name(request: Request, payload: TranslateProjectNameIn):
     """Traduit le nom d'un projet/chat dans la langue cible. Cache MongoDB

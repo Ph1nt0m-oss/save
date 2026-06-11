@@ -17,7 +17,29 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-06-11 — Iter 97 (Maximum push : ZIP + GitHub obligatoire + Œil création + Caly + Choix destinataire + Tuto mobile)
+### 2026-06-11 — Iter 98 (TypewriterEffect câblé + Vue interactive création + Bots community)
+
+**🟢 TypewriterEffect câblé** :
+- Chat.js : import + rendu conditionnel. Affiche le texte mot-par-mot **uniquement** pour les messages IA `_just_arrived: true` ET dont `ai_source` ne contient pas `emergent` (qui rend code-par-code).
+- Vitesse 12ms/char (~1.5x frappe rapide) + chunks aléatoires 1-2 chars pour fluidité naturelle. Curseur clignotant pendant l'écriture.
+- Flag `_just_arrived: true` ajouté à `setMessages(prev => [...prev, { ... }])` quand réponse IA reçue.
+
+**🟢 Vue interactive iframe sur l'œil création** :
+- Chat.js : import `LivePreviewPanel` + state `showCreationPreview` initialisé depuis `location.state?.openPreview`.
+- Quand l'utilisatrice clique l'œil sur un projet de création dans Dashboard sidebar (iter97), Chat s'ouvre AVEC le panel preview déjà ouvert → iframe interactive du site en hot reload.
+
+**🟢 Bots community façon Top.gg** :
+- 4 nouveaux endpoints backend : `/community-bots/create` (créa/admin), `/list` (public), `/delete` (créa-only), `/rate` (1-5 étoiles).
+- Modèle MongoDB `community_bots` : `{bot_id, name, description, kind, prompt, triggers, is_published, creator_key_id, ratings[], ts}`.
+- Kinds : assistance / animation / jeu / information / modération.
+- Création par admin OU créa ; suppression réservée créa ; ratings agrégés avec avg_rating + rating_count en sortie.
+- Auto-log dans `codeforge_changelog` lors d'une création (category 'model').
+
+**Tests** : **97/97 PASS** (iter98 + régression iter89-97). 0 page error.
+
+**server.py** : 9180 lignes (objectif <9300 OK).
+
+
 
 **🟢 Export ZIP automatique** :
 - Nouveau endpoint `GET /api/exports/zip-project/{project_id}` qui génère un ZIP en mémoire avec `project.json` + `messages.json` + `README.md`. Sécurisé par user_id (404 si projet pas à toi).
@@ -27,6 +49,7 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - `Login.js` : nouveau bloc violet "Inscription GitHub obligatoire" sur le tab Signup avec lien vers `github.com/signup?source=form-home-signup&user_email=...` (l'email courant est pré-rempli).
 - Checkbox de confirmation obligatoire (`signup-github-confirmed`). Submit bloqué tant que non cochée avec toast d'erreur clair.
 
+### 2026-06-11 — Iter 97 (Maximum push : ZIP + GitHub obligatoire + Œil création + Caly + Choix destinataire + Tuto mobile)
 **🟢 Icône œil sous chaque création** :
 - `Dashboard.js` sidebar : ajout d'une rangée sous chaque projet **non-chat** avec bouton œil (`project-eye-{id}`). Click → navigate `/chat` avec `state.openPreview: true`.
 - Préparation pour la prévisualisation interactive style Emergent (à compléter iter98 pour le rendu in-iframe avec interactions).
