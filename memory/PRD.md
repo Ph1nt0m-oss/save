@@ -17,7 +17,31 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-11 — Iter 94 (Slice 4c /messages/* + Traduction CONTENUS chats + Widget Emergent enhancements)
+
+**🟢 P2 — Refacto slice 4c : /messages/* extraits** :
+- Nouveau module `/app/backend/routes/messages_routes.py` (348 lignes) avec `build_messages_router(db, device_by_key, consume_nonce, verify_signature, verify_signed, require_creator_signature, max_message_len, message_cooldown_seconds)`.
+- 7 endpoints déplacés : `/messages/send`, `/inbox`, `/thread`, `/unread-count`, `/rename-contact`, `/delete-thread`, `/send-to-staff`.
+- 6 modèles Pydantic localisés au module.
+- **server.py : 9147 → 8915 lignes (-232)** (slice 4d /orchestrate/* SSE reportée iter95+).
+
+**🟢 P2 — Traduction dynamique des CONTENUS de messages** :
+- Backend : `POST /api/chat/translate-messages` (batch jusqu'à 200 messages, paquets de 8 pour LLM context). Cache MongoDB `chat_message_translations` indexé par `(message_id, lang)`. Format `[i] text` pour parsing robuste de la réponse LLM gpt-5.2.
+- Frontend : hook `useTranslatedMessages(messages, options)` dans `/app/frontend/src/hooks/useTranslatedMessages.js`. Cache localStorage `codeforge_chat_message_translations` par langue. Dedup via `inflightRef` pour éviter les appels concurrents.
+- Câblage Chat.js : `translatedMessages.map(...)` remplace `messages.map(...)`. Badge `data-testid='chat-translated-badge'` avec icône Languages affiché sous chaque message traduit.
+- **Cache 2 niveaux validé live** : 1er call → `cached_hits=0, new_translations=1`. 2e call identique → `cached_hits=1` (0 LLM call).
+
+**🟢 P2 — Widget Emergent enhancements** :
+- Nouveau composant `/app/frontend/src/components/EnhancementSuggestionsWidget.jsx` (175 lignes) avec 5 kinds : `feature` (Sparkles violet), `fix` (Wand2 amber), `design` (Palette rose), `integration` (Plug cyan), `performance` (Zap emerald).
+- **Bug Tailwind JIT corrigé iter94** : KIND_META utilise désormais des classes statiques pré-écrites (bgClass, borderClass, textClass, selectedBorderClass, badgeBg, shadowClass) au lieu de classes dynamiques `bg-${color}-500/10`. Garantit le rendu correct en production build.
+- Cartes interactives : clic → sélection avec checkmark animé, X → retrait, bouton "Ajouter pour continuer" → `onProceed(selectedIds)`.
+- Câblage Chat.js : useEffect heuristique mots-clés (design/api/test/integrate/performance) génère 3-5 suggestions automatiquement après chaque réponse IA. `handleEnhancementProceed` pré-remplit l'input avec les améliorations sélectionnées en `• title` lignes.
+- **MOCKED** : la heuristique mots-clés sera remplacée par un VRAI agent LLM analyseur en iter95+.
 ### 2026-06-11 — Iter 93 (XAI_API_KEY activée + Preview live à la Emergent)
+
+**Tests** : **85/85 PASS** (18 iter94 + 67 régression iter87-93). Testing agent GREEN, 0 bug critique. Bug Tailwind dynamiques signalé → corrigé immédiatement.
+
+
 
 **🟡 P1 — XAI_API_KEY câblée** :
 - Clé utilisatrice ajoutée dans `/app/backend/.env` : `XAI_API_KEY=xai-7t8...` (40+ chars, format valide).
