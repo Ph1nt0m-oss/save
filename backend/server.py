@@ -2438,6 +2438,20 @@ IMPORTANT:
         }
         await db.projects.insert_one(project)
 
+        # iter102 — Auto-push GitHub silencieux à la création (fire-and-forget).
+        # L'utilisateur garde le bouton ZIP manuel ET reçoit en plus une sauvegarde
+        # automatique sur le repo configuré (GITHUB_OWNER/GITHUB_REPO_NAME).
+        if GITHUB_ENABLED:
+            async def _silent_gh_push():
+                try:
+                    await _push_project_to_github(project_id, user_id, raise_on_missing=False)
+                except Exception as _e:
+                    logger.warning(f"Auto GH push failed for {project_id}: {_e}")
+            try:
+                asyncio.create_task(_silent_gh_push())
+            except Exception:
+                pass  # Best-effort
+
         # Create preview
         preview_id = f"preview_{uuid.uuid4().hex[:12]}"
         preview_doc = {
@@ -5962,18 +5976,31 @@ async def export_project_to_github(project_id: str, request: Request):
     Emergent's Save-to-Github.
     """
     user_id = await get_current_user(request)
+    return await _push_project_to_github(project_id=project_id, user_id=user_id, raise_on_missing=True)
+
+
+async def _push_project_to_github(project_id: str, user_id: str, raise_on_missing: bool = False):
+    """Internal helper used by both the public endpoint and the auto-push at creation.
+    raise_on_missing=False makes the call silent (suitable for fire-and-forget after
+    project creation)."""
     project = await db.projects.find_one(
         {"project_id": project_id, "user_id": user_id}, {"_id": 0}
     )
     if not project:
-        raise HTTPException(status_code=404, detail="Projet non trouvé")
+        if raise_on_missing:
+            raise HTTPException(status_code=404, detail="Projet non trouvé")
+        return {"success": False, "error": "project_not_found"}
     if not GITHUB_ENABLED:
-        raise HTTPException(status_code=503, detail="GitHub non configuré côté serveur.")
+        if raise_on_missing:
+            raise HTTPException(status_code=503, detail="GitHub non configuré côté serveur.")
+        return {"success": False, "error": "github_disabled"}
 
     files = (project.get("generated_code") or {}).get("files", [])
     is_chat = project.get("project_type") == "chat"
     if not files and not is_chat:
-        raise HTTPException(status_code=400, detail="Aucun code à exporter.")
+        if raise_on_missing:
+            raise HTTPException(status_code=400, detail="Aucun code à exporter.")
+        return {"success": False, "error": "no_files"}
 
     # Sanitize folder name — keep ASCII alphanumeric/hyphen/underscore only.
     import unicodedata as _ud
@@ -8109,6 +8136,133 @@ async def community_bots_rate(payload: BotRateIn):
             "ts": datetime.now(timezone.utc).isoformat(),
         }}},
     )
+    return {"success": True}
+
+
+# iter102 — Test playground pour un bot avant publication.
+class BotTestIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    bot_id: str
+    user_message: str
+
+
+@api_router.post("/community-bots/test")
+async def community_bots_test(payload: BotTestIn):
+    """Lance un bot avec un message test. Réservé créa/admin (le bot peut
+    être en brouillon, donc public n'a pas le droit)."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role"); sk = dev.get("staff_kind")
+    if not (role == "creator" or sk == "admin"):
+        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
+    bot = await db.community_bots.find_one({"bot_id": payload.bot_id}, {"_id": 0})
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot introuvable.")
+    if not (payload.user_message or "").strip():
+        raise HTTPException(status_code=400, detail="Message vide.")
+
+    # Récupère les FAQ knowledge pour enrichir le system prompt
+    kb_entries = await db.bot_knowledge.find(
+        {"bot_id": payload.bot_id}, {"_id": 0, "question": 1, "answer": 1}
+    ).to_list(length=20)
+    kb_text = ""
+    if kb_entries:
+        kb_text = "\n\n=== BASE DE CONNAISSANCES (FAQ) ===\n" + "\n".join(
+            f"Q: {e.get('question', '')}\nR: {e.get('answer', '')}" for e in kb_entries
+        )
+
+    system_prompt = (bot.get("prompt") or "Tu es un assistant.") + kb_text
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        api_key = os.environ.get("EMERGENT_LLM_KEY") or ""
+        if not api_key:
+            raise HTTPException(status_code=503, detail="LLM key non configurée.")
+        chat = LlmChat(api_key=api_key, session_id=f"bot_test_{payload.bot_id}", system_message=system_prompt)
+        chat = chat.with_model("openai", "gpt-4o-mini").with_max_tokens(800)
+        reply = await chat.send_message(UserMessage(text=payload.user_message[:3000]))
+        return {
+            "bot_id": payload.bot_id,
+            "bot_name": bot.get("name"),
+            "reply": str(reply or "")[:3000],
+            "kb_used": len(kb_entries),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Bot test failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur test bot: {str(e)[:200]}")
+
+
+# iter102 — Knowledge Base (FAQ) par bot. Admins/créa enrichissent les bots
+# avec des Q/R sans toucher au code (modification non-critique du comportement).
+class BotKnowledgeIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    bot_id: str
+    question: str
+    answer: str
+    entry_id: Optional[str] = None  # si fourni → update
+
+
+class BotKnowledgeDeleteIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    bot_id: str
+    entry_id: str
+
+
+@api_router.post("/community-bots/knowledge/upsert")
+async def community_bots_kb_upsert(payload: BotKnowledgeIn):
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role"); sk = dev.get("staff_kind")
+    if not (role == "creator" or sk == "admin"):
+        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
+    if not payload.question.strip() or not payload.answer.strip():
+        raise HTTPException(status_code=400, detail="Question et réponse requises.")
+    bot = await db.community_bots.find_one({"bot_id": payload.bot_id}, {"_id": 0, "bot_id": 1})
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot introuvable.")
+    entry_id = payload.entry_id or f"kb_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "entry_id": entry_id,
+        "bot_id": payload.bot_id,
+        "question": payload.question.strip()[:300],
+        "answer": payload.answer.strip()[:2000],
+        "updated_at": now,
+    }
+    if payload.entry_id:
+        res = await db.bot_knowledge.update_one(
+            {"entry_id": payload.entry_id, "bot_id": payload.bot_id},
+            {"$set": doc},
+        )
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Entrée introuvable.")
+        return {"success": True, "entry_id": entry_id, "updated": True}
+    doc["created_at"] = now
+    doc["author_key_id"] = payload.key_id
+    await db.bot_knowledge.insert_one(doc)
+    return {"success": True, "entry_id": entry_id}
+
+
+@api_router.get("/community-bots/knowledge/list")
+async def community_bots_kb_list(bot_id: str):
+    rows = await db.bot_knowledge.find(
+        {"bot_id": bot_id}, {"_id": 0, "author_key_id": 0}
+    ).sort("updated_at", -1).to_list(length=200)
+    return {"bot_id": bot_id, "entries": rows}
+
+
+@api_router.post("/community-bots/knowledge/delete")
+async def community_bots_kb_delete(payload: BotKnowledgeDeleteIn):
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role"); sk = dev.get("staff_kind")
+    if not (role == "creator" or sk == "admin"):
+        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
+    await db.bot_knowledge.delete_one({"entry_id": payload.entry_id, "bot_id": payload.bot_id})
     return {"success": True}
 
 

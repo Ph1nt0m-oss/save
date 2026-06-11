@@ -11,7 +11,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Plus, X, Edit3, Trash2, Star, Save, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Bot, Plus, X, Edit3, Trash2, Star, Save, Loader2, Eye, EyeOff, Play, BookOpen, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -32,6 +32,18 @@ export default function BotsAdminPanel({ open, onClose }) {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(null);  // null = liste, {} = nouveau, {bot} = edit
   const [form, setForm] = useState({ name: '', description: '', kind: 'assistance', prompt: '', triggers: '', is_published: false });
+
+  // iter102 — Playground test bot
+  const [testing, setTesting] = useState(null);  // {bot_id, name}
+  const [testInput, setTestInput] = useState('');
+  const [testReply, setTestReply] = useState('');
+  const [testBusy, setTestBusy] = useState(false);
+
+  // iter102 — Knowledge base par bot
+  const [kbOpen, setKbOpen] = useState(null);  // {bot_id, name}
+  const [kbEntries, setKbEntries] = useState([]);
+  const [kbForm, setKbForm] = useState({ question: '', answer: '', entry_id: null });
+  const [kbLoading, setKbLoading] = useState(false);
 
   const loadBots = async () => {
     setLoading(true);
@@ -94,6 +106,61 @@ export default function BotsAdminPanel({ open, onClose }) {
     }
   };
 
+  // iter102 — Test bot
+  const startTest = (b) => { setTesting({ bot_id: b.bot_id, name: b.name }); setTestInput(''); setTestReply(''); };
+  const runTest = async () => {
+    if (!testInput.trim() || !testing) return;
+    setTestBusy(true); setTestReply('');
+    try {
+      const body = await withCreatorProof(API, axios, { bot_id: testing.bot_id, user_message: testInput.trim() });
+      const r = await axios.post(`${API}/community-bots/test`, body);
+      setTestReply(r.data?.reply || '(vide)');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Échec test bot');
+    } finally { setTestBusy(false); }
+  };
+
+  // iter102 — Knowledge base
+  const openKb = async (b) => {
+    setKbOpen({ bot_id: b.bot_id, name: b.name });
+    setKbForm({ question: '', answer: '', entry_id: null });
+    setKbLoading(true);
+    try {
+      const r = await axios.get(`${API}/community-bots/knowledge/list?bot_id=${encodeURIComponent(b.bot_id)}`);
+      setKbEntries(r.data?.entries || []);
+    } catch (e) {
+      toast.error('Impossible de charger la KB');
+    } finally { setKbLoading(false); }
+  };
+  const saveKbEntry = async () => {
+    if (!kbForm.question.trim() || !kbForm.answer.trim() || !kbOpen) return;
+    try {
+      const body = await withCreatorProof(API, axios, {
+        bot_id: kbOpen.bot_id,
+        question: kbForm.question.trim(),
+        answer: kbForm.answer.trim(),
+        entry_id: kbForm.entry_id || undefined,
+      });
+      await axios.post(`${API}/community-bots/knowledge/upsert`, body);
+      toast.success(kbForm.entry_id ? 'Entrée mise à jour' : 'Entrée ajoutée');
+      setKbForm({ question: '', answer: '', entry_id: null });
+      openKb(kbOpen);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Échec sauvegarde KB');
+    }
+  };
+  const deleteKbEntry = async (entry_id) => {
+    if (!window.confirm('Supprimer cette entrée ?') || !kbOpen) return;
+    try {
+      const body = await withCreatorProof(API, axios, { bot_id: kbOpen.bot_id, entry_id });
+      await axios.post(`${API}/community-bots/knowledge/delete`, body);
+      toast.success('Entrée supprimée');
+      openKb(kbOpen);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Échec suppression');
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -107,7 +174,7 @@ export default function BotsAdminPanel({ open, onClose }) {
         <motion.div
           initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-4xl h-[85vh] bg-[#0A0A0A] border border-white/10 rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden"
+          className="w-full max-w-4xl h-[85vh] bg-[#0A0A0A] border border-white/10 rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden relative"
         >
           <header className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-gradient-to-r from-violet-500/10 to-cyan-500/10">
             <div className="flex items-center gap-2">
@@ -199,6 +266,16 @@ export default function BotsAdminPanel({ open, onClose }) {
                           className="flex-1 text-[11px] bg-violet-500/10 border border-violet-400/30 text-violet-200 hover:bg-violet-500/20 px-2 py-1 rounded-sm inline-flex items-center justify-center gap-1">
                           <Edit3 className="w-3 h-3" /> Modifier
                         </button>
+                        <button onClick={() => startTest(b)} data-testid={`bot-test-${b.bot_id}`}
+                          title="Tester le bot"
+                          className="text-[11px] bg-emerald-500/10 border border-emerald-400/30 text-emerald-200 hover:bg-emerald-500/20 px-2 py-1 rounded-sm">
+                          <Play className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => openKb(b)} data-testid={`bot-kb-${b.bot_id}`}
+                          title="Base de connaissances (FAQ)"
+                          className="text-[11px] bg-cyan-500/10 border border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/20 px-2 py-1 rounded-sm">
+                          <BookOpen className="w-3 h-3" />
+                        </button>
                         <button onClick={() => deleteBot(b.bot_id)} data-testid={`bot-delete-${b.bot_id}`}
                           className="text-[11px] bg-rose-500/10 border border-rose-400/30 text-rose-200 hover:bg-rose-500/20 px-2 py-1 rounded-sm">
                           <Trash2 className="w-3 h-3" />
@@ -210,6 +287,109 @@ export default function BotsAdminPanel({ open, onClose }) {
               </div>
             )}
           </div>
+
+          {/* iter102 — Test bot playground overlay */}
+          {testing && (
+            <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col" data-testid="bot-test-overlay">
+              <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-emerald-500/10">
+                <div className="flex items-center gap-2">
+                  <Play className="w-4 h-4 text-emerald-300" />
+                  <h3 className="font-['Chivo'] font-bold text-sm text-white">Tester : {testing.name}</h3>
+                </div>
+                <button onClick={() => setTesting(null)} data-testid="bot-test-close" className="text-[#A1A1AA] hover:text-white p-1"><X className="w-5 h-5" /></button>
+              </header>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <textarea
+                  value={testInput}
+                  onChange={(e) => setTestInput(e.target.value)}
+                  placeholder="Tape un message pour tester le bot…"
+                  rows={3}
+                  data-testid="bot-test-input"
+                  className="w-full bg-[#0F0F13] border border-white/10 rounded-sm px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-400"
+                />
+                <button onClick={runTest} disabled={testBusy || !testInput.trim()} data-testid="bot-test-run"
+                  className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-[#050505] font-['Chivo'] font-bold text-xs px-4 py-2 rounded-sm">
+                  {testBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Envoyer
+                </button>
+                {testReply && (
+                  <div className="bg-[#0F0F13] border border-emerald-400/30 rounded-sm p-3" data-testid="bot-test-reply">
+                    <div className="text-[10px] text-emerald-300 mb-1.5 uppercase tracking-wider">Réponse du bot</div>
+                    <p className="text-xs text-white whitespace-pre-wrap">{testReply}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* iter102 — Knowledge Base (FAQ) overlay */}
+          {kbOpen && (
+            <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col" data-testid="bot-kb-overlay">
+              <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-cyan-500/10">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-cyan-300" />
+                  <h3 className="font-['Chivo'] font-bold text-sm text-white">FAQ : {kbOpen.name}</h3>
+                  <span className="text-[10px] text-[#71717A]">({kbEntries.length})</span>
+                </div>
+                <button onClick={() => setKbOpen(null)} data-testid="bot-kb-close" className="text-[#A1A1AA] hover:text-white p-1"><X className="w-5 h-5" /></button>
+              </header>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-3 space-y-2">
+                  <input
+                    value={kbForm.question}
+                    onChange={(e) => setKbForm({ ...kbForm, question: e.target.value })}
+                    placeholder="Question (≤300 chars)"
+                    data-testid="bot-kb-question-input"
+                    className="w-full bg-[#050505] border border-white/10 rounded-sm px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+                  />
+                  <textarea
+                    value={kbForm.answer}
+                    onChange={(e) => setKbForm({ ...kbForm, answer: e.target.value })}
+                    placeholder="Réponse (≤2000 chars)"
+                    rows={3}
+                    data-testid="bot-kb-answer-input"
+                    className="w-full bg-[#050505] border border-white/10 rounded-sm px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={saveKbEntry} disabled={!kbForm.question.trim() || !kbForm.answer.trim()} data-testid="bot-kb-save"
+                      className="inline-flex items-center gap-1.5 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-[#050505] font-['Chivo'] font-bold text-xs px-4 py-2 rounded-sm">
+                      <Save className="w-3.5 h-3.5" /> {kbForm.entry_id ? 'Mettre à jour' : 'Ajouter'}
+                    </button>
+                    {kbForm.entry_id && (
+                      <button onClick={() => setKbForm({ question: '', answer: '', entry_id: null })}
+                        className="text-[#A1A1AA] hover:text-white text-xs px-3 py-2">Annuler</button>
+                    )}
+                  </div>
+                </div>
+                {kbLoading ? (
+                  <div className="text-center py-8"><Loader2 className="w-5 h-5 mx-auto animate-spin text-cyan-300" /></div>
+                ) : kbEntries.length === 0 ? (
+                  <div className="text-center py-8 text-[#71717A] text-xs">Aucune entrée pour ce bot.</div>
+                ) : (
+                  <div className="space-y-2" data-testid="bot-kb-list">
+                    {kbEntries.map((e) => (
+                      <div key={e.entry_id} data-testid={`bot-kb-entry-${e.entry_id}`}
+                        className="bg-[#0F0F13] border border-white/10 rounded-sm p-3">
+                        <div className="text-xs font-bold text-cyan-200 mb-1">Q : {e.question}</div>
+                        <div className="text-[11px] text-[#A1A1AA] whitespace-pre-wrap">R : {e.answer}</div>
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => setKbForm({ question: e.question, answer: e.answer, entry_id: e.entry_id })}
+                            data-testid={`bot-kb-edit-${e.entry_id}`}
+                            className="text-[10px] bg-cyan-500/10 border border-cyan-400/30 text-cyan-200 hover:bg-cyan-500/20 px-2 py-0.5 rounded-sm">
+                            Éditer
+                          </button>
+                          <button onClick={() => deleteKbEntry(e.entry_id)}
+                            data-testid={`bot-kb-delete-${e.entry_id}`}
+                            className="text-[10px] bg-rose-500/10 border border-rose-400/30 text-rose-200 hover:bg-rose-500/20 px-2 py-0.5 rounded-sm">
+                            <Trash2 className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </motion.div>
       </motion.div>
     </AnimatePresence>

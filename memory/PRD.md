@@ -16,6 +16,33 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-11 — Iter 102.5 (Auto GitHub push, Bots Test+KB, Chat cleanup)
+
+**🟢 Auto GitHub push à la création** :
+- Nouveau helper `_push_project_to_github(project_id, user_id, raise_on_missing=False)` extrait de l'endpoint `/export/github/{project_id}`.
+- Hook fire-and-forget dans `_ai_generate_complete_app_impl` (juste après `db.projects.insert_one`) → `asyncio.create_task(_silent_gh_push())` qui pousse tous les fichiers + README dans `projects/<safe-name>-<id>/` sur le repo configuré.
+- Le bouton ZIP manuel est **conservé** (Dashboard.js ligne 499) pour les téléchargements à la demande. Les deux flux coexistent.
+- Silencieux : si `GITHUB_ENABLED=false` ou si le push échoue, on log un warning sans bloquer la création.
+
+**🟢 Community Bots — Test playground + Knowledge Base** :
+- Backend : 4 nouveaux endpoints
+  - `POST /api/community-bots/test` — exécute un bot avec un message test (réservé créa/admin, OpenAI gpt-4o-mini via Emergent LLM key, enrichit avec la KB du bot).
+  - `POST /api/community-bots/knowledge/upsert` — crée/met à jour une entrée FAQ (Q/R).
+  - `GET /api/community-bots/knowledge/list?bot_id=...` — liste publique des entrées.
+  - `POST /api/community-bots/knowledge/delete` — supprime une entrée.
+- Frontend `BotsAdminPanel.jsx` : 2 nouveaux boutons par carte (🟢 Tester / 🔵 FAQ) + overlays plein modal avec formulaire de test (input + réponse) et CRUD complet FAQ.
+- Collection MongoDB : `bot_knowledge` (`entry_id`, `bot_id`, `question`, `answer`, timestamps).
+
+**🟢 Suggestions d'améliorations chat retirées** (demande explicite utilisatrice) :
+- `Chat.js` : suppression du state `enhancementSuggestions`, de l'effet auto-LLM, de l'import `EnhancementSuggestionsWidget` et du rendu du widget. Plus de pop-up à fermer après chaque réponse IA.
+
+**🟢 Tutoriels offline mobiles vérifiés** :
+- `OfflineAIInstaller.jsx` couvre macOS, Windows, Linux, iPhone (Private LLM), iPad/Mac Apple Silicon (Ollama natif), Samsung et Xiaomi (Termux + Ollama ARM64). Tous les liens et commandes vérifiés à jour.
+
+**Tests ajoutés** : `/app/backend/tests/test_iter102_bots_github.py` (7 tests) — routes registrées, signatures attendues, helper push importable, hook auto-push présent dans le source, widget chat retiré, UI bots test+KB présente. **24/24 PASS** (iter100+101+102).
+
+
+
 ### 2026-02-11 — Iter 102 (Latence 0ms Chat + i18n complète Wizard & Programmation)
 
 **🟢 Chat history cache instantané (P0 user pain point)** :

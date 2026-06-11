@@ -13,7 +13,6 @@ import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
 import OfflineAIInstaller from '../components/OfflineAIInstaller';
 import LivePreviewPanel from '../components/LivePreviewPanel';
-import EnhancementSuggestionsWidget from '../components/EnhancementSuggestionsWidget';
 import MessageTTSButton from '../components/MessageTTSButton';
 import TypewriterEffect from '../components/TypewriterEffect';
 import { useTranslatedMessages } from '../hooks/useTranslatedMessages';
@@ -81,51 +80,14 @@ export default function Chat() {
   // Cache localStorage + cache MongoDB côté backend.
   const translatedMessages = useTranslatedMessages(messages, { enabled: true, defaultLang: 'fr' });
 
-  // iter94 — Suggestions d'améliorations à la Emergent (générées après réponse IA).
-  const [enhancementSuggestions, setEnhancementSuggestions] = useState([]);
-
   // iter98 — Preview interactive (œil sous chaque création depuis Dashboard sidebar)
   const [showCreationPreview, setShowCreationPreview] = useState(() => {
     return Boolean(location.state?.openPreview);
   });
 
-  const handleEnhancementProceed = (selectedIds) => {
-    const selected = enhancementSuggestions.filter((s) => selectedIds.includes(s.id));
-    if (selected.length === 0) { setEnhancementSuggestions([]); return; }
-    // Auto-construire un message qui résume les améliorations sélectionnées
-    const summary = selected.map((s) => `• ${s.title}`).join('\n');
-    setInput((cur) => `${cur ? cur + '\n\n' : ''}Continue avec ces améliorations :\n${summary}`);
-    setEnhancementSuggestions([]);
-    toast.success(`${selected.length} amélioration${selected.length > 1 ? 's' : ''} ajoutée${selected.length > 1 ? 's' : ''}`);
-  };
-
-  // Générer des suggestions automatiques après chaque réponse IA non-vide
-  // via un VRAI agent LLM analyseur (iter95) — remplace l'heuristique mots-clés.
-  useEffect(() => {
-    if (messages.length === 0) return;
-    const last = messages[messages.length - 1];
-    if (last.role !== 'assistant' || !last.content) return;
-    if (isLoading || enhancementSuggestions.length > 0) return;
-    // Appel LLM analyseur backend
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await axios.post(`${API}/chat/suggest-enhancements`, {
-          last_ai_message: last.content.slice(0, 3000),
-          project_type: project?.project_type || 'chat',
-          language: language || 'fr',
-        }, { withCredentials: true });
-        if (cancelled) return;
-        const suggestions = r?.data?.suggestions || [];
-        if (suggestions.length > 0) {
-          setEnhancementSuggestions(suggestions);
-        }
-      } catch { /* silent — heuristique fallback désactivée */ }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length, isLoading]);
-
+  // iter102 — Retrait des suggestions d'améliorations à la demande utilisatrice
+  // ("c'est chiant de tjrs cliquer sur fermer"). Le widget et l'appel LLM
+  // /chat/suggest-enhancements sont désactivés côté UI.
   // iter90 — Mode hors-ligne : auto-détecte Ollama + propose le tuto si absent.
   const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
   const [ollamaAvailable, setOllamaAvailable] = useState(true);
@@ -606,17 +568,6 @@ export default function Chat() {
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
-
-        {/* iter94 — Widget Emergent enhancements (créa-only, suggestions actionnables après réponse IA) */}
-        {enhancementSuggestions.length > 0 && (
-          <div className="mb-4">
-            <EnhancementSuggestionsWidget
-              suggestions={enhancementSuggestions}
-              onProceed={handleEnhancementProceed}
-              onSkipAll={() => setEnhancementSuggestions([])}
-            />
-          </div>
-        )}
 
         <form onSubmit={sendMessage}>
           {!canWrite && (
