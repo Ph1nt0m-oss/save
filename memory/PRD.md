@@ -17,7 +17,46 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-06-11 — Iter 90 (P0 sécurité corrigée + Grok/Lindy + Mode hors-ligne)
+### 2026-06-11 — Iter 91 (Fix 'la créatrice' + Refacto slice 4 + xAI Grok réel)
+
+**🔴 i18n FR fix** :
+- Toutes les occurrences de "le créatrice" (formulation incorrecte au masculin) corrigées en "la créatrice" dans `LanguageContext.js` (5 strings : `sm_tooltip`, `sl_body`, `sl_hint`, `ro_chat_banner`, `signup_pseudo_hint`, `theft_body`, `dm_my_key_hint`). Verify : 0 occurrences de "le créatrice", 18 de "la créatrice".
+
+**🟢 Refacto server.py slice 4a — /announcements/* extraits** :
+- Nouveau module `/app/backend/routes/announcements_routes.py` (197 lignes) avec `build_announcements_router(db, verify_signed, require_creator_signature, audience_matches)`.
+- 6 endpoints déplacés : `/announcements/create`, `/list`, `/edit`, `/delete`, `/set-state`, `/clear-history`.
+- 4 modèles Pydantic localisés au module (AnnounceCreateIn, AnnounceEditIn, AnnStateIn, _AnnounceDeleteIn).
+- server.py inclut via `app.include_router(build_announcements_router(...), prefix='/api')`.
+
+**🟢 Refacto server.py slice 4b — /polls/* extraits** :
+- Nouveau module `/app/backend/routes/polls_routes.py` (~300 lignes) avec `build_polls_router(...)`.
+- 7 endpoints déplacés : `/polls/create`, `/edit`, `/suggest-option`, `/decide-suggestion`, `/list`, `/vote`, `/delete`.
+- 6 modèles Pydantic localisés.
+
+**📊 server.py allégé** : **9414 → 8995 lignes (-419)** sans aucune régression fonctionnelle.
+
+**🟡 Intégration xAI Grok réelle** :
+- Nouveau module `/app/backend/grok_integration.py` : `is_xai_available()`, `grok_chat(prompt, model, system_message, timeout_sec)`, `grok_model_id(short_name)`.
+- API xAI compatible OpenAI SDK (`https://api.x.ai/v1`). Lazy import du SDK openai (déjà installé 1.99.9).
+- Branch dans `_send_chat_message_impl` (server.py ligne 3164) : si `provider == "xai"` et `XAI_API_KEY` définie → appel Grok direct. Sinon fallback cascade emergentintegrations claude-sonnet inchangé.
+- Pour activer Grok réel : ajouter `XAI_API_KEY=xai-...` dans `/app/backend/.env` (clé créable sur https://console.x.ai/).
+
+**Audit utilisatrice (réponses)** :
+- ✅ **Création unified apps** : `GuidedWizard.js` + `/ai/generate-complete-app` + orchestrator multi-agents — l'app peut générer une app complète FastAPI + React + DB.
+- ✅ **Aperçu manipulable + GitHub** : `on_preview_real` (yarn build sandbox) + `on_commit_real` (push GitHub réel) câblés en iter86/88, opt-in via `enable_preview_rebuild=true` et `enable_commit=true` dans le payload `/chat/orchestrate-stream`.
+- ✅ **Noms entiers des langues** : `TRANSLATED_LANG_NAMES` complète pour 16 langues (LanguageContext.js ligne 3306-3322). LanguageToggle affiche "Français (Anglais)" etc. selon UI lang.
+- ❌ **Traduction des noms de tchats** : pas implémenté — les noms en BDD restent dans la langue de création. À ajouter en iter92+ (re-traduire dynamiquement via `/creator/translate` qui existe déjà ligne 8628).
+- ✅ **Agents de test** : `testing_agent_v3_fork` opérationnel, utilisé à chaque iter (rapport iter91 = 94/94 PASS).
+
+**REPORTÉ iter92+** :
+- 🟢 Slice 4c (/messages/*) et 4d (/orchestrate/*) — server.py encore 8995 lignes, deux slices supplémentaires viseraient <8000.
+- 🟢 Traduction dynamique des noms de chats selon langue UI.
+- 🟢 Style Emergent "Agent is suggesting enhancements" avec thumbnails à valider — refonte UI OrchestrationLog volumineuse.
+- 🟢 Webpack incrémental builds (nécessite infra Docker dédiée).
+
+**Tests** : **94/94 PASS** (16 nouveaux iter91 + 78 régression iter76+77+86+87+88+89+90). Testing agent GREEN.
+
+
 
 ### 2026-06-10 — Iter 89 (Punch-list user Message 660 : /ideas/clear + Chat resume + Nouveaux modèles)
 **🔴 P0 SÉCURITÉ — Régression iter89 corrigée** :
@@ -44,6 +83,7 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 **Tests** : **27/27 PASS** (10 iter90 source-audit + 7 live integration + 10 iter89 régression). Testing agent GREEN end-to-end.
 
+### 2026-06-11 — Iter 90 (P0 sécurité corrigée + Grok/Lindy + Mode hors-ligne)
 
 
 **🔴 Issue 1 (P0) — /ideas/clear password validation** :
