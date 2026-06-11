@@ -8115,6 +8115,146 @@ async def translate_chat_messages(request: Request, payload: TranslateMessagesBa
     return {"translations": cache_map, "cached_hits": len(cached_rows), "new_translations": len(new_translations)}
 
 
+# iter95 — VRAI agent LLM analyseur pour les suggestions d'amélioration.
+# Remplace l'heuristique mots-clés (iter94 frontend) par un appel claude-sonnet
+# qui analyse le contexte (dernière réponse IA + project_type) et propose
+# 3-5 suggestions actionnables et CONTEXTUELLES.
+class EnhancementAnalyzeIn(BaseModel):
+    last_ai_message: str
+    project_type: Optional[str] = None  # 'chat' | 'web' | 'mobile' | 'api' | None
+    language: Optional[str] = "fr"
+
+
+@api_router.post("/chat/suggest-enhancements")
+async def suggest_enhancements(request: Request, payload: EnhancementAnalyzeIn):
+    """iter95 — Analyse la dernière réponse IA et propose des suggestions
+    contextuelles d'amélioration via claude-sonnet. Retourne une liste de
+    suggestions {id, kind, title, description}.
+
+    `kind` ∈ {'feature', 'fix', 'design', 'integration', 'performance'}
+    """
+    await get_current_user(request)  # auth required
+    text = (payload.last_ai_message or "").strip()
+    if not text:
+        return {"suggestions": []}
+    lang = (payload.language or "fr").strip().lower()
+    project_type = payload.project_type or "chat"
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            return {"suggestions": [], "error": "llm_unavailable"}
+        prompt = (
+            f"Analyse la réponse précédente de l'assistant IA (en {lang}) et propose 3 à 5 "
+            f"améliorations CONCRÈTES et ACTIONNABLES que l'utilisateur pourrait demander ensuite. "
+            f"Contexte projet : {project_type}.\n\n"
+            f"Réponse IA :\n\"\"\"{text[:3000]}\"\"\"\n\n"
+            f"Réponds STRICTEMENT en JSON valide avec ce format :\n"
+            f'[{{"kind": "feature|fix|design|integration|performance", "title": "court titre (≤60 chars)", "description": "explication concrète (≤180 chars)"}}, ...]\n\n'
+            f"Règles :\n"
+            f"- Choisis le 'kind' qui correspond le mieux à chaque suggestion\n"
+            f"- Titres courts et orientés action (verbe à l'infinitif)\n"
+            f"- Descriptions concrètes (pas de blabla)\n"
+            f"- Adapte au contexte projet ({project_type})\n"
+            f"- Réponds UNIQUEMENT le JSON, rien d'autre."
+        )
+        chat = LlmChat(
+            api_key=key,
+            session_id=f"enh_sug_{uuid.uuid4().hex[:6]}",
+            system_message=(
+                "You are an expert software architect and product manager. "
+                "You analyze AI responses and propose contextual, actionable "
+                "enhancement suggestions. Always respond in valid JSON only."
+            ),
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        response = (await chat.send_message(UserMessage(text=prompt)) or "").strip()
+        # Parse JSON (strip ```json fences if present)
+        if response.startswith("```"):
+            lines = response.split("\n")
+            response = "\n".join(lines[1:-1]) if len(lines) >= 3 else response
+        import json as _json
+        parsed = _json.loads(response)
+        if not isinstance(parsed, list):
+            return {"suggestions": []}
+        # Validate + assign IDs
+        suggestions = []
+        valid_kinds = {"feature", "fix", "design", "integration", "performance"}
+        for i, item in enumerate(parsed[:5]):
+            if not isinstance(item, dict):
+                continue
+            kind = item.get("kind") or "feature"
+            if kind not in valid_kinds:
+                kind = "feature"
+            title = str(item.get("title") or "").strip()[:80]
+            desc = str(item.get("description") or "").strip()[:200]
+            if not title:
+                continue
+            suggestions.append({
+                "id": f"enh-llm-{uuid.uuid4().hex[:8]}",
+                "kind": kind,
+                "title": title,
+                "description": desc,
+            })
+        return {"suggestions": suggestions}
+    except Exception as e:
+        logger.warning(f"enhancement suggestion failed: {e}")
+        return {"suggestions": [], "error": str(e)[:200]}
+
+
+# iter95 — Voice mode / TTS pour les réponses IA.
+# Endpoint TTS via OpenAI TTS API (emergentintegrations gpt-tts).
+class TTSIn(BaseModel):
+    text: str
+    voice: Optional[str] = "alloy"  # alloy/echo/fable/onyx/nova/shimmer
+
+
+@api_router.post("/chat/tts")
+async def chat_tts(request: Request, payload: TTSIn):
+    """iter95 — Convertit un texte en audio MP3 via OpenAI TTS.
+    Retourne l'audio en base64 pour le frontend (player <audio>)."""
+    await get_current_user(request)
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Texte vide.")
+    if len(text) > 4000:
+        text = text[:4000]  # truncate pour respecter la limite OpenAI TTS
+    voice = payload.voice or "alloy"
+    if voice not in ("alloy", "echo", "fable", "onyx", "nova", "shimmer"):
+        voice = "alloy"
+    try:
+        from openai import AsyncOpenAI
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            raise HTTPException(status_code=503, detail="TTS indisponible (clé manquante).")
+        client = AsyncOpenAI(
+            api_key=key,
+            base_url="https://integrations.emergentagent.com/llm",
+            timeout=30.0,
+        )
+        response = await client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=text,
+            response_format="mp3",
+        )
+        # Lit l'audio binaire
+        audio_bytes = response.read() if hasattr(response, 'read') else response.content
+        import base64
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        return {
+            "audio_base64": audio_b64,
+            "mime_type": "audio/mpeg",
+            "voice": voice,
+            "char_count": len(text),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"TTS failed: {e}")
+        raise HTTPException(status_code=503, detail=f"TTS indisponible: {str(e)[:150]}")
+
+
 # iter92 — Endpoint changelog des modifications site/IA pour PrivateProgramming.
 # Auto-tracker les changements de MODEL_ROUTES, site_modes, etc.
 class CodeforgeChangelogIn(BaseModel):
@@ -8507,18 +8647,10 @@ async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
     })
 
 
-@api_router.get("/orchestrate/event/{event_id}/details")
-async def orchestrate_event_details(event_id: str, request: Request):
-    """iter84 — Récupère le détail complet d'un événement d'orchestration.
-    L'UI appelle cet endpoint quand l'utilisateur déplie la flèche de
-    l'événement."""
-    user_id = await get_current_user(request)
-    doc = await db.orchestrator_events.find_one(
-        {"event_id": event_id, "user_id": user_id}, {"_id": 0},
-    )
-    if not doc:
-        raise HTTPException(status_code=404, detail="Événement introuvable.")
-    return doc
+# iter95 — Routes /orchestrate/event/{id}/details et /orchestrate/history
+# déplacées dans routes/orchestrate_routes.py via build_orchestrate_router(...).
+# /chat/orchestrate, /chat/orchestrate-stream et /orchestrate/test-loop restent
+# ici car ils dépendent de closures (on_commit_real, on_preview_real, subprocess).
 
 
 class OrchestrateHistoryIn(BaseModel):
@@ -8529,8 +8661,8 @@ class OrchestrateHistoryIn(BaseModel):
 # iter85 — Testing-agents-en-boucle : endpoint qui lance pytest sur les tests
 # backend et émet des événements test_run (start/passed/failed/done) via SSE.
 class TestLoopIn(BaseModel):
-    target: Optional[str] = "backend"   # 'backend' (pytest) | 'sandbox' (orchestrator._execute_python)
-    path: Optional[str] = "tests/"      # filtre pytest
+    target: Optional[str] = "backend"
+    path: Optional[str] = "tests/"
     project_id: Optional[str] = None
 
 
@@ -8671,17 +8803,7 @@ async def observability_video_event(payload: VideoEventIn, request: Request):
     return {"recorded": True}
 
 
-@api_router.post("/orchestrate/history")
-async def orchestrate_history(request: Request, payload: OrchestrateHistoryIn):
-    """iter84 — Récupère l'historique des événements d'orchestration d'une
-    session pour cet utilisateur. Permet de réafficher le journal après
-    un refresh ou switch de projet."""
-    user_id = await get_current_user(request)
-    q = {"user_id": user_id}
-    if payload.project_id:
-        q["project_id"] = payload.project_id
-    rows = await db.orchestrator_events.find(q, {"_id": 0, "details": 0}).sort("ts", -1).limit(max(1, min(payload.limit, 200))).to_list(length=200)
-    return {"events": list(reversed(rows))}
+# iter95 — /orchestrate/history déplacée (voir routes/orchestrate_routes.py).
 
 
 # ==========================================================================
@@ -8817,6 +8939,13 @@ app.include_router(
         max_message_len=MAX_MESSAGE_LEN,
         message_cooldown_seconds=MESSAGE_COOLDOWN_SECONDS,
     ),
+    prefix="/api",
+)
+
+# iter95 — slice 4d : /orchestrate/event/{id}/details + /orchestrate/history
+from routes.orchestrate_routes import build_orchestrate_router  # noqa: E402
+app.include_router(
+    build_orchestrate_router(db, get_current_user=get_current_user),
     prefix="/api",
 )
 

@@ -13,6 +13,7 @@ import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
 import OfflineAIInstaller from '../components/OfflineAIInstaller';
 import EnhancementSuggestionsWidget from '../components/EnhancementSuggestionsWidget';
+import MessageTTSButton from '../components/MessageTTSButton';
 import { useTranslatedMessages } from '../hooks/useTranslatedMessages';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useOrchestrate from '../hooks/useOrchestrate';
@@ -90,35 +91,30 @@ export default function Chat() {
     toast.success(`${selected.length} amélioration${selected.length > 1 ? 's' : ''} ajoutée${selected.length > 1 ? 's' : ''}`);
   };
 
-  // Générer des suggestions automatiques après chaque réponse IA non-vide.
-  // Heuristique simple : on extrait les mots-clés du dernier message AI.
+  // Générer des suggestions automatiques après chaque réponse IA non-vide
+  // via un VRAI agent LLM analyseur (iter95) — remplace l'heuristique mots-clés.
   useEffect(() => {
     if (messages.length === 0) return;
     const last = messages[messages.length - 1];
     if (last.role !== 'assistant' || !last.content) return;
-    // Ne pas suggérer si on est en train de charger ou si une suggestion existe déjà
     if (isLoading || enhancementSuggestions.length > 0) return;
-    // Heuristique : générer 3-4 suggestions génériques pertinentes au contexte.
-    const content = (last.content || '').toLowerCase();
-    const suggestions = [];
-    if (content.includes('design') || content.includes('ui') || content.includes('css')) {
-      suggestions.push({ id: 'enh-design-polish', kind: 'design', title: 'Améliorer le design',
-        description: 'Affiner les couleurs, espacements et micro-animations pour un rendu professionnel.' });
-    }
-    if (content.includes('api') || content.includes('integrate') || content.includes('intégr')) {
-      suggestions.push({ id: 'enh-integration-add', kind: 'integration', title: 'Ajouter une intégration',
-        description: 'Connecter Stripe, OpenAI ou un autre service tiers pour étendre les fonctionnalités.' });
-    }
-    if (content.includes('test') || content.includes('bug') || content.includes('fix')) {
-      suggestions.push({ id: 'enh-fix-add-tests', kind: 'fix', title: 'Ajouter des tests',
-        description: 'Couvrir les chemins critiques avec des tests pytest + frontend pour éviter les régressions.' });
-    }
-    suggestions.push({ id: 'enh-feature-extend', kind: 'feature', title: 'Étendre les fonctionnalités',
-      description: 'Ajouter une nouvelle feature : notifications push, export PDF, dashboard analytics…' });
-    suggestions.push({ id: 'enh-perf-optimize', kind: 'performance', title: 'Optimiser les performances',
-      description: 'Lazy loading, code splitting, cache HTTP — réduire le bundle size et le TTFB.' });
-    // Garder les 4 premiers max
-    setEnhancementSuggestions(suggestions.slice(0, 4));
+    // Appel LLM analyseur backend
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await axios.post(`${API}/chat/suggest-enhancements`, {
+          last_ai_message: last.content.slice(0, 3000),
+          project_type: project?.project_type || 'chat',
+          language: language || 'fr',
+        }, { withCredentials: true });
+        if (cancelled) return;
+        const suggestions = r?.data?.suggestions || [];
+        if (suggestions.length > 0) {
+          setEnhancementSuggestions(suggestions);
+        }
+      } catch { /* silent — heuristique fallback désactivée */ }
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, isLoading]);
 
@@ -523,6 +519,10 @@ export default function Chat() {
                       <p className="text-xs text-[#A1A1AA]">
                         {msg.timestamp.toLocaleTimeString('fr-FR')}
                       </p>
+                      {/* iter95 — Voice mode TTS sur chaque message IA */}
+                      {!isUser && (
+                        <MessageTTSButton text={displayContent} />
+                      )}
                       {!isUser && msg.ai_source && (() => {
                         const src = msg.ai_source || '';
                         // Pretty label from ai_source 'emergent:openai:gpt-5.2' or 'ollama:gemma3:12b'

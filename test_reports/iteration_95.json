@@ -1,0 +1,40 @@
+{
+  "summary": "iter95 testing complete — Slice 4d partielle (/orchestrate routes extracted), VRAI LLM analyzer /chat/suggest-enhancements (claude-sonnet-4-5), and Voice mode TTS /chat/tts (OpenAI tts-1) all working. 13/13 pytest PASS + live cookie-auth API smoke tests confirm LLM returns 5 contextual suggestions with valid kinds, TTS returns base64 mp3 audio with proper voice fallback and 400 on empty text. Frontend MessageTTSButton component + Chat.js wiring confirmed; old heuristic IDs (enh-design-polish/enh-feature-extend/enh-perf-optimize) fully removed. Site is in private mode so deeper UI flows behind auth could not be exercised — backend coverage is comprehensive.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter95_slice4d_llm_analyzer_tts.py",
+    "/app/test_reports/pytest/iter95_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 9044 lines — large monolith. iter95 extracted 2 routes successfully but the file still violates the 700-line guideline. Continue progressive extraction (chat/orchestrate, chat/orchestrate-stream, /chat/tts, /chat/suggest-enhancements could go to a new chat_ai_routes.py).",
+    "/chat/tts swallows OpenAI errors into HTTP 503 with truncated detail — acceptable but consider logging the full stack trace at WARNING (currently logger.warning with truncated str). OK as-is.",
+    "/chat/suggest-enhancements returns {suggestions: [], error: '...'} on internal failure (status 200) — this is intentional graceful degradation but could surprise consumers expecting 5xx. Frontend handles empty suggestions[] silently which is fine."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "n/a (private mode)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login works, returns httpOnly cookie session (no bearer token in body, use -c/-b cookie jar with curl).",
+  "seed_data_creation": "None — used existing test user.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Site is in private mode → /login shows 'Site temporarily private'. Use cookie-based auth in curl: `curl -c jar -X POST $API/api/auth/login -d '{...}'` then `curl -b jar $API/api/...`. The login response body does NOT contain access_token — auth is via httpOnly cookie. iter95 endpoints verified live: POST /api/chat/suggest-enhancements (claude-sonnet-4-5, returns suggestions[] with kind ∈ feature/fix/design/integration/performance), POST /api/chat/tts (OpenAI tts-1 via emergentintegrations base_url, returns audio_base64 + mime_type 'audio/mpeg', voice fallback to alloy if invalid, 400 on empty text, silent truncation >4000 chars). Slice 4d routes: GET /api/orchestrate/event/{id}/details + POST /api/orchestrate/history extracted to /app/backend/routes/orchestrate_routes.py (factory pattern with get_current_user closure). server.py = 9044 lines (under 9100 target).",
+  "live_api_verification": {
+    "/api/orchestrate/event/fake/details (no auth)": "401",
+    "/api/orchestrate/history (no auth)": "401",
+    "/api/chat/suggest-enhancements (no auth)": "401",
+    "/api/chat/suggest-enhancements (cookie auth)": "200 — 5 LLM suggestions returned for backend API context (kinds: performance, performance, feature, feature, design — all valid)",
+    "/api/chat/tts (no auth)": "401",
+    "/api/chat/tts (alloy)": "200 — audio_base64 len=26240, mime=audio/mpeg, voice=alloy",
+    "/api/chat/tts (invalid voice 'darth_vader')": "200 — fallback voice=alloy",
+    "/api/chat/tts (nova)": "200 — audio_base64 len=16640, voice=nova",
+    "/api/chat/tts (empty text)": "400 detail='Texte vide.'"
+  }
+}
