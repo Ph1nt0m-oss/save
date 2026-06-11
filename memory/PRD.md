@@ -17,7 +17,34 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-11 — Iter 90 (P0 sécurité corrigée + Grok/Lindy + Mode hors-ligne)
+
 ### 2026-06-10 — Iter 89 (Punch-list user Message 660 : /ideas/clear + Chat resume + Nouveaux modèles)
+**🔴 P0 SÉCURITÉ — Régression iter89 corrigée** :
+- L'iter89 avait introduit un fallback "compte device-only" qui acceptait n'importe quel mot de passe non vide quand le créa n'avait pas de `password_hash`. **C'était une régression de sécurité signalée par l'utilisatrice.**
+- iter90 : retour à `bcrypt.checkpw` STRICT. Si le compte n'a pas de `password_hash` → 412 avec message clair "Ton compte n'a pas de mot de passe configuré. Crée-en un dans Profil → Sécurité avant d'utiliser cette action."
+- Le password doit désormais être EXACTEMENT celui utilisé pour `/auth/login`.
+
+**🟡 P1 — Grok + Lindy** :
+- Backend `MODEL_ROUTES` (server.py ligne 3013-3055) : ajout de `grok-4.3` (xAI Temps réel), `grok-4.20-reasoning` (xAI Thinking), `lindy-flow` (Lindy Workflow).
+- Frontend `ModelPicker.jsx` : icônes ajoutées (`Radio` pour Temps réel, `Workflow` pour Workflow).
+- `/chat/models` retourne maintenant 13 modèles online (10 iter89 + 3 iter90).
+
+**🟢 P2 — Mode hors-ligne avec tuto** :
+- Nouveau composant `OfflineAIInstaller.jsx` (231 lignes) : modal plein écran avec auto-détection OS (mac/windows/linux via userAgent), 3 onglets avec instructions step-by-step, commandes copiables (`ollama pull gemma3:4b` etc.), liens vers ollama.com/download.
+- Auto-déclenchement : Chat.js useEffect détecte `mode === 'offline'` + ping `/system/ollama-status`, ouvre le modal si Ollama indisponible.
+- Bouton header `chat-offline-installer-btn` (Cpu icon, amber border) visible si Ollama down — permet réouverture manuelle.
+
+**MOCKED / REPORTÉ** :
+- `grok-4.3` / `grok-4.20-reasoning` : provider `xai` non câblé (pas de SDK xAI installé) — fallback claude-sonnet via emergentintegrations en attendant l'intégration réelle.
+- `lindy-flow` : provider `lindy` = placeholder (Lindy est une plateforme workflows, pas un LLM direct).
+- **REPORTÉ iter91+** : Refacto server.py slices 4+ (`/announcements/*`, `/polls/*`, `/messages/*`, `/orchestrate/*`) — beaucoup de dépendances internes à injecter (helpers _require_creator_signature, _audience_matches, VALID_AUDIENCE_GROUPS).
+- **REPORTÉ** : Webpack incrémental builds — nécessite infra Docker spécifique (preview env actuelle = supervisor, pas adapté).
+- **DÉJÀ FAIT iter86** : Push GitHub réel câblé via `on_commit_real` opt-in (`enable_commit=true` dans payload).
+
+**Tests** : **27/27 PASS** (10 iter90 source-audit + 7 live integration + 10 iter89 régression). Testing agent GREEN end-to-end.
+
+
 
 **🔴 Issue 1 (P0) — /ideas/clear password validation** :
 - Fallback device-only ajouté (server.py ligne 7763-7768) : si le compte créatrice n'a PAS de `password_hash` classique (compte purement device-only sans mot de passe email/password), la signature ECDSA d'amont (`_require_creator_signature`) suffit comme preuve d'identité. Le champ password sert alors juste de friction UX volontaire — tout password non vide est accepté.
