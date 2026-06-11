@@ -4,7 +4,9 @@ import { ArrowLeft, Lock, FileCode, FolderTree, Search as SearchIcon, Brain, Cpu
 import axios from 'axios';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import useViewSpec from '../hooks/useViewSpec';
 import { withCreatorProof } from '../lib/deviceIdentity';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -24,14 +26,19 @@ export default function PrivateProgramming() {
   const device = useDeviceIdentity();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
+  // iter101 — Use spec hook : canSeeProgramming est strictement lié au role physique créa
+  const { canSeeProgramming } = useViewSpec();
   const isAI = location.pathname.includes('ai-programming');
-  const title = isAI ? 'Programmation des IA' : 'Programmation du site';
+  const title = isAI ? (t('prog_ai_title') || 'Programmation des IA') : (t('prog_site_title') || 'Programmation du site');
 
   // iter89 — Visible UNIQUEMENT pour les DEVICES créa et SEULEMENT quand la
   // créatrice N'EST PAS en vue créa (pour éviter qu'un visiteur regarde
   // par-dessus l'épaule et copie le code). Donc accessible si :
-  //   device.role === 'creator' && device.viewMode && device.viewMode !== 'creator'
-  const allowed = device.role === 'creator' && device.viewMode && device.viewMode !== 'creator';
+  // iter101 — Use spec hook : canSeeProgramming est strictement lié au role physique créa.
+  // Plus de viewMode required — la créa physique a TOUJOURS accès à sa programmation,
+  // que sa simulation de vue soit active ou non.
+  const allowed = canSeeProgramming;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6" data-testid="private-programming-page">

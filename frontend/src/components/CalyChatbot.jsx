@@ -10,6 +10,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircleQuestion, X, Send, Loader2, Sparkles } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -35,6 +36,7 @@ const QUICK_CHOICES = [
 ];
 
 export default function CalyChatbot() {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -121,7 +123,7 @@ export default function CalyChatbot() {
                   </div>
                   <div>
                     <p className="font-['Chivo'] font-bold text-sm text-white">Caly</p>
-                    <p className="text-[10px] text-[#A1A1AA]">Assistante d&apos;utilisation</p>
+                    <p className="text-[10px] text-[#A1A1AA]">{t('caly_title') || 'Assistante d\'utilisation'}</p>
                   </div>
                 </div>
                 <button

@@ -37,6 +37,7 @@ import TranslatedProjectName from '../components/TranslatedProjectName';
 import CalyChatbot from '../components/CalyChatbot';
 import BotsAdminPanel from '../components/BotsAdminPanel';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import useViewSpec from '../hooks/useViewSpec';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -85,6 +86,8 @@ export default function Dashboard() {
   const [friendsOpen, setFriendsOpen] = useState(false);
   // iter99 — Panel admin community bots
   const [showBotsAdmin, setShowBotsAdmin] = useState(false);
+  // iter101 — Câblage useViewSpec : la vue simulée gouverne l'affichage UI
+  const viewSpec = useViewSpec();
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -891,10 +894,10 @@ export default function Dashboard() {
 
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <CreatorToolbar />
-                <IdeasButton />
+                {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
                 <CalyChatbot />
-                {/* iter99 — Bouton Bots Community (admins + créa) */}
-                {(device.staff_kind === 'admin' || device.role === 'creator') && (
+                {/* iter101 — Bouton Bots Community : visible selon viewSpec */}
+                {viewSpec.canSeeBotsAdmin && (
                   <button
                     onClick={() => setShowBotsAdmin(true)}
                     data-testid="header-bots-admin-btn"

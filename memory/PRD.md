@@ -17,7 +17,29 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-11 — Iter 101 (Câblage useViewSpec + i18n composants)
+
+**🟢 Câblage `useViewSpec` dans Dashboard** :
 ### 2026-06-11 — Iter 100 (Spec hiérarchie vues + Hook useViewSpec + i18n)
+- Import + utilisation du hook ligne 84
+- Bouton 🤖 Bots Community gouverné par `viewSpec.canSeeBotsAdmin` (au lieu du check direct `device.staff_kind/role`)
+- IdeasButton conditionnel sur `viewSpec.viewSpec?.see_idea_box !== false`
+- Quand l'utilisatrice simule la vue User → les boutons Admin/Créa disparaissent automatiquement de l'UI.
+
+**🟢 Câblage `useViewSpec` dans PrivateProgramming** :
+- `allowed` désormais = `canSeeProgramming` du hook (lié au role physique créa, pas viewMode).
+- Avant : `device.role === 'creator' && device.viewMode && device.viewMode !== 'creator'` (bizarre — nécessitait une simulation pour accéder)
+- Maintenant : créa physique **toujours** autorisée, autres rôles toujours bloqués
+- Titre utilise `t('prog_ai_title')` / `t('prog_site_title')` (i18n).
+
+**🟢 i18n dans BotsAdminPanel et CalyChatbot** :
+- Imports `useLanguage` ajoutés
+- Titre "Communauté de bots" → `t('bots_community_title')`
+- Sous-titre Caly "Assistante d'utilisation" → `t('caly_title')`
+
+**Tests** : **13/13 PASS** (iter101 + régression iter100). Screenshot live impeccable.
+
+
 
 **🟢 Backend — Endpoint `/views/spec`** (public, GET) :
 - Matrice d'accès complète pour les 4 vues : `user`, `modo`, `admin`, `creator`.

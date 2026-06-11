@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Plus, X, Edit3, Trash2, Star, Save, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -26,6 +27,7 @@ const KIND_LABELS = {
 };
 
 export default function BotsAdminPanel({ open, onClose }) {
+  const { t } = useLanguage();
   const [bots, setBots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(null);  // null = liste, {} = nouveau, {bot} = edit
@@ -110,7 +112,7 @@ export default function BotsAdminPanel({ open, onClose }) {
           <header className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-gradient-to-r from-violet-500/10 to-cyan-500/10">
             <div className="flex items-center gap-2">
               <Bot className="w-5 h-5 text-violet-300" />
-              <h2 className="font-['Chivo'] font-bold text-white text-sm">Communauté de bots</h2>
+              <h2 className="font-['Chivo'] font-bold text-white text-sm">{t('bots_community_title') || 'Communauté de bots'}</h2>
               <span className="text-[10px] text-[#71717A]">({bots.length})</span>
             </div>
             <div className="flex items-center gap-2">
