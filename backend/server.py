@@ -7900,6 +7900,54 @@ class ExportStatusIn(BaseModel):
     signature: str
     request_id: Optional[str] = None
     project_id: Optional[str] = None
+
+
+# iter97 — Export ZIP automatique d'un projet (seul mode d'export téléchargeable
+# manuellement). Le push GitHub se fait automatiquement en arrière-plan via
+# on_commit_real dans /chat/orchestrate-stream avec enable_commit=true.
+@api_router.get("/exports/zip-project/{project_id}")
+async def export_project_zip(request: Request, project_id: str):
+    """Génère un ZIP du projet : metadata + historique chat + fichiers générés."""
+    from fastapi.responses import Response
+    import zipfile
+    import json as _json
+    import io
+
+    user_id = await get_current_user(request)
+    project = await db.projects.find_one(
+        {"project_id": project_id, "user_id": user_id}, {"_id": 0},
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Projet introuvable.")
+    messages = await db.chat_messages.find(
+        {"project_id": project_id, "user_id": user_id}, {"_id": 0},
+    ).sort("timestamp", 1).to_list(length=10000)
+    # Genere le ZIP en mémoire
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("project.json", _json.dumps(project, indent=2, default=str, ensure_ascii=False))
+        zf.writestr("messages.json", _json.dumps(messages, indent=2, default=str, ensure_ascii=False))
+        # README
+        readme = (
+            f"# {project.get('name') or 'Projet CodeForge'}\n\n"
+            f"Export généré le {datetime.now(timezone.utc).isoformat()}\n\n"
+            f"## Contenu\n"
+            f"- project.json : métadonnées du projet\n"
+            f"- messages.json : historique complet des échanges IA\n"
+            f"- {len(messages)} messages au total\n\n"
+            f"## Note\n"
+            f"Le push GitHub se fait automatiquement à chaque création via on_commit_real.\n"
+        )
+        zf.writestr("README.md", readme)
+    buf.seek(0)
+    safe_name = (project.get("name") or project_id).replace("/", "_")[:50]
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="codeforge_{safe_name}.zip"'},
+    )
+    request_id: Optional[str] = None
+    project_id: Optional[str] = None
     export_kind: Optional[str] = None
 
 @api_router.post("/exports/status")

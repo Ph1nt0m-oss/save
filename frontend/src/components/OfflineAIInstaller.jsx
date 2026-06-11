@@ -27,10 +27,13 @@ export default function OfflineAIInstaller({ open, onClose, onInstalled }) {
     if (!open) return;
     // Auto-detect OS de l'utilisateur
     const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes('win')) setOs('windows');
+    if (/iphone|ipod/.test(ua)) setOs('iphone');
+    else if (/ipad/.test(ua)) setOs('apple');
+    else if (/samsung/.test(ua)) setOs('samsung');
+    else if (/xiaomi|miui|redmi/.test(ua)) setOs('xiaomi');
+    else if (ua.includes('win')) setOs('windows');
     else if (ua.includes('mac')) setOs('mac');
-    else if (ua.includes('linux')) setOs('linux');
-    // Premier check
+    else if (ua.includes('linux') || /android/.test(ua)) setOs('linux');
     recheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -87,6 +90,44 @@ export default function OfflineAIInstaller({ open, onClose, onInstalled }) {
         { label: '3. Télécharger le premier modèle', kind: 'cmd', cmd: 'ollama pull gemma3:4b' },
       ],
     },
+    iphone: {
+      title: 'iPhone (iOS)',
+      steps: [
+        { label: '1. Installer l\'app Private LLM (App Store)', kind: 'link', url: 'https://apps.apple.com/app/private-llm/id6448106860', text: 'apps.apple.com — Private LLM' },
+        { label: '2. Choisir Llama 3.2 1B ou Gemma 2B dans l\'app', kind: 'note' },
+        { label: '3. Activer "Serveur local" dans Réglages → Permettre les connexions LAN', kind: 'note' },
+        { label: '4. Note : l\'iPhone ne peut PAS exposer Ollama nativement. Utilise Private LLM (payant ~5€) qui simule l\'API.', kind: 'note' },
+      ],
+    },
+    apple: {
+      title: 'iPad / Mac Apple Silicon',
+      steps: [
+        { label: '1. Pour iPad : Private LLM (App Store)', kind: 'link', url: 'https://apps.apple.com/app/private-llm/id6448106860', text: 'apps.apple.com' },
+        { label: '2. Pour Mac M1/M2/M3/M4 : suivre la procédure macOS ci-dessus (Ollama natif)', kind: 'note' },
+        { label: '3. Astuce M-series : très rapide avec Gemma 3 7B ou Llama 3.2 8B', kind: 'cmd', cmd: 'ollama pull llama3.2:8b' },
+      ],
+    },
+    samsung: {
+      title: 'Samsung (Android)',
+      steps: [
+        { label: '1. Installer Termux depuis F-Droid (PAS le Play Store, version obsolète)', kind: 'link', url: 'https://f-droid.org/packages/com.termux/', text: 'f-droid.org — Termux' },
+        { label: '2. Dans Termux : mettre à jour les paquets', kind: 'cmd', cmd: 'pkg update && pkg upgrade -y' },
+        { label: '3. Installer Ollama (build ARM64)', kind: 'cmd', cmd: 'curl -fsSL https://ollama.com/install.sh | sh' },
+        { label: '4. Démarrer Ollama en arrière-plan', kind: 'cmd', cmd: 'ollama serve &' },
+        { label: '5. Télécharger un modèle léger (1-2 GB)', kind: 'cmd', cmd: 'ollama pull gemma3:2b' },
+      ],
+    },
+    xiaomi: {
+      title: 'Xiaomi (Android MIUI)',
+      steps: [
+        { label: '1. Installer Termux depuis F-Droid', kind: 'link', url: 'https://f-droid.org/packages/com.termux/', text: 'f-droid.org — Termux' },
+        { label: '2. Désactiver l\'optimisation batterie pour Termux (Réglages → Apps → Termux → Batterie → Sans restriction)', kind: 'note' },
+        { label: '3. Mise à jour Termux', kind: 'cmd', cmd: 'pkg update && pkg upgrade -y' },
+        { label: '4. Installer Ollama', kind: 'cmd', cmd: 'curl -fsSL https://ollama.com/install.sh | sh' },
+        { label: '5. Lancer Ollama', kind: 'cmd', cmd: 'ollama serve &' },
+        { label: '6. Modèle léger pour MIUI', kind: 'cmd', cmd: 'ollama pull gemma3:2b' },
+      ],
+    },
   };
 
   const cfg = installCmds[os];
@@ -141,11 +182,15 @@ export default function OfflineAIInstaller({ open, onClose, onInstalled }) {
             {detected === false && (
               <>
                 {/* OS selector */}
-                <div className="flex gap-2" data-testid="offline-installer-os-tabs">
+                <div className="flex flex-wrap gap-1.5" data-testid="offline-installer-os-tabs">
                   {[
                     { id: 'mac', label: 'macOS' },
                     { id: 'windows', label: 'Windows' },
                     { id: 'linux', label: 'Linux' },
+                    { id: 'iphone', label: 'iPhone' },
+                    { id: 'apple', label: 'iPad / Mac Apple' },
+                    { id: 'samsung', label: 'Samsung' },
+                    { id: 'xiaomi', label: 'Xiaomi' },
                   ].map(o => (
                     <button
                       key={o.id}

@@ -34,6 +34,7 @@ import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
+import CalyChatbot from '../components/CalyChatbot';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -738,6 +739,23 @@ export default function Dashboard() {
                       <ChevronRight className="w-4 h-4 text-[#E4FF00] flex-shrink-0" />
                     )}
                   </div>
+                  {/* iter97 — Icône œil SOUS chaque projet de CRÉATION (pas pour les chats) */}
+                  {project.project_type !== 'chat' && (
+                    <div className="flex items-center justify-end gap-1 mt-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Ouvre la prévisualisation interactive (vue Emergent-like)
+                          navigate('/chat', { state: { mode, project, openPreview: true } });
+                        }}
+                        data-testid={`project-eye-${project.project_id}`}
+                        title="Voir l'aperçu interactif de cette création"
+                        className="inline-flex items-center justify-center w-6 h-6 rounded-sm text-[#A1A1AA] hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </button>
               )
             ))}
@@ -869,6 +887,7 @@ export default function Dashboard() {
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <CreatorToolbar />
                 <IdeasButton />
+                <CalyChatbot />
                 <MessageButton variant="icon" />
                 <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import confetti from 'canvas-confetti';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw, X, ShieldAlert } from 'lucide-react';
+import { Mail, Lock, User, Phone, Loader2, ArrowRight, Copy, CheckCheck, Clock, RefreshCw, X, ShieldAlert, Github } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -75,6 +75,8 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  // iter97 — Inscription GitHub obligatoire
+  const [githubConfirmed, setGithubConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [demoLink, setDemoLink] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -317,6 +319,12 @@ export default function Login() {
         // iter69: biometric enrollment mandatory.
         if (!biometric || !biometric.kind || (biometric.kind === 'iris' && (biometric.data?.hashes?.length || 0) < 3)) {
           toast.error("Identité biométrique requise. Utilise ton empreinte / Face ID, ou capture ton iris via la webcam.");
+          setSubmitting(false);
+          return;
+        }
+        // iter97 — Confirmation compte GitHub obligatoire pour le push auto des créations.
+        if (!githubConfirmed) {
+          toast.error("Confirme la création de ton compte GitHub avant de poursuivre.");
           setSubmitting(false);
           return;
         }
@@ -792,6 +800,46 @@ export default function Login() {
                 {/* Honeypot fields to discourage browser autofill (hidden from users). */}
                 <input type="text" name="username" tabIndex={-1} autoComplete="username" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
                 <input type="password" name="password" tabIndex={-1} autoComplete="current-password" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} aria-hidden="true" />
+                {mode === 'signup' && (
+                  <div className="bg-[#0F0F13] border border-violet-400/30 rounded-sm p-3 mb-3" data-testid="signup-github-required">
+                    <div className="flex items-start gap-2.5">
+                      <Github className="w-4 h-4 text-violet-300 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs font-['Chivo'] font-bold text-violet-300 mb-1">
+                          Inscription GitHub obligatoire
+                        </p>
+                        <p className="text-[11px] text-[#A1A1AA] leading-relaxed mb-2">
+                          Un compte GitHub est requis pour activer le push automatique de tes créations.
+                          Inscris-toi en 30 secondes :
+                        </p>
+                        <a
+                          href={`https://github.com/signup?source=form-home-signup&user_email=${encodeURIComponent(email || '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid="signup-github-link"
+                          className="inline-flex items-center gap-1.5 text-[11px] bg-violet-500 hover:bg-violet-400 text-white font-['Chivo'] font-bold px-3 py-1.5 rounded-sm transition-colors"
+                        >
+                          <Github className="w-3.5 h-3.5" />
+                          Créer mon compte GitHub
+                        </a>
+                        <label className="flex items-center gap-2 mt-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={githubConfirmed}
+                            onChange={(e) => setGithubConfirmed(e.target.checked)}
+                            data-testid="signup-github-confirmed"
+                            required
+                            className="w-3.5 h-3.5 accent-violet-500"
+                          />
+                          <span className="text-[11px] text-[#A1A1AA]">
+                            J&apos;ai créé mon compte GitHub (ou j&apos;en ai déjà un)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {mode === 'signup' && (
                   <div>
                     <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">

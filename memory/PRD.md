@@ -17,7 +17,41 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-06-11 — Iter 96 (Fixes critiques UX + nettoyage Chat/Dashboard)
+### 2026-06-11 — Iter 97 (Maximum push : ZIP + GitHub obligatoire + Œil création + Caly + Choix destinataire + Tuto mobile)
+
+**🟢 Export ZIP automatique** :
+- Nouveau endpoint `GET /api/exports/zip-project/{project_id}` qui génère un ZIP en mémoire avec `project.json` + `messages.json` + `README.md`. Sécurisé par user_id (404 si projet pas à toi).
+- Push GitHub automatique continue de se faire en arrière-plan via `on_commit_real` dans `/chat/orchestrate-stream` (iter86 opt-in).
+
+**🟢 Inscription GitHub obligatoire** :
+- `Login.js` : nouveau bloc violet "Inscription GitHub obligatoire" sur le tab Signup avec lien vers `github.com/signup?source=form-home-signup&user_email=...` (l'email courant est pré-rempli).
+- Checkbox de confirmation obligatoire (`signup-github-confirmed`). Submit bloqué tant que non cochée avec toast d'erreur clair.
+
+**🟢 Icône œil sous chaque création** :
+- `Dashboard.js` sidebar : ajout d'une rangée sous chaque projet **non-chat** avec bouton œil (`project-eye-{id}`). Click → navigate `/chat` avec `state.openPreview: true`.
+- Préparation pour la prévisualisation interactive style Emergent (à compléter iter98 pour le rendu in-iframe avec interactions).
+
+**🟢 Caly chatbot avec icône à côté des idées** :
+- Nouveau composant `CalyChatbot.jsx` (175 lignes) : bouton header violet (`header-caly-btn`, MessageCircleQuestion) à côté de IdeasButton dans Dashboard.
+- Modal full-screen avec **5 choix initiaux** (Créer / Modifier / Trouver / Compte / Autre) façon FAQ interactive.
+- Backend : utilise `/chat/message` avec un `system_prompt` spécifique Caly (assistante d'aide UI, **PAS** génération de code).
+- Style violet/fuchsia distinct pour différencier de l'IA principale.
+
+**🟢 Mode privé — choix destinataire** :
+- `Profile.js` : nouveau bloc "Envoyer la clé à :" avec 3 checkboxes : **Créatrice (toujours cochée + désactivée)**, Admins, Modos.
+- Payload `send_to_admin` + `send_to_modo` ajoutés à `/devices/send-to-creator`.
+- Mention claire : "La décision de la créatrice est prioritaire et révoque celle prise par le staff."
+
+**🟢 Tuto installation IA locale étendu (mobile + Apple)** :
+- `OfflineAIInstaller.jsx` : 7 OS supportés au lieu de 3 (mac/windows/linux **+ iPhone/Apple/Samsung/Xiaomi**).
+- **iPhone** : Private LLM App Store (Ollama natif pas possible sur iOS — explication claire).
+- **iPad/Mac Apple** : Private LLM ou Ollama natif sur M-series.
+- **Samsung/Xiaomi (Android)** : Termux via F-Droid + Ollama ARM64 + modèle gemma3:2b (1-2 GB).
+- Auto-détection OS par userAgent (regex /iphone|samsung|xiaomi|miui|redmi/).
+
+**Tests** : **46/46 PASS** (iter97 + régression iter94-96). Smoke screenshot validé : bloc GitHub obligatoire affiché parfaitement sur tab Signup, 0 page error.
+
+
 
 **🔴 Fix tronquage sélecteur de langues** (screenshots utilisatrice) :
 - `LanguageToggle.jsx` : `w-56` (224px) → `w-[min(20rem,calc(100vw-1rem))]` (320px responsive).
@@ -36,6 +70,7 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - `/app/frontend/src/components/TypewriterEffect.jsx` : animation mot-par-mot ~1.5x vitesse normale (12ms/char + chunks aléatoires de 1-2 chars pour fluidité). Curseur clignotant pendant l'écriture.
 - Prop `skip` pour bypass (ex: messages Emergent qui rendent code-par-code).
 - **À câbler dans Chat.js iter97+** (suppose tracker du flag "_just_arrived" pour ne pas animer les anciens messages).
+### 2026-06-11 — Iter 96 (Fixes critiques UX + nettoyage Chat/Dashboard)
 
 **Tests** : **41/41 PASS** (iter96 + régression iter93-95).
 

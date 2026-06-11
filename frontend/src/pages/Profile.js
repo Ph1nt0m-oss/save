@@ -84,13 +84,20 @@ export default function Profile() {
     if (sendingToCreator) return;
     setSendingToCreator(true);
     try {
-      const body = await withCreatorProof(API, axios, {});
+      const body = await withCreatorProof(API, axios, {
+        send_to_admin: sendToAdmin,
+        send_to_modo: sendToModo,
+      });
       await axios.post(`${API}/devices/send-to-creator`, body);
       toast.success(t('prof_send_success'));
     } catch (e) {
       toast.error(e?.response?.data?.detail || t('prof_send_failed'));
     } finally { setSendingToCreator(false); }
   };
+
+  // iter97 — Choix destinataire de la clé (Admin/Modo/Créa)
+  const [sendToAdmin, setSendToAdmin] = useState(false);
+  const [sendToModo, setSendToModo] = useState(false);
 
   const [tab, setTab] = useState(() => {
     // iter66: support deep-linking to a specific tab (e.g. after a denied
@@ -500,15 +507,48 @@ export default function Profile() {
                         {keyCopied ? t('prof_key_copied') : t('prof_copy_key')}
                       </button>
                       {device.role !== 'creator' && (
-                        <button
-                          onClick={sendKeyToCreator}
-                          disabled={sendingToCreator}
-                          data-testid="profile-send-to-creator"
-                          className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#E4FF00]/15 hover:bg-[#E4FF00]/25 border border-[#E4FF00]/40 text-[#E4FF00] text-xs font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-60"
-                        >
-                          {sendingToCreator ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UsersIcon className="w-3.5 h-3.5" />}
-                          {t('prof_send_to_creator')}
-                        </button>
+                        <div className="flex flex-col gap-2" data-testid="profile-send-target-block">
+                          {/* iter97 — Choix destinataire de la clé (Admin/Modo/Créa) */}
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#A1A1AA]">
+                            <span className="font-['Chivo'] font-bold">Envoyer la clé à :</span>
+                            <label className="flex items-center gap-1 opacity-60 cursor-not-allowed" title="La créatrice voit toujours et décide en dernier ressort">
+                              <input type="checkbox" checked disabled className="w-3 h-3 accent-[#E4FF00]" data-testid="key-target-creator" />
+                              Créatrice (toujours)
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={sendToAdmin}
+                                onChange={(e) => setSendToAdmin(e.target.checked)}
+                                data-testid="key-target-admin"
+                                className="w-3 h-3 accent-rose-400"
+                              />
+                              Admins
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={sendToModo}
+                                onChange={(e) => setSendToModo(e.target.checked)}
+                                data-testid="key-target-modo"
+                                className="w-3 h-3 accent-cyan-400"
+                              />
+                              Modos
+                            </label>
+                          </div>
+                          <button
+                            onClick={sendKeyToCreator}
+                            disabled={sendingToCreator}
+                            data-testid="profile-send-to-creator"
+                            className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#E4FF00]/15 hover:bg-[#E4FF00]/25 border border-[#E4FF00]/40 text-[#E4FF00] text-xs font-['Chivo'] font-bold rounded-sm transition-all disabled:opacity-60"
+                          >
+                            {sendingToCreator ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UsersIcon className="w-3.5 h-3.5" />}
+                            {t('prof_send_to_creator')}
+                          </button>
+                          <p className="text-[10px] text-[#71717A] italic">
+                            La décision de la créatrice est prioritaire et révoque celle prise par le staff.
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
