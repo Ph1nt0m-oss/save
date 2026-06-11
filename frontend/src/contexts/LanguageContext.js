@@ -121,6 +121,9 @@ const translations = {
     prog_changelog_saved: 'Modification enregistrée',
     prog_changelog_save_failed: 'Échec enregistrement',
     prog_changelog_unavailable: 'Changelog inaccessible',
+    login_email_required: 'Renseigne ton email.',
+    login_password_too_short: 'Le nouveau mot de passe doit faire au moins 6 caractères.',
+    login_passwords_mismatch: 'Les deux mots de passe ne correspondent pas.',
 
  // Common
  back: 'Retour',
@@ -848,6 +851,9 @@ pseudo_changed: 'Pseudo mis à jour.',
     prog_changelog_saved: 'Change saved',
     prog_changelog_save_failed: 'Save failed',
     prog_changelog_unavailable: 'Changelog unavailable',
+    login_email_required: 'Please enter your email.',
+    login_password_too_short: 'The new password must be at least 6 characters.',
+    login_passwords_mismatch: 'Both passwords do not match.',
 
  // Common
  back: 'Back',

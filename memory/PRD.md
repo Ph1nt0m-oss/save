@@ -15,6 +15,33 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Sharing public + Live preview iframe
 - Backup GitHub natif (fusionné avec download ZIP)
 
+
+### 2026-02-11 — Iter 102 (Latence 0ms Chat + i18n complète Wizard & Programmation)
+
+**🟢 Chat history cache instantané (P0 user pain point)** :
+- `Chat.js` hydrate les messages **synchronement** depuis `getCachedChatHistory(project_id)` (CacheContext localStorage `codeforge_chat_history`) **avant** tout fetch.
+- Au premier render après un clic sidebar : 0ms, pas de spinner, pas de flash blanc si chat déjà visité.
+- Refresh silencieux en arrière-plan via `axios.get(/chat/history)` puis `cacheChatHistory()`.
+- Effet supplémentaire : persiste le cache à **chaque** changement de `messages` (incluant les nouvelles réponses IA).
+- Effets dépendances correctement memoïsées (`cacheChatHistory`, `getCachedChatHistory` sont `useCallback` stables).
+
+**🟢 i18n complète `GuidedWizard.js`** :
+- 51 nouvelles clés `wizard_*` ajoutées (FR + EN, parité 100%).
+- Plateformes (Site web / App mobile / Logiciel), 12 types d'app (E-Commerce/Blog/Social/...), 4 titres d'étape, 6 boutons (Précédent/Suivant/Générer/Retour Dashboard), placeholders textarea Design+Fonctionnement, suggestion IA, recap.
+- Aucune chaîne française hardcodée résiduelle (validé par test statique `test_iter102_i18n_cache.py`).
+
+**🟢 i18n complète `PrivateProgramming.js`** :
+- 41 nouvelles clés `prog_*` ajoutées (FR + EN, parité 100%).
+- Accès refusé (titre, body, hint), Recherche dans le code (placeholder, bouton Grep, "lignes trouvées"), 4 descriptions d'agents (Planner/Executor/Critic/Arbiter), Boucle de validation, Changelog (sous-titre, 6 catégories, Ajouter/Recharger, messages vides).
+
+**🟢 i18n résiduelle `Login.js`** :
+- Span checkbox "J'ai créé mon compte GitHub" → `t('signup_github_confirmed')` (était hardcodé FR).
+- 3 toasts validation password reset → `t('login_email_required')` / `t('login_password_too_short')` / `t('login_passwords_mismatch')`.
+
+**Tests ajoutés** : `/app/backend/tests/test_iter102_i18n_cache.py` — 4/4 PASS (présence clés FR+EN, wiring cache, absence chaînes FR hardcodées).
+**Test agent** : iteration_96.json — 51/51 wizard_* + 41/41 prog_* symétriques ; cache logic correcte ; bug Login.js:834 → corrigé.
+
+
 ## CHANGELOG
 
 ### 2026-06-11 — Iter 101 (Câblage useViewSpec + i18n composants)

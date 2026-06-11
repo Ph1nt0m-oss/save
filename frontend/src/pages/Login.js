@@ -489,15 +489,15 @@ export default function Login() {
   const handleForgotPassword = async () => {
     const target = (email || '').trim().toLowerCase();
     if (!target) {
-      toast.error("Renseigne ton email.");
+      toast.error(t('login_email_required'));
       return;
     }
     if (!password || password.length < 6) {
-      toast.error("Le nouveau mot de passe doit faire au moins 6 caractères.");
+      toast.error(t('login_password_too_short'));
       return;
     }
     if (password !== confirmPassword) {
-      toast.error("Les deux mots de passe ne correspondent pas.");
+      toast.error(t('login_passwords_mismatch'));
       return;
     }
     setSubmitting(true);
@@ -831,7 +831,7 @@ export default function Login() {
                             className="w-3.5 h-3.5 accent-violet-500"
                           />
                           <span className="text-[11px] text-[#A1A1AA]">
-                            J&apos;ai créé mon compte GitHub (ou j&apos;en ai déjà un)
+                            {t('signup_github_confirmed')}
                           </span>
                         </label>
                       </div>
