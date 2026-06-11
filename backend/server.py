@@ -8112,10 +8112,52 @@ async def community_bots_rate(payload: BotRateIn):
     return {"success": True}
 
 
-# ===================================================================
-# iter98 — Endpoint pour préparer la spec d'inscription GitHub
-# (utilisé côté frontend pour le lien officiel)
-# ===================================================================
+
+# iter100 — Spec des vues : matrice d'accès par viewMode.
+# Source de vérité côté backend pour ce que chaque vue peut voir.
+@api_router.get("/views/spec")
+async def get_views_spec():
+    """Inspiré du message 698 utilisatrice — chaque vue a sa matrice d'accès."""
+    return {
+        "user": {
+            "chats_visible": ["public", "public+private", "private"],
+            "chats_hidden": ["modo", "admin", "staff", "creator_group"],
+            "see_sidebar_projects": True, "see_own_profile": True,
+            "see_friends": True, "see_idea_box": True, "see_poll_icon": False,
+            "see_other_accounts_actions": False, "see_programming": False,
+            "secret_key_access": False,
+        },
+        "modo": {
+            "chats_visible": ["public", "public+private", "private", "modo", "staff"],
+            "chats_hidden": ["admin", "creator_group"],
+            "see_sidebar_projects": True, "see_own_profile": True,
+            "see_friends": True, "see_idea_box": True, "see_poll_icon": True,
+            "see_other_accounts_actions": ["mute", "block", "exclude"],
+            "see_programming": False, "secret_key_access": False,
+        },
+        "admin": {
+            "chats_visible": ["public", "public+private", "private", "admin", "staff"],
+            "chats_hidden": ["modo", "creator_group"],
+            "see_sidebar_projects": True, "see_own_profile": True,
+            "see_friends": True, "see_idea_box": True, "see_poll_icon": True,
+            "see_other_accounts_actions": ["mute", "block", "exclude", "promote_modo", "demote_modo"],
+            "see_programming": False, "secret_key_access": False,
+            "see_chatbot_management": True, "see_bots_community": True,
+        },
+        "creator": {
+            "chats_visible": ["all_except_visit_rename"], "chats_hidden": [],
+            "see_sidebar_projects": True, "see_own_profile": True,
+            "see_friends": True, "see_idea_box": True, "see_poll_icon": True,
+            "see_other_accounts_actions": ["mute", "block", "exclude", "promote_modo", "demote_modo", "promote_admin"],
+            "see_programming": True,  # créa physique uniquement (signature ECDSA)
+            "secret_key_access": True,
+            "see_chatbot_management": True, "see_bots_community": True,
+            "creator_group_visible": "staff_only",
+        },
+    }
+
+
+
 @api_router.post("/projects/translate-name")
 async def translate_project_name(request: Request, payload: TranslateProjectNameIn):
     """Traduit le nom d'un projet/chat dans la langue cible. Cache MongoDB

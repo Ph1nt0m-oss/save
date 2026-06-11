@@ -17,7 +17,33 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-11 — Iter 100 (Spec hiérarchie vues + Hook useViewSpec + i18n)
+
+**🟢 Backend — Endpoint `/views/spec`** (public, GET) :
+- Matrice d'accès complète pour les 4 vues : `user`, `modo`, `admin`, `creator`.
+- Chaque vue retourne `{chats_visible, chats_hidden, see_sidebar_projects, see_own_profile, see_friends, see_idea_box, see_poll_icon, see_other_accounts_actions, see_programming, secret_key_access, ...}`.
+- Inspiré du message 698 utilisatrice :
+  - **User** : voit public/private uniquement, pas modo/admin/staff
+  - **Modo** : voit modo+staff (mais pas admin), peut mute/block/exclude
+  - **Admin** : voit admin+staff (mais pas modo), peut promote/demote modo, voit chatbot mgmt + bots community
+  - **Créa** : voit tout (sauf renommer/visiter quand simulée), programming + secret_keys uniquement si physique
 ### 2026-06-11 — Iter 99 (BotsAdminPanel UI + Fix vue forcée invité)
+
+**🟢 Frontend — Hook `useViewSpec`** :
+- `/app/frontend/src/hooks/useViewSpec.js` : fetch + cache la spec, expose `canSeeProgramming`, `canAccessSecretKeys`, `canSeeBotsAdmin`, `canSeeChatbotManagement`, `canSeePollIcon`, `canSeeOtherAccountsActions`, `visibleChats`, `hiddenChats`.
+- **Override critique** : `see_programming` et `secret_key_access` restent liés au **role physique** (`device.role === 'creator'`), JAMAIS à la vue simulée. Quand la créa simule la vue Modo, elle perd l'accès à la programmation dans l'UI mais la garde via signature ECDSA si elle vient elle-même.
+
+**🟢 i18n — 22 nouvelles clés FR** ajoutées dans `LanguageContext.js` :
+- `wizard_title`, `wizard_subtitle`, `wizard_step1-3` (Création rapide accompagnée)
+- `prog_ai_title/subtitle`, `prog_site_title/subtitle`, `prog_changelog_title`, `prog_history_title` (Programmations)
+- `view_user`, `view_modo`, `view_admin`, `view_creator`, `view_guest`
+- `bots_community_title`, `caly_title`, `creation_eye_title`
+- `private_mode_send_to`, `private_mode_creator_always`, `private_mode_admins`, `private_mode_modos`, `private_mode_priority`
+- `signup_github_required`, `signup_github_body`, `signup_github_btn`, `signup_github_confirmed`
+
+**Tests** : **29/29 PASS** (iter100 + régression iter97-99). Screenshot live impeccable, 0 page error.
+
+
 
 **🟢 BotsAdminPanel.jsx (UI Community Bots)** :
 - Composant complet (220 lignes) avec liste/create/edit/delete/rate.

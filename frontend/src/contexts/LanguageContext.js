@@ -3,6 +3,36 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 // Traductions
 const translations = {
  fr: {
+    // iter100 — i18n des sections manquantes signalées par utilisatrice
+    wizard_title: 'Création rapide accompagnée',
+    wizard_subtitle: 'L\'assistant te guide pas à pas',
+    wizard_step1: 'Décris ton projet',
+    wizard_step2: 'Choisis le type d\'app',
+    wizard_step3: 'Confirme et lance',
+    prog_ai_title: 'Programmation des IA',
+    prog_ai_subtitle: 'Modèles, prompts et orchestrateur',
+    prog_site_title: 'Programmation du site',
+    prog_site_subtitle: 'Routes, components et déploiement',
+    prog_changelog_title: 'Modifications du site & IA (sync)',
+    prog_history_title: 'Historique d\'exécution',
+    view_user: 'Vue Utilisateur',
+    view_modo: 'Vue Modérateur',
+    view_admin: 'Vue Administrateur',
+    view_creator: 'Vue Créatrice',
+    view_guest: 'Vue Visiteur',
+    bots_community_title: 'Communauté de bots',
+    caly_title: 'Caly — Assistante d\'utilisation',
+    creation_eye_title: 'Aperçu interactif',
+    private_mode_send_to: 'Envoyer la clé à :',
+    private_mode_creator_always: 'Créatrice (toujours)',
+    private_mode_admins: 'Administrateurs',
+    private_mode_modos: 'Modérateurs',
+    private_mode_priority: 'La décision de la créatrice est prioritaire et révoque celle prise par le staff.',
+    signup_github_required: 'Inscription GitHub obligatoire',
+    signup_github_body: 'Un compte GitHub est requis pour activer le push automatique de tes créations.',
+    signup_github_btn: 'Créer mon compte GitHub',
+    signup_github_confirmed: 'J\'ai créé mon compte GitHub (ou j\'en ai déjà un)',
+
  // Common
  back: 'Retour',
  next: 'Suivant',
