@@ -21,6 +21,7 @@ import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useOrchestrate from '../hooks/useOrchestrate';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useCache } from '../contexts/CacheContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -30,6 +31,7 @@ export default function Chat() {
   const location = useLocation();
   const { language, t } = useLanguage();
   const { user } = useAuth();
+  const { cacheChatHistory, getCachedChatHistory } = useCache();
   const device = useDeviceIdentity();
   const canWrite = device.canWrite;
   const mode = location.state?.mode || 'online';
@@ -146,6 +148,9 @@ export default function Chat() {
   }, [messages]);
 
   // Load chat history when a project is provided.
+  // iter102 — Latence 0ms : hydrate INSTANTANÉMENT depuis le cache localStorage
+  // (cacheChatHistory du CacheContext), puis fetch en arrière-plan et remplace
+  // silencieusement. Plus jamais de flash blanc/spinner pour les chats déjà visités.
   useEffect(() => {
     if (!project?.project_id) {
       // Pas de projet → conversation neuve, on s'assure que le state est vierge.
@@ -154,25 +159,62 @@ export default function Chat() {
       return;
     }
     let cancelled = false;
-    setHistoryLoading(true);
-    setMessages([]);  // Reset visuel immédiat pour éviter le flash d'ancienne convo
+    const pid = project.project_id;
+
+    // 1) Hydratation instantanée depuis le cache (0ms perçus)
+    const cached = getCachedChatHistory(pid);
+    if (Array.isArray(cached) && cached.length > 0) {
+      setMessages(cached.map(m => ({
+        ...m,
+        timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+      })));
+      setHistoryLoading(false);
+    } else {
+      // Pas de cache → spinner + reset visuel
+      setMessages([]);
+      setHistoryLoading(true);
+    }
+
+    // 2) Refresh silencieux en arrière-plan
     (async () => {
       try {
-        const r = await axios.get(`${API}/chat/history?project_id=${project.project_id}&limit=500`, { withCredentials: true });
+        const r = await axios.get(`${API}/chat/history?project_id=${pid}&limit=500`, { withCredentials: true });
         if (!cancelled && Array.isArray(r.data)) {
-          setMessages(r.data.map(m => ({
+          const hydrated = r.data.map(m => ({
             ...m,
             download: m.download || null,
             ai_source: m.ai_source || null,
             model_id: m.model_id || null,
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
-          })));
+          }));
+          setMessages(hydrated);
+          // Persiste pour les prochains clics (timestamps ISO pour JSON-safe)
+          try {
+            cacheChatHistory(pid, hydrated.map(m => ({
+              ...m,
+              timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+            })));
+          } catch { /* silent */ }
         }
       } catch (_) { /* silent */ }
       finally { if (!cancelled) setHistoryLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [project?.project_id]);
+  }, [project?.project_id, cacheChatHistory, getCachedChatHistory]);
+
+  // iter102 — Cache live : persiste messages dès qu'ils changent (incluant l'IA qui répond)
+  // pour que le prochain clic sidebar soit instantané, même après une nouvelle conversation.
+  useEffect(() => {
+    const pid = project?.project_id;
+    if (!pid || messages.length === 0) return;
+    try {
+      cacheChatHistory(pid, messages.map(m => ({
+        ...m,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+        _just_arrived: undefined,  // ne pas cacher le flag d'animation typewriter
+      })));
+    } catch { /* silent */ }
+  }, [messages, project?.project_id, cacheChatHistory]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

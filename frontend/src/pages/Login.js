@@ -806,11 +806,10 @@ export default function Login() {
                       <Github className="w-4 h-4 text-violet-300 flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-xs font-['Chivo'] font-bold text-violet-300 mb-1">
-                          Inscription GitHub obligatoire
+                          {t('signup_github_required') || 'Inscription GitHub obligatoire'}
                         </p>
                         <p className="text-[11px] text-[#A1A1AA] leading-relaxed mb-2">
-                          Un compte GitHub est requis pour activer le push automatique de tes créations.
-                          Inscris-toi en 30 secondes :
+                          {t('signup_github_body') || 'Un compte GitHub est requis pour activer le push automatique de tes créations.'} {t('signup_github_btn_help') || 'Inscris-toi en 30 secondes :'}
                         </p>
                         <a
                           href={`https://github.com/signup?source=form-home-signup&user_email=${encodeURIComponent(email || '')}`}
@@ -820,7 +819,7 @@ export default function Login() {
                           className="inline-flex items-center gap-1.5 text-[11px] bg-violet-500 hover:bg-violet-400 text-white font-['Chivo'] font-bold px-3 py-1.5 rounded-sm transition-colors"
                         >
                           <Github className="w-3.5 h-3.5" />
-                          Créer mon compte GitHub
+                          {t('signup_github_btn') || 'Créer mon compte GitHub'}
                         </a>
                         <label className="flex items-center gap-2 mt-2.5 cursor-pointer">
                           <input

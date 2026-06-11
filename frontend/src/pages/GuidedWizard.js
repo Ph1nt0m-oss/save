@@ -17,30 +17,30 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const PLATFORMS = [
-  { id: 'web', icon: Globe, label: 'Site web', desc: 'Responsive, exporté en PWA' },
-  { id: 'mobile', icon: Smartphone, label: 'App mobile', desc: 'Android / iOS (APK)' },
-  { id: 'desktop', icon: Monitor, label: 'Logiciel', desc: 'Windows / macOS (EXE)' },
+  { id: 'web', icon: Globe, labelKey: 'wizard_plat_web', descKey: 'wizard_plat_web_desc' },
+  { id: 'mobile', icon: Smartphone, labelKey: 'wizard_plat_mobile', descKey: 'wizard_plat_mobile_desc' },
+  { id: 'desktop', icon: Monitor, labelKey: 'wizard_plat_desktop', descKey: 'wizard_plat_desktop_desc' },
 ];
 
 const APP_TYPES = [
-  { id: 'ecommerce', icon: ShoppingCart, label: 'E-Commerce' },
-  { id: 'blog', icon: FileText, label: 'Blog / CMS' },
-  { id: 'social', icon: Users, label: 'Réseau social' },
-  { id: 'chat', icon: MessageSquare, label: 'Messagerie' },
-  { id: 'portfolio', icon: ImgIcon, label: 'Portfolio' },
-  { id: 'dashboard', icon: Database, label: 'Dashboard' },
-  { id: 'booking', icon: Calendar, label: 'Réservation' },
-  { id: 'media', icon: Video, label: 'Média / Streaming' },
-  { id: 'maps', icon: Map, label: 'Géolocalisation' },
-  { id: 'notifications', icon: Bell, label: 'Utilitaire' },
-  { id: 'music', icon: Music, label: 'Audio / Musique' },
-  { id: 'custom', icon: Sparkles, label: 'Personnalisé' },
+  { id: 'ecommerce', icon: ShoppingCart, labelKey: 'wizard_type_ecommerce' },
+  { id: 'blog', icon: FileText, labelKey: 'wizard_type_blog' },
+  { id: 'social', icon: Users, labelKey: 'wizard_type_social' },
+  { id: 'chat', icon: MessageSquare, labelKey: 'wizard_type_chat' },
+  { id: 'portfolio', icon: ImgIcon, labelKey: 'wizard_type_portfolio' },
+  { id: 'dashboard', icon: Database, labelKey: 'wizard_type_dashboard' },
+  { id: 'booking', icon: Calendar, labelKey: 'wizard_type_booking' },
+  { id: 'media', icon: Video, labelKey: 'wizard_type_media' },
+  { id: 'maps', icon: Map, labelKey: 'wizard_type_maps' },
+  { id: 'notifications', icon: Bell, labelKey: 'wizard_type_notifications' },
+  { id: 'music', icon: Music, labelKey: 'wizard_type_music' },
+  { id: 'custom', icon: Sparkles, labelKey: 'wizard_type_custom' },
 ];
 
 export default function GuidedWizard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const mode = location.state?.mode || 'online';
 
   const [step, setStep] = useState(1);
@@ -166,10 +166,10 @@ export default function GuidedWizard() {
         { withCredentials: true }
       );
       setGeneratedProject(r.data);
-      toast.success('Application générée !');
+      toast.success(t('wizard_success_toast'));
       setStep(5);
     } catch (e) {
-      toast.error('Erreur de génération. Réessaie.');
+      toast.error(t('wizard_error_toast'));
     } finally {
       setIsGenerating(false);
     }
@@ -180,12 +180,12 @@ export default function GuidedWizard() {
       return (
         <div className="space-y-10">
           <header className="text-center">
-            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Que veux-tu créer ?</h2>
-            <p className="text-[#A1A1AA]">Choisis une ou plusieurs plateformes et un ou plusieurs types.</p>
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">{t('wizard_q1_title')}</h2>
+            <p className="text-[#A1A1AA]">{t('wizard_q1_subtitle')}</p>
           </header>
 
           <section>
-            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">Plateforme(s)</h3>
+            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">{t('wizard_platform_label')}</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3" data-testid="wizard-platforms">
               {PLATFORMS.map(p => {
                 const active = platforms.includes(p.id);
@@ -199,8 +199,8 @@ export default function GuidedWizard() {
                     }`}
                   >
                     <p.icon className={`w-7 h-7 mb-3 ${active ? 'text-[#E4FF00]' : 'text-[#A1A1AA]'}`} />
-                    <h4 className="font-['Chivo'] font-bold">{p.label}</h4>
-                    <p className="text-xs text-[#A1A1AA] mt-1">{p.desc}</p>
+                    <h4 className="font-['Chivo'] font-bold">{t(p.labelKey)}</h4>
+                    <p className="text-xs text-[#A1A1AA] mt-1">{t(p.descKey)}</p>
                   </motion.button>
                 );
               })}
@@ -208,21 +208,21 @@ export default function GuidedWizard() {
           </section>
 
           <section>
-            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">Type(s) d&apos;application</h3>
+            <h3 className="text-xs uppercase tracking-widest text-[#A1A1AA] mb-3">{t('wizard_apptype_label')}</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="wizard-types">
-              {APP_TYPES.map(t => {
-                const active = appTypes.includes(t.id);
+              {APP_TYPES.map(tp => {
+                const active = appTypes.includes(tp.id);
                 return (
                   <motion.button
-                    key={t.id} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => toggleType(t.id)}
-                    data-testid={`wizard-type-${t.id}`}
+                    key={tp.id} whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+                    onClick={() => toggleType(tp.id)}
+                    data-testid={`wizard-type-${tp.id}`}
                     className={`p-3 rounded-sm border text-left transition-all ${
                       active ? 'border-[#E4FF00] bg-[#E4FF00]/10' : 'border-white/10 bg-[#0F0F13] hover:border-white/30'
                     }`}
                   >
-                    <t.icon className={`w-5 h-5 mb-2 ${active ? 'text-[#E4FF00]' : 'text-[#A1A1AA]'}`} />
-                    <h4 className="text-sm font-['Chivo'] font-bold">{t.label}</h4>
+                    <tp.icon className={`w-5 h-5 mb-2 ${active ? 'text-[#E4FF00]' : 'text-[#A1A1AA]'}`} />
+                    <h4 className="text-sm font-['Chivo'] font-bold">{t(tp.labelKey)}</h4>
                   </motion.button>
                 );
               })}
@@ -236,15 +236,15 @@ export default function GuidedWizard() {
       return (
         <div className="space-y-8 max-w-xl mx-auto">
           <header className="text-center">
-            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Donne-lui un nom</h2>
-            <p className="text-[#A1A1AA]">Tape un nom — ou laisse l&apos;IA t&apos;en proposer.</p>
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">{t('wizard_q2_title')}</h2>
+            <p className="text-[#A1A1AA]">{t('wizard_q2_subtitle')}</p>
           </header>
 
           <div className="relative">
             <input
               type="text" value={appName}
               onChange={(e) => setAppName(e.target.value)}
-              placeholder="Mon application"
+              placeholder={t('wizard_name_placeholder')}
               data-testid="wizard-app-name"
               className="w-full px-6 py-5 pr-16 bg-[#0F0F13] border-2 border-white/15 rounded-sm focus:outline-none focus:border-[#E4FF00] text-2xl text-center font-['Chivo']"
             />
@@ -252,7 +252,7 @@ export default function GuidedWizard() {
               type="button" onClick={askMagicName}
               data-testid="wizard-magic-name-btn"
               disabled={magicLoading.name || platforms.length === 0}
-              title="🪄 Suggérer un nom"
+              title={t('wizard_magic_name_tip')}
               className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-sm bg-[#E4FF00] text-[#050505] hover:scale-105 transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {magicLoading.name ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
@@ -271,7 +271,7 @@ export default function GuidedWizard() {
           )}
 
           <p className="text-xs text-[#A1A1AA] text-center">
-            La baguette magique a besoin d&apos;au moins une plateforme à l&apos;étape précédente.
+            {t('wizard_magic_name_hint')}
           </p>
         </div>
       );
@@ -281,21 +281,21 @@ export default function GuidedWizard() {
       return (
         <div className="space-y-8 max-w-3xl mx-auto">
           <header className="text-center">
-            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Décris ton app</h2>
-            <p className="text-[#A1A1AA]">Sépare l&apos;apparence (design) du comportement (fonctionnement). Tu peux joindre des fichiers.</p>
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">{t('wizard_q3_title')}</h2>
+            <p className="text-[#A1A1AA]">{t('wizard_q3_subtitle')}</p>
           </header>
 
           <div className="grid md:grid-cols-2 gap-5">
             <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Paintbrush className="w-4 h-4 text-[#E4FF00]" /> Design / Visuel</h3>
+                <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Paintbrush className="w-4 h-4 text-[#E4FF00]" /> {t('wizard_design_label')}</h3>
                 <div className="flex items-center gap-1.5">
                   <button onClick={askMagicDesign}
                     data-testid="wizard-magic-design-btn"
                     disabled={magicLoading.design}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#E4FF00] text-[#050505] font-bold rounded-sm hover:scale-105 transition-transform disabled:opacity-40">
                     {magicLoading.design ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                    Suggestion IA
+                    {t('wizard_ai_suggestion')}
                   </button>
                   {/* iter80 C2 — Pièces jointes possibles aussi dans Design */}
                   <AttachMenu onResult={handleAttach} />
@@ -303,7 +303,7 @@ export default function GuidedWizard() {
               </div>
               <textarea
                 value={designText} onChange={(e) => setDesignText(e.target.value)}
-                rows={8} placeholder="Couleurs, ambiance, typographie, références…"
+                rows={8} placeholder={t('wizard_design_placeholder')}
                 data-testid="wizard-design-textarea"
                 className="w-full bg-[#050505] border border-white/10 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-[#E4FF00]"
               />
@@ -311,7 +311,7 @@ export default function GuidedWizard() {
 
             <div className="bg-[#0F0F13] border border-white/10 rounded-sm p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Cog className="w-4 h-4 text-[#00FF66]" /> Fonctionnement</h3>
+                <h3 className="font-['Chivo'] font-bold flex items-center gap-2"><Cog className="w-4 h-4 text-[#00FF66]" /> {t('wizard_func_label')}</h3>
                 <div className="flex items-center gap-1.5">
                   {/* iter80 C2 — Suggestion IA possible aussi dans Fonctionnement */}
                   <button onClick={askMagicFunc}
@@ -319,14 +319,14 @@ export default function GuidedWizard() {
                     disabled={magicLoading.func}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#00FF66] text-[#050505] font-bold rounded-sm hover:scale-105 transition-transform disabled:opacity-40">
                     {magicLoading.func ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                    Suggestion IA
+                    {t('wizard_ai_suggestion')}
                   </button>
                   <AttachMenu onResult={handleAttach} />
                 </div>
               </div>
               <textarea
                 value={funcText} onChange={(e) => setFuncText(e.target.value)}
-                rows={8} placeholder="Que fait l'app ? Quels écrans, quelles règles métier ?"
+                rows={8} placeholder={t('wizard_func_placeholder')}
                 data-testid="wizard-func-textarea"
                 className="w-full bg-[#050505] border border-white/10 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-[#00FF66]"
               />
@@ -351,18 +351,18 @@ export default function GuidedWizard() {
       return (
         <div className="max-w-2xl mx-auto space-y-6" data-testid="wizard-recap">
           <header className="text-center">
-            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">Récapitulatif</h2>
-            <p className="text-[#A1A1AA]">Vérifie avant de générer. Tu pourras revenir en arrière.</p>
+            <h2 className="text-3xl sm:text-4xl font-['Chivo'] font-black mb-2">{t('wizard_recap_title')}</h2>
+            <p className="text-[#A1A1AA]">{t('wizard_recap_subtitle')}</p>
           </header>
 
           <div className="bg-[#0F0F13] border-2 border-[#E4FF00] rounded-sm p-6 space-y-4 text-sm">
-            <Row label="Nom" value={appName || '—'} />
-            <Row label="Plateformes" value={platforms.map(p => PLATFORMS.find(x => x.id === p)?.label).filter(Boolean).join(', ') || '—'} />
-            <Row label="Types" value={appTypes.map(t => APP_TYPES.find(x => x.id === t)?.label).filter(Boolean).join(', ') || '—'} />
-            <Row label="Design" value={designText || '—'} multiline />
-            <Row label="Fonctionnement" value={funcText || '—'} multiline />
+            <Row label={t('wizard_recap_name')} value={appName || '—'} />
+            <Row label={t('wizard_recap_platforms')} value={platforms.map(p => t(PLATFORMS.find(x => x.id === p)?.labelKey)).filter(Boolean).join(', ') || '—'} />
+            <Row label={t('wizard_recap_types')} value={appTypes.map(tp => t(APP_TYPES.find(x => x.id === tp)?.labelKey)).filter(Boolean).join(', ') || '—'} />
+            <Row label={t('wizard_recap_design')} value={designText || '—'} multiline />
+            <Row label={t('wizard_recap_func')} value={funcText || '—'} multiline />
             {attachments.length > 0 && (
-              <Row label="Pièces jointes" value={attachments.map(a => a.name || a.url || 'extrait').join(', ')} />
+              <Row label={t('wizard_recap_attachments')} value={attachments.map(a => a.name || a.url || 'extrait').join(', ')} />
             )}
           </div>
         </div>
@@ -377,8 +377,8 @@ export default function GuidedWizard() {
             <CheckCircle className="w-12 h-12 text-[#050505]" />
           </motion.div>
           <div>
-            <h2 className="text-3xl font-['Chivo'] font-black mb-2">Application générée !</h2>
-            <p className="text-[#A1A1AA]">&quot;{appName}&quot; est prête.</p>
+            <h2 className="text-3xl font-['Chivo'] font-black mb-2">{t('wizard_generated_title')}</h2>
+            <p className="text-[#A1A1AA]">&quot;{appName}&quot; {t('wizard_generated_ready')}</p>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <Button onClick={() => window.open(`${API}/export/mobile/${generatedProject?.project?.id}`, '_blank')}
@@ -395,7 +395,7 @@ export default function GuidedWizard() {
             </Button>
           </div>
           <Button onClick={() => navigate('/dashboard')} variant="outline" className="border-white/20">
-            Retour au Dashboard
+            {t('wizard_back_dashboard')}
           </Button>
         </div>
       );
@@ -411,10 +411,10 @@ export default function GuidedWizard() {
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Button onClick={() => navigate('/dashboard')} variant="ghost" size="sm">
               <ArrowLeft className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Retour</span>
+              <span className="hidden sm:inline">{t('back')}</span>
             </Button>
             <Sparkles className="w-5 h-5 text-[#E4FF00] flex-shrink-0" />
-            <h1 className="font-['Chivo'] font-bold text-base sm:text-xl truncate">Assistant de création</h1>
+            <h1 className="font-['Chivo'] font-bold text-base sm:text-xl truncate">{t('wizard_assistant_title')}</h1>
           </div>
           {step <= totalSteps && (
             <div className="flex items-center gap-1.5">
@@ -425,7 +425,7 @@ export default function GuidedWizard() {
                   }`}
                 />
               ))}
-              <span className="ml-2 text-xs text-[#A1A1AA] hidden sm:inline">Étape {step}/{totalSteps}</span>
+              <span className="ml-2 text-xs text-[#A1A1AA] hidden sm:inline">{t('wizard_step_label')} {step}/{totalSteps}</span>
             </div>
           )}
         </div>
@@ -444,21 +444,21 @@ export default function GuidedWizard() {
           <div className="flex justify-between mt-6 pt-6 border-t border-white/10 gap-3">
             <Button onClick={() => setStep(s => Math.max(1, s - 1))} variant="outline"
               disabled={step === 1} className="border-white/20" data-testid="wizard-back-btn">
-              <ArrowLeft className="w-4 h-4 mr-2" /> Précédent
+              <ArrowLeft className="w-4 h-4 mr-2" /> {t('wizard_back_btn')}
             </Button>
 
             {step < totalSteps ? (
               <Button onClick={() => setStep(s => s + 1)} disabled={!canProceed()}
                 data-testid="wizard-next-btn"
                 className="bg-[#E4FF00] text-[#050505] font-['Chivo'] font-bold">
-                Suivant <ArrowRight className="w-4 h-4 ml-2" />
+                {t('wizard_next_btn')} <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             ) : (
               <Button onClick={generateApplication} disabled={isGenerating || !canProceed()}
                 data-testid="wizard-generate-btn"
                 className="bg-[#00FF66] text-[#050505] px-6 sm:px-8 font-['Chivo'] font-bold">
-                {isGenerating ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Génération…</>
-                  : <><Sparkles className="w-5 h-5 mr-2" /> Générer l&apos;application</>}
+                {isGenerating ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> {t('wizard_generating')}</>
+                  : <><Sparkles className="w-5 h-5 mr-2" /> {t('wizard_generate_btn')}</>}
               </Button>
             )}
           </div>

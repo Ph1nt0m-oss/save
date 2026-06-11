@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { exportPublicKeyShareCode, withCreatorProof } from '../lib/deviceIdentity';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import useViewSpec from '../hooks/useViewSpec';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -59,6 +60,9 @@ export default function Profile() {
   const { user, setUser, logout } = useAuth();
   const { t } = useLanguage();
   const device = useDeviceIdentity();
+  // iter102 — Filtrage par viewSpec : canAccessSecretKeys gardé pour gating futur de la clé secrète créa.
+  // eslint-disable-next-line no-unused-vars
+  const { canAccessSecretKeys } = useViewSpec();
   const [deviceShareCode, setDeviceShareCode] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
 

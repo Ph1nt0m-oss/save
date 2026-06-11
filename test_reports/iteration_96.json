@@ -1,0 +1,47 @@
+{
+  "summary": "iter102 frontend i18n + chat cache review (static + UI). UI Playwright testing past /login is BLOCKED by the same 'Site temporarily private' full-screen overlay observed in iter95 (and login is currently 429 rate-limited from prior testing). Performed deep static verification: all 51 wizard_* and 41 prog_* translation keys are present in BOTH fr and en sections of LanguageContext.js (FR=lines 5-731, EN=732-3538) with perfectly symmetric coverage and no missing/orphan keys vs. usage in GuidedWizard.js (49 keys used, all defined) and PrivateProgramming.js (35 keys + 4 dynamic prog_agent_*_desc via t(a.descKey), all defined). Chat.js cache hydration logic (lines 154-217) is correctly wired: instant hydrate from getCachedChatHistory before render, silent background refresh, live persistence on every messages change via cacheChatHistory; CacheProvider wraps the app in App.js. Found ONE i18n REGRESSION in Login.js that is in scope of test request item 5: the GitHub confirmation checkbox label on line 834 is hardcoded French ('J\u2019ai créé mon compte GitHub (ou j\u2019en ai déjà un)') instead of using t('signup_github_confirmed') — the translation keys exist in both FR (line 34) and EN (line 761) but the JSX never calls t(). In EN mode the checkbox text will still read French. Also noted hardcoded French toast on line 496 ('Le nouveau mot de passe doit faire au moins 6 caractères.').",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Login.js (signup mode — GitHub block)",
+        "issue": "Checkbox label is HARDCODED French JSX text instead of t('signup_github_confirmed'). In EN mode the user still sees 'J\u2019ai créé mon compte GitHub (ou j\u2019en ai déjà un)'. The i18n keys ARE defined (FR L34, EN L761) — just not wired. Fix: replace the literal text on Login.js:834 with {t('signup_github_confirmed')}.",
+        "selector": "[data-testid='signup-github-confirmed'] + span / Login.js:834",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Login.js — forgot-password validation toast",
+        "issue": "Line 496 has a hardcoded French toast 'Le nouveau mot de passe doit faire au moins 6 caractères.' — not in iter102 scope but flagged for the global i18n cleanup pass.",
+        "selector": "Login.js:496",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix Login.js:834 — replace the hardcoded French <span> text with {t('signup_github_confirmed')} so the GitHub confirmation checkbox is translated in EN.",
+    "(Optional cleanup) Login.js:496 — replace hardcoded French toast with a t() key for FR/EN consistency.",
+    "When the site is taken OUT of private mode (or a test bypass is provided), re-run live Playwright verification of /wizard and /private-programming i18n live-switch (FR<->EN) and the chat cache 0ms hydration (localStorage key 'codeforge_chat_history' — note the actual key differs from 'cf_chat_history_v1' mentioned in the review request; either update docs or rename the key for clarity).",
+    "Consider using the 2 defined-but-unused keys prog_ai_subtitle and prog_site_subtitle in PrivateProgramming.js headers, or remove them from translations to avoid drift."
+  ],
+  "critical_code_review_comments": [
+    "i18n key coverage: 51/51 wizard_* and 41/41 prog_* keys are symmetric between fr and en — excellent parity. GuidedWizard.js and PrivateProgramming.js contain NO hardcoded French JSX text (verified by grep of accented characters in JSX text nodes).",
+    "Chat cache hydration in Chat.js (lines 146-217) follows the requested pattern: synchronous hydrate from getCachedChatHistory before the async fetch (no spinner if cache exists), then silent background refresh that re-sets messages and re-caches. The dependency array on the persistence effect includes cacheChatHistory (which is useCallback-stable) — clean implementation. One micro-inefficiency: the persistence effect runs on EVERY messages change including the initial hydrate, causing one extra redundant localStorage write per chat open — harmless but could be guarded with a hasHydrated ref.",
+    "Login.js still ships a hardcoded French span (line 834) and toast (line 496) — these are leftovers that contradict the iter102 i18n cleanup goal. The translation keys for the span already exist in both languages but the JSX is not consuming them.",
+    "Cache localStorage key in CacheContext.js is 'codeforge_chat_history' (CACHE_KEYS.CHAT_HISTORY), NOT 'cf_chat_history_v1' as the review request mentions. Functionally correct, but documentation/instruction drift.",
+    "Two prog_* translation keys (prog_ai_subtitle, prog_site_subtitle) are defined but never referenced in PrivateProgramming.js — dead translation entries."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only iter)", "frontend": "i18n static: 100% (wizard + private-programming); cache logic: 100%; login regression: FAIL on signup_github_confirmed wiring; live UI verification: blocked by private-mode overlay"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login returned HTTP 429 (rate-limit 5 fails / 15 min from prior agents). Site is also in 'temporarily private' mode so /login is fully overlaid and UI cannot be exercised even after auth.",
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "1) Site still in private mode (same as iter95) AND login is currently 429. To do real UI Playwright on /wizard, /private-programming and chat-cache 0ms behavior, main agent must (a) lift private mode OR provide a tester device-id bypass, and (b) wait ~15 min for the brute-force lockout to expire OR seed a fresh test account. 2) i18n key audit script that works: awk 'NR>=5&&NR<=731' LanguageContext.js | grep -oE 'wizard_[a-z_]+' | sort -u  → compare to EN range 732-3538. 3) The chat cache localStorage key is 'codeforge_chat_history' (a dict of { [project_id]: messages[] } wrapped in {data, timestamp, version:'2.0'}), NOT 'cf_chat_history_v1'. 4) On the live cache test once unblocked: open chat A → leave to Dashboard → re-open chat A → expect no spinner and messages render synchronously on first paint (verify by checking that historyLoading stays false and messages length >0 in React state on the very first render after click).",
+  "rca of the issue": "Login.js:834 missing t() call — likely manually edited French text was never migrated to the t('signup_github_confirmed') key even though the key was added to both translations. Reproduction: switch language to EN on /login, click 'Sign up' tab → checkbox label remains in French. Mitigation: one-line JSX edit, change literal text to {t('signup_github_confirmed')}."
+}

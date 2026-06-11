@@ -45,22 +45,19 @@ export default function PrivateProgramming() {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate('/dashboard')} className="text-[#A1A1AA] hover:text-white text-sm inline-flex items-center gap-1">
-            <ArrowLeft className="w-4 h-4" /> Retour
+            <ArrowLeft className="w-4 h-4" /> {t('back')}
           </button>
           <h1 className="text-2xl font-['Chivo'] font-black">{title}</h1>
         </div>
         {!allowed ? (
           <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-8 text-center max-w-md mx-auto" data-testid="private-access-denied">
             <Lock className="w-14 h-14 mx-auto text-red-300 mb-4" />
-            <h2 className="text-lg font-bold text-red-200 mb-2">Accès refusé</h2>
+            <h2 className="text-lg font-bold text-red-200 mb-2">{t('prog_access_denied')}</h2>
             <p className="text-sm text-red-100/90 leading-relaxed">
-              Pour des raisons de sécurité, le code n&apos;est accessible que pour les
-              appareils créateurs et uniquement quand la vue créatrice n&apos;est pas
-              active (anti-copie par-dessus l&apos;épaule).
+              {t('prog_access_body')}
             </p>
             <p className="text-xs text-amber-200/90 mt-3">
-              Active une vue simulée (user/modo/admin/guest) depuis le ViewModePicker
-              pour débloquer cette page.
+              {t('prog_access_hint')}
             </p>
           </div>
         ) : (
@@ -76,6 +73,7 @@ export default function PrivateProgramming() {
 // =============================================================================
 
 function SiteProgrammingPanel() {
+  const { t } = useLanguage();
   const [pattern, setPattern] = useState('');
   const [grepResults, setGrepResults] = useState(null);
   const [filePath, setFilePath] = useState('backend/server.py');
@@ -90,7 +88,7 @@ function SiteProgrammingPanel() {
       const r = await axios.post(`${API}/private/code/read-file`, body);
       setFilePath(rel);
       setFileContent(r.data);
-    } catch (e) { toast.error(e?.response?.data?.detail || 'Lecture impossible'); }
+    } catch (e) { toast.error(e?.response?.data?.detail || t('prog_read_failed')); }
     finally { setBusy(false); }
   };
 
@@ -101,7 +99,7 @@ function SiteProgrammingPanel() {
       const body = await withCreatorProof(API, axios, { pattern: pattern.trim() });
       const r = await axios.post(`${API}/private/code/grep`, body);
       setGrepResults(r.data);
-    } catch (e) { toast.error(e?.response?.data?.detail || 'Recherche impossible'); }
+    } catch (e) { toast.error(e?.response?.data?.detail || t('prog_grep_failed')); }
     finally { setBusy(false); }
   };
 
@@ -112,7 +110,7 @@ function SiteProgrammingPanel() {
       <aside className="col-span-12 lg:col-span-4 bg-[#0A0A0A] border border-white/10 rounded-sm flex flex-col overflow-hidden">
         <header className="p-3 border-b border-white/10 flex items-center gap-2">
           <SearchIcon className="w-4 h-4 text-[#E4FF00]" />
-          <span className="text-sm font-bold">Recherche dans le code</span>
+          <span className="text-sm font-bold">{t('prog_search_in_code')}</span>
         </header>
         <div className="p-3 space-y-2">
           <div className="flex gap-2">
@@ -120,17 +118,17 @@ function SiteProgrammingPanel() {
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') doGrep(); }}
-              placeholder="Pattern à chercher…"
+              placeholder={t('prog_search_placeholder')}
               data-testid="private-grep-input"
               className="flex-1 px-2 py-1.5 bg-[#0F0F13] border border-white/15 rounded-sm text-xs font-mono focus:outline-none focus:border-[#E4FF00]"
             />
             <button onClick={doGrep} disabled={busy || !pattern.trim()} data-testid="private-grep-btn" className="px-3 py-1.5 bg-[#E4FF00] text-[#050505] font-bold text-xs rounded-sm disabled:opacity-40">
-              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Grep'}
+              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : t('prog_grep_btn')}
             </button>
           </div>
           {grepResults && (
             <div className="text-[10px] text-[#A1A1AA] space-y-1 max-h-[calc(100vh-380px)] overflow-y-auto">
-              <div>{grepResults.total} ligne(s) trouvée(s)</div>
+              <div>{grepResults.total} {t('prog_search_lines_found')}</div>
               {(grepResults.matches || []).map((line, i) => {
                 const [path, lineNum] = line.split(':', 2);
                 const rel = path.startsWith('/app/') ? path.slice(5) : path;
@@ -153,8 +151,8 @@ function SiteProgrammingPanel() {
         <header className="p-3 border-b border-white/10 flex items-center gap-2">
           <FileCode className="w-4 h-4 text-[#E4FF00]" />
           <span className="text-sm font-bold truncate flex-1">{filePath}</span>
-          {fileContent?.truncated && <span className="text-[10px] text-amber-300">(tronqué)</span>}
-          {fileContent?.bytes && <span className="text-[10px] text-[#71717A]">{fileContent.bytes} octets</span>}
+          {fileContent?.truncated && <span className="text-[10px] text-amber-300">{t('prog_file_truncated')}</span>}
+          {fileContent?.bytes && <span className="text-[10px] text-[#71717A]">{fileContent.bytes} {t('prog_file_bytes')}</span>}
         </header>
         <div className="flex-1 overflow-auto">
           <pre className="text-[11px] font-mono text-white p-3 whitespace-pre-wrap break-all">
@@ -172,13 +170,14 @@ function SiteProgrammingPanel() {
 // =============================================================================
 
 const AGENT_PROMPTS = [
-  { id: 'planner', label: 'Planner', icon: Brain, color: 'text-violet-300', desc: 'Génère le plan structuré en JSON (hypotheses, files_to_inspect, code_to_execute, uncertainties).' },
-  { id: 'executor', label: 'Executor', icon: Play, color: 'text-amber-300', desc: 'Exécute le code Python dans une sandbox sécurisée (timeout 8s, AST scan, blocklist).' },
-  { id: 'critic', label: 'Critic', icon: SearchIcon, color: 'text-cyan-300', desc: 'Tente de réfuter le plan : logical_flaws, edge_cases, unverifiable + score 0-100.' },
-  { id: 'arbiter', label: 'Arbiter', icon: Save, color: 'text-[#E4FF00]', desc: 'Synthèse finale en séparant confirmé/probable/incertain. Streamé token-par-token.' },
+  { id: 'planner', label: 'Planner', icon: Brain, color: 'text-violet-300', descKey: 'prog_agent_planner_desc' },
+  { id: 'executor', label: 'Executor', icon: Play, color: 'text-amber-300', descKey: 'prog_agent_executor_desc' },
+  { id: 'critic', label: 'Critic', icon: SearchIcon, color: 'text-cyan-300', descKey: 'prog_agent_critic_desc' },
+  { id: 'arbiter', label: 'Arbiter', icon: Save, color: 'text-[#E4FF00]', descKey: 'prog_agent_arbiter_desc' },
 ];
 
 function AIProgrammingPanel() {
+  const { t } = useLanguage();
   const [history, setHistory] = useState([]);
   const [testRunning, setTestRunning] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -221,7 +220,7 @@ function AIProgrammingPanel() {
         }
       }
       setTestResult(events);
-    } catch (e) { toast.error(e.message || 'Test-loop failed'); }
+    } catch (e) { toast.error(e.message || t('prog_test_loop_failed')); }
     finally { setTestRunning(false); }
   };
 
@@ -230,7 +229,7 @@ function AIProgrammingPanel() {
       {/* Agents prompts (read-only) */}
       <section className="col-span-12 lg:col-span-6 bg-[#0A0A0A] border border-white/10 rounded-sm p-4">
         <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] mb-3 flex items-center gap-2">
-          <Cpu className="w-4 h-4" /> Agents de l&apos;orchestrateur
+          <Cpu className="w-4 h-4" /> {t('prog_agents_title')}
         </h2>
         <div className="space-y-3">
           {AGENT_PROMPTS.map((a) => {
@@ -241,7 +240,7 @@ function AIProgrammingPanel() {
                   <Ai className={`w-4 h-4 ${a.color}`} />
                   <span className="font-bold text-sm">{a.label}</span>
                 </div>
-                <p className="text-[11px] text-[#A1A1AA] leading-relaxed">{a.desc}</p>
+                <p className="text-[11px] text-[#A1A1AA] leading-relaxed">{t(a.descKey)}</p>
               </div>
             );
           })}
@@ -251,7 +250,7 @@ function AIProgrammingPanel() {
       {/* Test-loop launcher */}
       <section className="col-span-12 lg:col-span-6 bg-[#0A0A0A] border border-white/10 rounded-sm p-4">
         <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] mb-3 flex items-center gap-2">
-          <Play className="w-4 h-4" /> Boucle de validation
+          <Play className="w-4 h-4" /> {t('prog_test_loop_title')}
         </h2>
         <button
           onClick={runTestLoop}
@@ -260,7 +259,7 @@ function AIProgrammingPanel() {
           className="w-full px-3 py-2 bg-[#E4FF00] text-[#050505] font-bold text-sm rounded-sm hover:bg-[#E4FF00]/90 disabled:opacity-40 inline-flex items-center justify-center gap-2"
         >
           {testRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          {testRunning ? 'Tests en cours…' : 'Lancer pytest backend'}
+          {testRunning ? t('prog_test_running') : t('prog_test_launch')}
         </button>
         {testResult && (
           <div className="mt-3 space-y-1 max-h-64 overflow-y-auto">
@@ -277,10 +276,10 @@ function AIProgrammingPanel() {
       {/* History */}
       <section className="col-span-12 bg-[#0A0A0A] border border-white/10 rounded-sm p-4">
         <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] mb-3 flex items-center gap-2">
-          <FolderTree className="w-4 h-4" /> Historique d&apos;exécution
+          <FolderTree className="w-4 h-4" /> {t('prog_history_title') || "Historique d'exécution"}
         </h2>
         {history.length === 0 ? (
-          <div className="text-[11px] text-[#71717A] py-4 text-center">Aucun événement persisté.</div>
+          <div className="text-[11px] text-[#71717A] py-4 text-center">{t('prog_history_empty')}</div>
         ) : (
           <div className="space-y-1 max-h-64 overflow-y-auto">
             {history.map((e, i) => (
@@ -304,6 +303,7 @@ function AIProgrammingPanel() {
 // iter92 — CHANGELOG modifications site/IA (sync bidirectionnelle)
 // =============================================================================
 function ChangelogPanel() {
+  const { t } = useLanguage();
   const [changes, setChanges] = useState([]);
   const [loading, setLoading] = useState(false);
   const [manualCategory, setManualCategory] = useState('manual');
@@ -316,7 +316,7 @@ function ChangelogPanel() {
       const r = await axios.post(`${API}/private/changelog`, body);
       setChanges(r.data?.changes || []);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Changelog inaccessible');
+      toast.error(e?.response?.data?.detail || t('prog_changelog_unavailable'));
     } finally { setLoading(false); }
   };
 
@@ -329,10 +329,10 @@ function ChangelogPanel() {
       });
       await axios.post(`${API}/private/changelog/log`, body);
       setManualSummary('');
-      toast.success('Modification enregistrée');
+      toast.success(t('prog_changelog_saved'));
       loadChanges();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Échec enregistrement');
+      toast.error(e?.response?.data?.detail || t('prog_changelog_save_failed'));
     }
   };
 
@@ -351,14 +351,14 @@ function ChangelogPanel() {
     <section className="col-span-12 bg-[#0A0A0A] border border-white/10 rounded-sm p-4" data-testid="changelog-panel">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] flex items-center gap-2">
-          <Save className="w-4 h-4" /> Modifications du site &amp; IA (sync)
+          <Save className="w-4 h-4" /> {t('prog_changelog_title')}
         </h2>
         <button onClick={loadChanges} className="text-xs text-[#A1A1AA] hover:text-white px-2 py-1 rounded-sm border border-white/10">
-          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Recharger'}
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : t('prog_changelog_reload')}
         </button>
       </div>
       <p className="text-[11px] text-[#A1A1AA] mb-3 leading-relaxed">
-        Suit toutes les modifications faites au site et aux IA (ajouts/retraits de modèles, changement de site_mode, déploiements, code Python/JS modifié sur GitHub ou en local). Ajoute manuellement une entrée quand tu modifies le code directement.
+        {t('prog_changelog_subtitle')}
       </p>
       {/* Saisie manuelle */}
       <div className="flex gap-2 mb-3 bg-black/30 border border-white/10 rounded-sm p-2">
@@ -368,18 +368,18 @@ function ChangelogPanel() {
           data-testid="changelog-category-select"
           className="bg-[#0F0F13] border border-white/10 rounded-sm px-2 py-1 text-xs text-white"
         >
-          <option value="manual">Manuel</option>
-          <option value="code">Code modifié</option>
-          <option value="config">Config / .env</option>
-          <option value="model">Modèle IA</option>
-          <option value="site_mode">Mode du site</option>
-          <option value="deploy">Déploiement</option>
+          <option value="manual">{t('prog_changelog_cat_manual')}</option>
+          <option value="code">{t('prog_changelog_cat_code')}</option>
+          <option value="config">{t('prog_changelog_cat_config')}</option>
+          <option value="model">{t('prog_changelog_cat_model')}</option>
+          <option value="site_mode">{t('prog_changelog_cat_mode')}</option>
+          <option value="deploy">{t('prog_changelog_cat_deploy')}</option>
         </select>
         <input
           value={manualSummary}
           onChange={(e) => setManualSummary(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') addManual(); }}
-          placeholder="Résumé de la modification (ex: 'Ajout endpoint /api/foo via GitHub')"
+          placeholder={t('prog_changelog_placeholder')}
           data-testid="changelog-manual-input"
           className="flex-1 bg-[#0F0F13] border border-white/10 rounded-sm px-2 py-1 text-xs text-white focus:outline-none focus:border-[#E4FF00]"
         />
@@ -389,12 +389,12 @@ function ChangelogPanel() {
           data-testid="changelog-add-btn"
           className="px-3 py-1 bg-[#E4FF00] text-[#050505] font-bold text-xs rounded-sm disabled:opacity-40"
         >
-          Ajouter
+          {t('prog_changelog_add')}
         </button>
       </div>
       {/* Liste */}
       {changes.length === 0 ? (
-        <div className="text-[11px] text-[#71717A] py-4 text-center">Aucune modification enregistrée.</div>
+        <div className="text-[11px] text-[#71717A] py-4 text-center">{t('prog_changelog_empty')}</div>
       ) : (
         <div className="space-y-1.5 max-h-80 overflow-y-auto">
           {changes.map((c, i) => (
