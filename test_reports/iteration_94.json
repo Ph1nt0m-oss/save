@@ -1,0 +1,48 @@
+{
+  "summary": "iter94 testing — slice 4c refacto /messages/* + traduction CONTENUS messages + widget EnhancementSuggestionsWidget. 15/15 pytest iter94 PASS + 32/32 régression iter91-92-93 PASS. Live curl confirme /messages/{send,send-to-staff,inbox,thread,unread-count} = HTTP 404 sans signature/auth (clé inconnue côté factory — comportement attendu), /chat/translate-messages = 401 sans auth puis 200 avec auth. Cache MongoDB chat_message_translations validé : 1er call → cached_hits=0/new_translations=1, 2e call identique → cached_hits=1 (cache effectif). server.py = 8915 lignes (objectif <9000 atteint, vs 9147 iter92). XAI_API_KEY toujours présente. Frontend compile sans erreur (webpack OK). UI /login affiche correctement le gate 'Site temporarily private'. Audit source : hook useTranslatedMessages (90l) avec cache localStorage codeforge_chat_message_translations + dedup inflightRef OK ; EnhancementSuggestionsWidget (180l) avec 5 kinds {feature/fix/design/integration/performance}, data-testid complets (widget, skip-all, proceed-btn, card-{id}, remove-{id}), Sparkles/Wand2/Palette/Plug/Zap icônes OK ; Chat.js câblé : translatedMessages.map, badge data-testid='chat-translated-badge' avec icône Languages, useEffect heuristique mots-clés (design/api/test/feature/performance) générant 3-5 suggestions, handleEnhancementProceed pre-fill setInput avec lignes '• title'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "EnhancementSuggestionsWidget",
+        "issues": [
+          "Classes Tailwind DYNAMIQUES `bg-${meta.color}-500/10`, `border-${meta.color}-400/30`, `text-${meta.color}-300`, `shadow-[...]` construites au runtime (lignes 111, 123, 124, 128, 151). Tailwind JIT ne génère PAS ces classes (purge à la build time) → les variantes amber/cyan/rose/emerald n'auront PAS leur couleur réelle (fallback transparent ou cassé). Seule la variante violet apparaîtra correctement (parce que 'shadow-[0_0_0_1px_rgba(168,85,247,0.2)]' est statique). FIX : utiliser un mapping statique avec classes complètes pré-écrites (ex: KIND_META.fix.classes = {bg:'bg-amber-500/10', border:'border-amber-400/30', text:'text-amber-300', shadow:'shadow-[0_0_0_1px_rgba(245,158,11,0.2)]'}). Sinon, ajouter au safelist tailwind.config.js."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter94_slice4c_translation_enhancement.py",
+    "/app/test_reports/pytest/iter94_results.xml",
+    "/app/test_reports/pytest/iter94_regression.xml"
+  ],
+  "action_items": [
+    "MINEUR (design) : remplacer les classes Tailwind dynamiques dans EnhancementSuggestionsWidget.jsx par un mapping statique de classes complètes (sinon les cartes amber/cyan/rose/emerald n'auront pas la bonne couleur de bordure/icône en production build). Pas bloqueur en dev (JIT runtime), mais visible après `yarn build`.",
+    "INFO : la heuristique enhancement (mots-clés simples) est MOCKÉE → planifier remplacement par un VRAI agent LLM analyseur en iter95+ comme annoncé.",
+    "INFO : iter94 NE traite PAS la slice 4d /orchestrate/* SSE (reportée iter95+) — rien à fixer.",
+    "INFO test_credentials.md : login retourne le token dans le champ `session_token` (confirmé live)."
+  ],
+  "critical_code_review_comments": [
+    "EnhancementSuggestionsWidget.jsx (HIGH) : classes Tailwind dynamiques (lignes 111, 123-128, 151) ne seront pas générées au build. Utiliser un mapping statique ou ajouter au safelist (voir design_issues).",
+    "useTranslatedMessages.js : la dépendance useEffect `[language, messages?.length, messages?.[messages?.length - 1]?.message_id]` est fragile — si plusieurs nouveaux messages arrivent SIMULTANÉMENT entre 2 renders (impossible côté React mais possible via Strict Mode double-render), seuls le dernier sera détecté. Acceptable car le hook re-trigger naturellement à la prochaine update.",
+    "useTranslatedMessages.js : le `inflightRef.current = true` empêche un 2e appel CONCURRENT mais peut produire un état stale si l'utilisateur change rapidement de langue. Considérer un AbortController ou un compteur de version.",
+    "Chat.js useEffect heuristique (ligne 95-123) : le useEffect re-trigger sur `messages.length, isLoading` mais utilise toujours `messages[messages.length-1]` — si un message AI est UPDATED in-place (streaming), suggestions ne se régénèrent pas. Acceptable mais à documenter.",
+    "Chat.js handleEnhancementProceed : `setInput((cur) => ...)` est correct. Le toast de confirmation est bien.",
+    "messages_routes.py : factory build_messages_router OK, 7 routes extraites proprement. server.py descend à 8915 lignes (-228 vs iter92 9147). Objectif <9000 atteint.",
+    "Sécurité : /chat/translate-messages = 401 sans auth ; pas de fuite d'info. /messages/* = 404 'clé inconnue' (ne révèle pas l'existence des routes — bon comportement).",
+    "Performance traduction : cache MongoDB chat_message_translations + cache localStorage = 2 niveaux. Validé live (2e appel cached_hits=1). Bon design."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (15/15 iter94 + 32/32 régression)", "frontend": "100% audit source + compile clean + UI smoke OK"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (login OK, token field = 'session_token')",
+  "seed_data_creation": "1 traduction message 'test_iter94_1781166106' insérée dans MongoDB chat_message_translations (lookup test). Non nettoyée — non bloquant.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter94 100% green côté tests pytest + live curl. Tailwind dynamic classes bug dans EnhancementSuggestionsWidget = seul vrai item d'amélioration (mineur, visible uniquement après yarn build). Site en mode private donc /chat non visitable visuellement, mais le composant compile sans erreur. Slice 4d /orchestrate/* SSE reportée iter95+. server.py = 8915 lignes (sous le seuil 9000). Live login retourne token dans 'session_token'. Endpoint translate-messages avec cache 2-niveaux (MongoDB chat_message_translations + localStorage codeforge_chat_message_translations) validé fonctionnel.",
+  "rca of the issue": "N/A — aucun bug bloquant trouvé. Seule observation design : classes Tailwind dynamiques dans EnhancementSuggestionsWidget pourraient ne pas être purgées correctement → utiliser mapping statique pour garantir le rendu en prod."
+}

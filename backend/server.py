@@ -5796,282 +5796,7 @@ MAX_MESSAGE_LEN = 2000
 MESSAGE_COOLDOWN_SECONDS = 30  # per-device anti-flood on /messages/send
 
 
-class MessageSendIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    content: str
-    # When the sender IS the creator, they must supply the target thread.
-    target_key_id: Optional[str] = None
-
-
-@api_router.post("/messages/send")
-async def messages_send(payload: MessageSendIn):
-    """Send a message in a thread.
-
-    If the sender is the creator, `target_key_id` must be supplied — the
-    message lands in that thread as is_from_creator=True.
-
-    If the sender is anything else, the thread IS the sender's own key_id and
-    is_from_creator=False. Blocked devices are rejected with the same
-    localized message as /devices/send-to-creator. Per-device cooldown of
-    30 seconds applies to prevent flooding."""
-    content = (payload.content or "").strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Message vide.")
-    if len(content) > MAX_MESSAGE_LEN:
-        raise HTTPException(status_code=400, detail=f"Message trop long ({MAX_MESSAGE_LEN} max).")
-    sender = await _device_by_key(payload.key_id)
-    if not sender:
-        raise HTTPException(status_code=404, detail="Appareil inconnu.")
-    if sender.get("role") == "blocked":
-        raise HTTPException(
-            status_code=403,
-            detail="Votre demande a été formulée de nombreuses fois. Veuillez contacter le créateur.",
-        )
-    # Cool-down (anti-flood, much shorter than send-to-creator's nudge cooldown).
-    # Exempt the creator so they can reply to several users in quick succession.
-    last_msg_iso = sender.get("last_message_at")
-    is_creator_sender_quick = sender.get("role") == "creator"
-    if last_msg_iso and not is_creator_sender_quick:
-        try:
-            last_msg = datetime.fromisoformat(last_msg_iso)
-            elapsed = (datetime.now(timezone.utc) - last_msg).total_seconds()
-            if elapsed < MESSAGE_COOLDOWN_SECONDS:
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Patiente {int(MESSAGE_COOLDOWN_SECONDS - elapsed)}s avant d'envoyer un autre message.",
-                )
-        except HTTPException:
-            raise
-        except Exception:
-            pass
-
-    if not await _consume_nonce(payload.key_id, payload.nonce):
-        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
-    if not verify_signature(sender.get("public_key_jwk") or {}, payload.nonce, payload.signature):
-        raise HTTPException(status_code=403, detail="Signature invalide.")
-
-    is_creator_sender = sender.get("role") == "creator"
-    if is_creator_sender:
-        if not payload.target_key_id:
-            raise HTTPException(status_code=400, detail="target_key_id requis pour les créateurs.")
-        thread_key_id = payload.target_key_id
-        target = await _device_by_key(thread_key_id)
-        if not target:
-            raise HTTPException(status_code=404, detail="Destinataire inconnu.")
-    else:
-        thread_key_id = payload.key_id
-
-    now = datetime.now(timezone.utc)
-    msg_id = f"msg_{uuid.uuid4().hex[:16]}"
-    sender_label = sender.get("label") or sender.get("pseudo") or None
-    await db.messages.insert_one({
-        "message_id": msg_id,
-        "thread_key_id": thread_key_id,
-        "from_key_id": payload.key_id,
-        "is_from_creator": bool(is_creator_sender),
-        "content": content,
-        "sender_label": sender_label,
-        "ts": now.isoformat(),
-        "read_by_creator": bool(is_creator_sender),
-        "read_by_user": not bool(is_creator_sender),
-    })
-    await db.device_keys.update_one(
-        {"key_id": payload.key_id},
-        {"$set": {"last_message_at": now.isoformat()}},
-    )
-    return {"sent": True, "message_id": msg_id, "ts": now.isoformat()}
-
-
-class MessagesInboxIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-
-
-@api_router.post("/messages/inbox")
-async def messages_inbox(payload: MessagesInboxIn):
-    """iter82 — Creator + Staff (modo/admin) — return one row per thread with
-    last message + unread count. Modos voient les threads où to_key_id matche
-    leur propre clé. Admins voient tout comme la créatrice."""
-    dev = await _device_by_key(payload.key_id)
-    if not dev:
-        raise HTTPException(status_code=404, detail="Clé inconnue.")
-    if not await _consume_nonce(payload.key_id, payload.nonce):
-        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
-    if not verify_signature(dev.get("public_key_jwk") or {}, payload.nonce, payload.signature):
-        raise HTTPException(status_code=403, detail="Signature invalide.")
-    role = dev.get("role")
-    sk = dev.get("staff_kind")
-    is_creator = role == "creator"
-    is_admin = sk == "admin"
-    is_modo = sk == "modo"
-    if not (is_creator or is_admin or is_modo):
-        raise HTTPException(status_code=403, detail="Accès réservé staff.")
-    # Match : créa+admin voient tout. Modos voient les threads qui leur sont assignés.
-    match = {} if (is_creator or is_admin) else {"to_key_id": payload.key_id}
-    pipeline = [
-        {"$match": match},
-        {"$sort": {"ts": -1}},
-        {"$group": {
-            "_id": "$thread_key_id",
-            "last_ts": {"$first": "$ts"},
-            "last_content": {"$first": "$content"},
-            "last_is_from_creator": {"$first": "$is_from_creator"},
-            "last_sender_label": {"$first": "$sender_label"},
-            "recipient_kind": {"$first": "$recipient_kind"},
-            "to_key_id": {"$first": "$to_key_id"},
-            "unread": {
-                "$sum": {
-                    "$cond": [{"$and": [
-                        {"$eq": ["$is_from_creator", False]},
-                        {"$eq": ["$read_by_creator", False]},
-                    ]}, 1, 0]
-                }
-            },
-            "total": {"$sum": 1},
-        }},
-        {"$sort": {"last_ts": -1}},
-        {"$limit": 100},
-    ]
-    rows = await db.messages.aggregate(pipeline).to_list(length=100)
-    out = []
-    for r in rows:
-        d = await _device_by_key(r["_id"]) or {}
-        out.append({
-            "thread_key_id": r["_id"],
-            "label": d.get("label"),
-            "pseudo": d.get("pseudo"),
-            "role": d.get("role"),
-            "last_ts": r["last_ts"],
-            "last_content": r["last_content"][:140],
-            "last_is_from_creator": r["last_is_from_creator"],
-            "last_sender_label": r.get("last_sender_label"),
-            "recipient_kind": r.get("recipient_kind"),
-            "to_key_id": r.get("to_key_id"),
-            "unread": r["unread"],
-            "total": r["total"],
-        })
-    return {"threads": out}
-
-
-class MessagesThreadIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    thread_key_id: Optional[str] = None  # if creator, target thread; else ignored
-
-
-@api_router.post("/messages/thread")
-async def messages_thread(payload: MessagesThreadIn):
-    """Return the full thread.
-
-    - If the caller is the creator and supplies a `thread_key_id`, returns
-      that thread (and marks all incoming messages as read_by_creator).
-    - If the caller is NOT the creator, returns their own thread (where
-      thread_key_id == caller's key_id) and marks creator replies as
-      read_by_user."""
-    sender = await _device_by_key(payload.key_id)
-    if not sender:
-        raise HTTPException(status_code=404, detail="Appareil inconnu.")
-    if not await _consume_nonce(payload.key_id, payload.nonce):
-        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
-    if not verify_signature(sender.get("public_key_jwk") or {}, payload.nonce, payload.signature):
-        raise HTTPException(status_code=403, detail="Signature invalide.")
-    is_creator_caller = sender.get("role") == "creator"
-    if is_creator_caller:
-        thread_key_id = payload.thread_key_id
-        if not thread_key_id:
-            raise HTTPException(status_code=400, detail="thread_key_id requis.")
-        await db.messages.update_many(
-            {"thread_key_id": thread_key_id, "is_from_creator": False, "read_by_creator": False},
-            {"$set": {"read_by_creator": True}},
-        )
-    else:
-        thread_key_id = payload.key_id
-        await db.messages.update_many(
-            {"thread_key_id": thread_key_id, "is_from_creator": True, "read_by_user": False},
-            {"$set": {"read_by_user": True}},
-        )
-    rows = await db.messages.find(
-        {"thread_key_id": thread_key_id},
-        {"_id": 0},
-    ).sort("ts", 1).to_list(length=500)
-    return {"thread_key_id": thread_key_id, "messages": rows}
-
-
-@api_router.post("/messages/unread-count")
-async def messages_unread_count(payload: MessagesThreadIn):
-    """Return how many unread messages exist for the caller.
-    - Creator → total unread received from all users.
-    - Anyone else → unread creator replies in their own thread."""
-    sender = await _device_by_key(payload.key_id)
-    if not sender:
-        raise HTTPException(status_code=404, detail="Appareil inconnu.")
-    if not await _consume_nonce(payload.key_id, payload.nonce):
-        raise HTTPException(status_code=403, detail="Nonce invalide ou expiré.")
-    if not verify_signature(sender.get("public_key_jwk") or {}, payload.nonce, payload.signature):
-        raise HTTPException(status_code=403, detail="Signature invalide.")
-    if sender.get("role") == "creator":
-        # Exclude messages from muted senders so the creator gets no notif badge.
-        muted_ids = [d["key_id"] async for d in db.device_keys.find({"muted": True}, {"_id": 0, "key_id": 1})]
-        q = {"is_from_creator": False, "read_by_creator": False}
-        if muted_ids:
-            q["thread_key_id"] = {"$nin": muted_ids}
-        n = await db.messages.count_documents(q)
-    else:
-        n = await db.messages.count_documents({
-            "thread_key_id": payload.key_id,
-            "is_from_creator": True,
-            "read_by_user": False,
-        })
-    return {"unread": n}
-
-
-class MessagesDeleteIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    thread_key_id: str
-
-
-class MessagesRenameIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    thread_key_id: str
-    new_label: str
-
-
-@api_router.post("/messages/rename-contact")
-async def messages_rename_contact(payload: MessagesRenameIn):
-    """Creator-only — rename the displayed label of a contact (the pseudo
-    shown in the inbox + above the conversation). Stored on the device_keys
-    row; the user themselves still sees their own pseudo unchanged."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    new_label = (payload.new_label or "").strip()
-    if not new_label:
-        raise HTTPException(status_code=400, detail="Nom requis.")
-    if len(new_label) > 40:
-        raise HTTPException(status_code=400, detail="Nom trop long (40 max).")
-    target = await _device_by_key(payload.thread_key_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Destinataire inconnu.")
-    await db.device_keys.update_one(
-        {"key_id": payload.thread_key_id},
-        {"$set": {"label": new_label}},
-    )
-    return {"success": True, "label": new_label}
-
-
-@api_router.post("/messages/delete-thread")
-async def messages_delete_thread(payload: MessagesDeleteIn):
-    """Creator-only — delete an entire thread."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    res = await db.messages.delete_many({"thread_key_id": payload.thread_key_id})
-    return {"deleted": res.deleted_count}
-
+# iter94 — Modèles + routes /messages/* déplacés dans routes/messages_routes.py.
 
 # ==========================================================================
 # END messaging
@@ -8297,6 +8022,99 @@ async def invalidate_project_name_cache(request: Request, project_id: str):
     return {"success": True, "removed": res.deleted_count}
 
 
+# iter94 — Traduction dynamique des CONTENUS des messages de chat.
+# Endpoint batch + cache MongoDB par (message_id × lang). Cache hit = 0 LLM call.
+class TranslateMessagesBatchIn(BaseModel):
+    messages: List[Dict[str, Any]]  # [{message_id, content}]
+    target_lang: str
+
+
+@api_router.post("/chat/translate-messages")
+async def translate_chat_messages(request: Request, payload: TranslateMessagesBatchIn):
+    """Traduit en BATCH les contenus des messages de chat dans la langue cible.
+    Cache MongoDB indexé par (message_id, lang). Sert pour /chat (Chat.js).
+
+    Comportement : pour chaque message :
+      - Si déjà en cache → retourne la traduction immédiatement
+      - Sinon → appelle gpt-5.2 en batch (5 messages par call max) puis cache
+    """
+    user_id = await get_current_user(request)
+    target = (payload.target_lang or "en").strip().lower()
+    items = payload.messages or []
+    if not items or not target:
+        return {"translations": {}}
+    # Limite anti-abus
+    items = items[:200]
+    msg_ids = [m.get("message_id") for m in items if m.get("message_id")]
+    if not msg_ids:
+        return {"translations": {}}
+    # Cache lookup en bulk
+    cached_rows = await db.chat_message_translations.find(
+        {"message_id": {"$in": msg_ids}, "lang": target},
+        {"_id": 0, "message_id": 1, "translated": 1},
+    ).to_list(length=len(msg_ids))
+    cache_map = {r["message_id"]: r["translated"] for r in cached_rows}
+    # Filtrer les messages non-cached
+    todo = [m for m in items if m.get("message_id") not in cache_map and (m.get("content") or "").strip()]
+    if not todo:
+        return {"translations": cache_map, "cached_hits": len(cache_map)}
+    # Appel LLM batch
+    new_translations: Dict[str, str] = {}
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            return {"translations": cache_map, "error": "llm_unavailable"}
+        # Batch par paquets de 8 pour rester sous la limite contextuelle.
+        BATCH = 8
+        for offset in range(0, len(todo), BATCH):
+            chunk = todo[offset:offset + BATCH]
+            joined = "\n".join(f"[{i}] {(m.get('content') or '')[:1500]}" for i, m in enumerate(chunk))
+            chat = LlmChat(
+                api_key=key,
+                session_id=f"trans_msg_{uuid.uuid4().hex[:6]}",
+                system_message=(
+                    f"Translate each numbered message into {target}. "
+                    f"Output ONLY the translations in the exact same numbered format ([0] xxx). "
+                    f"Keep meaning, tone, and formatting. No quotes, no prose."
+                ),
+            ).with_model("openai", "gpt-5.2")
+            response = (await chat.send_message(UserMessage(text=joined)) or "").strip()
+            # Parser la réponse
+            lines = [l for l in response.split("\n") if l.strip()]
+            for line in lines:
+                line = line.strip()
+                if not line.startswith("["):
+                    continue
+                try:
+                    bracket_end = line.index("]")
+                    idx_str = line[1:bracket_end]
+                    idx = int(idx_str)
+                    text = line[bracket_end + 1:].strip()
+                    if 0 <= idx < len(chunk) and text:
+                        mid = chunk[idx].get("message_id")
+                        if mid:
+                            new_translations[mid] = text[:2000]
+                except (ValueError, IndexError):
+                    continue
+        # Bulk cache
+        if new_translations:
+            await db.chat_message_translations.insert_many([
+                {
+                    "message_id": mid,
+                    "lang": target,
+                    "translated": txt,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "user_id": user_id,
+                }
+                for mid, txt in new_translations.items()
+            ])
+    except Exception as e:
+        logger.warning(f"chat messages translate failed: {e}")
+    cache_map.update(new_translations)
+    return {"translations": cache_map, "cached_hits": len(cached_rows), "new_translations": len(new_translations)}
+
+
 # iter92 — Endpoint changelog des modifications site/IA pour PrivateProgramming.
 # Auto-tracker les changements de MODEL_ROUTES, site_modes, etc.
 class CodeforgeChangelogIn(BaseModel):
@@ -8560,72 +8378,7 @@ class GroupSendIn(BaseModel):
     content: str
 
 
-# ==========================================================================
-# iter82 — MESSAGE TO RANDOM MODO (C18) : remplace l'ancien "message créa"
-# ==========================================================================
-
-class MessageToStaffIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    content: str
-
-
-@api_router.post("/messages/send-to-staff")
-async def messages_send_to_staff(payload: MessageToStaffIn):
-    """iter82 C18 — Le bouton 'message' (icône en-tête) route maintenant
-    l'utilisateur vers un MODO aléatoire (fallback admin, puis créa si aucun
-    modo/admin). Le créa voit toujours toutes les threads via /messages/inbox.
-
-    Si l'utilisateur veut parler spécifiquement à la créatrice, il doit
-    d'abord la demander en ami (/friends/request).
-    """
-    sender = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    content = (payload.content or "").strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Message vide.")
-    if len(content) > MAX_MESSAGE_LEN:
-        raise HTTPException(status_code=400, detail=f"Message trop long ({MAX_MESSAGE_LEN} max).")
-
-    # Pick a random modo (fallback admin, fallback creator).
-    modos = await db.device_keys.find(
-        {"staff_kind": "modo", "role": {"$in": ["approved", "creator"]}},
-        {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1},
-    ).to_list(length=50)
-    if not modos:
-        modos = await db.device_keys.find(
-            {"staff_kind": "admin", "role": {"$in": ["approved", "creator"]}},
-            {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1},
-        ).to_list(length=50)
-    recipient_kind = "modo" if modos else "creator"
-    if not modos:
-        modos = await db.device_keys.find(
-            {"role": "creator"}, {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1},
-        ).to_list(length=10)
-    if not modos:
-        raise HTTPException(status_code=503, detail="Aucun destinataire staff disponible.")
-
-    import random as _rnd
-    target = _rnd.choice(modos)
-    target_key_id = target["key_id"]
-
-    now = datetime.now(timezone.utc)
-    msg_id = f"msg_{uuid.uuid4().hex[:16]}"
-    await db.messages.insert_one({
-        "message_id": msg_id,
-        "thread_key_id": payload.key_id,
-        "from_key_id": payload.key_id,
-        "to_key_id": target_key_id,
-        "is_from_creator": False,
-        "recipient_kind": recipient_kind,
-        "content": content,
-        "sender_label": sender.get("pseudo") or sender.get("label"),
-        "ts": now.isoformat(),
-        "read_by_creator": False,
-        "read_by_user": True,
-    })
-    return {"sent": True, "message_id": msg_id, "assigned_to": target.get("pseudo") or target.get("label") or target_key_id[:10], "recipient_kind": recipient_kind}
-
+# iter94 — /messages/send-to-staff aussi déplacé dans routes/messages_routes.py.
 
 # ==========================================================================
 # iter83 C7 — ORCHESTRATEUR MULTI-AGENTS (planner/critic/executor/arbiter)
@@ -9048,6 +8801,22 @@ app.include_router(
 from routes.polls_routes import build_polls_router  # noqa: E402
 app.include_router(
     build_polls_router(db, _verify_signed, _require_creator_signature, _audience_matches),
+    prefix="/api",
+)
+
+# iter94 — slice 4c : /messages/* extraits dans routes/messages_routes.py
+from routes.messages_routes import build_messages_router  # noqa: E402
+app.include_router(
+    build_messages_router(
+        db,
+        device_by_key=_device_by_key,
+        consume_nonce=_consume_nonce,
+        verify_signature=verify_signature,
+        verify_signed=_verify_signed,
+        require_creator_signature=_require_creator_signature,
+        max_message_len=MAX_MESSAGE_LEN,
+        message_cooldown_seconds=MESSAGE_COOLDOWN_SECONDS,
+    ),
     prefix="/api",
 )
 

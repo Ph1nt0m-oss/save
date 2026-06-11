@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw, Lock, Brain, Cpu } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw, Lock, Brain, Cpu, Languages } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -12,6 +12,8 @@ import MessageContent from '../components/MessageContent';
 import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
 import OfflineAIInstaller from '../components/OfflineAIInstaller';
+import EnhancementSuggestionsWidget from '../components/EnhancementSuggestionsWidget';
+import { useTranslatedMessages } from '../hooks/useTranslatedMessages';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useOrchestrate from '../hooks/useOrchestrate';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -70,6 +72,55 @@ export default function Chat() {
   // au lieu du chat classique. L'utilisateur voit les actions en temps réel.
   const [proMode, setProMode] = useState(false);
   const orch = useOrchestrate();
+
+  // iter94 — Traduction dynamique des contenus de messages selon langue UI.
+  // Cache localStorage + cache MongoDB côté backend.
+  const translatedMessages = useTranslatedMessages(messages, { enabled: true, defaultLang: 'fr' });
+
+  // iter94 — Suggestions d'améliorations à la Emergent (générées après réponse IA).
+  const [enhancementSuggestions, setEnhancementSuggestions] = useState([]);
+
+  const handleEnhancementProceed = (selectedIds) => {
+    const selected = enhancementSuggestions.filter((s) => selectedIds.includes(s.id));
+    if (selected.length === 0) { setEnhancementSuggestions([]); return; }
+    // Auto-construire un message qui résume les améliorations sélectionnées
+    const summary = selected.map((s) => `• ${s.title}`).join('\n');
+    setInput((cur) => `${cur ? cur + '\n\n' : ''}Continue avec ces améliorations :\n${summary}`);
+    setEnhancementSuggestions([]);
+    toast.success(`${selected.length} amélioration${selected.length > 1 ? 's' : ''} ajoutée${selected.length > 1 ? 's' : ''}`);
+  };
+
+  // Générer des suggestions automatiques après chaque réponse IA non-vide.
+  // Heuristique simple : on extrait les mots-clés du dernier message AI.
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.role !== 'assistant' || !last.content) return;
+    // Ne pas suggérer si on est en train de charger ou si une suggestion existe déjà
+    if (isLoading || enhancementSuggestions.length > 0) return;
+    // Heuristique : générer 3-4 suggestions génériques pertinentes au contexte.
+    const content = (last.content || '').toLowerCase();
+    const suggestions = [];
+    if (content.includes('design') || content.includes('ui') || content.includes('css')) {
+      suggestions.push({ id: 'enh-design-polish', kind: 'design', title: 'Améliorer le design',
+        description: 'Affiner les couleurs, espacements et micro-animations pour un rendu professionnel.' });
+    }
+    if (content.includes('api') || content.includes('integrate') || content.includes('intégr')) {
+      suggestions.push({ id: 'enh-integration-add', kind: 'integration', title: 'Ajouter une intégration',
+        description: 'Connecter Stripe, OpenAI ou un autre service tiers pour étendre les fonctionnalités.' });
+    }
+    if (content.includes('test') || content.includes('bug') || content.includes('fix')) {
+      suggestions.push({ id: 'enh-fix-add-tests', kind: 'fix', title: 'Ajouter des tests',
+        description: 'Couvrir les chemins critiques avec des tests pytest + frontend pour éviter les régressions.' });
+    }
+    suggestions.push({ id: 'enh-feature-extend', kind: 'feature', title: 'Étendre les fonctionnalités',
+      description: 'Ajouter une nouvelle feature : notifications push, export PDF, dashboard analytics…' });
+    suggestions.push({ id: 'enh-perf-optimize', kind: 'performance', title: 'Optimiser les performances',
+      description: 'Lazy loading, code splitting, cache HTTP — réduire le bundle size et le TTFB.' });
+    // Garder les 4 premiers max
+    setEnhancementSuggestions(suggestions.slice(0, 4));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, isLoading]);
 
   // iter90 — Mode hors-ligne : auto-détecte Ollama + propose le tuto si absent.
   const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
@@ -414,8 +465,9 @@ export default function Chat() {
           )}
 
           <div className="space-y-4">
-            {messages.map((msg, idx) => {
+            {translatedMessages.map((msg, idx) => {
               const isUser = msg.role === 'user';
+              const displayContent = msg.displayed_content || msg.content;
               return (
                 <motion.div
                   key={msg.message_id || msg.id || `msg-${msg.timestamp || idx}`}
@@ -440,7 +492,13 @@ export default function Chat() {
                     <span style={{ fontSize: 0, lineHeight: 0, opacity: 0 }} aria-hidden="true" data-copy-prefix>
                       {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
                     </span>
-                    <MessageContent content={msg.content} isUser={isUser} replSessionId={replSessionId} />
+                    <MessageContent content={displayContent} isUser={isUser} replSessionId={replSessionId} />
+                    {msg._is_translated && (
+                      <div className="mt-1 text-[10px] text-[#71717A] italic flex items-center gap-1" data-testid="chat-translated-badge">
+                        <Languages className="w-3 h-3" />
+                        Traduit automatiquement
+                      </div>
+                    )}
                     {msg.download && (
                       <a
                         href={`${API}${msg.download.url}`}
@@ -529,6 +587,17 @@ export default function Chat() {
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
+
+        {/* iter94 — Widget Emergent enhancements (créa-only, suggestions actionnables après réponse IA) */}
+        {enhancementSuggestions.length > 0 && (
+          <div className="mb-4">
+            <EnhancementSuggestionsWidget
+              suggestions={enhancementSuggestions}
+              onProceed={handleEnhancementProceed}
+              onSkipAll={() => setEnhancementSuggestions([])}
+            />
+          </div>
+        )}
 
         <form onSubmit={sendMessage}>
           {!canWrite && (
