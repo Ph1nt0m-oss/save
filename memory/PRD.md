@@ -17,7 +17,41 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-11 — Iter 92 (Traduction dynamique noms chats + Changelog modifications sync)
+
+**🟢 Traduction dynamique des noms de tchats** :
+- Backend : nouveau endpoint `POST /api/projects/translate-name` avec cache MongoDB `project_name_translations` indexé par `(project_id, target_lang)`. Appel LLM gpt-5.2 via emergentintegrations pour traduire en ≤60 chars. Fallback silencieux sur le nom original si EMERGENT_LLM_KEY indisponible.
+- Endpoint `POST /api/projects/invalidate-name-cache?project_id=xxx` pour purger le cache après rename.
+- Frontend : nouveau hook `useTranslatedProjectName(project)` avec **double cache** (localStorage `codeforge_chat_name_translations` + dedup des requêtes concurrentes via `inflightCalls`). Helper `translateProjectNameOnce()` pour code impératif. Composant `TranslatedProjectName.jsx` wrapper.
+- Câblé dans `Dashboard.js` sidebar : `<TranslatedProjectName project={project} />` remplace `{project.name}` → swap instantané quand l'utilisateur change la langue UI (16 langues supportées).
+
+**🟢 Endpoint changelog modifications (sync bidirectionnelle)** :
+- Nouvelle collection MongoDB `codeforge_changelog` avec entries `{category, summary, details, ts}`.
+- Endpoint `POST /api/private/changelog` (créa-only) : retourne les 50 dernières modifications.
+- Endpoint `POST /api/private/changelog/log` (créa-only) : ajoute manuellement une entrée. Catégories : `manual` / `code` / `config` / `model` / `site_mode` / `deploy`.
+- Helper `async def _log_change(category, summary, details)` réutilisable.
+- **Auto-log câblé** : `set_site_mode` enregistre automatiquement un changelog entry lors d'un changement de mode du site.
+- Frontend : nouveau composant `ChangelogPanel` dans `PrivateProgramming.js` (page `/ai-programming`). Affiche les entries avec badges colorés par catégorie + saisie manuelle (catégorie + summary) pour les modifs externes (GitHub / téléchargement local / Python / CMD).
+
+**📋 Réponses utilisatrice (audit complet)** :
+- ✅ Mode hors-ligne / IA locales = `OfflineAIInstaller` iter90
+- ✅ Création unified apps = `GuidedWizard` + orchestrator multi-agents
+- ✅ Aperçu manipulable + GitHub = `on_preview_real` + `on_commit_real` iter86/88
+- ✅ Noms entiers des langues = `TRANSLATED_LANG_NAMES` × 16
+- ✅ **Traduction dynamique des noms de tchats = iter92 (cette release)**
+- ✅ Agents de test = `testing_agent_v3_fork` (16/16 PASS)
+
+**REPORTÉ iter93+** :
+- 🟢 Slices 4c (/messages/*) et 4d (/orchestrate/*) server.py — dépendances internes complexes (helpers `_device_by_key`, `MESSAGE_COOLDOWN_SECONDS`, `_consume_nonce`, SSE streaming) qui nécessitent une session dédiée pour éviter régressions.
+- 🟢 **Traduction des messages des chats** (contenu) — coûteux en LLM calls, demande infra de batch + caching agressif.
 ### 2026-06-11 — Iter 91 (Fix 'la créatrice' + Refacto slice 4 + xAI Grok réel)
+- 🟢 **Style Emergent "Agent suggesting enhancements"** avec thumbnails interactifs — refonte volumineuse de OrchestrationLog.
+- 🟢 Auto-log pour MODEL_ROUTES / redeploy / code externe — actuellement seul site_mode auto-loggé, autres modifs requièrent saisie manuelle (par design : l'utilisatrice ajoute les modifs externes GitHub/local via le formulaire ChangelogPanel).
+- 🟡 **XAI_API_KEY** à fournir par l'utilisatrice pour activer Grok réel.
+
+**Tests** : **16/16 PASS** iter92 + **70/70 régression** iter89/90/91 = **86/86 cumul**. Testing agent GREEN, 0 bug critique.
+
+
 
 **🔴 i18n FR fix** :
 - Toutes les occurrences de "le créatrice" (formulation incorrecte au masculin) corrigées en "la créatrice" dans `LanguageContext.js` (5 strings : `sm_tooltip`, `sl_body`, `sl_hint`, `ro_chat_banner`, `signup_pseudo_hint`, `theft_body`, `dm_my_key_hint`). Verify : 0 occurrences de "le créatrice", 18 de "la créatrice".
