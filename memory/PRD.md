@@ -17,13 +17,41 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-06-11 — Iter 92 (Traduction dynamique noms chats + Changelog modifications sync)
+### 2026-06-11 — Iter 93 (XAI_API_KEY activée + Preview live à la Emergent)
+
+**🟡 P1 — XAI_API_KEY câblée** :
+- Clé utilisatrice ajoutée dans `/app/backend/.env` : `XAI_API_KEY=xai-7t8...` (40+ chars, format valide).
+- `is_xai_available()` retourne True après restart backend.
+- ⚠️ **Statut compte xAI** : la clé est valide mais l'API renvoie `403 permission-denied — "Your newly created team doesn't have any credits or licenses yet"`. L'utilisatrice doit ajouter des crédits sur https://console.x.ai/team/5c20c5e2-5ada-4626-b58a-cfaa3a37a2a7 pour que Grok réponde réellement.
+- Fallback cascade claude-sonnet reste actif tant que xAI rejette → l'UX n'est pas dégradée (silent fallback iter90).
+- **Pas de limitation de crédit côté CodeForge AI** (par demande explicite utilisatrice — la clé est utilisée telle qu'elle est).
+
+**🟢 P1 — Preview live à la Emergent** :
+- Nouveau composant `LivePreviewPanel.jsx` (107 lignes) : iframe plein écran qui pointe vers `REACT_APP_BACKEND_URL{path}` avec hot reload Webpack natif.
+- Différence avec `on_preview_real` (iter88) qui faisait `yarn build` 20s : ici **0ms**, pas de rebuild — les changements de code sont visibles en temps réel grâce au hot reload.
+- 6 boutons header : input path éditable, reload (RefreshCw), open new tab (ExternalLink), maximize/minimize, close. Footer avec mention "⚡ Hot reload actif".
+- Câblé dans `Dashboard.js` header avec bouton `header-live-preview-btn` (Eye icon, emerald border) visible UNIQUEMENT pour `device.role === 'creator'`.
+- iframe sandbox : `allow-scripts allow-same-origin allow-forms allow-popups allow-modals` (sécurité par défaut).
+
+**📋 Réponses utilisatrice (audit complet)** :
+- ✅ P1 XAI_API_KEY = câblée (statut compte = besoin crédits xAI)
+- ✅ P1 Preview live à la Emergent = LivePreviewPanel iter93
+
+**REPORTÉ iter94+** (volume trop important pour cette session) :
+- 🟢 Slices 4c (/messages/* — 7 routes) et 4d (/orchestrate/* — 3 routes SSE)
+- 🟢 Traduction dynamique des CONTENUS de chats (en plus des noms)
+- 🟢 Style Emergent "Agent suggesting enhancements" avec thumbnails
+
+**Tests** : **59/59 PASS** (iter93 + régression iter88/89/90/91/92). Zero page errors, app rend OK.
+
+
 
 **🟢 Traduction dynamique des noms de tchats** :
 - Backend : nouveau endpoint `POST /api/projects/translate-name` avec cache MongoDB `project_name_translations` indexé par `(project_id, target_lang)`. Appel LLM gpt-5.2 via emergentintegrations pour traduire en ≤60 chars. Fallback silencieux sur le nom original si EMERGENT_LLM_KEY indisponible.
 - Endpoint `POST /api/projects/invalidate-name-cache?project_id=xxx` pour purger le cache après rename.
 - Frontend : nouveau hook `useTranslatedProjectName(project)` avec **double cache** (localStorage `codeforge_chat_name_translations` + dedup des requêtes concurrentes via `inflightCalls`). Helper `translateProjectNameOnce()` pour code impératif. Composant `TranslatedProjectName.jsx` wrapper.
 - Câblé dans `Dashboard.js` sidebar : `<TranslatedProjectName project={project} />` remplace `{project.name}` → swap instantané quand l'utilisateur change la langue UI (16 langues supportées).
+### 2026-06-11 — Iter 92 (Traduction dynamique noms chats + Changelog modifications sync)
 
 **🟢 Endpoint changelog modifications (sync bidirectionnelle)** :
 - Nouvelle collection MongoDB `codeforge_changelog` avec entries `{category, summary, details, ts}`.

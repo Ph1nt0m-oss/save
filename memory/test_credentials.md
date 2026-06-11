@@ -79,3 +79,4 @@ curl -s -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
 - `EMAIL_FROM` : `CodeForge AI <onboarding@resend.dev>`
 - `EMAIL_REPLY_TO` : `commandes.et.publicites@gmail.com` (catch-all silencieux)
 - `FRONTEND_URL` : `https://no-code-builder-25.preview.emergentagent.com`
+- `XAI_API_KEY` : ✅ configurée iter93 (Grok via API xAI compatible OpenAI). ⚠️ Compte xAI sans crédits actuellement → fallback cascade claude-sonnet automatique. Ajouter des crédits sur https://console.x.ai/ pour activer Grok réel.
