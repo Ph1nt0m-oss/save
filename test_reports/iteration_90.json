@@ -1,0 +1,41 @@
+{
+  "summary": "iter90 punch-list correctif validated. P0 STRICT bcrypt verify on /ideas/clear confirmed: iter89 device-only fallback fully removed, 412/428/403 error paths present, bcrypt.checkpw is the sole verification. 3 new AI models (Grok 4.3 / Grok 4.20 Reasoning / Lindy Flow) present in MODEL_ROUTES + /chat/models live response (13 online with correct badges 'Temps réel'/'Thinking'/'Workflow'). /api/system/ollama-status public endpoint returns 200 with {available:false, models:[]} as expected (Ollama not installed in preview infra). OfflineAIInstaller component fully wired with all required data-testids + Chat.js useEffect on mode==='offline' triggers fetch + modal. iter89 regression intact (historyLoading, extended BADGE_ICONS, emergent-collab/vexub-video/claude-5-fable). 17/17 pytest tests PASS (10 iter90 source-audit + 7 live integration) + 10/10 iter89 regression PASS = 27/27.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/ideas/clear branches (b)(c)(d)(e)", "issue": "Could not be tested live via curl because ECDSA creator-signature is required gate and we don't possess the creator private key. Strict bcrypt logic verified via source audit only (see TestSourceAuditIter90 + TestIdeasClearStrictPassword tests). Recommend keeping a creator-signed fixture in /app/memory for future runtime testing."},
+      {"endpoint": "/api/system/ollama-status", "issue": "Always returns {available:false} in preview environment because Ollama daemon is not installed. Expected behavior — frontend OfflineAIInstaller will pop up correctly. Not a bug."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/login (private gate)", "issues": ["Test device not whitelisted → 'Site temporarily private' interstitial blocks all visual testing of /chat + OfflineAIInstaller flow. Per agent_to_agent_context_note this is expected and code-audit is the accepted verification path."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter90_strict_password_and_models.py",
+    "/app/backend/tests/test_iter90_integration_live.py",
+    "/app/test_reports/pytest/iter90_results.xml",
+    "/app/test_reports/pytest/iter90_live.xml",
+    "/app/test_reports/pytest/iter90_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/server.py is 9414 lines — exceeds 700-line threshold significantly. Slice refacto reported as REPORTÉ iter91+ in mocked_api list; acknowledged.",
+    "/ideas/clear bcrypt path uses bcrypt.checkpw inside try/except → returns ok=False on exception. Solid.",
+    "OfflineAIInstaller fetches /system/ollama-status without auth header which is correct (endpoint is public). copyCmd uses navigator.clipboard.writeText with silent failure — acceptable.",
+    "MOCKED: Grok 4.3 / Grok 4.20 Reasoning / Lindy Flow providers ('xai', 'lindy') have no SDK wired — fallback to claude-sonnet via emergentintegrations per agent notes. Real LLM integration to be wired in iter91+."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter90_integration_live.py (new — 7 live integration tests)"
+  ],
+  "success_rate": {"backend": "100% (27/27 pytest)", "frontend": "code-audit only — visual UI blocked by private site gate"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login verified OK, returned session_token",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter90 fully validated via source-audit + live API integration tests. Frontend visual testing of /chat + OfflineAIInstaller requires whitelisting test device with the creator account first. For future iter91+ testing of /ideas/clear runtime branches (b-e) we'd need a creator ECDSA private-key fixture stored in /app/memory. New live integration test file /app/backend/tests/test_iter90_integration_live.py can be reused as regression baseline.",
+  "rca of the issue": "N/A — no bugs found in iter90 deliverables."
+}

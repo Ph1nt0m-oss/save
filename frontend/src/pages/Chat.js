@@ -11,6 +11,7 @@ import AttachMenu from '../components/AttachMenu';
 import MessageContent from '../components/MessageContent';
 import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
+import OfflineAIInstaller from '../components/OfflineAIInstaller';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useOrchestrate from '../hooks/useOrchestrate';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -69,6 +70,23 @@ export default function Chat() {
   // au lieu du chat classique. L'utilisateur voit les actions en temps réel.
   const [proMode, setProMode] = useState(false);
   const orch = useOrchestrate();
+
+  // iter90 — Mode hors-ligne : auto-détecte Ollama + propose le tuto si absent.
+  const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
+  const [ollamaAvailable, setOllamaAvailable] = useState(true);
+  useEffect(() => {
+    if (mode !== 'offline') return;
+    let cancelled = false;
+    axios.get(`${API}/system/ollama-status`)
+      .then(r => {
+        if (cancelled) return;
+        const ok = !!r.data?.available;
+        setOllamaAvailable(ok);
+        if (!ok) setShowOfflineInstaller(true);
+      })
+      .catch(() => { if (!cancelled) { setOllamaAvailable(false); setShowOfflineInstaller(true); } });
+    return () => { cancelled = true; };
+  }, [mode]);
 
   useEffect(() => {
     scrollToBottom();
@@ -276,6 +294,11 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col">
+      <OfflineAIInstaller
+        open={showOfflineInstaller}
+        onClose={() => setShowOfflineInstaller(false)}
+        onInstalled={() => setOllamaAvailable(true)}
+      />
       <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
           <Button onClick={() => navigate('/dashboard')} variant="ghost" size="sm" className="px-2 sm:px-3 flex-shrink-0" data-testid="chat-back-btn">
@@ -310,6 +333,17 @@ export default function Chat() {
               <span className="hidden md:inline">Mode Pro</span>
             </button>
             <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
+            {mode === 'offline' && !ollamaAvailable && (
+              <button
+                onClick={() => setShowOfflineInstaller(true)}
+                data-testid="chat-offline-installer-btn"
+                title="Installer Ollama pour activer le mode hors-ligne"
+                className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-sm border border-amber-400/40 text-amber-300 hover:bg-amber-500/10 transition-colors"
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Installer IA locale</span>
+              </button>
+            )}
             {/* iter79 — Reset REPL retiré pour le mode Ollama (hors-ligne) sur demande. Conservé pour 'online'. */}
             {mode !== 'offline' && (
               <Button

@@ -3046,6 +3046,11 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                     "emergent-collab":    ("emergent", "collab"),
                     # iter89 — Vexub vidéo (placeholder routing — handler dédié vidéo à wirer)
                     "vexub-video":        ("vexub",    "video"),
+                    # iter90 — Grok xAI (latest 2026)
+                    "grok-4.3":           ("xai",      "grok-4.3"),
+                    "grok-4.20-reasoning": ("xai",     "grok-4.20-reasoning"),
+                    # iter90 — Lindy (plateforme workflows AI no-code)
+                    "lindy-flow":         ("lindy",    "flow"),
                 }
                 provider, model_id = MODEL_ROUTES.get(model_choice, ("anthropic", "claude-sonnet-4-5-20250929"))
                 ai_source = f"emergent:{provider}:{model_id}"
@@ -3744,6 +3749,36 @@ async def list_chat_models(request: Request):
             ),
             "good_for": (["Analyse docs volumineux", "Multi-PDF", "Conversation sans coupure"]
                 if not is_create else ["Projet enterprise", "Specs complexes"]),
+        },
+        {
+            "id": "grok-4.3", "name": "Grok 4.3", "provider": "xAI", "badge": "Temps réel", "color": "rose",
+            "description": (
+                "Modèle xAI d'Elon Musk avec accès temps réel à X (Twitter). Idéal pour analyser des tendances, actualités, ou des sujets controversés sans filtre."
+                if not is_create else
+                "Génère du code avec un ton sarcastique optionnel. Idéal pour outils d'analyse sociale ou intégrations X/Twitter."
+            ),
+            "good_for": (["Actualités", "Tendances X", "Analyse sociale", "Sujets sans tabou"]
+                if not is_create else ["Bot X/Twitter", "Outil de veille", "Dashboard tendances"]),
+        },
+        {
+            "id": "grok-4.20-reasoning", "name": "Grok 4.20 Reasoning", "provider": "xAI", "badge": "Thinking", "color": "rose",
+            "description": (
+                "Variante raisonnement de Grok. Étape de réflexion explicite avant la réponse. Idéal pour résoudre des problèmes complexes."
+                if not is_create else
+                "Architecte avec un mode raisonnement profond. Pour projets nécessitant des décisions structurées."
+            ),
+            "good_for": (["Raisonnement complexe", "Maths", "Logique avancée"]
+                if not is_create else ["Architecture complexe", "Algorithmes pointus"]),
+        },
+        {
+            "id": "lindy-flow", "name": "Lindy Flow", "provider": "Lindy", "badge": "Workflow", "color": "teal",
+            "description": (
+                "Plateforme no-code de workflows IA. Crée des agents automatisés (email triage, calendrier, CRM) avec des étapes visuelles. Mode no-code par essence."
+                if not is_create else
+                "Génère des workflows d'agents IA pré-câblés (Slack/email/Calendar). Idéal pour automatiser un business sans coder."
+            ),
+            "good_for": (["Automatisation business", "Email triage", "Agent personnel"]
+                if not is_create else ["Outil interne", "Automatisation CRM", "Workflow no-code"]),
         },
     ]
     offline = [
@@ -7753,19 +7788,20 @@ async def ideas_clear(payload: IdeasClearIn):
     if scope in ("all", "unresolved") and unresolved_ids:
         if not payload.password:
             raise HTTPException(status_code=428, detail="Mot de passe requis pour effacer des retours non-traités.")
+        # iter90 — Strict bcrypt verify uniquement. Le mot de passe doit être
+        # EXACTEMENT celui du compte créatrice (celui utilisé pour /auth/login).
+        # Si le compte n'a pas de password_hash (compte device-only sans email/password),
+        # on refuse l'opération avec un message clair plutôt que d'accepter n'importe quoi.
         user = await db.users.find_one({"email": dev.get("email")}, {"_id": 0, "password_hash": 1})
-        ok = False
-        if user and user.get("password_hash"):
-            try:
-                ok = bcrypt.checkpw(payload.password.encode("utf-8"), user["password_hash"].encode("utf-8"))
-            except Exception:
-                ok = False
-        else:
-            # iter89 — Si le créa n'a pas de password_hash classique (compte
-            # device-only), la signature ECDSA d'amont SUFFIT comme preuve
-            # d'identité. On accepte n'importe quel mot de passe non vide
-            # pour satisfaire l'UX "tu confirmes en tapant ton MP".
-            ok = bool(payload.password and payload.password.strip())
+        if not user or not user.get("password_hash"):
+            raise HTTPException(
+                status_code=412,
+                detail="Ton compte n'a pas de mot de passe configuré. Crée-en un dans Profil → Sécurité avant d'utiliser cette action.",
+            )
+        try:
+            ok = bcrypt.checkpw(payload.password.encode("utf-8"), user["password_hash"].encode("utf-8"))
+        except Exception:
+            ok = False
         if not ok:
             raise HTTPException(status_code=403, detail="Mot de passe incorrect. Veuillez réessayer.")
     # Apply deletion

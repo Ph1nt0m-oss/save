@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { Cpu, ChevronDown, Loader2, Sparkles, Brain, Code, Zap, Globe, Layers, Video, Crown, BookOpen } from 'lucide-react';
+import { Cpu, ChevronDown, Loader2, Sparkles, Brain, Code, Zap, Globe, Layers, Video, Crown, BookOpen, Radio, Workflow } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -23,6 +23,9 @@ const BADGE_ICONS = {
   'Vidéo': Video,
   'Le plus capable': Crown,
   'Contexte long': BookOpen,
+  // iter90 — Grok + Lindy
+  'Temps réel': Radio,
+  'Workflow': Workflow,
 };
 
 const COLOR_RING = {
