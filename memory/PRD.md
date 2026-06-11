@@ -17,7 +17,40 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-11 — Iter 95 (Slice 4d + VRAI LLM analyzer + Voice mode TTS)
+
+**🟢 Slice 4d partielle — /orchestrate/* extraits** :
+- Nouveau module `/app/backend/routes/orchestrate_routes.py` (56 lignes) avec `build_orchestrate_router(db, get_current_user=...)`.
+- 2 endpoints déplacés : `GET /orchestrate/event/{event_id}/details` + `POST /orchestrate/history`.
+- `/chat/orchestrate`, `/chat/orchestrate-stream` et `/orchestrate/test-loop` RESTENT dans server.py (closures complexes on_commit_real/on_preview_real + SSE streaming + subprocess pytest).
+
+**🟢 VRAI agent LLM analyseur pour enhancement suggestions** :
+- Nouveau endpoint `POST /api/chat/suggest-enhancements` (server.py) qui appelle **claude-sonnet-4-5-20250929** via emergentintegrations.
+- Input : `{last_ai_message, project_type, language}`. Output : `{suggestions: [{id, kind, title, description}]}` (3-5 suggestions contextuelles).
+- `kind` ∈ {feature, fix, design, integration, performance}. Validation stricte côté backend.
+- Prompt structuré demande JSON valide, strip ```json fences, fallback gracieux sur `{suggestions: []}` si erreur.
+- **Frontend** : Chat.js useEffect supprime l'heuristique mots-clés iter94 et appelle `/chat/suggest-enhancements`. Anciens IDs (`enh-design-polish`, `enh-feature-extend`, `enh-perf-optimize`) **retirés**.
+- **Validation live** : retourne 5 suggestions valides pour contexte "backend API" (kinds: performance×2, feature×2, design).
+
+**🟢 Voice mode TTS pour réponses IA** :
+- Nouveau endpoint `POST /api/chat/tts` (server.py) utilisant **OpenAI tts-1** via `https://integrations.emergentagent.com/llm` (compatible OpenAI SDK + EMERGENT_LLM_KEY).
+- 6 voix supportées : alloy, echo, fable, onyx, nova, shimmer. Voix invalide → fallback `alloy` silencieux.
+- Limite 4000 chars (truncate silencieux), texte vide → 400.
+- Retour : `{audio_base64, mime_type: 'audio/mpeg', voice, char_count}`.
+- **Frontend** : nouveau composant `MessageTTSButton.jsx` avec 3 états (loading/playing/idle, icônes Loader2/Square/Volume2). Audio HTML5 via `new Audio(data:audio/mpeg;base64,...)`.
+- Câblé dans Chat.js sur chaque message IA (visible quand `!isUser`). Click → fetch TTS + play. Re-click pendant lecture → stop.
+- **Validation live** : "Bonjour" en alloy → 26 240 chars base64 mp3 ; "nova" → 16 640 chars.
+
+**📊 server.py** : 8915 → **9044 lignes** (+129 net : -25 slice 4d, +154 endpoints LLM + TTS). Toujours sous l'objectif 9100.
 ### 2026-06-11 — Iter 94 (Slice 4c /messages/* + Traduction CONTENUS chats + Widget Emergent enhancements)
+
+**Tests** : **87/87 PASS** (14 iter95 + 73 régression iter88-94). Testing agent **100% backend GREEN**, 0 bug critique. 0 action item.
+
+**MOCKED / Architecture** :
+- Plus rien de MOCKED. Tout est en RÉEL.
+- Slice 4d complète (incluant `/chat/orchestrate-stream`) reportée à une future passe — les closures SSE rendent l'extraction coûteuse pour un gain limité.
+
+
 
 **🟢 P2 — Refacto slice 4c : /messages/* extraits** :
 - Nouveau module `/app/backend/routes/messages_routes.py` (348 lignes) avec `build_messages_router(db, device_by_key, consume_nonce, verify_signature, verify_signed, require_creator_signature, max_message_len, message_cooldown_seconds)`.
