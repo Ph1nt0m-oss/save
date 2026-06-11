@@ -4941,6 +4941,16 @@ async def set_site_mode(payload: SiteModeSetIn):
     )
     _invalidate_site_mode_cache()
 
+    # iter92 — Auto-log dans le changelog créatrice
+    try:
+        await _log_change(
+            "site_mode",
+            f"Mode du site changé → {', '.join(modes)}",
+            {"modes": modes, "guest_view": guest_view if is_guest_mode else None},
+        )
+    except Exception:
+        pass
+
     # iter83 — Kick : on supprime les sessions des devices qui ne matchent
     # AUCUN des modes actifs. Approche défensive.
     all_devs = await db.device_keys.find({}, {"_id": 0, "key_id": 1, "role": 1, "staff_kind": 1, "banned": 1}).to_list(length=2000)
@@ -8212,6 +8222,147 @@ async def creator_translate(payload: TranslateIn):
     except Exception as e:
         logger.warning(f"translate failed: {e}")
         return {"translated": text, "error": "translate_unavailable"}
+
+
+# iter92 — Traduction dynamique des noms de chats/projets selon langue UI
+# (cache MongoDB par project_id × langue cible pour éviter les re-traductions).
+class TranslateProjectNameIn(BaseModel):
+    project_id: str
+    target_lang: str  # 'fr' | 'en' | 'es' | 'pt' | ...
+    name: str  # fallback si pas en cache
+
+
+@api_router.post("/projects/translate-name")
+async def translate_project_name(request: Request, payload: TranslateProjectNameIn):
+    """Traduit le nom d'un projet/chat dans la langue cible. Cache MongoDB
+    par (project_id, target_lang) pour éviter des re-traductions inutiles."""
+    user_id = await get_current_user(request)
+    target = (payload.target_lang or "en").strip().lower()
+    name = (payload.name or "").strip()
+    if not payload.project_id or not name or not target:
+        return {"translated": name}
+    # Cache lookup
+    cached = await db.project_name_translations.find_one(
+        {"project_id": payload.project_id, "lang": target},
+        {"_id": 0, "translated": 1},
+    )
+    if cached and cached.get("translated"):
+        return {"translated": cached["translated"], "cached": True}
+    # Validate project belongs to user (security)
+    proj = await db.projects.find_one(
+        {"project_id": payload.project_id, "user_id": user_id},
+        {"_id": 0, "project_id": 1},
+    )
+    if not proj:
+        return {"translated": name}  # silent fallback
+    # Call LLM
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            return {"translated": name}
+        chat = LlmChat(
+            api_key=key, session_id=f"trans_proj_{uuid.uuid4().hex[:6]}",
+            system_message=(
+                f"Translate the user's project/chat name into {target}. "
+                f"Keep it SHORT (max 60 chars). Output ONLY the translation, no quotes, no prose."
+            ),
+        ).with_model("openai", "gpt-5.2")
+        translated = (await chat.send_message(UserMessage(text=name[:200]))).strip()
+        if translated and len(translated) <= 200:
+            await db.project_name_translations.update_one(
+                {"project_id": payload.project_id, "lang": target},
+                {"$set": {"project_id": payload.project_id, "lang": target,
+                          "translated": translated, "original": name,
+                          "ts": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
+            return {"translated": translated, "cached": False}
+    except Exception as e:
+        logger.warning(f"project name translate failed: {e}")
+    return {"translated": name}
+
+
+# iter92 — Endpoint pour invalider le cache quand le nom change
+@api_router.post("/projects/invalidate-name-cache")
+async def invalidate_project_name_cache(request: Request, project_id: str):
+    user_id = await get_current_user(request)
+    proj = await db.projects.find_one(
+        {"project_id": project_id, "user_id": user_id},
+        {"_id": 0, "project_id": 1},
+    )
+    if not proj:
+        raise HTTPException(status_code=404, detail="Projet introuvable.")
+    res = await db.project_name_translations.delete_many({"project_id": project_id})
+    return {"success": True, "removed": res.deleted_count}
+
+
+# iter92 — Endpoint changelog des modifications site/IA pour PrivateProgramming.
+# Auto-tracker les changements de MODEL_ROUTES, site_modes, etc.
+class CodeforgeChangelogIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    limit: Optional[int] = 50
+
+
+@api_router.post("/private/changelog")
+async def private_changelog(payload: CodeforgeChangelogIn):
+    """iter92 — Retourne le journal des modifications faites au site/IA
+    (ajouts/retraits modèles, changements site_mode, déploiements, etc.).
+    Réservé à la créatrice (signature ECDSA requise).
+
+    Les entries sont auto-enregistrées via `_log_change()` dans server.py et
+    aussi peuvent être insérées manuellement depuis le code via la collection
+    `codeforge_changelog` (utile quand l'utilisatrice modifie elle-même le code
+    via GitHub / téléchargement local / cmd / python).
+    """
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    limit = max(1, min(int(payload.limit or 50), 500))
+    rows = await db.codeforge_changelog.find(
+        {}, {"_id": 0}
+    ).sort("ts", -1).limit(limit).to_list(length=limit)
+    return {"changes": rows}
+
+
+async def _log_change(category: str, summary: str, details: Optional[Dict[str, Any]] = None):
+    """iter92 — Helper interne : log un changement dans codeforge_changelog.
+    Appeler depuis tout endpoint qui modifie l'état du site/IA.
+    category ∈ {'model', 'site_mode', 'deploy', 'code', 'config', 'manual'}
+    """
+    try:
+        await db.codeforge_changelog.insert_one({
+            "category": category,
+            "summary": summary[:300],
+            "details": details or {},
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"changelog log failed: {e}")
+
+
+# iter92 — Endpoint pour ajouter MANUELLEMENT une entrée changelog
+# (utilisé par l'utilisatrice quand elle modifie le code via GitHub/local).
+class CodeforgeManualLogIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    category: str  # 'manual' | 'code' | 'config'
+    summary: str
+    details: Optional[Dict[str, Any]] = None
+
+
+@api_router.post("/private/changelog/log")
+async def private_changelog_log(payload: CodeforgeManualLogIn):
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    cat = (payload.category or "manual").strip().lower()
+    if cat not in ("manual", "code", "config", "model", "site_mode", "deploy"):
+        cat = "manual"
+    summary = (payload.summary or "").strip()
+    if not summary:
+        raise HTTPException(status_code=400, detail="summary requis.")
+    await _log_change(cat, summary, payload.details)
+    return {"success": True}
 
 
 # ---------------- USER pseudo update ----------------

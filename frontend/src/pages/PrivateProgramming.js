@@ -286,6 +286,130 @@ function AIProgrammingPanel() {
           </div>
         )}
       </section>
+
+      {/* iter92 — Changelog modifications site/IA (sync bidirectionnelle) */}
+      <ChangelogPanel />
     </div>
+  );
+}
+
+// =============================================================================
+// iter92 — CHANGELOG modifications site/IA (sync bidirectionnelle)
+// =============================================================================
+function ChangelogPanel() {
+  const [changes, setChanges] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [manualCategory, setManualCategory] = useState('manual');
+  const [manualSummary, setManualSummary] = useState('');
+
+  const loadChanges = async () => {
+    setLoading(true);
+    try {
+      const body = await withCreatorProof(API, axios, { limit: 100 });
+      const r = await axios.post(`${API}/private/changelog`, body);
+      setChanges(r.data?.changes || []);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Changelog inaccessible');
+    } finally { setLoading(false); }
+  };
+
+  const addManual = async () => {
+    if (!manualSummary.trim()) return;
+    try {
+      const body = await withCreatorProof(API, axios, {
+        category: manualCategory,
+        summary: manualSummary.trim(),
+      });
+      await axios.post(`${API}/private/changelog/log`, body);
+      setManualSummary('');
+      toast.success('Modification enregistrée');
+      loadChanges();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Échec enregistrement');
+    }
+  };
+
+  useEffect(() => { loadChanges(); /* eslint-disable-line */ }, []);
+
+  const CATEGORY_COLORS = {
+    model: 'text-violet-300 bg-violet-500/10 border-violet-400/30',
+    site_mode: 'text-cyan-300 bg-cyan-500/10 border-cyan-400/30',
+    deploy: 'text-emerald-300 bg-emerald-500/10 border-emerald-400/30',
+    code: 'text-amber-300 bg-amber-500/10 border-amber-400/30',
+    config: 'text-blue-300 bg-blue-500/10 border-blue-400/30',
+    manual: 'text-rose-300 bg-rose-500/10 border-rose-400/30',
+  };
+
+  return (
+    <section className="col-span-12 bg-[#0A0A0A] border border-white/10 rounded-sm p-4" data-testid="changelog-panel">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] flex items-center gap-2">
+          <Save className="w-4 h-4" /> Modifications du site &amp; IA (sync)
+        </h2>
+        <button onClick={loadChanges} className="text-xs text-[#A1A1AA] hover:text-white px-2 py-1 rounded-sm border border-white/10">
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Recharger'}
+        </button>
+      </div>
+      <p className="text-[11px] text-[#A1A1AA] mb-3 leading-relaxed">
+        Suit toutes les modifications faites au site et aux IA (ajouts/retraits de modèles, changement de site_mode, déploiements, code Python/JS modifié sur GitHub ou en local). Ajoute manuellement une entrée quand tu modifies le code directement.
+      </p>
+      {/* Saisie manuelle */}
+      <div className="flex gap-2 mb-3 bg-black/30 border border-white/10 rounded-sm p-2">
+        <select
+          value={manualCategory}
+          onChange={(e) => setManualCategory(e.target.value)}
+          data-testid="changelog-category-select"
+          className="bg-[#0F0F13] border border-white/10 rounded-sm px-2 py-1 text-xs text-white"
+        >
+          <option value="manual">Manuel</option>
+          <option value="code">Code modifié</option>
+          <option value="config">Config / .env</option>
+          <option value="model">Modèle IA</option>
+          <option value="site_mode">Mode du site</option>
+          <option value="deploy">Déploiement</option>
+        </select>
+        <input
+          value={manualSummary}
+          onChange={(e) => setManualSummary(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addManual(); }}
+          placeholder="Résumé de la modification (ex: 'Ajout endpoint /api/foo via GitHub')"
+          data-testid="changelog-manual-input"
+          className="flex-1 bg-[#0F0F13] border border-white/10 rounded-sm px-2 py-1 text-xs text-white focus:outline-none focus:border-[#E4FF00]"
+        />
+        <button
+          onClick={addManual}
+          disabled={!manualSummary.trim()}
+          data-testid="changelog-add-btn"
+          className="px-3 py-1 bg-[#E4FF00] text-[#050505] font-bold text-xs rounded-sm disabled:opacity-40"
+        >
+          Ajouter
+        </button>
+      </div>
+      {/* Liste */}
+      {changes.length === 0 ? (
+        <div className="text-[11px] text-[#71717A] py-4 text-center">Aucune modification enregistrée.</div>
+      ) : (
+        <div className="space-y-1.5 max-h-80 overflow-y-auto">
+          {changes.map((c, i) => (
+            <div key={i} className="text-xs text-white bg-black/30 border border-white/10 rounded-sm p-2 flex items-start gap-2" data-testid={`changelog-entry-${i}`}>
+              <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-sm border font-bold uppercase ${CATEGORY_COLORS[c.category] || 'text-white border-white/10'}`}>
+                {c.category}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-white">{c.summary}</div>
+                {c.details && Object.keys(c.details).length > 0 && (
+                  <pre className="text-[10px] text-[#71717A] mt-0.5 font-mono break-all whitespace-pre-wrap">
+                    {JSON.stringify(c.details, null, 0).slice(0, 200)}
+                  </pre>
+                )}
+              </div>
+              <span className="text-[10px] text-[#71717A] flex-shrink-0">
+                {new Date(c.ts).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

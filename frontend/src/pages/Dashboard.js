@@ -33,6 +33,7 @@ import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
+import TranslatedProjectName from '../components/TranslatedProjectName';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -725,7 +726,7 @@ export default function Dashboard() {
                     {project.project_type === 'desktop' && <Monitor className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
                     {project.project_type === 'chat' && <MessageSquare className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
                     <span className="font-['IBM_Plex_Sans'] font-medium truncate flex-1 min-w-0">
-                      {project.name}
+                      <TranslatedProjectName project={project} />
                     </span>
                     {selectedProject?.project_id === project.project_id && (
                       <ChevronRight className="w-4 h-4 text-[#E4FF00] flex-shrink-0" />

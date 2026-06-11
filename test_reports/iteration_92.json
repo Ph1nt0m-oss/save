@@ -1,0 +1,36 @@
+{
+  "summary": "iter92 backend testing — translation dynamique noms tchats + changelog endpoints. 11 pytest existants + 5 nouveaux live tests = 16/16 PASS. /projects/translate-name retourne 401 sans auth, 200 avec auth (+ cache MongoDB project_name_translations vérifié sur 2e appel cached:true). /projects/invalidate-name-cache OK ({success:true, removed:N}). /private/changelog et /private/changelog/log retournent 403 sans signature ECDSA (audit code OK). _log_change() helper défini, set_site_mode appelle bien _log_change('site_mode', ...) (audit code lignes 4944-4952). Hook useTranslatedProjectName + composant TranslatedProjectName.jsx + ChangelogPanel dans PrivateProgramming.js audités OK. Régression iter91 (/announcements/list + /polls/list) intacte.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter92_translation_and_changelog.py",
+    "/app/backend/tests/test_iter92_live.py",
+    "/app/test_reports/pytest/iter92_results.xml",
+    "/app/test_reports/pytest/iter92_live.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py atteint ~9147 lignes — bien au-delà du seuil 700 du guideline. Refacto modulaire fortement recommandée (slices 4c/4d annoncées iter93+).",
+    "Auto-log changelog n'instrumente QUE set_site_mode pour l'instant. Les changements MODEL_ROUTES, code externe, deploy ne sont pas auto-loggés (doc claire dans la docstring, c'est mentionné comme tradeoff intentionnel — utilisatrice doit logger manuellement). Considérer d'ajouter _log_change dans /admin/redeploy, /private/model-routes/update si présent.",
+    "Le test test_site_mode_auto_logs vérifie la présence textuelle de '_log_change(\"site_mode\"' dans le source — fragile si la signature change. Préférer un mock-based unit test ou un appel HTTP réel qui inspecte db.codeforge_changelog.",
+    "Le fallback silencieux 'translated = original' quand EMERGENT_LLM_KEY balance 0 cache une dégradation — log warning + champ 'fallback:true' dans la réponse améliorerait la UX/diagnostic.",
+    "Le cache project_name_translations utilise (project_id, target_lang, name_hash?) comme clé — vérifier qu'il y a bien un index unique côté MongoDB pour éviter race conditions sur 1er appel simultané."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter92_live.py (créé)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (testing_type=backend)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (login OK, token field = 'session_token')",
+  "seed_data_creation": "1 projet temporaire 'Discussion Test iter92' créé via /api/projects par fixture pour tester translate-name + cache + invalidate. Non nettoyé (mineur — pas de bloqueur).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter92 100% green. Login endpoint /api/auth/login retourne le token dans le champ 'session_token' (pas 'token' ni 'access_token') — important pour futurs tests live. Slices 4c (/messages/*) et 4d (/orchestrate/*) reportées iter93+. server.py ~9147 lignes : refacto urgente recommandée. Cache MongoDB project_name_translations fonctionnel ; fallback original name silencieux si EMERGENT_LLM_KEY balance=0.",
+  "rca of the issue": "N/A — aucun bug trouvé."
+}
