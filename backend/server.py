@@ -3160,42 +3160,65 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
 
                 ai_response_text = ""
                 last_error = None
-                for idx, (p, mid) in enumerate(ordered_chain):
+
+                # iter91 — Si provider=="xai" et XAI_API_KEY dispo, appeler Grok directement.
+                # Sinon, la cascade emergentintegrations gère le fallback.
+                if provider == "xai":
                     try:
-                        chat = LlmChat(
-                            api_key=emergent_key,
-                            session_id=session_id,
-                            system_message=system_prompt,
-                        ).with_model(p, mid)
-                        candidate = (await chat.send_message(user_message) or '').strip()
-                        if candidate:
-                            ai_response_text = candidate
-                            ai_source = f"emergent:{p}:{mid}"
-                            if idx == 0:
-                                logger.info(f"✅ Chat response successful via {ai_source}")
-                            else:
+                        from grok_integration import is_xai_available, grok_chat
+                        if is_xai_available():
+                            grok_response = await grok_chat(
+                                prompt=composed,
+                                model=model_id,
+                                system_message=system_prompt,
+                                timeout_sec=60,
+                            )
+                            if grok_response and grok_response.strip():
+                                ai_response_text = grok_response.strip()
+                                ai_source = f"xai:{model_id}"
+                                logger.info(f"✅ Grok response via xAI API ({model_id})")
+                    except Exception as exc:
+                        logger.warning(f"Grok xAI call failed → fallback cascade: {exc}")
+                        last_error = exc
+
+                # Si Grok n'a pas répondu (pas de clé ou erreur) → cascade Emergent normale.
+                if not ai_response_text:
+                    for idx, (p, mid) in enumerate(ordered_chain):
+                        try:
+                            chat = LlmChat(
+                                api_key=emergent_key,
+                                session_id=session_id,
+                                system_message=system_prompt,
+                            ).with_model(p, mid)
+                            candidate = (await chat.send_message(user_message) or '').strip()
+                            if candidate:
+                                ai_response_text = candidate
+                                ai_source = f"emergent:{p}:{mid}"
+                                if idx == 0:
+                                    logger.info(f"✅ Chat response successful via {ai_source}")
+                                else:
+                                    logger.warning(
+                                        f"↪️  Silent fallback succeeded on attempt {idx + 1} "
+                                        f"via {ai_source} after error: {last_error}"
+                                    )
+                                break
+                            # Empty response → try next.
+                            last_error = "empty response"
+                            logger.warning(f"Empty response from {p}:{mid}, trying next in cascade")
+                            continue
+                        except Exception as model_err:
+                            last_error = str(model_err)[:300]
+                            if _is_recoverable(model_err):
                                 logger.warning(
-                                    f"↪️  Silent fallback succeeded on attempt {idx + 1} "
-                                    f"via {ai_source} after error: {last_error}"
+                                    f"⚠️  Recoverable error on {p}:{mid} "
+                                    f"(attempt {idx + 1}/{len(ordered_chain)}) → falling back silently: {last_error}"
                                 )
-                            break
-                        # Empty response → try next.
-                        last_error = "empty response"
-                        logger.warning(f"Empty response from {p}:{mid}, trying next in cascade")
-                        continue
-                    except Exception as model_err:
-                        last_error = str(model_err)[:300]
-                        if _is_recoverable(model_err):
+                                continue
+                            # Non-recoverable: still try the next one — UX > strictness.
                             logger.warning(
-                                f"⚠️  Recoverable error on {p}:{mid} "
-                                f"(attempt {idx + 1}/{len(ordered_chain)}) → falling back silently: {last_error}"
+                                f"⚠️  Unexpected error on {p}:{mid} → cascading anyway: {last_error}"
                             )
                             continue
-                        # Non-recoverable: still try the next one — UX > strictness.
-                        logger.warning(
-                            f"⚠️  Unexpected error on {p}:{mid} → cascading anyway: {last_error}"
-                        )
-                        continue
 
                 if not ai_response_text:
                     # Whole cascade failed — let the outer fallback (offline msg) kick in.
@@ -7931,70 +7954,8 @@ def _audience_matches(target_audience, dev: Optional[Dict[str, Any]]) -> bool:
     return False
 
 
-@api_router.post("/announcements/create")
-async def announcements_create(payload: AnnounceCreateIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    if not payload.title.strip():
-        raise HTTPException(status_code=400, detail="Titre requis.")
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    raw_aud = body.get("audience")
-    audience = raw_aud if isinstance(raw_aud, list) else [raw_aud or "all"]
-    audience = [g for g in audience if g in VALID_AUDIENCE_GROUPS] or ["all"]
-    doc = {
-        "announce_id": f"ann_{uuid.uuid4().hex[:12]}",
-        "title": payload.title.strip()[:200],
-        "body": (payload.body or "").strip()[:5000],
-        "audience": audience,
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "updated_at": None,
-    }
-    await db.announcements.insert_one(doc)
-    return {"success": True, "announce_id": doc["announce_id"]}
-
-
-@api_router.get("/announcements/list")
-async def announcements_list(key_id: Optional[str] = None):
-    """Public — anyone can fetch the active announcements they qualify for.
-
-    iter76/77 — enrichi avec :
-    - `my_state` : état perso du device courant (validated/refused/orange/null)
-    - `staff_states` : visible créatrice uniquement, tableau des états du staff
-    - `audience` peut être string legacy ou List[str] multi-groupe (iter77).
-    """
-    rows = await db.announcements.find({}, {"_id": 0}).sort("ts", -1).to_list(length=50)
-    dev = None
-    role = "public"
-    if key_id:
-        dev = await db.device_keys.find_one(
-            {"key_id": key_id},
-            {"_id": 0, "role": 1, "staff_kind": 1},
-        )
-        role = (dev or {}).get("role") or "public"
-    filtered = []
-    for r in rows:
-        # iter77 — multi-audience: utilise _audience_matches.
-        if not _audience_matches(r.get("audience"), dev):
-            continue
-        my_state = None
-        if key_id:
-            ms = await db.announcement_states.find_one(
-                {"announce_id": r["announce_id"], "key_id": key_id},
-                {"_id": 0, "state": 1, "actor": 1, "ts": 1},
-            )
-            if ms:
-                my_state = ms.get("state")
-        if role == "creator":
-            states = await db.announcement_states.find(
-                {"announce_id": r["announce_id"], "key_id": {"$ne": key_id}},
-                {"_id": 0, "key_id": 1, "state": 1, "actor": 1, "ts": 1},
-            ).to_list(length=200)
-            r["staff_states"] = states
-        r["my_state"] = my_state
-        # iter76 — masque côté requérant si VALIDÉ par lui.
-        if role != "creator" and my_state == "validated":
-            continue
-        filtered.append(r)
-    return {"announcements": filtered}
+# iter91 — Routes /announcements/* déplacées dans routes/announcements_routes.py.
+# Le router est inclus en bas de server.py via build_announcements_router(...).
 
 
 # iter77 — Edit announcement (pencil button côté créa)
@@ -8009,412 +7970,19 @@ class AnnounceEditIn(BaseModel):
     audience: Any = None
 
 
-@api_router.post("/announcements/edit")
-async def announcements_edit(payload: AnnounceEditIn):
-    """iter77 — Modifie une annonce. Reset tous les états (l'annonce revient
-    en attente chez tout le monde) et bump updated_at."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    upd = {}
-    if body.get("title") is not None:
-        title = (body.get("title") or "").strip()
-        if not title:
-            raise HTTPException(status_code=400, detail="Titre requis.")
-        upd["title"] = title[:200]
-    if body.get("body") is not None:
-        upd["body"] = (body.get("body") or "").strip()[:5000]
-    if body.get("audience") is not None:
-        raw_aud = body.get("audience")
-        aud = raw_aud if isinstance(raw_aud, list) else [raw_aud]
-        aud = [g for g in aud if g in VALID_AUDIENCE_GROUPS] or ["all"]
-        upd["audience"] = aud
-    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
-    res = await db.announcements.update_one({"announce_id": payload.announce_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Annonce introuvable.")
-    # iter77 — Reset les états: l'annonce modifiée doit réapparaître à tous.
-    await db.announcement_states.delete_many({"announce_id": payload.announce_id})
-    return {"success": True, "updated_at": upd["updated_at"]}
+# iter91 — Routes /announcements/edit + /announcements/delete déplacées dans
+# routes/announcements_routes.py. Le modèle AnnounceEditIn reste ici pour
+# rétrocompat avec les imports legacy.
 
 
-@api_router.post("/announcements/delete")
-async def announcements_delete(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    ann_id = body.get("announce_id")
-    if not ann_id:
-        raise HTTPException(status_code=400, detail="announce_id requis.")
-    await db.announcements.delete_one({"announce_id": ann_id})
-    return {"success": True}
+# iter91 — Toutes les routes /polls/* + modèles déplacés dans
+# routes/polls_routes.py (slice 4b). Le router est inclus en bas de server.py.
 
-
-class PollCreateIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
-    question: str
-    options: List[str] = Field(default_factory=list)
-    audience: Any = "all"  # iter77: list ou str
-    max_selections: int = 0  # iter77 — 0 = illimité (par défaut), sinon cap explicite
-    allow_user_suggestions: bool = False  # iter77 — laisser users proposer leur réponse
-
-@api_router.post("/polls/create")
-async def polls_create(payload: PollCreateIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    q = (payload.question or "").strip()
-    opts = [o.strip() for o in (payload.options or []) if o.strip()]
-    if not q or len(opts) < 2:
-        raise HTTPException(status_code=400, detail="Question + 2 options requis.")
-    try:
-        max_sel = int(payload.max_selections or 0)
-    except Exception:
-        max_sel = 0
-    # iter77 — 0 = illimité; sinon cap entre 1 et nombre d'options.
-    if max_sel < 0:
-        max_sel = 0
-    elif max_sel > 0:
-        max_sel = min(max_sel, len(opts[:50]))
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    raw_aud = body.get("audience")
-    aud = raw_aud if isinstance(raw_aud, list) else [raw_aud or "all"]
-    aud = [g for g in aud if g in VALID_AUDIENCE_GROUPS] or ["all"]
-    doc = {
-        "poll_id": f"poll_{uuid.uuid4().hex[:12]}",
-        "question": q[:300],
-        "options": opts[:50],
-        "audience": aud,
-        "max_selections": max_sel,  # 0 = illimité
-        "allow_user_suggestions": bool(payload.allow_user_suggestions),
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "updated_at": None,
-    }
-    await db.polls.insert_one(doc)
-    return {"success": True, "poll_id": doc["poll_id"]}
-
-
-# iter77 — Edit poll (pencil button)
-class PollEditIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
-    poll_id: str
-    question: Optional[str] = None
-    options: Optional[List[str]] = None
-    audience: Any = None
-    max_selections: Optional[int] = None
-    allow_user_suggestions: Optional[bool] = None
-
-
-@api_router.post("/polls/edit")
-async def polls_edit(payload: PollEditIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    upd = {}
-    if body.get("question") is not None:
-        q = (body.get("question") or "").strip()
-        if not q:
-            raise HTTPException(status_code=400, detail="Question requise.")
-        upd["question"] = q[:300]
-    if body.get("options") is not None:
-        opts = [o.strip() for o in (body.get("options") or []) if isinstance(o, str) and o.strip()]
-        if len(opts) < 2:
-            raise HTTPException(status_code=400, detail="2 options minimum.")
-        upd["options"] = opts[:50]
-    if body.get("audience") is not None:
-        raw_aud = body.get("audience")
-        aud = raw_aud if isinstance(raw_aud, list) else [raw_aud]
-        aud = [g for g in aud if g in VALID_AUDIENCE_GROUPS] or ["all"]
-        upd["audience"] = aud
-    if body.get("max_selections") is not None:
-        try:
-            upd["max_selections"] = max(0, int(body.get("max_selections")))
-        except Exception:
-            pass
-    if body.get("allow_user_suggestions") is not None:
-        upd["allow_user_suggestions"] = bool(body.get("allow_user_suggestions"))
-    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
-    res = await db.polls.update_one({"poll_id": payload.poll_id}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Sondage introuvable.")
-    # iter77 — Reset les votes? Non, on garde les tally. L'utilisateur peut
-    # revoter en cas de changement d'options (les indices peuvent shift).
-    # On reset uniquement si options changent.
-    if "options" in upd:
-        await db.poll_votes.delete_many({"poll_id": payload.poll_id})
-    return {"success": True, "updated_at": upd["updated_at"]}
-
-
-# iter77 — User suggests an extra option (creator validates/removes)
-class PollSuggestIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    poll_id: str
-    text: str
-
-
-@api_router.post("/polls/suggest-option")
-async def polls_suggest_option(payload: PollSuggestIn):
-    """iter77 — N'importe quel votant peut proposer une réponse perso.
-    Stockée en `poll_suggestions` (pending). Créa valide ou retire.
-    Si retirée, les votes sur cette option ne comptent plus (filtre tally)."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    poll = await db.polls.find_one({"poll_id": payload.poll_id}, {"_id": 0, "allow_user_suggestions": 1})
-    if not poll:
-        raise HTTPException(status_code=404, detail="Sondage introuvable.")
-    if not poll.get("allow_user_suggestions"):
-        raise HTTPException(status_code=403, detail="Propositions désactivées sur ce sondage.")
-    text = (payload.text or "").strip()
-    if not text or len(text) > 200:
-        raise HTTPException(status_code=400, detail="Texte requis (≤200 chars).")
-    sid = f"sug_{uuid.uuid4().hex[:12]}"
-    await db.poll_suggestions.insert_one({
-        "suggestion_id": sid,
-        "poll_id": payload.poll_id,
-        "key_id": payload.key_id,
-        "pseudo": dev.get("label") or dev.get("pseudo") or "Anonyme",
-        "text": text,
-        "status": "pending",  # 'pending' | 'approved' | 'removed'
-        "ts": datetime.now(timezone.utc).isoformat(),
-    })
-    return {"success": True, "suggestion_id": sid}
-
-
-class PollSuggestDecideIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    suggestion_id: str
-    decision: str  # 'approve' | 'remove'
-
-
-@api_router.post("/polls/decide-suggestion")
-async def polls_decide_suggestion(payload: PollSuggestDecideIn):
-    """iter77 — Créa valide la proposition (devient option officielle) ou la retire."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    if payload.decision not in ("approve", "remove"):
-        raise HTTPException(status_code=400, detail="decision invalide.")
-    sug = await db.poll_suggestions.find_one({"suggestion_id": payload.suggestion_id}, {"_id": 0})
-    if not sug:
-        raise HTTPException(status_code=404, detail="Proposition introuvable.")
-    new_status = "approved" if payload.decision == "approve" else "removed"
-    await db.poll_suggestions.update_one(
-        {"suggestion_id": payload.suggestion_id},
-        {"$set": {"status": new_status,
-                  "decided_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    if payload.decision == "approve":
-        # Ajoute l'option au poll.
-        await db.polls.update_one(
-            {"poll_id": sug["poll_id"]},
-            {"$push": {"options": sug["text"]}},
-        )
-    return {"success": True, "status": new_status}
-
-
-@api_router.get("/polls/list")
-async def polls_list(key_id: Optional[str] = None):
-    rows = await db.polls.find({}, {"_id": 0}).sort("ts", -1).to_list(length=50)
-    dev = None
-    role = "public"
-    if key_id:
-        dev = await db.device_keys.find_one(
-            {"key_id": key_id},
-            {"_id": 0, "role": 1, "staff_kind": 1},
-        )
-        role = (dev or {}).get("role") or "public"
-    out = []
-    for p in rows:
-        # iter77 — multi-audience
-        if not _audience_matches(p.get("audience"), dev):
-            continue
-        if "max_selections" not in p:
-            p["max_selections"] = 1
-        # Tally votes (unwind sur option_indices).
-        votes = await db.poll_votes.aggregate([
-            {"$match": {"poll_id": p["poll_id"]}},
-            {"$unwind": "$option_indices"},
-            {"$group": {"_id": "$option_indices", "count": {"$sum": 1}}},
-        ]).to_list(length=200)
-        tally = {v["_id"]: v["count"] for v in votes}
-        p["tally"] = [tally.get(i, 0) for i in range(len(p.get("options", [])))]
-        voters = await db.poll_votes.count_documents({"poll_id": p["poll_id"]})
-        p["voters"] = voters
-        my = None
-        if key_id:
-            mv = await db.poll_votes.find_one(
-                {"poll_id": p["poll_id"], "voter_key_id": key_id},
-                {"_id": 0, "option_indices": 1, "option_index": 1},
-            )
-            if mv:
-                if isinstance(mv.get("option_indices"), list):
-                    my = mv["option_indices"]
-                elif mv.get("option_index") is not None:
-                    my = [mv["option_index"]]
-        p["my_vote"] = my
-        # iter77 — Créa peut voir qui a voté (sauf si audience inclut 'all'/'public'
-        # — interprétation : sondage à la « communauté » → vote anonyme).
-        aud = p.get("audience")
-        is_community = ("all" in aud) if isinstance(aud, list) else (aud in (None, "all"))
-        if role == "creator" and not is_community:
-            voters_rows = await db.poll_votes.find(
-                {"poll_id": p["poll_id"]},
-                {"_id": 0, "voter_key_id": 1, "option_indices": 1, "option_index": 1, "ts": 1},
-            ).to_list(length=500)
-            # Enrichir avec pseudo via device_keys
-            kids = list({v.get("voter_key_id") for v in voters_rows if v.get("voter_key_id")})
-            pseudos = {}
-            if kids:
-                async for d in db.device_keys.find(
-                    {"key_id": {"$in": kids}}, {"_id": 0, "key_id": 1, "label": 1, "pseudo": 1, "email": 1},
-                ):
-                    pseudos[d["key_id"]] = d.get("pseudo") or d.get("label") or d.get("email") or d["key_id"][:10]
-            for v in voters_rows:
-                v["pseudo"] = pseudos.get(v.get("voter_key_id"), "Anonyme")
-                if isinstance(v.get("option_indices"), list):
-                    pass
-                elif v.get("option_index") is not None:
-                    v["option_indices"] = [v["option_index"]]
-            p["voters_detail"] = voters_rows
-        else:
-            p["voters_detail"] = None
-        # iter77 — propositions perso
-        if p.get("allow_user_suggestions"):
-            suggestions = await db.poll_suggestions.find(
-                {"poll_id": p["poll_id"]}, {"_id": 0},
-            ).sort("ts", 1).to_list(length=100)
-            # Côté non-créa: ne montrer que les `approved` + `pending` (les `removed` sont silencieux).
-            if role != "creator":
-                suggestions = [s for s in suggestions if s.get("status") in ("approved", "pending")]
-            p["suggestions"] = suggestions
-        else:
-            p["suggestions"] = []
-        out.append(p)
-    return {"polls": out}
-
-
-class PollVoteIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    poll_id: str
-    option_index: Optional[int] = None  # legacy single
-    option_indices: Optional[List[int]] = None  # iter76 multi-select
-
-@api_router.post("/polls/vote")
-async def polls_vote(payload: PollVoteIn):
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    poll = await db.polls.find_one({"poll_id": payload.poll_id}, {"_id": 0})
-    if not poll:
-        raise HTTPException(status_code=404, detail="Sondage introuvable.")
-    if not _audience_matches(poll.get("audience"), dev):
-        raise HTTPException(status_code=403, detail="Audience non autorisée.")
-    n = len(poll.get("options", []))
-    max_sel = int(poll.get("max_selections") or 0)
-    if payload.option_indices is not None:
-        chosen = sorted({int(i) for i in payload.option_indices if isinstance(i, int)})
-    elif payload.option_index is not None:
-        chosen = [int(payload.option_index)]
-    else:
-        raise HTTPException(status_code=400, detail="option_index(s) requis.")
-    if not chosen:
-        raise HTTPException(status_code=400, detail="Sélection vide.")
-    # iter77 — max_sel=0 → illimité.
-    if max_sel > 0 and len(chosen) > max_sel:
-        raise HTTPException(status_code=400, detail=f"Max {max_sel} sélection(s) autorisée(s).")
-    for idx in chosen:
-        if not (0 <= idx < n):
-            raise HTTPException(status_code=400, detail="Option invalide.")
-    await db.poll_votes.update_one(
-        {"poll_id": payload.poll_id, "voter_key_id": payload.key_id},
-        {"$set": {
-            "poll_id": payload.poll_id,
-            "voter_key_id": payload.key_id,
-            "option_indices": chosen,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }, "$unset": {"option_index": ""}},
-        upsert=True,
-    )
-    return {"success": True}
-
-
-@api_router.post("/polls/delete")
-async def polls_delete(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    poll_id = body.get("poll_id")
-    if not poll_id:
-        raise HTTPException(status_code=400, detail="poll_id requis.")
-    await db.polls.delete_one({"poll_id": poll_id})
-    await db.poll_votes.delete_many({"poll_id": poll_id})
-    return {"success": True}
 
 
 # ---------------- iter76: ANNOUNCEMENT STATES (validated/refused/orange) ----------------
-class AnnStateIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    announce_id: str
-    state: str  # 'validated' | 'refused' | 'orange' | 'reset'
-
-
-@api_router.post("/announcements/set-state")
-async def announcements_set_state(payload: AnnStateIn):
-    """iter76 — Marque l'annonce avec un état pour le device courant.
-
-    - validated (✅ vert) → tâche faite. Disparait pour le staff/user qui valide.
-    - refused (❌ rouge) → tâche refusée. Reste visible (non-supprimable, sauf via clear-history).
-    - orange (🟠) → escalade: « le staff n'a pas les codes, seule la créatrice peut ».
-    - reset → suppression de l'état (annonce redevient en attente).
-
-    Asymétrie staff↔créatrice:
-    - Quand le staff valide, la créatrice voit toujours l'annonce mais avec un badge
-      « Coché par staff » et peut soit confirmer (et l'annonce disparait pour la créatrice
-      aussi) soit réinitialiser (et l'annonce redevient en attente pour tout le monde).
-    """
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    state = (payload.state or "").strip().lower()
-    if state not in ("validated", "refused", "orange", "reset"):
-        raise HTTPException(status_code=400, detail="État invalide.")
-    ann = await db.announcements.find_one({"announce_id": payload.announce_id}, {"_id": 0, "announce_id": 1})
-    if not ann:
-        raise HTTPException(status_code=404, detail="Annonce introuvable.")
-    role = dev.get("role") or "public"
-    actor = "creator" if role == "creator" else ("staff" if role == "approved" else "user")
-
-    if state == "reset":
-        # Le créateur peut réinitialiser TOUS les états d'une annonce ; sinon, seul son propre état.
-        if role == "creator":
-            await db.announcement_states.delete_many({"announce_id": payload.announce_id})
-        else:
-            await db.announcement_states.delete_one({"announce_id": payload.announce_id, "key_id": payload.key_id})
-        return {"success": True, "reset": True}
-
-    await db.announcement_states.update_one(
-        {"announce_id": payload.announce_id, "key_id": payload.key_id},
-        {"$set": {
-            "announce_id": payload.announce_id,
-            "key_id": payload.key_id,
-            "state": state,
-            "actor": actor,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }},
-        upsert=True,
-    )
-    return {"success": True, "state": state, "actor": actor}
-
-
-@api_router.post("/announcements/clear-history")
-async def announcements_clear_history(payload: _CreatorSigIn):
-    """iter76 — Bouton « Supprimer l'historique » côté créatrice : retire complètement
-    toutes les annonces ET tous les états associés. Sert à repartir propre."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    res_ann = await db.announcements.delete_many({})
-    res_st = await db.announcement_states.delete_many({})
-    return {"success": True, "deleted_announcements": res_ann.deleted_count, "deleted_states": res_st.deleted_count}
+# iter91 — Modèle AnnStateIn + routes /announcements/set-state +
+# /announcements/clear-history déplacés dans routes/announcements_routes.py.
 
 
 # Modifie l'endpoint list pour enrichir avec states (rétrocompat: on RÉ-ÉCRIT
@@ -9317,6 +8885,20 @@ app.include_router(api_router)
 from routes.social_routes import build_friends_router, build_groups_router  # noqa: E402
 app.include_router(build_friends_router(db, _verify_signed, _device_by_key), prefix="/api")
 app.include_router(build_groups_router(db, _verify_signed, MAX_MESSAGE_LEN), prefix="/api")
+
+# iter91 — slice 4a : /announcements/* extraits dans routes/announcements_routes.py
+from routes.announcements_routes import build_announcements_router  # noqa: E402
+app.include_router(
+    build_announcements_router(db, _verify_signed, _require_creator_signature, _audience_matches),
+    prefix="/api",
+)
+
+# iter91 — slice 4b : /polls/* extraits dans routes/polls_routes.py
+from routes.polls_routes import build_polls_router  # noqa: E402
+app.include_router(
+    build_polls_router(db, _verify_signed, _require_creator_signature, _audience_matches),
+    prefix="/api",
+)
 
 # Include PWA routes under /api/pwa
 app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])

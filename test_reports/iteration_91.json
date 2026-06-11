@@ -1,0 +1,35 @@
+{
+  "summary": "iter91 punch-list validated end-to-end. (1) i18n FR fix: 'le créatrice' = 0 occurrences, 'la créatrice' = 18 occurrences in /app/frontend/src/contexts/LanguageContext.js — feminine accord corrected. (2) Slice 4a refacto: /announcements/* (6 endpoints) extracted to routes/announcements_routes.py via build_announcements_router; @api_router declarations removed from server.py; live GET /api/announcements/list = 200 with {announcements: []}; POST /api/announcements/create without ECDSA signature → 403. (3) Slice 4b refacto: /polls/* (7 endpoints) extracted to routes/polls_routes.py via build_polls_router; @api_router declarations removed from server.py; live GET /api/polls/list = 200 with {polls: []}; POST /api/polls/vote without signature → 404 (poll absent gate hits first). (4) xAI Grok integration: /app/backend/grok_integration.py present with is_xai_available(), grok_chat(), grok_model_id(); without XAI_API_KEY → is_xai_available() returns False and grok_chat raises RuntimeError; server.py contains 'if provider == \"xai\":' branch at line 3166 with 'from grok_integration import' and 'ai_source = f\"xai:{model_id}\"'. (5) server.py reduced from 9414 → 8995 lines (-419, under 9100 target). (6) Regression: 78/78 tests across iter76, iter77, iter86, iter87, iter88, iter89, iter90 all PASS. Total 94/94 pytest PASS (16 iter91 + 78 regression).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/polls/vote", "issue": "Returns 404 instead of 403 when no signature is provided because the poll-existence check runs before signature verification. Both 403 and 404 are acceptable per the test contract (assertion is `in (403, 404)`). Order can be reviewed if a stricter auth-first contract is desired."},
+      {"endpoint": "xAI Grok live call", "issue": "XAI_API_KEY not set in preview .env so the real Grok call path was not exercised at runtime — only the helper RuntimeError-raise path was verified. Cascade fallback to claude-sonnet remains active. Expected per agent_to_agent_context_note."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter91_refacto_slice4_and_grok.py",
+    "/app/test_reports/pytest/iter91_results.xml",
+    "/app/test_reports/pytest/iter91_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still at 8995 lines — slice 4c (/messages/*) and 4d (/orchestrate/*) reported as REPORTÉ iter92+. Continue progressive refacto.",
+    "grok_integration.py uses lazy openai SDK import inside the helper which is correct (avoids hard dep at startup). Base URL https://api.x.ai/v1 confirmed in module.",
+    "The xai branch correctly precedes the Emergent cascade and sets ai_source='xai:{model_id}' for telemetry — clean integration.",
+    "Refactor pattern (build_*_router factory injected with shared deps) is consistent and clean; same approach used for announcements and polls."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (94/94)", "frontend": "N/A (backend-only testing requested)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — not exercised this round (no auth-gated flows in iter91 punch-list).",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter91 fully green. Next iterations expected: slice 4c /messages/* refacto, slice 4d /orchestrate/* refacto. If XAI_API_KEY is added to backend/.env in a future iter, exercise /chat/message with model='grok-4.3' to validate real Grok response (test_chat_message_has_xai_branch only audits source code). Live runtime curl checks confirmed: /api/announcements/list 200, /api/polls/list 200, /api/announcements/create 403, /api/polls/vote 404, /api/chat/models 401 (auth-gated as expected), /api/chat/history 401.",
+  "rca of the issue": "No issues to RCA — all 94 tests pass and live endpoints respond as expected."
+}
