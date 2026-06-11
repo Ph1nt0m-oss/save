@@ -17,6 +17,23 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
+### 2026-06-11 — Iter 99 (BotsAdminPanel UI + Fix vue forcée invité)
+
+**🟢 BotsAdminPanel.jsx (UI Community Bots)** :
+- Composant complet (220 lignes) avec liste/create/edit/delete/rate.
+- Modal full-screen 4xl avec grille de cartes par bot : nom, kind (avec emoji), description, état publié/brouillon, rating moyen + count.
+- Formulaire de création/édition avec champs : nom, description, kind (assistance/animation/jeu/information/modération), system prompt (textarea 6 lignes mono), triggers (CSV), checkbox publier.
+- Câblé dans `Dashboard.js` header avec bouton 🤖 cyan visible **uniquement** pour `device.staff_kind === 'admin'` OU `device.role === 'creator'`.
+- Bug import résolu : `withCreatorProof` depuis `../lib/deviceIdentity` (pas `../utils/crypto`).
+
+**🟢 Fix vues forcées invité (bug utilisatrice)** :
+- `SiteModeBadge.jsx` : retiré la condition `viewMode !== 'guest'` qui empêchait la créatrice de modifier le guest_view quand elle simulait la vue invité pour test.
+- **Principe** : la créatrice physique (par sa clé ECDSA) doit TOUJOURS conserver ses pouvoirs créa, indépendamment de la simulation de vue (qui n'est qu'un affichage local).
+- Commentaire iter99 explicite ajouté.
+
+**Tests** : **30/30 PASS** (iter99 + régression iter96-98). Compile OK, screenshot live impeccable.
+
+
 ### 2026-06-11 — Iter 98 (TypewriterEffect câblé + Vue interactive création + Bots community)
 
 **🟢 TypewriterEffect câblé** :

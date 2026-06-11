@@ -39,7 +39,11 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
     ? siteModes
     : (siteMode ? [siteMode] : ['public']);
 
-  const isCreator = role === 'creator' && viewMode !== 'guest';
+  // iter99 — Fix utilisatrice : la créatrice physique (par sa clé) doit TOUJOURS
+  // pouvoir modifier le site mode et le guest_view, même quand elle simule une
+  // autre vue. La simulation est juste un mode d'affichage local, pas un retrait
+  // de pouvoirs côté backend (signature ECDSA reste la créa).
+  const isCreator = role === 'creator';
 
   const display = activeModes.length === 1
     ? (MODES.find((m) => m.id === activeModes[0]) || MODES[0])

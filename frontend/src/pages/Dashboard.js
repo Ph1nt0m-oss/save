@@ -35,6 +35,7 @@ import FriendsPanel from '../components/FriendsPanel';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
 import CalyChatbot from '../components/CalyChatbot';
+import BotsAdminPanel from '../components/BotsAdminPanel';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -82,6 +83,8 @@ export default function Dashboard() {
   // iter82 — Group chats + Friend system
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  // iter99 — Panel admin community bots
+  const [showBotsAdmin, setShowBotsAdmin] = useState(false);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -565,6 +568,8 @@ export default function Dashboard() {
   return (
     <div className="h-screen bg-[#050505] text-white flex flex-col overflow-hidden">
       <ViewSimulationBanner role={device.role} viewMode={device.viewMode} />
+      {/* iter99 — Panel admin community bots */}
+      <BotsAdminPanel open={showBotsAdmin} onClose={() => setShowBotsAdmin(false)} />
       <div className="flex-1 flex overflow-hidden">
       <SiteLockedOverlay siteMode={device.siteMode} role={device.role} kickReason={device.kickReason} onRetry={() => device.refresh()} />
       <ExportApprovalNotifier onOpenAccount={(o) => setVisiting({ key_id: o.key_id })} />
@@ -888,6 +893,17 @@ export default function Dashboard() {
                 <CreatorToolbar />
                 <IdeasButton />
                 <CalyChatbot />
+                {/* iter99 — Bouton Bots Community (admins + créa) */}
+                {(device.staff_kind === 'admin' || device.role === 'creator') && (
+                  <button
+                    onClick={() => setShowBotsAdmin(true)}
+                    data-testid="header-bots-admin-btn"
+                    title="Gérer les bots de la communauté"
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-sm bg-cyan-500/10 border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/20 transition-colors"
+                  >
+                    <span className="text-base">🤖</span>
+                  </button>
+                )}
                 <MessageButton variant="icon" />
                 <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />
