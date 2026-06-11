@@ -51,7 +51,7 @@ export default function LanguageToggle({ className = '', placement = 'top' }) {
         <div
           role="listbox"
           data-testid="language-dropdown"
-          className={`absolute right-0 ${dropdownPos} w-56 max-w-[calc(100vw-1rem)] max-h-72 overflow-y-auto overflow-x-hidden bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl py-1 z-[60]`}
+          className={`absolute right-0 ${dropdownPos} w-[min(20rem,calc(100vw-1rem))] max-h-72 overflow-y-auto overflow-x-hidden bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl py-1 z-[60]`}
         >
           {SUPPORTED_LANGS.map((lang) => (
             <button
@@ -67,11 +67,11 @@ export default function LanguageToggle({ className = '', placement = 'top' }) {
                   : 'text-[#E4E4E7] hover:bg-white/5'
               }`}
             >
-              <span className="flex items-center gap-2">
-                <span className="text-base leading-none">{lang.flag}</span>
-                <span>{formatLangName(lang)}</span>
+              <span className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-base leading-none flex-shrink-0">{lang.flag}</span>
+                <span className="truncate" title={formatLangName(lang)}>{formatLangName(lang)}</span>
               </span>
-              {language === lang.code && <Check className="w-3 h-3" />}
+              {language === lang.code && <Check className="w-3 h-3 flex-shrink-0" />}
             </button>
           ))}
         </div>

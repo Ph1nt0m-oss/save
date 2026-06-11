@@ -52,12 +52,14 @@ class TestLivePreviewPanel:
         assert "Hot reload" in content
 
     def test_dashboard_wires_live_preview(self):
+        """iter96 — Bouton 'Aperçu live' RETIRÉ du Dashboard sur demande utilisatrice.
+        Le composant LivePreviewPanel.jsx existe toujours mais n'est plus câblé dans Dashboard.
+        Sera réintégré comme œil sur chaque création (sous le projet) en iter97+."""
         content = open("/app/frontend/src/pages/Dashboard.js").read()
-        assert "import LivePreviewPanel" in content
-        assert "showLivePreview" in content
-        assert "header-live-preview-btn" in content
-        # Bouton conditionnel sur device.role === 'creator'
-        assert "device.role === 'creator'" in content
+        # iter96 — n'est plus dans le Dashboard
+        assert "LivePreviewPanel" not in content
+        assert "showLivePreview" not in content
+        assert "header-live-preview-btn" not in content
 
 
 class TestRegressionIter92:

@@ -34,7 +34,6 @@ import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
-import LivePreviewPanel from '../components/LivePreviewPanel';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -82,8 +81,6 @@ export default function Dashboard() {
   // iter82 — Group chats + Friend system
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
-  // iter93 — Aperçu live à la Emergent
-  const [showLivePreview, setShowLivePreview] = useState(false);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -275,15 +272,21 @@ export default function Dashboard() {
   };
 
   const loadProjects = useCallback(async () => {
+    // iter96 — Latence : on hydrate IMMÉDIATEMENT depuis le cache localStorage
+    // pour un rendu instantané (0ms perçus), puis on rafraîchit en arrière-plan.
+    try {
+      const cached = getCachedProjects();
+      if (Array.isArray(cached) && cached.length > 0) {
+        setProjects(cached);  // affichage instantané
+      }
+    } catch { /* silent */ }
     try {
       const response = await axios.get(`${API}/projects`, {
         withCredentials: true
       });
       setProjects(response.data);
-      // Cache pour mode hors ligne
       cacheProjects(response.data);
     } catch (error) {
-      // Utiliser le cache en mode hors ligne
       if (!isOnline) {
         const cached = getCachedProjects();
         if (cached.length > 0) {
@@ -561,12 +564,6 @@ export default function Dashboard() {
   return (
     <div className="h-screen bg-[#050505] text-white flex flex-col overflow-hidden">
       <ViewSimulationBanner role={device.role} viewMode={device.viewMode} />
-      {/* iter93 — Live preview panel (créa-only, controlled depuis le header) */}
-      <LivePreviewPanel
-        open={showLivePreview}
-        onClose={() => setShowLivePreview(false)}
-        defaultPath="/dashboard"
-      />
       <div className="flex-1 flex overflow-hidden">
       <SiteLockedOverlay siteMode={device.siteMode} role={device.role} kickReason={device.kickReason} onRetry={() => device.refresh()} />
       <ExportApprovalNotifier onOpenAccount={(o) => setVisiting({ key_id: o.key_id })} />
@@ -872,18 +869,6 @@ export default function Dashboard() {
               <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
                 <CreatorToolbar />
                 <IdeasButton />
-                {/* iter93 — Bouton Aperçu live (créa-only) */}
-                {device.role === 'creator' && (
-                  <button
-                    onClick={() => setShowLivePreview(true)}
-                    data-testid="header-live-preview-btn"
-                    title="Aperçu live du site en temps réel (hot reload)"
-                    className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-sm border border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span className="hidden lg:inline">Aperçu live</span>
-                  </button>
-                )}
                 <MessageButton variant="icon" />
                 <NotificationBell />
                 <UserMenu user={user} onLogout={handleLogout} />

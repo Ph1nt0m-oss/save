@@ -69,9 +69,8 @@ export default function Chat() {
   const [selectedModel, setSelectedModel] = useState(mode === 'offline' ? 'gemma' : 'gpt-5.2');
   const messagesEndRef = useRef(null);
 
-  // iter84 — Mode "Pro" : route les messages via l'orchestrateur multi-agents
-  // au lieu du chat classique. L'utilisateur voit les actions en temps réel.
-  const [proMode, setProMode] = useState(false);
+  // iter96 — Mode Pro retiré sur demande utilisatrice. orchestrateur multi-agents reste disponible via /chat/orchestrate-stream pour les flows GuidedWizard.
+  const [proMode] = useState(false);
   const orch = useOrchestrate();
 
   // iter94 — Traduction dynamique des contenus de messages selon langue UI.
@@ -365,20 +364,6 @@ export default function Chat() {
             </Button>
           )}
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
-            {/* iter84 — Toggle Mode Pro : route via orchestrateur multi-agents */}
-            <button
-              onClick={() => setProMode((p) => !p)}
-              data-testid="chat-pro-mode-toggle"
-              title={proMode ? 'Désactiver le mode Pro (orchestrateur multi-agents)' : 'Activer le mode Pro : l\'IA travaille via 4 agents (Planner → Executor → Critic → Arbiter)'}
-              className={`px-2 py-1.5 rounded-sm border text-xs inline-flex items-center gap-1.5 transition-colors ${
-                proMode
-                  ? 'bg-[#E4FF00]/15 border-[#E4FF00]/60 text-[#E4FF00]'
-                  : 'border-white/20 text-[#A1A1AA] hover:text-white hover:border-white/30'
-              }`}
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Mode Pro</span>
-            </button>
             <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
             {mode === 'offline' && !ollamaAvailable && (
               <button
@@ -391,36 +376,7 @@ export default function Chat() {
                 <span className="hidden md:inline">Installer IA locale</span>
               </button>
             )}
-            {/* iter79 — Reset REPL retiré pour le mode Ollama (hors-ligne) sur demande. Conservé pour 'online'. */}
-            {mode !== 'offline' && (
-              <Button
-                onClick={async () => {
-                  try {
-                    await axios.post(`${API}/sandbox/reset`, { session_id: replSessionId }, { withCredentials: true });
-                    toast.success('État REPL réinitialisé');
-                  } catch (e) { toast.error('Échec reset REPL'); }
-                }}
-                variant="ghost" size="sm"
-                title="Effacer les variables persistantes du sandbox Python"
-                data-testid="chat-repl-reset-btn"
-                className="px-2 text-[#A1A1AA] hover:text-white"
-              >
-                <RotateCcw className="w-4 h-4 sm:mr-1.5" />
-                <span className="hidden md:inline text-xs">Reset REPL</span>
-              </Button>
-            )}
-            {project?.project_id && messages.length > 0 && (
-              <a
-                href={`${API}/chat/export-docx/${project.project_id}`}
-                download
-                data-testid="chat-export-docx-btn"
-                title="Exporter la conversation en .docx (Word)"
-                className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-sm border border-purple-400/30 text-purple-300 hover:bg-purple-500/10 transition-colors"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Export .docx</span>
-              </a>
-            )}
+            {/* iter96 — Reset REPL, Mode Pro, et Export .docx retirés sur demande utilisatrice */}
           </div>
         </div>
       </header>

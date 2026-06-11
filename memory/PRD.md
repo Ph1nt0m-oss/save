@@ -17,7 +17,29 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 
 ## CHANGELOG
 
-### 2026-06-11 — Iter 95 (Slice 4d + VRAI LLM analyzer + Voice mode TTS)
+### 2026-06-11 — Iter 96 (Fixes critiques UX + nettoyage Chat/Dashboard)
+
+**🔴 Fix tronquage sélecteur de langues** (screenshots utilisatrice) :
+- `LanguageToggle.jsx` : `w-56` (224px) → `w-[min(20rem,calc(100vw-1rem))]` (320px responsive).
+- `truncate` + `title={formatLangName(lang)}` sur le span du nom → texte non coupé, hover montre le nom complet en tooltip.
+
+**🟢 Latence sidebar — Hydration immédiate** :
+- `Dashboard.js loadProjects()` : hydrate **0ms** depuis cache localStorage AVANT le fetch backend. Le user voit instantanément ses projets, le refresh se fait en arrière-plan silencieusement.
+
+**🟢 Nettoyage Chat + Dashboard sur demande utilisatrice** :
+- **LivePreviewPanel retiré du header Dashboard** (composant reste pour réutilisation future en œil-par-création).
+- **Mode Pro retiré** du chat (`chat-pro-mode-toggle` button supprimé).
+- **Reset REPL retiré** du chat (`chat-repl-reset-btn` supprimé).
+- **Export .docx retiré** du chat (`chat-export-docx-btn` supprimé).
+
+**🟢 Composant TypewriterEffect créé** :
+- `/app/frontend/src/components/TypewriterEffect.jsx` : animation mot-par-mot ~1.5x vitesse normale (12ms/char + chunks aléatoires de 1-2 chars pour fluidité). Curseur clignotant pendant l'écriture.
+- Prop `skip` pour bypass (ex: messages Emergent qui rendent code-par-code).
+- **À câbler dans Chat.js iter97+** (suppose tracker du flag "_just_arrived" pour ne pas animer les anciens messages).
+
+**Tests** : **41/41 PASS** (iter96 + régression iter93-95).
+
+
 
 **🟢 Slice 4d partielle — /orchestrate/* extraits** :
 - Nouveau module `/app/backend/routes/orchestrate_routes.py` (56 lignes) avec `build_orchestrate_router(db, get_current_user=...)`.
@@ -27,6 +49,7 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 **🟢 VRAI agent LLM analyseur pour enhancement suggestions** :
 - Nouveau endpoint `POST /api/chat/suggest-enhancements` (server.py) qui appelle **claude-sonnet-4-5-20250929** via emergentintegrations.
 - Input : `{last_ai_message, project_type, language}`. Output : `{suggestions: [{id, kind, title, description}]}` (3-5 suggestions contextuelles).
+### 2026-06-11 — Iter 95 (Slice 4d + VRAI LLM analyzer + Voice mode TTS)
 - `kind` ∈ {feature, fix, design, integration, performance}. Validation stricte côté backend.
 - Prompt structuré demande JSON valide, strip ```json fences, fallback gracieux sur `{suggestions: []}` si erreur.
 - **Frontend** : Chat.js useEffect supprime l'heuristique mots-clés iter94 et appelle `/chat/suggest-enhancements`. Anciens IDs (`enh-design-polish`, `enh-feature-extend`, `enh-perf-optimize`) **retirés**.
