@@ -9603,55 +9603,152 @@ class ChatStreamIn(BaseModel):
 
 @api_router.post("/chat/stream")
 async def chat_stream(request: Request, input: ChatStreamIn):
-    """iter82 C5/C8 / iter111 — Streaming SSE token-par-token (effet ChatGPT).
-    On appelle l'endpoint /chat/message une fois pour persister la conversation
-    en DB (et obtenir la réponse IA complète), puis on re-stream le contenu en
-    petits chunks (3-5 chars + jitter) pour donner l'illusion d'un vrai
-    streaming token par token. UX identique à ChatGPT.
+    """iter114 — VRAI streaming token-par-token via emergentintegrations
+    stream_message() (au lieu du pseudo-streaming par chunks de l'iter111).
+    Pour les cas complexes (attachments, mode offline, projet déjà lié),
+    on retombe sur le pseudo-streaming basé sur send_chat_message pour
+    conserver toute la logique business.
     """
     user_id = await get_current_user(request)
-    full_input = ChatMessageInput(
-        message=input.message,
-        mode=input.mode,
-        project_id=input.project_id,
-        language=input.language,
-        model=input.model,
-        attachments=input.attachments or [],
-    )
-    # Appel à la logique existante ; send_chat_message gère la persistance DB.
-    resp = await send_chat_message(request, full_input)
-    ai_text = ((resp or {}).get("ai_response") or {}).get("content") or ""
-    msg_id = ((resp or {}).get("ai_response") or {}).get("message_id") or ""
-    download = ((resp or {}).get("ai_response") or {}).get("download")
-    auto_pid = (resp or {}).get("project_id")
+    has_attachments = bool(input.attachments)
+    is_offline = (input.mode or "online").lower() == "offline"
 
-    async def event_gen():
-        # iter111 — Streaming par petits chunks (3 chars) pour effet token-par-token.
-        # 6ms entre chunks → ~500 chars/seconde, lisible et "vivant".
-        import asyncio as _aio
-        text = ai_text
-        chunk_size = 3
-        i = 0
-        idx = 0
-        while i < len(text):
-            chunk = text[i:i + chunk_size]
-            i += chunk_size
-            yield f"data: {json.dumps({'delta': chunk, 'index': idx})}\n\n"
-            idx += 1
-            await _aio.sleep(0.006)
-        # Signal final avec project_id pour adoption frontend.
-        yield (
-            "data: " + json.dumps({
-                "done": True,
-                "message_id": msg_id,
-                "download": download,
-                "content": ai_text,
-                "project_id": auto_pid,
-            }) + "\n\n"
+    # Fallback simple : modes complexes → réutilise le pseudo-streaming.
+    if has_attachments or is_offline:
+        full_input = ChatMessageInput(
+            message=input.message, mode=input.mode,
+            project_id=input.project_id, language=input.language,
+            model=input.model, attachments=input.attachments or [],
         )
+        resp = await send_chat_message(request, full_input)
+        ai_text = ((resp or {}).get("ai_response") or {}).get("content") or ""
+        msg_id = ((resp or {}).get("ai_response") or {}).get("message_id") or ""
+        download = ((resp or {}).get("ai_response") or {}).get("download")
+        auto_pid = (resp or {}).get("project_id")
+
+        async def fallback_gen():
+            import asyncio as _aio
+            text = ai_text
+            i = 0; idx = 0
+            while i < len(text):
+                yield f"data: {json.dumps({'delta': text[i:i+3], 'index': idx})}\n\n"
+                i += 3; idx += 1
+                await _aio.sleep(0.006)
+            yield "data: " + json.dumps({
+                "done": True, "message_id": msg_id, "download": download,
+                "content": ai_text, "project_id": auto_pid,
+            }) + "\n\n"
+
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(fallback_gen(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
+
+    # ----------------- NATIVE STREAMING PATH (online, no attachments) -----------------
+    # Auto-create un chat project si pas fourni (mirroir send_chat_message).
+    project_id_eff = input.project_id
+    auto_created = False
+    if not project_id_eff:
+        short = (input.message or "Nouveau chat").strip().replace("\n", " ")
+        short = short[:40] + ("…" if len(short) > 40 else "")
+        new_proj = {
+            "project_id": f"proj_{uuid.uuid4().hex[:12]}",
+            "user_id": user_id,
+            "name": short or "Nouveau chat",
+            "description": "",
+            "project_type": "chat",
+            "ai_mode": "online",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.projects.insert_one(new_proj)
+        project_id_eff = new_proj["project_id"]
+        auto_created = True
+
+    # Sauvegarde le message utilisateur.
+    user_msg_doc = {
+        "message_id": f"msg_{uuid.uuid4().hex[:16]}",
+        "user_id": user_id, "project_id": project_id_eff,
+        "role": "user", "content": input.message, "mode": input.mode,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.chat_messages.insert_one(user_msg_doc)
+
+    # Construit le system prompt (version simplifiée de send_chat_message,
+    # focalisée Caly conversationnelle, multi-langue).
+    user_language = (input.language or "fr").lower()
+    language_names = {
+        "fr": "français", "en": "English", "es": "español", "pt": "português",
+        "de": "Deutsch", "nl": "Nederlands", "ru": "русский",
+        "zh": "中文（简体）", "zh-tw": "中文（繁體）",
+        "hi": "हिन्दी", "ja": "日本語",
+    }
+    lang_label = language_names.get(user_language, "français")
+    system_prompt = (
+        f"Tu es Caly, un assistant conversationnel chaleureux et direct. "
+        f"Réponds dans la langue de l'utilisateur : **{lang_label}**. "
+        f"Sois vif, concret, et donne une vraie réponse plutôt qu'un mode d'emploi. "
+        f"Ne propose JAMAIS de créer une application/site/script sauf si l'utilisateur le demande explicitement."
+    )
+
+    # Modèle par défaut : openai gpt-4o-mini (rapide + bon marché + supporté).
+    requested = (input.model or "").strip().lower()
+    if requested.startswith("claude") or "anthropic" in requested:
+        provider, model_id = "anthropic", "claude-sonnet-4-5-20250929"
+    elif requested.startswith("gemini"):
+        provider, model_id = "gemini", "gemini-3-flash-preview"
+    else:
+        provider, model_id = "openai", "gpt-4o-mini"
+
+    msg_id_final = f"msg_{uuid.uuid4().hex[:16]}"
+
+    async def native_stream_gen():
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+        full_text = ""
+        idx = 0
+        try:
+            chat = LlmChat(
+                api_key=os.environ.get("EMERGENT_LLM_KEY"),
+                session_id=f"chat_stream_{project_id_eff}",
+                system_message=system_prompt,
+            ).with_model(provider, model_id)
+
+            async for event in chat.stream_message(UserMessage(text=input.message)):
+                if isinstance(event, TextDelta):
+                    delta = event.content or ""
+                    if not delta:
+                        continue
+                    full_text += delta
+                    yield f"data: {json.dumps({'delta': delta, 'index': idx})}\n\n"
+                    idx += 1
+                elif isinstance(event, StreamDone):
+                    break
+        except Exception as e:
+            logger.warning(f"chat/stream native streaming failed: {e}; fallback message")
+            fallback_text = "Désolée, le service de chat est momentanément indisponible. Réessaie dans un instant."
+            full_text = full_text or fallback_text
+            yield f"data: {json.dumps({'delta': fallback_text if not idx else '', 'index': idx})}\n\n"
+
+        # Persistance de la réponse IA finale en DB.
+        try:
+            await db.chat_messages.insert_one({
+                "message_id": msg_id_final,
+                "user_id": user_id, "project_id": project_id_eff,
+                "role": "assistant", "content": full_text,
+                "mode": input.mode, "model_id": model_id, "ai_source": provider,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"chat/stream DB persist failed: {e}")
+
+        # Event final.
+        yield "data: " + json.dumps({
+            "done": True,
+            "message_id": msg_id_final,
+            "content": full_text,
+            "project_id": project_id_eff if auto_created else None,
+        }) + "\n\n"
 
     from fastapi.responses import StreamingResponse
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
+    return StreamingResponse(native_stream_gen(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
     })

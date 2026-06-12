@@ -235,6 +235,38 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 114 (Vue créatrice cochée + Big access denied + Changelog + Polling 5s + Streaming natif)
+
+**🔴 P0 — Bug Vue créatrice non sélectionnable visuellement** :
+- `ViewModePicker.jsx` : la case "Vue Créatrice" est désormais COCHÉE quand l'utilisatrice est créa et hors simulation (`active = m === 'creator' ? (isCreator && !isSimulating) : ...`).
+- Le toggle texte affiche "Vue créatrice" (au lieu de "Aucune vue active") pour la créa hors simulation.
+
+**🔴 P0 — Petits toasts "Accès refusé" remplacés par GRAND écran existant** :
+- Les 4 tuiles Dashboard (Caly, Bots, Programmation du site, Programmation des IA) NAVIGUENT TOUJOURS vers leur page cible. Plus de `toast.error` bloquant + return.
+- La page cible (`PrivateProgramming.js` + `PrivateChatbotProgramming.js`) affiche le grand panneau `data-testid="private-access-denied"` avec icône Lock + message clair si l'utilisateur n'a pas les droits.
+
+**🟢 Historique des modifications du site** :
+- Nouveau panneau collapsible `site-changelog-panel` dans `SiteProgrammingPanel` (en haut, avant le browser de fichiers).
+- Fetch `/api/private/changelog` au chargement + auto-refresh toutes les **30 secondes**.
+- Bouton `changelog-refresh` pour refresh manuel. Liste des modifs avec timestamp + catégorie + résumé.
+
+**🟢 Visite de compte interactive en direct** :
+- `AccountVisitView.jsx` : polling toutes les **5 secondes** (`setInterval(fetch, 5000)`).
+- La créatrice voit en direct les nouveaux chats/messages/projets du compte visité, même si la génération est en cours côté utilisateur.
+- Projets supprimés affichés avec `opacity-40 grayscale` (foncé).
+
+**🟢 P2 — VRAI streaming token-par-token natif (Anthropic/OpenAI)** :
+- Backend `/api/chat/stream` utilise désormais `LlmChat.stream_message()` (emergentintegrations 0.2.0) au lieu du pseudo-streaming par chunks.
+- Tokens diffusés EN DIRECT depuis OpenAI/Anthropic/Gemini (ex: vérifié → "Bonjour | ! | Comment | ça | va | ?" arrive en 6 events SSE séparés).
+- Fallback automatique sur l'ancien pseudo-streaming pour les modes complexes (attachments, mode offline).
+- Persistance DB conservée : message user + message assistant dans `chat_messages`.
+- Modèle par défaut : `openai/gpt-4o-mini` (rapide), avec switch vers `claude-sonnet-4-5-20250929` ou `gemini-3-flash-preview` selon le champ `model`.
+
+**Tests** : **161/161 pytests PASS** (12 nouveaux iter114 static + 4 iter114b streaming natif). Testing agent iter114 : 100% PASS (12/12 static + 6/6 live + 4/4 tuiles e2e + 4/4 routes affichent big access denied).
+
+**Dependencies** :
+- `emergentintegrations` : `0.1.1` → `0.2.0` (apporte `stream_message`, `TextDelta`, `StreamDone`).
+
 ### 2026-02-12 — Iter 113 (Réorganisation Dashboard + coordination dropdowns + Caly fab +0.2cm)
 
 **🟢 Demandes UI utilisatrice** :
