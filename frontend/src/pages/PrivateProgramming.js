@@ -78,18 +78,38 @@ function SiteProgrammingPanel() {
   const [grepResults, setGrepResults] = useState(null);
   const [filePath, setFilePath] = useState('backend/server.py');
   const [fileContent, setFileContent] = useState(null);
+  const [editBuffer, setEditBuffer] = useState('');
+  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const loadFile = async (rel) => {
     if (!rel) return;
+    if (dirty && !window.confirm('Modifications non sauvegardées. Charger un autre fichier ?')) return;
     setBusy(true);
     try {
       const body = await withCreatorProof(API, axios, { path: rel });
       const r = await axios.post(`${API}/private/code/read-file`, body);
       setFilePath(rel);
       setFileContent(r.data);
+      setEditBuffer(r.data?.content || '');
+      setDirty(false);
     } catch (e) { toast.error(e?.response?.data?.detail || t('prog_read_failed')); }
     finally { setBusy(false); }
+  };
+
+  const saveFile = async () => {
+    if (!filePath || !dirty) return;
+    setBusy(true);
+    try {
+      const body = await withCreatorProof(API, axios, { path: filePath, content: editBuffer });
+      const r = await axios.post(`${API}/private/code/write-file`, body);
+      toast.success(`Sauvegardé (${r.data.bytes} octets, backup: ${r.data.backup || 'aucun'})`);
+      setDirty(false);
+      // Recharge pour avoir l'état canonique
+      setFileContent({ ...fileContent, content: editBuffer, bytes: r.data.bytes });
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Échec écriture');
+    } finally { setBusy(false); }
   };
 
   const doGrep = async () => {
@@ -151,14 +171,27 @@ function SiteProgrammingPanel() {
         <header className="p-3 border-b border-white/10 flex items-center gap-2">
           <FileCode className="w-4 h-4 text-[#E4FF00]" />
           <span className="text-sm font-bold truncate flex-1">{filePath}</span>
+          {dirty && <span className="text-[10px] text-amber-300">● modifié</span>}
           {fileContent?.truncated && <span className="text-[10px] text-amber-300">{t('prog_file_truncated')}</span>}
-          {fileContent?.bytes && <span className="text-[10px] text-[#71717A]">{fileContent.bytes} {t('prog_file_bytes')}</span>}
+          {fileContent?.bytes && !dirty && <span className="text-[10px] text-[#71717A]">{fileContent.bytes} {t('prog_file_bytes')}</span>}
+          <button
+            onClick={saveFile}
+            disabled={!dirty || busy}
+            data-testid="private-save-file-btn"
+            className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-[#E4FF00] text-[#050505] rounded-sm disabled:opacity-40 hover:bg-[#E4FF00]/90"
+          >
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Sauvegarder
+          </button>
         </header>
-        <div className="flex-1 overflow-auto">
-          <pre className="text-[11px] font-mono text-white p-3 whitespace-pre-wrap break-all">
-            {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-            {fileContent?.content || ''}
-          </pre>
+        <div className="flex-1 overflow-hidden">
+          <textarea
+            value={editBuffer}
+            onChange={(e) => { setEditBuffer(e.target.value); setDirty(true); }}
+            data-testid="private-code-textarea"
+            spellCheck="false"
+            className="w-full h-full text-[11px] font-mono text-white bg-[#050505] p-3 resize-none focus:outline-none border-0"
+            placeholder="Sélectionne un fichier dans la sidebar…"
+          />
         </div>
       </main>
     </div>

@@ -9227,6 +9227,80 @@ async def private_grep(payload: PrivateGrepIn):
     return _grep_safe(payload.pattern)
 
 
+# iter104 — Write-file endpoint pour la créatrice : édition directe du code
+# du site (et IA) depuis la page /private-programming. Sécurités :
+# 1. Signature ECDSA créa obligatoire (_require_creator_signature)
+# 2. Chemins restreints (uniquement backend/, frontend/src/, orchestrator.py)
+# 3. Pas d'exécution : on écrit puis on log dans le changelog.
+# 4. Backup automatique en .bak avant écriture pour rollback rapide.
+class PrivateWriteFileIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    path: str
+    content: str
+
+
+_WRITE_ALLOWED_PREFIXES = (
+    "backend/", "frontend/src/", "frontend/public/", "orchestrator.py",
+)
+_WRITE_FORBIDDEN_SUFFIXES = (".env", ".git", ".pem", ".key", ".secret")
+
+
+@api_router.post("/private/code/write-file")
+async def private_write_file(payload: PrivateWriteFileIn):
+    """Edit en place d'un fichier source. Créa-only + signature.
+    Crée automatiquement un .bak du contenu précédent (rollback rapide).
+    Logge l'action dans le changelog 'code'.
+    """
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    rel = (payload.path or "").lstrip("/").strip()
+    if not rel:
+        raise HTTPException(status_code=400, detail="Chemin requis.")
+    if ".." in rel or rel.startswith("/"):
+        raise HTTPException(status_code=400, detail="Chemin invalide.")
+    if not any(rel.startswith(p) for p in _WRITE_ALLOWED_PREFIXES):
+        raise HTTPException(status_code=403, detail=f"Préfixe non autorisé : {rel}")
+    if any(rel.endswith(s) for s in _WRITE_FORBIDDEN_SUFFIXES):
+        raise HTTPException(status_code=403, detail=f"Extension protégée : {rel}")
+    if len(payload.content) > 2_000_000:
+        raise HTTPException(status_code=413, detail="Fichier trop gros (> 2MB).")
+
+    import pathlib
+    abs_path = pathlib.Path("/app") / rel
+    if not abs_path.parent.exists():
+        raise HTTPException(status_code=404, detail="Dossier parent inexistant.")
+    # Backup
+    backup_path = None
+    if abs_path.exists():
+        backup_path = abs_path.with_suffix(abs_path.suffix + ".bak")
+        try:
+            backup_path.write_bytes(abs_path.read_bytes())
+        except Exception as e:
+            logger.warning(f"Backup failed for {rel}: {e}")
+    try:
+        abs_path.write_text(payload.content, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Écriture impossible : {str(e)[:200]}")
+
+    # Log dans le changelog
+    try:
+        await _log_change(
+            "code",
+            f"Édition manuelle de {rel} via /private-programming",
+            {"path": rel, "bytes": len(payload.content),
+             "backup": str(backup_path.relative_to("/app")) if backup_path else None},
+        )
+    except Exception:
+        pass
+    return {
+        "success": True,
+        "path": rel,
+        "bytes": len(payload.content),
+        "backup": str(backup_path.relative_to("/app")) if backup_path else None,
+    }
+
+
 # ==========================================================================
 # iter82 — CHAT STREAMING SSE (C5/C8) : streaming pseudo-token-par-token
 # ==========================================================================

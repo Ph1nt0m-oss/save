@@ -25,19 +25,31 @@ const VIEW_META = {
 // Si AUCUNE n'est cochée → mode "écriture" (pas en simulation).
 const ORDER = ['creator', 'user', 'modo', 'admin', 'guest'];
 
-export default function ViewModePicker({ role, viewMode }) {
+export default function ViewModePicker({ role, viewMode, guestView, guestViews }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
   if (role !== 'creator') return null;
 
-  // iter87 — viewMode peut être null (= aucune simulation, mode écriture).
-  // L'affichage du label change : si aucune vue cochée, on dit "Aucune vue".
-  const current = viewMode && VIEW_META[viewMode];
+  // iter104 — Cohérence avec guestViews forcés : si la créa simule 'guest', la vue
+  // effective dépend des views forcées (1ère de la liste sinon 'user' par défaut).
+  const forced = Array.isArray(guestViews) && guestViews.length > 0
+    ? guestViews
+    : (guestView ? [guestView] : []);
+
+  // iter104 — viewMode === 'creator' est traité comme "aucune simulation"
+  // (la créatrice voit sa vue créatrice par défaut, pas besoin de cocher).
+  const isSimulating = !!viewMode && viewMode !== '' && viewMode !== 'creator';
+  const current = isSimulating ? VIEW_META[viewMode] : VIEW_META.creator;
   const CIcon = current ? current.Icon : Eye;
-  const isSimulating = !!viewMode && viewMode !== '';
 
   const toggle = (mode) => {
+    // Cliquer sur creator = revenir au mode écriture (par défaut créa)
+    if (mode === 'creator') {
+      setStoredViewMode(null);
+      setOpen(false);
+      return;
+    }
     // Cliquer sur la case déjà active = décocher (retour mode écriture, viewMode=null)
     if (mode === viewMode) {
       setStoredViewMode(null);
@@ -55,8 +67,8 @@ export default function ViewModePicker({ role, viewMode }) {
         data-testid="view-mode-picker-toggle"
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm border transition-colors ${
           isSimulating
-            ? `bg-white/[0.04] border-white/15 ${current.color} hover:bg-white/[0.08]`
-            : 'bg-[#E4FF00]/10 border-[#E4FF00]/40 text-[#E4FF00] hover:bg-[#E4FF00]/20'
+            ? `bg-cyan-500/10 border-cyan-400/40 ${current.color} hover:bg-cyan-500/20`
+            : 'bg-cyan-500/10 border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/20'
         }`}
       >
         <CIcon className="w-3.5 h-3.5" />
@@ -74,26 +86,39 @@ export default function ViewModePicker({ role, viewMode }) {
           {ORDER.map((m) => {
             const meta = VIEW_META[m];
             const Mi = meta.Icon;
-            const active = m === viewMode;
+            // iter104 — Logique: 'creator' = baseline (jamais checked). Active = view actuellement simulée.
+            const active = isSimulating && m === viewMode;
+            // Si une simulation est active, les autres options sont greyées (mais cliquables pour switch)
+            const dimmed = isSimulating && !active && m !== 'creator';
             return (
               <button
                 key={m}
                 type="button"
                 onClick={() => toggle(m)}
                 data-testid={`view-mode-pick-${m}`}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-white/[0.05] flex items-start gap-2 ${
-                  active ? `${meta.color} bg-white/[0.04]` : 'text-white'
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-white/[0.05] flex items-start gap-2 transition-opacity ${
+                  active ? `${meta.color} bg-white/[0.04]`
+                         : dimmed ? 'text-white/40'
+                         : 'text-white'
                 }`}
               >
                 <span className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 border rounded-sm flex items-center justify-center transition ${
-                  active ? `border-current ${meta.color.replace('text-', 'bg-').replace(']', ']/20')}` : 'border-white/30'
+                  active ? `border-current ${meta.color.replace('text-', 'bg-').replace(']', ']/20')}`
+                         : dimmed ? 'border-white/15'
+                         : 'border-white/30'
                 }`}>
                   {active && <Check className={`w-2.5 h-2.5 ${meta.color}`} />}
                 </span>
-                <Mi className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${meta.color}`} />
+                <Mi className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${dimmed ? 'opacity-50' : ''} ${meta.color}`} />
                 <div className="flex-1 min-w-0">
                   <div className="font-['Chivo'] font-bold">{t(meta.labelKey)}</div>
                   <div className="text-[10px] text-[#A1A1AA]">{meta.desc}</div>
+                  {/* iter104 — Indique les vues forcées si la créa simule 'guest' */}
+                  {m === 'guest' && forced.length > 0 && (
+                    <div className="text-[10px] text-amber-300 mt-0.5">
+                      ↳ Forcée vers : {forced.join(', ')}
+                    </div>
+                  )}
                 </div>
               </button>
             );

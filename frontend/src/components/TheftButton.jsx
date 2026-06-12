@@ -24,7 +24,7 @@ export default function TheftButton({ variant = 'icon' }) {
           onClick={() => setOpen(true)}
           data-testid="theft-labelled-btn"
           title={t('theft_link')}
-          className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:text-red-300 hover:border-red-400/40 transition-colors"
+          className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-sm bg-red-500/10 border border-red-400/40 text-red-300 hover:bg-red-500/20 hover:border-red-400/70 hover:text-red-200 transition-colors"
         >
           <ShieldAlert className="w-4 h-4 flex-shrink-0" />
           <span className="text-xs font-['Chivo'] font-bold whitespace-nowrap">{t('theft_short')}</span>
@@ -41,7 +41,7 @@ export default function TheftButton({ variant = 'icon' }) {
         onClick={() => setOpen(true)}
         data-testid="theft-icon-btn"
         title={t('theft_link')}
-        className="inline-flex items-center justify-center w-9 h-9 rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:text-red-400 hover:border-red-400/40 transition-colors"
+        className="inline-flex items-center justify-center w-9 h-9 rounded-sm bg-red-500/10 border border-red-400/40 text-red-300 hover:bg-red-500/20 hover:border-red-400/70 hover:text-red-200 transition-colors"
       >
         <ShieldAlert className="w-4 h-4" />
       </button>

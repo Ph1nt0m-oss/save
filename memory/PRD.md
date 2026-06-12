@@ -16,6 +16,37 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-12 — Iter 104 (UI polish + édition directe du code)
+
+**🟢 Renommage bouton ZIP** :
+- "ZIP + GitHub" → "ZIP" (Dashboard ligne 892). Le push GitHub étant automatique à la création depuis iter102.5, le bouton sert maintenant uniquement au téléchargement manuel.
+
+**🟢 Couleurs cohérentes top-bar** :
+- `Report theft` (TheftButton) : passé en rouge (bg-red-500/10, border-red-400/40, text-red-300). Hover plus intense. Confirmé visuellement par screenshot.
+- `ViewModePicker` (badge type de vue) : passé en cyan (bg-cyan-500/10, border-cyan-400/40, text-cyan-300).
+- `SiteModeBadge` (type de site) : déjà en citron (#E4FF00) — pas de changement nécessaire.
+
+**🟢 CalyChatbot en rose + repositionné** :
+- Background pink-500/10, border pink-400/40, text pink-400. Rendu en rond (rounded-full) à côté du rond jaune des idées (IdeasButton). Le bouton Bots Community (cyan) reste à sa place.
+
+**🟢 "(lecture seule)" sur chaque option "Forcer la vue X"** :
+- 4 options du dropdown SiteModeBadge guest_views : utilisateur / modo / admin / créatrice → toutes terminent maintenant par "(lecture seule)" en FR et "(read-only)" en EN.
+
+**🟢 Cohérence ViewModePicker ↔ guestViews forcés** :
+- viewMode === 'creator' est traité comme "aucune simulation" (la créatrice voit sa vue par défaut, pas besoin de cocher).
+- Cliquer sur 'Vue Créatrice' = revenir au mode écriture (viewMode=null).
+- Quand une simulation est active, les autres vues sont visuellement dimmed (text-white/40).
+- Si la créatrice clique 'Vue Invitée' et que des vues sont forcées, un hint affiche "↳ Forcée vers : modo" sous l'option guest.
+- ViewModePicker reçoit maintenant `guestViews` (array) en plus de `guestView` (legacy).
+
+**🟢 Édition directe du code (site)** :
+- Backend : nouveau endpoint `POST /api/private/code/write-file` (créa-only, signature ECDSA obligatoire, restrictions de chemins `_WRITE_ALLOWED_PREFIXES` = backend/, frontend/src/, frontend/public/, orchestrator.py, blocklist `.env/.git/.pem/.key/.secret`, backup `.bak` automatique avant écriture, log auto dans changelog catégorie 'code').
+- Frontend `PrivateProgramming.js` : `<pre>` read-only remplacé par `<textarea>` éditable + bouton "Sauvegarder" (testid `private-save-file-btn`) qui appelle l'endpoint. Indicateur `● modifié` quand dirty. Confirmation modale si on change de fichier sans sauvegarder.
+
+**Tests ajoutés** : `/app/backend/tests/test_iter104_ui_tweaks.py` — 11/11 PASS (endpoint registered + signature requirement + path restrictions + chaque UI tweak validé statiquement). **41/41 tests** total (iter100→104).
+
+
+
 ### 2026-02-12 — Iter 103 (Fix crash useViewSpec + Multi-checkbox guest_views)
 
 **🔴 P0 — Fix crash bloquant Dashboard** :

@@ -168,14 +168,17 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
               </div>
               {[
                 { id: null,       labelKey: 'sm_guest_view_free',          label: 'Au choix du visiteur (libre)' },
-                { id: 'user',     labelKey: 'sm_guest_view_force_user',    label: 'Forcer vue Utilisateur' },
-                { id: 'modo',     labelKey: 'sm_guest_view_force_modo',    label: 'Forcer vue Modo' },
-                { id: 'admin',    labelKey: 'sm_guest_view_force_admin',   label: 'Forcer vue Admin' },
-                { id: 'creator',  labelKey: 'sm_guest_view_force_creator', label: 'Forcer vue Créatrice' },
+                { id: 'user',     labelKey: 'sm_guest_view_force_user',    label: 'Forcer la vue utilisateur (lecture seule)' },
+                { id: 'modo',     labelKey: 'sm_guest_view_force_modo',    label: 'Forcer la vue modo (lecture seule)' },
+                { id: 'admin',    labelKey: 'sm_guest_view_force_admin',   label: 'Forcer la vue admin (lecture seule)' },
+                { id: 'creator',  labelKey: 'sm_guest_view_force_creator', label: 'Forcer la vue créatrice (lecture seule)' },
               ].map((opt) => {
                 const sel = opt.id === null
                   ? activeGuestViews.length === 0
                   : activeGuestViews.includes(opt.id);
+                // iter104 — Quand au moins une vue est forcée, on grise les non-sélectionnées
+                // pour bien faire comprendre que les visiteurs ne pourront pas y accéder.
+                const dimmed = opt.id !== null && activeGuestViews.length > 0 && !sel;
                 return (
                   <button
                     key={String(opt.id)}
@@ -184,11 +187,15 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
                     disabled={saving}
                     data-testid={`guest-view-opt-${opt.id || 'free'}`}
                     className={`w-full text-left text-[11px] px-2 py-1 rounded-sm transition flex items-center gap-2 ${
-                      sel ? 'bg-[#E4FF00]/15 text-[#E4FF00]' : 'text-white hover:bg-white/[0.05]'
+                      sel ? 'bg-[#E4FF00]/15 text-[#E4FF00]'
+                          : dimmed ? 'text-white/30 hover:bg-white/[0.03]'
+                          : 'text-white hover:bg-white/[0.05]'
                     }`}
                   >
                     <span className={`w-3.5 h-3.5 flex-shrink-0 border rounded-sm flex items-center justify-center transition ${
-                      sel ? 'border-[#E4FF00] bg-[#E4FF00]/20' : 'border-white/30'
+                      sel ? 'border-[#E4FF00] bg-[#E4FF00]/20'
+                          : dimmed ? 'border-white/15'
+                          : 'border-white/30'
                     }`}>
                       {sel && <Check className="w-2.5 h-2.5 text-[#E4FF00]" />}
                     </span>

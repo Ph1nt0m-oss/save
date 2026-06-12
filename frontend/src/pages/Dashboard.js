@@ -886,15 +886,16 @@ export default function Dashboard() {
                 variant="outline"
                 data-testid="export-source-btn"
                 className="hidden sm:inline-flex border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 lg:px-3"
-                title="Télécharger le code source (ZIP) + sauvegarde GitHub automatique"
+                title="Télécharger le code source (ZIP) — sauvegarde GitHub déjà automatique"
               >
                 <Download className="w-4 h-4 lg:mr-1" />
-                <span className="hidden lg:inline">ZIP + GitHub</span>
+                <span className="hidden lg:inline">ZIP</span>
               </Button>
 
-              <div className="ml-1 sm:ml-2 flex items-center gap-2 border-l border-white/10 pl-1 sm:pl-2">
+              <div className="ml-1 sm:ml-2 flex items-center gap-1.5 sm:gap-2 border-l border-white/10 pl-1.5 sm:pl-2.5">
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
+                {/* iter104 — CalyChatbot en rose, à côté du rond jaune des idées */}
                 <CalyChatbot />
                 {/* iter101 — Bouton Bots Community : visible selon viewSpec */}
                 {viewSpec.canSeeBotsAdmin && (

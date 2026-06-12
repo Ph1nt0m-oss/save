@@ -96,7 +96,7 @@ export default function CalyChatbot() {
         onClick={() => setOpen(true)}
         data-testid="header-caly-btn"
         title="Caly — Assistante d'aide à l'utilisation"
-        className="inline-flex items-center justify-center w-8 h-8 rounded-sm bg-[#A78BFA]/10 border border-[#A78BFA]/40 text-[#A78BFA] hover:bg-[#A78BFA]/20 hover:text-[#C4B5FD] transition-colors"
+        className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-pink-500/10 border border-pink-400/40 text-pink-400 hover:bg-pink-500/20 hover:text-pink-300 transition-colors"
       >
         <MessageCircleQuestion className="w-4 h-4" />
       </button>
