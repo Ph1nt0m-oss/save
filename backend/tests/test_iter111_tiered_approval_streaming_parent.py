@@ -21,8 +21,8 @@ WIZ = (ROOT / "frontend" / "src" / "pages" / "GuidedWizard.js").read_text()
 
 
 def test_dashboard_gap_15cm():
-    """Header dashboard a un gap de 15cm entre clusters left/right."""
-    assert "lg:gap-[15cm]" in DASH
+    """Header dashboard a un gap serré (iter112 lg:gap-6) avec resserrement après le swap iter110."""
+    assert ("lg:gap-[15cm]" in DASH) or ("lg:gap-6" in DASH)
 
 
 def test_site_mode_dropdown_right_10cm():

@@ -26,10 +26,11 @@ def test_chatbot_programming_route_wired():
 
 
 def test_dashboard_has_chatbot_prog_button():
-    """Dashboard.js has the new card button."""
+    """Dashboard.js has the new card button (iter112: renommé caly + bots-prog)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert "creator-chatbot-prog-btn" in dash
-    assert "/private/chatbot-programming" in dash
+    # iter112 — Renommé en creator-caly-prog-btn (Caly) + creator-bots-prog-btn (bots).
+    assert "creator-caly-prog-btn" in dash or "creator-chatbot-prog-btn" in dash
+    assert "/private/caly-programming" in dash or "/private/chatbot-programming" in dash
     assert "MessageCircleQuestion" in dash
 
 

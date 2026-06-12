@@ -25,15 +25,15 @@ def test_language_ml_recent():
 
 
 def test_site_mode_badge_ml_large_offset():
-    """SiteModeBadge container ml-40 (iter109) ou ml-64 (iter110)."""
+    """SiteModeBadge container : ml-40 (iter109), ml-64 (iter110), ml-12 + gap-6 (iter112 resserré)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert ("ml-3 sm:ml-40" in dash) or ("ml-3 sm:ml-64" in dash)
+    assert ("ml-3 sm:ml-40" in dash) or ("ml-3 sm:ml-64" in dash) or ("ml-3 sm:ml-[15cm]" in dash) or ("ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l" in dash)
 
 
 def test_header_gap_lg_32():
-    """Header gap on lg screens is now 32 (more spacing between left/right clusters)."""
+    """Header gap (iter109: 32, iter111: 15cm, iter112: 6 + ml-[15cm] sur RIGHT)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert ("lg:gap-32" in dash) or ("lg:gap-[15cm]" in dash)
+    assert ("lg:gap-32" in dash) or ("lg:gap-[15cm]" in dash) or ("lg:gap-6" in dash)
 
 
 def test_prog_access_hint_corrected():

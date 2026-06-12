@@ -57,5 +57,5 @@ def test_caly_uses_new_endpoint():
 def test_dashboard_spacings_increased():
     """Dashboard.js doit avoir des gaps plus larges (iter106 → iter109 ml-40)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert any(g in dash for g in ("lg:gap-16", "lg:gap-12", "lg:gap-32", "lg:gap-[15cm]"))
-    assert any(m in dash for m in ("ml-3 sm:ml-12", "ml-3 sm:ml-24", "ml-3 sm:ml-32", "ml-3 sm:ml-40"))
+    assert any(g in dash for g in ("lg:gap-16", "lg:gap-12", "lg:gap-32", "lg:gap-[15cm]", "lg:gap-6"))
+    assert any(m in dash for m in ("ml-3 sm:ml-12", "ml-3 sm:ml-24", "ml-3 sm:ml-32", "ml-3 sm:ml-40", "ml-3 sm:ml-2"))

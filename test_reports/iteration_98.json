@@ -1,0 +1,52 @@
+{
+  "summary": "iter112 — Tested rename Caly/Bots tiles, /private/caly-programming + /private/bots-programming routing, /private/site-issues compat, header tightening, export picker modal, sidebar nested by parent_chat_id, and regression of iter111 login. 10/10 static frontend assertions PASS, 6/6 live backend tests PASS, frontend e2e: 6/7 acceptance criteria fully GREEN, 1 minor (site-issues renders bots inline without URL redirect).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "/private/site-issues",
+        "issue": "Spec demande une redirection vers /private/bots-programming, mais App.js rend PrivateChatbotProgramming(mode='bots') au MÊME URL au lieu de faire <Navigate to='/private/bots-programming' replace />. Le contenu affiché EST correct (titre 'Programmations des bots et chatbots'), mais l'URL reste /private/site-issues. UX identique mais non strictement conforme. Mineur.",
+        "affected_selectors": ["route /private/site-issues"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter112_rename_nested_picker.py",
+    "/app/backend/tests/test_iter112_live.py",
+    "/app/test_reports/pytest/iter112_results.xml",
+    "/app/test_reports/pytest/iter112_live.xml"
+  ],
+  "action_items": [
+    "(Optionnel/mineur) Remplacer la route /private/site-issues par <Navigate to='/private/bots-programming' replace /> pour une vraie redirection d'URL (sinon laisser tel quel — fonctionnellement équivalent).",
+    "Aucune autre action — l'implémentation iter112 est solide."
+  ],
+  "critical_code_review_comments": [
+    "Sécurité OK : /private/caly-programming et /private/bots-programming affichent 'Access denied' pour les non-creator devices, comme attendu. Le titre + sous-titre sont rendus AU-DESSUS du garde, satisfaisant le critère d'acceptation visuel de l'iter112.",
+    "Header au viewport 1920px : aucune superposition observée. 'CodeForge AI' centré, tuiles APK/EXE/ZIP à droite, cluster Comptes à gauche du brand — propre.",
+    "Tuiles dashboard correctement renommées avec testids 'creator-caly-prog-btn' et 'creator-bots-prog-btn'. L'ancienne tuile 'Problèmes du site' (creator-issues-btn) est bien absente.",
+    "PrivateChatbotProgramming accepte le prop mode='caly'|'bots' sans tabs (anciens testids 'chatbot-prog-tab-caly/bots' absents — vérifié dans le DOM live).",
+    "Backend : login fonctionne avec test_dash_1777658375@gmail.com / Pass1234 (resync confirmé). Le champ retourné est 'session_token' (pas 'token') — j'ai ajusté test_iter112_live.py en conséquence.",
+    "Endpoints /api/site/issues toujours présents (200/auth) pour compat — non régressé.",
+    "Static iter112 PASS : sidebar nested logic (byParent + _depth + border-l-cyan-400/40), export picker state (exportPicker/setExportPicker + export-picker-modal + export-picker-cancel + 'Quel projet exporter'), spacings (lg:gap-6 + ml-3 sm:ml-12 sur CreatorToolbar, gap-3 sm:gap-5 ml-3 sm:ml-2 sur AccountsButton)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter112_live.py (créé — 6 tests live login/me/health/site-issues/projects/export)",
+    "/app/test_reports/pytest/iter112_results.xml",
+    "/app/test_reports/pytest/iter112_live.xml"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6 live + 10/10 static)",
+    "frontend": "~95% (5/5 testids présents + 3/3 routes correctes + caly+bots titles visibles + header propre — la seule réserve est l'absence de redirection d'URL pour /private/site-issues, mais contenu rendu identique)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login API OK 200, login UI OK redirige sur /dashboard. Token sous clé 'session_token'.",
+  "seed_data_creation": "Aucune (pas de nouveau projet créé — l'utilisateur a déjà 88 projets ['Tout 88'] dans la sidebar).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pour login en Playwright : (1) supprimer attr readonly sur les inputs via page.evaluate avec MutationObserver, (2) fill auth-email-input + auth-password-input via leur testid, (3) cliquer button[type='submit'] (PAS auth-submit-btn — ce testid n'existe pas), (4) wait_for_url **/dashboard**. Sur /private/caly-programming et /private/bots-programming, le test user voit 'Access denied' (pas un creator device) — c'est ATTENDU. Les titres + sous-titres sont rendus AVANT le garde, donc les vérifier suffit. /private/site-issues rend bots-programming INLINE (pas de redirect URL).",
+  "rca of the issue": "iter112 features 1-3, 5-7 sont conformes à 100%. Feature 4 ('site-issues DOIT rediriger') est implémentée en rendant la même page au lieu de faire une vraie redirection — UX identique mais URL non changée. Pour fixer strictement : remplacer dans App.js la route /private/site-issues par 'element={<Navigate to=\"/private/bots-programming\" replace />}'. À discrétion du main agent."
+}

@@ -1,5 +1,8 @@
 """
 iter110 — Site Issues page + spacings finaux.
+iter112 — Page SiteIssues ABANDONNÉE (codes d'erreurs trop hétérogènes à
+répertorier). Sa route /private/site-issues redirige désormais vers la
+programmation des bots/chatbots. Les tests de cette suite ont été simplifiés.
 """
 import os
 from pathlib import Path
@@ -11,6 +14,8 @@ from server import app  # noqa: E402
 
 
 def test_site_issues_endpoints_registered():
+    """Backend endpoints /api/site/issues/* restent disponibles pour compatibilité,
+    même si l'UI ne les utilise plus."""
     routes = {r.path for r in app.routes if hasattr(r, "path")}
     assert "/api/site/issues/create" in routes
     assert "/api/site/issues" in routes
@@ -27,30 +32,26 @@ def test_site_issues_create_endpoint_signature_required():
     assert "creator" in chunk and "admin" in chunk
 
 
-def test_site_issues_list_endpoint_registered():
-    """GET /api/site/issues registered (validated via curl externally — Motor/TestClient loop conflict)."""
-    routes = {r.path for r in app.routes if hasattr(r, "path")}
-    assert "/api/site/issues" in routes
-
-
-def test_site_issues_page_exists():
+def test_site_issues_page_abandoned_iter112():
+    """iter112 — SiteIssues.js a été supprimé. La route /private/site-issues
+    redirige désormais vers la page de programmation des bots."""
     p = Path("/app/frontend/src/pages/SiteIssues.js")
-    assert p.exists()
-    c = p.read_text(encoding="utf-8")
-    assert "issue-create-form" in c
-    assert "/site/issues/create" in c
+    assert not p.exists(), "SiteIssues.js doit avoir été supprimé en iter112"
 
 
-def test_site_issues_route_wired():
+def test_site_issues_route_redirects_to_bots_programming():
+    """iter112 — La route /private/site-issues doit rendre PrivateChatbotProgramming."""
     app_js = Path("/app/frontend/src/App.js").read_text(encoding="utf-8")
-    assert "import SiteIssues" in app_js
     assert "/private/site-issues" in app_js
+    # Doit rendre PrivateChatbotProgramming en mode bots, pas SiteIssues.
+    assert "import SiteIssues" not in app_js
 
 
-def test_dashboard_has_issues_button():
+def test_dashboard_has_bots_prog_button():
+    """iter112 — La tuile 'Problèmes du site' a été remplacée par 'Programmations des bots et chatbots'."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert "creator-issues-btn" in dash
-    assert "AlertTriangle" in dash
+    assert "creator-bots-prog-btn" in dash
+    assert "Programmations des bots et chatbots" in dash
 
 
 def test_caly_right_24_iter110():
@@ -67,7 +68,7 @@ def test_dashboard_swap_theft_language():
     assert theft_pos < lang_pos, "TheftButton must appear before LanguageToggle (iter110 swap)"
 
 
-def test_site_mode_badge_ml_64():
-    """SiteModeBadge décalé encore plus à gauche (iter110)."""
+def test_site_mode_badge_offset_recent():
+    """SiteModeBadge décalé (iter110: ml-64, iter112: ml-12 + gap-6 + ml-2 Comptes pour resserrer)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert "ml-3 sm:ml-64" in dash
+    assert ("ml-3 sm:ml-64" in dash) or ("ml-3 sm:ml-[15cm]" in dash) or ("ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l" in dash)

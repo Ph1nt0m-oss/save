@@ -52,7 +52,7 @@ def test_dashboard_spacings_iter107():
     """Dashboard.js : ml-24+ (iter107+) ou ml-40/64 (iter109+/iter110)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
     # Doit contenir AU MOINS un des spacing widths recents
-    found = sum(1 for m in ("ml-3 sm:ml-24", "ml-3 sm:ml-32", "ml-3 sm:ml-40", "ml-3 sm:ml-64") if m in dash)
+    found = sum(1 for m in ("ml-3 sm:ml-24", "ml-3 sm:ml-32", "ml-3 sm:ml-40", "ml-3 sm:ml-64", "ml-3 sm:ml-[15cm]", "ml-3 sm:ml-2") if m in dash)
     assert found >= 1, f"Expected ≥1 large spacing width, got {found}"
 
 

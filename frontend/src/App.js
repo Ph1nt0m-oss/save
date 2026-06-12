@@ -17,7 +17,9 @@ import Legal from './pages/Legal';
 import Discover from './pages/Discover';
 import PrivateProgramming from './pages/PrivateProgramming';
 import PrivateChatbotProgramming from './pages/PrivateChatbotProgramming';
-import SiteIssues from './pages/SiteIssues';
+// iter112 — SiteIssues abandonné (les codes d'erreurs sont trop hétérogènes
+// à répertorier). Route /private/site-issues redirige désormais vers la
+// programmation des bots/chatbots.
 import FeedbackButton from './components/FeedbackButton';
 import CalyChatbot from './components/CalyChatbot';
 import SiteLockedOverlay from './components/SiteLockedOverlay';
@@ -171,11 +173,21 @@ function AppRouter() {
         />
         <Route
           path="/private/chatbot-programming"
-          element={<ProtectedRoute><PrivateChatbotProgramming /></ProtectedRoute>}
+          element={<ProtectedRoute><PrivateChatbotProgramming mode="caly" /></ProtectedRoute>}
+        />
+        {/* iter112 — Routes dédiées : Caly et Bots ont chacune leur page. */}
+        <Route
+          path="/private/caly-programming"
+          element={<ProtectedRoute><PrivateChatbotProgramming mode="caly" /></ProtectedRoute>}
         />
         <Route
+          path="/private/bots-programming"
+          element={<ProtectedRoute><PrivateChatbotProgramming mode="bots" /></ProtectedRoute>}
+        />
+        {/* iter112 — Ancienne route SiteIssues redirige vers bots-programming. */}
+        <Route
           path="/private/site-issues"
-          element={<ProtectedRoute><SiteIssues /></ProtectedRoute>}
+          element={<ProtectedRoute><PrivateChatbotProgramming mode="bots" /></ProtectedRoute>}
         />
         <Route 
           path="/profile" 

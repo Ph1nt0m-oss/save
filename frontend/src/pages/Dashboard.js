@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, AlertTriangle
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -80,6 +80,10 @@ export default function Dashboard() {
   const [visiting, setVisiting] = useState(null);
   // iter78 — fullscreen modal pour export pending/approved/rejected
   const [exportReview, setExportReview] = useState(null);  // {kind, status, request_id}
+  // iter112 — Picker d'export multi-projets : si un chat parent a plusieurs
+  // enfants (parent_chat_id===chat.project_id), l'utilisatrice doit choisir
+  // lequel exporter (APK/EXE/ZIP). Le state stocke {kind, candidates, resolve}.
+  const [exportPicker, setExportPicker] = useState(null);
   // iter82 — Group chats + Friend system
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
@@ -443,10 +447,52 @@ export default function Dashboard() {
       return;
     }
 
-    if (!selectedProject.generated_code) {
+    // iter112 — Si le projet sélectionné est un chat parent ayant >=2 enfants,
+    // on affiche un picker pour choisir lequel exporter (chat lui-même OU un
+    // enfant spécifique). Si une seule enfant, on prend le plus récent.
+    if (selectedProject.project_type === 'chat') {
+      const children = projects.filter(p => p.parent_chat_id === selectedProject.project_id);
+      if (children.length >= 2) {
+        // Ouvre le picker et attend le choix.
+        const chosen = await new Promise((resolve) => {
+          setExportPicker({
+            kind: exportType,
+            candidates: [selectedProject, ...children],
+            resolve,
+          });
+        });
+        setExportPicker(null);
+        if (!chosen) return;  // annulation
+        // On exporte le projet choisi en mettant à jour selectedProject temporairement.
+        return exportProjectFor(chosen, exportType);
+      }
+      if (children.length === 1) {
+        // Une seule enfant → exporte directement l'enfant (qui contient le code).
+        return exportProjectFor(children[0], exportType);
+      }
+    }
+
+    return exportProjectFor(selectedProject, exportType);
+  };
+
+  // iter112 — Variante utilisée à la fois par exportProject (no-picker) et le picker.
+  const exportProjectFor = async (project, exportType) => {
+    if (!project.generated_code) {
       toast.error('Générez d\'abord le code du projet');
       return;
     }
+    // Délègue à l'ancien chemin en remplaçant temporairement selectedProject.
+    const previous = selectedProject;
+    setSelectedProject(project);
+    try {
+      await _doExport(project, exportType);
+    } finally {
+      setSelectedProject(previous);
+    }
+  };
+
+  const _doExport = async (project, exportType) => {
+    if (!project) return;
 
     // Export approval gate — iter54. Non-creator devices must obtain an
     // explicit approval from the creator before exporting any APK / ZIP+GitHub
@@ -455,7 +501,7 @@ export default function Dashboard() {
       try {
         const { withCreatorProof } = await import('../lib/deviceIdentity');
         const body = await withCreatorProof(API, axios, {
-          project_id: selectedProject.project_id,
+          project_id: project.project_id,
           export_kind: exportType,
         });
         const r = await axios.post(`${API}/exports/request`, body);
@@ -498,7 +544,7 @@ export default function Dashboard() {
         // 1) Download ZIP locally.
         const response = await axios.post(
           `${API}/export/download`,
-          { project_id: selectedProject.project_id, export_type: 'source' },
+          { project_id: project.project_id, export_type: 'source' },
           {
             withCredentials: true,
             responseType: 'blob'
@@ -508,7 +554,7 @@ export default function Dashboard() {
         const url = window.URL.createObjectURL(new Blob([response.data]));
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `${selectedProject.name}.zip`);
+        link.setAttribute('download', `${project.name}.zip`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -521,7 +567,7 @@ export default function Dashboard() {
           const t1 = toast.loading('Sauvegarde sur GitHub…');
           try {
             const gh = await axios.post(
-              `${API}/export/github/${selectedProject.project_id}`,
+              `${API}/export/github/${project.project_id}`,
               {},
               { withCredentials: true }
             );
@@ -547,12 +593,12 @@ export default function Dashboard() {
         })();
       } else if (exportType === 'apk') {
         // Open mobile export page
-        const exportUrl = `${BACKEND_URL}/api/export/mobile/${selectedProject.project_id}`;
+        const exportUrl = `${BACKEND_URL}/api/export/mobile/${project.project_id}`;
         window.open(exportUrl, '_blank');
         toast.success('Page d\'installation mobile ouverte !');
       } else if (exportType === 'exe') {
         // Open desktop export page
-        const exportUrl = `${BACKEND_URL}/api/export/desktop/${selectedProject.project_id}`;
+        const exportUrl = `${BACKEND_URL}/api/export/desktop/${project.project_id}`;
         window.open(exportUrl, '_blank');
         toast.success('Page de téléchargement desktop ouverte !');
       }
@@ -661,17 +707,38 @@ export default function Dashboard() {
             );
           })()}
           <div className="space-y-2">
-            {projects.filter((p) => {
-              if (sidebarFilter === 'all') return true;
-              const t2 = p.project_type === 'chat' ? 'chat' : 'web';
-              const m = p.ai_mode || 'online';
-              return `${t2}-${m}` === sidebarFilter;
-            }).map(project => (
+            {(() => {
+              // iter112 — Sidebar nested visuel : on regroupe les projets par chat parent.
+              //   - Chats (project_type === 'chat') affichés au top-level.
+              //   - Projets enfants (parent_chat_id === chat.project_id) rendus indentés sous leur chat.
+              //   - Projets orphelins (pas un chat, parent_chat_id null) restent au top-level (avec leur dot).
+              const filtered = projects.filter((p) => {
+                if (sidebarFilter === 'all') return true;
+                const t2 = p.project_type === 'chat' ? 'chat' : 'web';
+                const m = p.ai_mode || 'online';
+                return `${t2}-${m}` === sidebarFilter;
+              });
+              const byParent = {};
+              filtered.forEach((p) => {
+                if (p.parent_chat_id) {
+                  byParent[p.parent_chat_id] = byParent[p.parent_chat_id] || [];
+                  byParent[p.parent_chat_id].push(p);
+                }
+              });
+              const topLevel = filtered.filter((p) => !p.parent_chat_id);
+              const flat = [];
+              topLevel.forEach((p) => {
+                flat.push({ ...p, _depth: 0 });
+                const children = byParent[p.project_id] || [];
+                children.forEach((c) => flat.push({ ...c, _depth: 1, _parent: p }));
+              });
+              return flat;
+            })().map(project => (
               renameTarget?.project_id === project.project_id ? (
                 <div
                   key={project.project_id}
                   data-testid={`project-rename-${project.project_id}`}
-                  className="bg-white/[0.04] border border-[#E4FF00] rounded-sm p-2 flex items-center gap-2"
+                  className={`bg-white/[0.04] border border-[#E4FF00] rounded-sm p-2 flex items-center gap-2 ${project._depth ? 'ml-5 border-l-2 border-l-cyan-400/40' : ''}`}
                 >
                   {/* Dot visible mais non modifiable pendant le rename */}
                   {(() => {
@@ -715,7 +782,7 @@ export default function Dashboard() {
                     selectedProject?.project_id === project.project_id
                       ? 'bg-[#E4FF00]/10 border-[#E4FF00]'
                       : 'bg-[#050505] border-white/10 hover:border-white/30'
-                  }`}
+                  } ${project._depth ? 'ml-5 border-l-2 border-l-cyan-400/40 relative' : ''}`}
                 >
                   <div className="flex items-center gap-2">
                     {/* Type dot — couleur selon (project_type, ai_mode) */}
@@ -753,7 +820,8 @@ export default function Dashboard() {
                         onClick={(e) => {
                           e.stopPropagation();
                           // Ouvre la prévisualisation interactive (vue Emergent-like)
-                          navigate('/chat', { state: { mode, project, openPreview: true } });
+                          const m = project.ai_mode || 'online';
+                          navigate('/chat', { state: { mode: m, project, openPreview: true } });
                         }}
                         data-testid={`project-eye-${project.project_id}`}
                         title="Voir l'aperçu interactif de cette création"
@@ -804,7 +872,7 @@ export default function Dashboard() {
         {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu]
             iter106 — Spacings élargis pour que tous les labels soient visibles sans tronquer. */}
         <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4 overflow-x-auto md:overflow-x-visible">
-          <div className="flex items-center justify-between gap-4 sm:gap-16 lg:gap-[15cm] min-w-max md:min-w-0">
+          <div className="flex items-center justify-between gap-4 sm:gap-8 lg:gap-6 min-w-max md:min-w-0">
             {/* LEFT */}
             <div className="flex items-center gap-3 sm:gap-5 min-w-0">
               <button
@@ -825,7 +893,7 @@ export default function Dashboard() {
               <span className="inline-block ml-2 sm:ml-4">
                 <LanguageToggle placement="bottom" />
               </span>
-              <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-24">
+              <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
                 <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
                 <button
                   onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}
@@ -896,8 +964,10 @@ export default function Dashboard() {
                 <span className="hidden lg:inline">ZIP</span>
               </Button>
 
-              <div className="ml-3 sm:ml-64 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
-                {/* iter110 — SiteModeBadge encore 10cm plus à gauche (total 30cm depuis ZIP) */}
+              <div className="ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
+                {/* iter112 — Header serré (gap-6). Le ml-12 maintient ~3cm entre ZIP et SiteModeBadge.
+                    La distance Comptes → ViewModePicker dépend du viewport (au zoom 67% sur écran 1920px,
+                    elle approche les 15cm souhaités via la largeur naturelle title + APK/EXE/ZIP). */}
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}
@@ -1123,7 +1193,7 @@ export default function Dashboard() {
                 </div>
               </motion.button>
 
-              {/* iter108 — Programmation des chatbots (Caly + bots communautaires) */}
+              {/* iter112 — Tile 1 : Programmation de Caly (chatbot assistant virtuel) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
@@ -1132,9 +1202,9 @@ export default function Dashboard() {
                     toast.error('Accès refusé pour des raisons de sécurité.');
                     return;
                   }
-                  navigate('/private/chatbot-programming');
+                  navigate('/private/caly-programming');
                 }}
-                data-testid="creator-chatbot-prog-btn"
+                data-testid="creator-caly-prog-btn"
                 className="group bg-gradient-to-br from-pink-500/[0.06] to-rose-500/[0.06] border border-pink-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-pink-400 hover:shadow-[0_8px_30px_rgba(236,72,153,0.2)] transition-all text-left"
               >
                 <div className="flex items-center gap-3">
@@ -1142,13 +1212,13 @@ export default function Dashboard() {
                     <MessageCircleQuestion className="w-6 h-6 text-pink-300" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation des chatbots</h3>
-                    <p className="text-xs text-[#A1A1AA]">Caly + bots communautaires (prompts, FAQ)</p>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation de Caly</h3>
+                    <p className="text-xs text-[#A1A1AA]">Chatbot assistant virtuel — code modifiable (admins + créa, masqué en vue simulée)</p>
                   </div>
                 </div>
               </motion.button>
 
-              {/* iter110 — Suivi des issues du site */}
+              {/* iter112 — Tile 2 : Programmations des bots et chatbots (remplace l'ancienne tuile abandonnée). */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
@@ -1157,18 +1227,18 @@ export default function Dashboard() {
                     toast.error('Accès refusé pour des raisons de sécurité.');
                     return;
                   }
-                  navigate('/private/site-issues');
+                  navigate('/private/bots-programming');
                 }}
-                data-testid="creator-issues-btn"
-                className="group bg-gradient-to-br from-rose-500/[0.06] to-orange-500/[0.06] border border-rose-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-rose-400 hover:shadow-[0_8px_30px_rgba(244,63,94,0.2)] transition-all text-left"
+                data-testid="creator-bots-prog-btn"
+                className="group bg-gradient-to-br from-cyan-500/[0.06] to-sky-500/[0.06] border border-cyan-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-cyan-400 hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all text-left"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-rose-500/20 border border-rose-400/40 rounded-full flex items-center justify-center">
-                    <AlertTriangle className="w-6 h-6 text-rose-300" />
+                  <div className="w-12 h-12 bg-cyan-500/20 border border-cyan-400/40 rounded-full flex items-center justify-center">
+                    <Bot className="w-6 h-6 text-cyan-300" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Problèmes du site</h3>
-                    <p className="text-xs text-[#A1A1AA]">Suivi des bugs, erreurs, traces de compilation</p>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmations des bots et chatbots</h3>
+                    <p className="text-xs text-[#A1A1AA]">Code modifiable (admins + créa, masqué en vue simulée)</p>
                   </div>
                 </div>
               </motion.button>
@@ -1268,6 +1338,53 @@ export default function Dashboard() {
             <Trash2 className="w-4 h-4" />
             <span>{t('ctx_delete')}</span>
           </button>
+        </div>
+      )}
+
+      {/* iter112 — Picker d'export multi-projets : si un chat a plusieurs
+          enfants, l'utilisatrice choisit lequel exporter. */}
+      {exportPicker && (
+        <div
+          data-testid="export-picker-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => { exportPicker.resolve(null); setExportPicker(null); }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-md w-full bg-[#0F0F13] border border-[#E4FF00]/40 rounded-sm p-6 space-y-3"
+          >
+            <h3 className="font-['Chivo'] font-bold text-white text-lg">
+              Quel projet exporter en <span className="text-[#E4FF00]">{exportPicker.kind.toUpperCase()}</span> ?
+            </h3>
+            <p className="text-xs text-[#A1A1AA]">
+              Ce chat contient {exportPicker.candidates.length - 1} projet{exportPicker.candidates.length > 2 ? 's' : ''} enfant{exportPicker.candidates.length > 2 ? 's' : ''}. Choisissez la version à exporter.
+            </p>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {exportPicker.candidates.map((p) => (
+                <button
+                  key={p.project_id}
+                  data-testid={`export-pick-${p.project_id}`}
+                  onClick={() => { exportPicker.resolve(p); }}
+                  className="w-full text-left p-3 bg-[#050505] border border-white/10 hover:border-[#E4FF00] rounded-sm transition-colors"
+                >
+                  <div className="font-['Chivo'] font-bold text-sm text-white truncate">{p.name}</div>
+                  <div className="text-[10px] text-[#71717A] mt-0.5">
+                    {p.project_type === 'chat' ? '💬 Chat parent' : '⚡ Projet généré'}
+                    {' · '}
+                    {p.ai_mode === 'offline' ? 'Hors-ligne' : 'En ligne'}
+                    {p.created_at && ' · ' + new Date(p.created_at).toLocaleDateString('fr')}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              data-testid="export-picker-cancel"
+              onClick={() => { exportPicker.resolve(null); }}
+              className="w-full px-3 py-2 text-xs text-[#A1A1AA] hover:text-white border border-white/10 rounded-sm"
+            >
+              Annuler
+            </button>
+          </div>
         </div>
       )}
 

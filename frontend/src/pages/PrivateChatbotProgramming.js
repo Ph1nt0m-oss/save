@@ -12,34 +12,46 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
  * iter108 — Page de programmation des chatbots (Caly + bots communautaires).
+ * iter112 — Split en 2 modes via prop `mode`:
+ *   - mode="caly" → Programmation de Caly (chatbot assistant virtuel)
+ *   - mode="bots" → Programmations des bots et chatbots (bots communautaires)
  * Permet à la créatrice + admins d'éditer les system prompts et FAQ.
- * Sécurité identique à PrivateProgramming : creator physique + PAS en simulation.
+ * Sécurité identique à PrivateProgramming : creator/admin physique + PAS en simulation.
  */
-export default function PrivateChatbotProgramming() {
+export default function PrivateChatbotProgramming({ mode = 'caly' }) {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const device = useDeviceIdentity();
   const { canSeeProgramming } = useViewSpec();
-  const [tab, setTab] = useState('caly');  // 'caly' | 'bots'
 
   const isInSimulation = device.viewMode && device.viewMode !== 'creator';
   // iter108 — Admins peuvent voir l'onglet aussi (KB + bots communautaires)
   // mais le code source du site reste réservé créa.
   const allowed = canSeeProgramming && !isInSimulation;
 
+  const title = mode === 'caly'
+    ? 'Programmation de Caly'
+    : 'Programmations des bots et chatbots';
+  const subtitle = mode === 'caly'
+    ? 'Chatbot assistant virtuel — code & prompt modifiables (admins + créa, masqué en vue simulée)'
+    : 'Bots communautaires — code & FAQ modifiables (admins + créa, masqué en vue simulée)';
+  const Icon = mode === 'caly' ? MessageCircleQuestion : Bot;
+  const iconColor = mode === 'caly' ? 'text-pink-400' : 'text-cyan-400';
+
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-2">
           <button onClick={() => navigate('/dashboard')}
             className="text-[#A1A1AA] hover:text-white text-sm inline-flex items-center gap-1"
             data-testid="chatbot-prog-back">
             <ArrowLeft className="w-4 h-4" /> {t('back')}
           </button>
           <h1 className="text-2xl font-['Chivo'] font-black inline-flex items-center gap-2">
-            <Bot className="w-6 h-6 text-pink-400" /> Programmation des chatbots
+            <Icon className={`w-6 h-6 ${iconColor}`} /> {title}
           </h1>
         </div>
+        <p className="text-xs text-[#A1A1AA] mb-6">{subtitle}</p>
 
         {!allowed ? (
           <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-8 text-center max-w-md mx-auto">
@@ -48,31 +60,8 @@ export default function PrivateChatbotProgramming() {
             <p className="text-xs text-amber-200/90 mt-3">{t('prog_access_hint')}</p>
           </div>
         ) : (
-          <>
-            {/* Tabs */}
-            <div className="flex gap-2 mb-4 border-b border-white/10">
-              <button
-                onClick={() => setTab('caly')}
-                data-testid="chatbot-prog-tab-caly"
-                className={`px-4 py-2 text-sm font-bold rounded-t-sm transition-colors ${
-                  tab === 'caly' ? 'bg-pink-500/15 text-pink-300 border-b-2 border-pink-400' : 'text-[#A1A1AA] hover:text-white'
-                }`}
-              >
-                <MessageCircleQuestion className="w-4 h-4 inline mr-1" /> Caly (chatbot d'aide)
-              </button>
-              <button
-                onClick={() => setTab('bots')}
-                data-testid="chatbot-prog-tab-bots"
-                className={`px-4 py-2 text-sm font-bold rounded-t-sm transition-colors ${
-                  tab === 'bots' ? 'bg-cyan-500/15 text-cyan-300 border-b-2 border-cyan-400' : 'text-[#A1A1AA] hover:text-white'
-                }`}
-              >
-                <Bot className="w-4 h-4 inline mr-1" /> Bots communautaires
-              </button>
-            </div>
-
-            {tab === 'caly' ? <CalyPromptEditor /> : <BotsCommunityList />}
-          </>
+          // iter112 — Plus de tabs : chaque mode rend son éditeur dédié.
+          mode === 'caly' ? <CalyPromptEditor /> : <BotsCommunityList />
         )}
       </div>
     </div>
