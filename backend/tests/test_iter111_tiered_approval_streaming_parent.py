@@ -25,9 +25,9 @@ def test_dashboard_gap_15cm():
     assert ("lg:gap-[15cm]" in DASH) or ("lg:gap-6" in DASH)
 
 
-def test_site_mode_dropdown_right_10cm():
-    """Dropdown 'Audiences actives' positionné 10cm depuis le bord droit."""
-    assert "right-[10cm]" in SMB
+def test_site_mode_dropdown_right_iter113():
+    """Dropdown SiteMode est repositionné en right-0 (iter113) avec coordination dropdowns dans CreatorToolbar."""
+    assert "right-0 mt-1.5 w-72 bg-[#0A0A0A]" in SMB or "right-[10cm]" in SMB
 
 
 # ---------------------------------------------------------------------- Tiered Approval

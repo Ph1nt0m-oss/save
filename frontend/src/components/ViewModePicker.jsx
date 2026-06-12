@@ -25,9 +25,17 @@ const VIEW_META = {
 // Si AUCUNE n'est cochée → mode "écriture" (pas en simulation).
 const ORDER = ['creator', 'user', 'modo', 'admin', 'guest'];
 
-export default function ViewModePicker({ role, viewMode, guestView, guestViews }) {
+export default function ViewModePicker({ role, viewMode, guestView, guestViews, controlledOpen = undefined, onOpenChange }) {
   const { t } = useLanguage();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  // iter113 — Coordination dropdown : si controlledOpen est fourni par le
+  // parent, un seul dropdown ouvert à la fois dans la toolbar.
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = (v) => {
+    const next = typeof v === 'function' ? v(open) : v;
+    if (onOpenChange) onOpenChange(next);
+    else setInternalOpen(next);
+  };
 
   // iter105 — Le picker est désormais visible aussi pour les visiteurs et
   // utilisateurs/modos/admins, MAIS avec un comportement différent :

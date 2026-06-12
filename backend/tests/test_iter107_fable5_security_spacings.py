@@ -44,7 +44,7 @@ def test_claude_fable_5_label_in_chat():
 def test_caly_offset_iter107_or_newer():
     """Caly à right-36/32/28/24 selon iter."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert any(rw in caly for rw in ("right-36", "right-32", "right-28", "right-24"))
+    assert any(rw in caly for rw in ("right-36", "right-32", "right-28", "right-[88px]"))
     assert "right-64" not in caly
 
 

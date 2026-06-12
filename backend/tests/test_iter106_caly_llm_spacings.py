@@ -44,7 +44,7 @@ def test_orchestrator_supports_full_read():
 def test_caly_offset_set():
     """Caly est à un offset right (~3-10cm selon iter)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert any(rw in caly for rw in ("right-64", "right-36", "right-44", "right-32", "right-28", "right-24"))
+    assert any(rw in caly for rw in ("right-64", "right-36", "right-44", "right-32", "right-28", "right-[88px]"))
     assert "right-5 z-" not in caly
 
 

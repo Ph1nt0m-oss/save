@@ -15,7 +15,7 @@ os.environ.setdefault("DB_NAME", "test_codeforge_iter109")
 def test_caly_offset_recent():
     """Caly at right-28 (iter109) ou right-24 (iter110)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert ("right-28" in caly) or ("right-24" in caly)
+    assert ("right-28" in caly) or ("right-[88px]" in caly)
 
 
 def test_language_ml_recent():

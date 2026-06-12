@@ -40,6 +40,9 @@ export default function CreatorToolbar() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [decisions, setDecisions] = useState([]);
   const [loadingHist, setLoadingHist] = useState(false);
+  // iter113 — Un seul dropdown ouvert à la fois (SiteMode ou ViewMode) pour
+  // éviter la superposition visuelle observée par l'utilisatrice.
+  const [openDropdown, setOpenDropdown] = useState(null);  // null | 'site' | 'view'
 
   const loadDecisions = async () => {
     setLoadingHist(true);
@@ -155,6 +158,8 @@ export default function CreatorToolbar() {
         guestView={device.guestView}
         guestViews={device.guestViews}
         onChange={() => device.refresh()}
+        controlledOpen={openDropdown === 'site'}
+        onOpenChange={(v) => setOpenDropdown(v ? 'site' : null)}
       />
 
       {/* iter85 — Pour la créatrice : picker pour simuler n'importe quelle vue
@@ -166,6 +171,8 @@ export default function CreatorToolbar() {
         siteMode={device.siteMode}
         guestView={device.guestView}
         guestViews={device.guestViews}
+        controlledOpen={openDropdown === 'view'}
+        onOpenChange={(v) => setOpenDropdown(v ? 'view' : null)}
       />
 
       {/* History panel removed in iter57: the right-side panel is now

@@ -56,7 +56,7 @@ def test_dashboard_has_bots_prog_button():
 
 def test_caly_right_24_iter110():
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert "right-24" in caly
+    assert "right-[88px]" in caly
 
 
 def test_dashboard_swap_theft_language():

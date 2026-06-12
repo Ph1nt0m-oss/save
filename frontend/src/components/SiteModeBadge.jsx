@@ -19,9 +19,17 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  * (modos seuls). Les 3 nouvelles audiences sont identifiées par l'icône
  * Shield/ShieldCheck/ShieldAlert.
  */
-export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, guestView, guestViews, onChange, className = '' }) {
+export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, guestView, guestViews, onChange, className = '', controlledOpen = undefined, onOpenChange }) {
   const { t } = useLanguage();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  // iter113 — Coordination dropdown : si controlledOpen est fourni par le
+  // parent, on est en mode contrôlé (un seul dropdown ouvert dans la toolbar).
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = (v) => {
+    const next = typeof v === 'function' ? v(open) : v;
+    if (onOpenChange) onOpenChange(next);
+    else setInternalOpen(next);
+  };
   const [saving, setSaving] = useState(false);
 
   const MODES = [
@@ -128,7 +136,7 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
       {open && (
         <div
           data-testid="site-mode-dropdown"
-          className="absolute right-[10cm] mt-1.5 w-72 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.6)] z-50 py-1 max-h-[480px] overflow-y-auto"
+          className="absolute right-0 mt-1.5 w-72 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.6)] z-50 py-1 max-h-[480px] overflow-y-auto"
         >
           <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-[#71717A] border-b border-white/10">
             Audiences actives (multi-sélection)

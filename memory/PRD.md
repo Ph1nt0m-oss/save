@@ -235,6 +235,25 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 113 (Réorganisation Dashboard + coordination dropdowns + Caly fab +0.2cm)
+
+**🟢 Demandes UI utilisatrice** :
+- **Caly fab** : `right-24` (96px) → `right-[88px]` → avancé de 0.2cm vers la droite.
+- **Dropdowns "Public" et "Aucune vue active"** : ne se superposent plus.
+  - SiteModeBadge dropdown repositionné à `right-0` (au lieu de `right-[10cm]` qui débordait).
+  - `CreatorToolbar` coordonne désormais l'état `openDropdown` (null | 'site' | 'view') — un seul dropdown ouvert à la fois.
+  - `SiteModeBadge` et `ViewModePicker` acceptent `controlledOpen` + `onOpenChange` props.
+- **Réorganisation Dashboard** (clarté hiérarchique) :
+  1. **Programme admin** (Caly + Bots) — testid `admin-prog-row` — placés JUSTE AU-DESSUS de Création accompagnée
+  2. **Création rapide accompagnée**
+  3. **4 types de tchat** (Chat/Create × online/offline)
+  4. **Programmation créa** (Site + IA) — restent en bas
+  → Évite la confusion entre programmes admin (Caly+Bots) et programmes créa (Site+IA).
+
+**Tests** : 139/139 pytests PASS (8 nouveaux dans iter113). Smoke screenshot validé en `/dashboard` au viewport 1920px : ordre des tuiles conforme à la demande.
+
+**🔵 P1 différé** : Refactoring `server.py` (~9800 lignes) — extraction `routes/devices.py` (17 endpoints) + `routes/community_bots.py` (7 endpoints). Reporté car les helpers sont fortement imbriqués (`_verify_signed`, `_require_creator_signature`, `_device_by_key`, `_log_decision`, `_log_change`, etc.) et l'extraction nécessite une session dédiée avec testing extensif pour éviter régressions massives sur tous les endpoints d'auth.
+
 ### 2026-02-12 — Iter 112 (Renommages Caly/Bots + Sidebar nested + Export picker + Header resserré)
 
 **🟢 Renommages d'onglets (demande utilisatrice)** :

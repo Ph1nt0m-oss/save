@@ -48,7 +48,7 @@ def test_ai_programming_panel_has_selector():
 def test_caly_right_iter108_or_newer():
     """Caly at right-32 (iter108), right-28 (iter109), ou right-24 (iter110)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert ("right-32" in caly) or ("right-28" in caly) or ("right-24" in caly)
+    assert ("right-32" in caly) or ("right-28" in caly) or ("right-[88px]" in caly)
 
 
 def test_language_spacing_separate():

@@ -1049,6 +1049,65 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* iter113 — Programme admin : Programmation de Caly + Programmations des bots
+                JUSTE AU-DESSUS de "Création accompagnée" pour clarifier la hiérarchie :
+                  1. Programme admin (Caly + Bots)
+                  2. Création accompagnée
+                  3. Les 4 types de tchat (Chat/Create x2)
+                  4. Programmation créa (Site + IA — plus bas)
+            */}
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="admin-prog-row">
+              {/* Programmation de Caly */}
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
+                    toast.error('Accès refusé pour des raisons de sécurité.');
+                    return;
+                  }
+                  navigate('/private/caly-programming');
+                }}
+                data-testid="creator-caly-prog-btn"
+                className="group bg-gradient-to-br from-pink-500/[0.06] to-rose-500/[0.06] border border-pink-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-pink-400 hover:shadow-[0_8px_30px_rgba(236,72,153,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-pink-500/20 border border-pink-400/40 rounded-full flex items-center justify-center">
+                    <MessageCircleQuestion className="w-6 h-6 text-pink-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation de Caly</h3>
+                    <p className="text-xs text-[#A1A1AA]">Chatbot assistant virtuel — code modifiable (admins + créa, masqué en vue simulée)</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* Programmations des bots et chatbots */}
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
+                    toast.error('Accès refusé pour des raisons de sécurité.');
+                    return;
+                  }
+                  navigate('/private/bots-programming');
+                }}
+                data-testid="creator-bots-prog-btn"
+                className="group bg-gradient-to-br from-cyan-500/[0.06] to-sky-500/[0.06] border border-cyan-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-cyan-400 hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-cyan-500/20 border border-cyan-400/40 rounded-full flex items-center justify-center">
+                    <Bot className="w-6 h-6 text-cyan-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmations des bots et chatbots</h3>
+                    <p className="text-xs text-[#A1A1AA]">Code modifiable (admins + créa, masqué en vue simulée)</p>
+                  </div>
+                </div>
+              </motion.button>
+            </div>
+
             {/* iter78 — Assistant Guidé remis sur demande utilisatrice (création 100% accompagnée IA) */}
             <motion.button
               whileHover={{ y: -2, scale: 1.01 }}
@@ -1193,55 +1252,8 @@ export default function Dashboard() {
                 </div>
               </motion.button>
 
-              {/* iter112 — Tile 1 : Programmation de Caly (chatbot assistant virtuel) */}
-              <motion.button
-                whileHover={{ y: -2, scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
-                    toast.error('Accès refusé pour des raisons de sécurité.');
-                    return;
-                  }
-                  navigate('/private/caly-programming');
-                }}
-                data-testid="creator-caly-prog-btn"
-                className="group bg-gradient-to-br from-pink-500/[0.06] to-rose-500/[0.06] border border-pink-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-pink-400 hover:shadow-[0_8px_30px_rgba(236,72,153,0.2)] transition-all text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-pink-500/20 border border-pink-400/40 rounded-full flex items-center justify-center">
-                    <MessageCircleQuestion className="w-6 h-6 text-pink-300" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation de Caly</h3>
-                    <p className="text-xs text-[#A1A1AA]">Chatbot assistant virtuel — code modifiable (admins + créa, masqué en vue simulée)</p>
-                  </div>
-                </div>
-              </motion.button>
-
-              {/* iter112 — Tile 2 : Programmations des bots et chatbots (remplace l'ancienne tuile abandonnée). */}
-              <motion.button
-                whileHover={{ y: -2, scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
-                    toast.error('Accès refusé pour des raisons de sécurité.');
-                    return;
-                  }
-                  navigate('/private/bots-programming');
-                }}
-                data-testid="creator-bots-prog-btn"
-                className="group bg-gradient-to-br from-cyan-500/[0.06] to-sky-500/[0.06] border border-cyan-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-cyan-400 hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-cyan-500/20 border border-cyan-400/40 rounded-full flex items-center justify-center">
-                    <Bot className="w-6 h-6 text-cyan-300" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmations des bots et chatbots</h3>
-                    <p className="text-xs text-[#A1A1AA]">Code modifiable (admins + créa, masqué en vue simulée)</p>
-                  </div>
-                </div>
-              </motion.button>
+              {/* iter113 — Les 2 tuiles Caly + Bots ont été DÉPLACÉES juste au-dessus
+                  de "Création accompagnée" pour éviter la confusion avec Programmation créa. */}
             </div>
           </div>
         </div>
