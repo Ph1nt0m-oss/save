@@ -16,8 +16,11 @@ class TestUseViewSpecWiring:
         content = open("/app/frontend/src/pages/PrivateProgramming.js").read()
         assert "import useViewSpec" in content
         assert "canSeeProgramming" in content
-        # Plus de check device.role + viewMode
-        assert "device.viewMode && device.viewMode !== 'creator'" not in content
+        # iter107 — Le check viewMode est désormais utilisé pour bloquer
+        # l'affichage du code en mode simulation (anti-shoulder-surfing),
+        # donc on s'assure que canSeeProgramming est combiné avec isInSimulation.
+        assert "isInSimulation" in content
+        assert "canSeeProgramming && !isInSimulation" in content
 
 
 class TestI18nWiredInNewComponents:

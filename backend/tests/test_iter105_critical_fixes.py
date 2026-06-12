@@ -33,10 +33,9 @@ def test_caly_is_floating_widget():
     """CalyChatbot doit être un widget flottant fixed bottom + right (offset varie selon iter)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
     assert 'fixed bottom-5' in caly
-    # right-5 (iter105) ou right-64 (iter106 décalage)
-    assert ('right-5' in caly) or ('right-64' in caly)
+    # right-5 (iter105) ou right-64 (iter106) ou right-36 (iter107)
+    assert any(rw in caly for rw in ('right-5 z-', 'right-64', 'right-36', 'right-44'))
     assert 'caly-floating-btn' in caly
-    # L'ancien testid header est supprimé
     assert 'header-caly-btn' not in caly
 
 

@@ -38,7 +38,10 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews }
   const forced = Array.isArray(guestViews) && guestViews.length > 0
     ? guestViews
     : (guestView ? [guestView] : []);
-  const hasForcedConstraint = !isCreator && forced.length > 0;
+  // iter107 — Quand des vues sont forcées, le picker est contraint à ce sous-ensemble
+  // pour tout le monde (créa incluse, pour cohérence). La créa garde l'option 'creator'
+  // pour revenir au mode écriture.
+  const hasForcedConstraint = forced.length > 0;
 
   // Cacher le picker si: pas créa ET aucune vue forcée (rien à choisir).
   if (!isCreator && forced.length === 0) return null;
@@ -78,7 +81,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews }
         }`}
       >
         <CIcon className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{current ? t(current.labelKey) : 'Aucune vue'}</span>
+        <span className="hidden sm:inline">{isSimulating ? t(current.labelKey) : 'Aucune vue active'}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (

@@ -41,11 +41,11 @@ def test_orchestrator_supports_full_read():
     assert "if full_read:" in orch
 
 
-def test_caly_moved_left_7cm():
-    """Caly est à right-64 (~7cm) au lieu de right-5."""
+def test_caly_offset_set():
+    """Caly est à un offset right (~3 ou 7cm selon iter)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert "right-64" in caly
-    assert "right-5 z-" not in caly  # ancien position retirée
+    assert any(rw in caly for rw in ("right-64", "right-36", "right-44"))
+    assert "right-5 z-" not in caly
 
 
 def test_caly_uses_new_endpoint():
@@ -55,7 +55,8 @@ def test_caly_uses_new_endpoint():
 
 
 def test_dashboard_spacings_increased():
-    """Dashboard.js doit avoir des gaps plus larges (iter106)."""
+    """Dashboard.js doit avoir des gaps plus larges (iter106 → iter107 ml-24)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
     assert "lg:gap-16" in dash or "lg:gap-12" in dash
-    assert "ml-3 sm:ml-12" in dash  # 5cm spacing between language and theft/comptes
+    # iter106 ml-12 ou iter107 ml-24
+    assert ("ml-3 sm:ml-12" in dash) or ("ml-3 sm:ml-24" in dash)

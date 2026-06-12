@@ -2282,21 +2282,26 @@ IMPORTANT:
             if not emergent_key:
                 raise ValueError("EMERGENT_LLM_KEY not configured")
             
-            # Routing modèle pour la création — Claude par défaut car excellent pour le code.
+            # Routing modèle pour la création — Claude Fable 5 (Mythos-class) priorité pour le code.
             CREATE_MODEL_ROUTES = {
                 "gpt-5.2":         ("openai",    "gpt-5.2"),
                 "gpt-5":           ("openai",    "gpt-5"),
+                "gpt-5.5":         ("openai",    "gpt-5.5"),
+                "claude-fable":    ("anthropic", "claude-fable-5"),
+                "claude-fable-5":  ("anthropic", "claude-fable-5"),
+                "claude-5-fable":  ("anthropic", "claude-fable-5"),  # iter107 — id frontend
                 "claude-opus":     ("anthropic", "claude-opus-4-5-20251101"),
                 "claude-sonnet":   ("anthropic", "claude-sonnet-4-5-20250929"),
                 "claude-haiku":    ("anthropic", "claude-haiku-4-5-20251001"),
                 "gemini-3-pro":    ("gemini",    "gemini-3.1-pro-preview"),
                 "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
             }
-            provider, model_id = CREATE_MODEL_ROUTES.get(requested_model, ("openai", "gpt-5.2"))
+            provider, model_id = CREATE_MODEL_ROUTES.get(requested_model, ("anthropic", "claude-fable-5"))
 
-            # Silent multi-model cascade — same UX guarantee as chat.
+            # Silent multi-model cascade — Claude Fable 5 en tête (meilleur pour le code).
             generation_chain = [
                 (provider, model_id),
+                ("anthropic", "claude-fable-5"),
                 ("anthropic", "claude-sonnet-4-5-20250929"),
                 ("openai",    "gpt-5.2"),
                 ("gemini",    "gemini-3-flash-preview"),
@@ -3037,6 +3042,10 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                     "claude-sonnet-4.5": ("anthropic", "claude-sonnet-4-5-20250929"),
                     "claude-sonnet-4.6": ("anthropic", "claude-sonnet-4-6"),
                     "claude-haiku":    ("anthropic", "claude-haiku-4-5-20251001"),
+                    # iter107 — Claude Fable 5 (Mythos-class)
+                    "claude-fable":     ("anthropic", "claude-fable-5"),
+                    "claude-fable-5":   ("anthropic", "claude-fable-5"),
+                    "claude-5-fable":   ("anthropic", "claude-fable-5"),  # id frontend
                     "gemini-3-pro":    ("gemini",    "gemini-3.1-pro-preview"),
                     "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
                     "gemini-2.5-pro":  ("gemini",    "gemini-2.5-pro"),

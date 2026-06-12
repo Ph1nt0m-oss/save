@@ -32,13 +32,14 @@ export default function PrivateProgramming() {
   const isAI = location.pathname.includes('ai-programming');
   const title = isAI ? (t('prog_ai_title') || 'Programmation des IA') : (t('prog_site_title') || 'Programmation du site');
 
-  // iter89 — Visible UNIQUEMENT pour les DEVICES créa et SEULEMENT quand la
-  // créatrice N'EST PAS en vue créa (pour éviter qu'un visiteur regarde
-  // par-dessus l'épaule et copie le code). Donc accessible si :
-  // iter101 — Use spec hook : canSeeProgramming est strictement lié au role physique créa.
-  // Plus de viewMode required — la créa physique a TOUJOURS accès à sa programmation,
-  // que sa simulation de vue soit active ou non.
-  const allowed = canSeeProgramming;
+  // iter89 — Visible UNIQUEMENT pour les DEVICES créa ET quand la créatrice
+  // N'EST PAS en simulation (anti-copie par-dessus l'épaule).
+  // iter107 — Bug fix sécurité : modos/users peuvent voir L'ONGLET mais
+  // PAS LE CODE. Même la créatrice en vue simulée (modo/admin/user/guest)
+  // ne doit pas voir le code pour éviter de l'exposer accidentellement.
+  // → allowed = canSeeProgramming (créa physique) ET pas en simulation.
+  const isInSimulation = device.viewMode && device.viewMode !== 'creator';
+  const allowed = canSeeProgramming && !isInSimulation;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white p-6" data-testid="private-programming-page">

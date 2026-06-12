@@ -819,8 +819,7 @@ export default function Dashboard() {
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
               <LanguageToggle placement="bottom" />
-              {/* iter106 — Spacing 5cm entre langues et le reste (déclarer vol, comptes...) */}
-              <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-12">
+              <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-24">
                 <TheftButton variant="labelled" />
                 <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
                 <button
@@ -895,8 +894,8 @@ export default function Dashboard() {
                 <span className="hidden lg:inline">ZIP</span>
               </Button>
 
-              <div className="ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
-                {/* iter106 — SiteModeBadge 5cm vers la gauche via ml-3/12, plus de séparation */}
+              <div className="ml-3 sm:ml-24 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
+                {/* iter107 — SiteModeBadge 5cm + 5cm = 10cm gauche depuis position iter106 */}
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}

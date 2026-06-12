@@ -102,7 +102,7 @@ export default function CalyChatbot() {
         onClick={() => setOpen(true)}
         data-testid="caly-floating-btn"
         title="Caly — Assistante d'aide à l'utilisation"
-        className="fixed bottom-5 right-64 z-[90] inline-flex items-center justify-center w-12 h-12 rounded-full bg-pink-500/95 border-2 border-pink-300 text-white shadow-[0_8px_24px_rgba(236,72,153,0.45)] hover:bg-pink-400 hover:scale-105 transition-all"
+        className="fixed bottom-5 right-36 z-[90] inline-flex items-center justify-center w-12 h-12 rounded-full bg-pink-500/95 border-2 border-pink-300 text-white shadow-[0_8px_24px_rgba(236,72,153,0.45)] hover:bg-pink-400 hover:scale-105 transition-all"
       >
         <MessageCircleQuestion className="w-5 h-5" />
       </button>

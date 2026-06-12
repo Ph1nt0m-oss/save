@@ -512,7 +512,7 @@ export default function Chat() {
                           const parts = src.split(':');
                           const prov = parts[1] || '';
                           const mdl = parts.slice(2).join(':') || '';
-                          if (prov === 'anthropic') label = mdl.includes('opus') ? 'Claude Opus 4.5' : mdl.includes('sonnet') ? 'Claude Sonnet 4.5' : 'Claude';
+                          if (prov === 'anthropic') label = mdl.includes('fable') ? 'Claude Fable 5' : mdl.includes('opus') ? 'Claude Opus 4.5' : mdl.includes('sonnet') ? 'Claude Sonnet 4.5' : 'Claude';
                           else if (prov === 'gemini') label = mdl.includes('flash') ? 'Gemini 3 Flash' : 'Gemini 3 Pro';
                           else if (prov === 'openai') label = 'Emergent (GPT-5.2)';
                           else label = `${prov} / ${mdl}`;

@@ -16,6 +16,29 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-12 — Iter 107 (Sécurité programming + Claude Fable 5 + Spacings)
+
+**🔴 Sécurité programming page** :
+- `PrivateProgramming.js` : `allowed = canSeeProgramming && !isInSimulation` (au lieu de juste `canSeeProgramming`). Modos/users voient l'onglet (le bouton de navigation) mais l'écran de code reste verrouillé sauf pour le créateur physique HORS simulation. Même la créatrice en vue simulée user/modo/admin/guest ne voit PLUS le code (anti-shoulder-surfing).
+
+**🟢 Claude Fable 5 (Mythos-class) intégré** :
+- Backend `CREATE_MODEL_ROUTES` (création) + chat MODEL_ROUTES (chat) acceptent les ids `claude-fable`, `claude-fable-5` (alias) et `claude-5-fable` (id frontend déjà présent dans la liste `/api/chat/models`). Mapping → `("anthropic", "claude-fable-5")`.
+- Chaîne de fallback création : `Claude Fable 5 → Claude Sonnet 4.5 → GPT-5.2 → Gemini 3 Flash → ...`. Fable est désormais en tête (Mythos-class = top tier code).
+- Frontend `Chat.js` ligne 515 : badge IA reconnaît `mdl.includes('fable')` → "Claude Fable 5".
+
+**🟢 Spacings affinés** :
+- Caly widget : `right-64` → `right-36` (~3cm vers la droite depuis iter106).
+- Dashboard top-bar bloc gauche : `ml-3 sm:ml-12` → `ml-3 sm:ml-24` (5cm supplémentaires entre LanguageToggle et le bloc Theft+Comptes+Tchats+Amis).
+- Dashboard top-bar bloc droit : `ml-3 sm:ml-12` → `ml-3 sm:ml-24` (5cm supplémentaires entre ZIP et le bloc CreatorToolbar+...).
+
+**🟢 ViewModePicker coordination** :
+- Le label affiché passe de "Aucune vue" / nom-de-vue à "Aucune vue active" quand `isSimulating=false`, plus explicite.
+- `hasForcedConstraint = forced.length > 0` applique à TOUS (créa incluse, pour cohérence) : si la créa force `[modo]` ou `[modo, admin]`, le picker ne propose plus que ces vues + 'creator' pour revenir au mode écriture. Sélection toujours 1 vue à la fois (radio).
+
+**Tests** : `/app/backend/tests/test_iter107_fable5_security_spacings.py` — 8/8 PASS. **67/67 tests** total (iter100→107).
+
+
+
 ### 2026-02-12 — Iter 106 (Caly LLM réel + No truncation + Spacings)
 
 **🟢 Caly connectée à un vrai LLM** :
