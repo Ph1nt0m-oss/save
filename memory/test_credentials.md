@@ -19,7 +19,9 @@
 
 ## Test user actif
 - **Email** : `test_dash_1777658375@gmail.com`
-- **Password** : `Pass1234` (état actuel — l'agent de test a effectué un round-trip change → restauré)
+- **Password** : `Pass1234` (resynchronisé iter111 via reset bcrypt direct MongoDB — login API vérifié OK le 2026-06-12)
+- **User ID** : `user_47498059ca08`
+- **Pseudo** : `TEST_p_7c9639`
 
 ## Idle Timeout (NEW iter_24)
 - 1h sans activité (mouse/keyboard/touch/scroll/wheel/visibility) → logout auto + `/login?reason=idle`
