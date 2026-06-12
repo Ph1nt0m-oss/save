@@ -45,15 +45,15 @@ def test_ai_programming_panel_has_selector():
 
 
 def test_caly_right_iter108_or_newer():
-    """Caly at right-32 (iter108) ou right-28 (iter109)."""
+    """Caly at right-32 (iter108), right-28 (iter109), ou right-24 (iter110)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert ("right-32" in caly) or ("right-28" in caly)
+    assert ("right-32" in caly) or ("right-28" in caly) or ("right-24" in caly)
 
 
 def test_language_spacing_separate():
-    """LanguageToggle wrapped with ml-12 (iter108) ou ml-32 (iter109)."""
+    """LanguageToggle wrappée avec offset margin (iter108: ml-12, iter109: ml-32, iter110: ml-4 après swap)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert ('inline-block ml-3 sm:ml-12' in dash) or ('inline-block ml-3 sm:ml-32' in dash)
+    assert any(m in dash for m in ('inline-block ml-3 sm:ml-12', 'inline-block ml-3 sm:ml-32', 'inline-block ml-2 sm:ml-4'))
 
 
 def test_site_mode_badge_3cm_more_left():

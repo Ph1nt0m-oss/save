@@ -235,6 +235,47 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 111 (Tiered Approval + SSE Streaming token-par-token + ViewSpec guest + parent_chat_id + Spacings)
+
+**🔴 P0 — Tiered Approval dans DeviceManager (sécurité hiérarchique stricte)** :
+- Backend `/devices/approve` : nouveau payload `DeviceApproveIn` avec champ `as_role` (`user`|`modo`|`admin`).
+- Hiérarchie strictement appliquée :
+  - **Modo** → ne peut approuver que comme `user`
+  - **Admin** → peut approuver comme `user` ou `modo`
+  - **Créa** → peut approuver comme `user`, `modo`, ou `admin`
+  - Toute tentative hors hiérarchie → 403 avec message clair.
+- Le champ `staff_kind` du device cible est défini automatiquement (`None` pour user, `modo` ou `admin` sinon).
+- Frontend `DeviceManager.jsx` : bouton "Approuver" devient un dropdown ("Approuver comme… ▾") avec 3 options labellisées (👤 Utilisateur / 🛡️ Modérateur / ⚙️ Administrateur). testid `approve-as-{role}-{key_id}`.
+
+**🔴 P0 — Streaming SSE token-par-token (effet ChatGPT)** :
+- Backend `/chat/stream` enrichi : accepte `model` + `attachments` (était limité au message brut), retourne `project_id` dans l'event `done`.
+- Streaming par chunks de **3 caractères** toutes les **6ms** (~500 chars/sec) → effet "texte qui s'écrit" beaucoup plus rapide et naturel que l'ancien word-by-word à 8ms/mot.
+- Frontend `Chat.js` : remplacement de `axios.post('/chat/message')` (réponse globale) par `fetch('/chat/stream')` + `ReadableStream.getReader()` pour concaténer les deltas en temps réel dans l'UI. Placeholder `_streaming: true` créé instantanément, message complet adopté au signal `done`.
+
+**🔴 P0 — Projets enfants par chat (parent_chat_id)** :
+- Modèle `Project` Pydantic : ajout du champ `parent_chat_id: Optional[str] = None` pour lier un projet à son chat parent.
+- `_ai_generate_complete_app_impl` extrait `data.get('parent_chat_id')` et persiste sur le projet généré.
+- `GuidedWizard.js` : lit `location.state?.parent_chat_id` et envoie dans le payload `/ai/generate-complete-app`.
+
+**🔴 P0 — ViewSpec visiteur enrichi** :
+- `/views/spec` retourne désormais une 5e entrée `guest` (en plus de user/modo/admin/creator) avec :
+  - `chats_visible: ['public']` uniquement, tous les autres `chats_hidden`
+  - `see_friends: false`, `see_sidebar_projects: false`, `see_own_profile: false`
+  - `see_idea_box: true` (boîte à idées publique conservée)
+  - `can_send_messages: false`, `can_create_projects: false`, `can_vote_polls: false`, `can_post_ideas: false`
+
+**🟢 Spacings UI ajustés (demande utilisatrice)** :
+- Dashboard header container : `lg:gap-32` → `lg:gap-[15cm]` (~15cm entre LEFT et RIGHT clusters).
+- SiteModeBadge dropdown ("Audiences actives") : `right-0` → `right-[10cm]` (déporté 10cm vers la gauche).
+
+**Tests** : `/app/backend/tests/test_iter111_tiered_approval_streaming_parent.py` — 15/15 PASS. **105/105 tests** total (iter100→111). Tests anciens iter106/iter109 ajustés pour tolérer les nouveaux gap arbitraires.
+
+**MOCKED / Restant** :
+- **Sidebar nested grouping** : le champ `parent_chat_id` est persistant mais la sidebar Dashboard n'affiche pas encore les projets regroupés sous leur chat parent (visuel à wirer si plusieurs projets par chat).
+- **Picker d'export multi-projets** : Si un chat a plusieurs projets enfants, l'export ZIP/APK/EXE prend toujours le projet sélectionné — un picker UI sera nécessaire quand des chats commencent à avoir N enfants.
+
+
+
 ### 2026-06-11 — Iter 101 (Câblage useViewSpec + i18n composants)
 
 **🟢 Câblage `useViewSpec` dans Dashboard** :

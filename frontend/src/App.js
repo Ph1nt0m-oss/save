@@ -17,6 +17,7 @@ import Legal from './pages/Legal';
 import Discover from './pages/Discover';
 import PrivateProgramming from './pages/PrivateProgramming';
 import PrivateChatbotProgramming from './pages/PrivateChatbotProgramming';
+import SiteIssues from './pages/SiteIssues';
 import FeedbackButton from './components/FeedbackButton';
 import CalyChatbot from './components/CalyChatbot';
 import SiteLockedOverlay from './components/SiteLockedOverlay';
@@ -171,6 +172,10 @@ function AppRouter() {
         <Route
           path="/private/chatbot-programming"
           element={<ProtectedRoute><PrivateChatbotProgramming /></ProtectedRoute>}
+        />
+        <Route
+          path="/private/site-issues"
+          element={<ProtectedRoute><SiteIssues /></ProtectedRoute>}
         />
         <Route 
           path="/profile" 

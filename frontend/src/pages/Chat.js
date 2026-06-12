@@ -258,44 +258,92 @@ export default function Chat() {
     }
 
     try {
-      const response = await axios.post(
-        `${API}/chat/message`,
-        {
+      // iter111 — Streaming SSE token-par-token (effet ChatGPT).
+      // On crée immédiatement le message assistant vide et on concatène les
+      // deltas reçus du flux. Cela offre la latence perçue "0ms" attendue.
+      const placeholderId = `streaming_${Date.now()}`;
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '',
+        ai_source: null,
+        model_id: selectedModel,
+        _streaming: true,
+        _streaming_id: placeholderId,
+        timestamp: new Date()
+      }]);
+
+      const resp = await fetch(`${API}/chat/stream`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           message: userMessage,
           mode,
           language,
           model: selectedModel,
           project_id: project?.project_id,
           attachments: opts.attachments || [],
-        },
-        { withCredentials: true }
-      );
-
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: response.data.ai_response.content,
-        download: response.data.ai_response.download || null,
-        ai_source: response.data.ai_response.ai_source || null,
-        model_id: selectedModel,
-        _just_arrived: true,  // iter98 — déclenche TypewriterEffect
-        timestamp: new Date()
-      }]);
+        }),
+      });
+      if (!resp.ok || !resp.body) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let autoPid = null;
+      let downloadInfo = null;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE events séparés par \n\n.
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const line = part.split('\n').find(l => l.startsWith('data:'));
+          if (!line) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(5).trim()); } catch { continue; }
+          if (evt.delta) {
+            // Concatène le delta au message en cours.
+            setMessages(prev => prev.map(m =>
+              m._streaming_id === placeholderId
+                ? { ...m, content: (m.content || '') + evt.delta }
+                : m
+            ));
+          }
+          if (evt.done) {
+            autoPid = evt.project_id || null;
+            downloadInfo = evt.download || null;
+            setMessages(prev => prev.map(m =>
+              m._streaming_id === placeholderId
+                ? {
+                    ...m,
+                    content: evt.content || m.content,
+                    download: downloadInfo,
+                    _streaming: false,
+                    _just_arrived: false,  // SSE déjà animé naturellement
+                  }
+                : m
+            ));
+          }
+        }
+      }
       setPendingAtts([]);
       // If backend auto-created a project for this chat (first message case),
       // adopt it locally so the conversation is pinned from the first message.
-      const autoPid = response.data.project_id;
       if (autoPid && !project?.project_id) {
         try {
           const pr = await axios.get(`${API}/projects/${autoPid}`, { withCredentials: true });
           if (pr?.data) {
-            // Replace the project reference so pinChatToSidebar button hides.
             navigate('/chat', { state: { mode, project: pr.data }, replace: true });
           }
         } catch { /* silent */ }
       }
     } catch (error) {
       console.error('Chat error:', error);
-      setMessages(prev => [...prev, {
+      setMessages(prev => [...prev.filter(m => !m._streaming), {
         role: 'assistant',
         content: 'Erreur: Vérifiez qu\'Ollama est installé et en cours d\'exécution.',
         timestamp: new Date()

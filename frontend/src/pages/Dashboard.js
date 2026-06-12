@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, AlertTriangle
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -804,7 +804,7 @@ export default function Dashboard() {
         {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu]
             iter106 — Spacings élargis pour que tous les labels soient visibles sans tronquer. */}
         <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4 overflow-x-auto md:overflow-x-visible">
-          <div className="flex items-center justify-between gap-4 sm:gap-16 lg:gap-32 min-w-max md:min-w-0">
+          <div className="flex items-center justify-between gap-4 sm:gap-16 lg:gap-[15cm] min-w-max md:min-w-0">
             {/* LEFT */}
             <div className="flex items-center gap-3 sm:gap-5 min-w-0">
               <button
@@ -818,12 +818,14 @@ export default function Dashboard() {
                   ? <PanelLeftClose className="w-5 h-5" />
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
-              {/* iter109 — Langue décalée 10cm vers la droite seule */}
-              <span className="inline-block ml-3 sm:ml-32">
+              {/* iter110 — Swap : Theft en premier, Langue 1cm après, 2cm depuis sidebar toggle */}
+              <span className="inline-block ml-2 sm:ml-8">
+                <TheftButton variant="labelled" />
+              </span>
+              <span className="inline-block ml-2 sm:ml-4">
                 <LanguageToggle placement="bottom" />
               </span>
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-24">
-                <TheftButton variant="labelled" />
                 <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
                 <button
                   onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}
@@ -833,9 +835,6 @@ export default function Dashboard() {
                 >
                   <Users className="w-4 h-4" />
                 </button>
-                {/* iter86 — La créatrice en vue créa n'a pas besoin du système
-                    d'amis (elle peut DM directement). Seules les vues simulées
-                    (user/modo/admin) affichent le bouton Amis. */}
                 {device.viewMode && device.viewMode !== 'creator' && (
                   <button
                     onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
@@ -897,8 +896,8 @@ export default function Dashboard() {
                 <span className="hidden lg:inline">ZIP</span>
               </Button>
 
-              <div className="ml-3 sm:ml-40 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
-                {/* iter109 — SiteModeBadge décalée encore 5cm gauche en plus (total 10cm depuis ZIP) */}
+              <div className="ml-3 sm:ml-64 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
+                {/* iter110 — SiteModeBadge encore 10cm plus à gauche (total 30cm depuis ZIP) */}
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}
@@ -1145,6 +1144,31 @@ export default function Dashboard() {
                   <div>
                     <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation des chatbots</h3>
                     <p className="text-xs text-[#A1A1AA]">Caly + bots communautaires (prompts, FAQ)</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* iter110 — Suivi des issues du site */}
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
+                    toast.error('Accès refusé pour des raisons de sécurité.');
+                    return;
+                  }
+                  navigate('/private/site-issues');
+                }}
+                data-testid="creator-issues-btn"
+                className="group bg-gradient-to-br from-rose-500/[0.06] to-orange-500/[0.06] border border-rose-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-rose-400 hover:shadow-[0_8px_30px_rgba(244,63,94,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-rose-500/20 border border-rose-400/40 rounded-full flex items-center justify-center">
+                    <AlertTriangle className="w-6 h-6 text-rose-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Problèmes du site</h3>
+                    <p className="text-xs text-[#A1A1AA]">Suivi des bugs, erreurs, traces de compilation</p>
                   </div>
                 </div>
               </motion.button>

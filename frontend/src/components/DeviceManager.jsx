@@ -29,6 +29,8 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
   const [pasteCode, setPasteCode] = useState('');
   const [promotePwd, setPromotePwd] = useState('');
   const [promoteTarget, setPromoteTarget] = useState(null);
+  // iter111 — Tiered approval : dropdown "Approuver comme..." par device.
+  const [approveOpenFor, setApproveOpenFor] = useState(null);  // key_id du device dont le menu est ouvert
   const isCreator = role === 'creator';
 
   useEffect(() => {
@@ -61,6 +63,27 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
       toast.error(e?.response?.data?.detail || t('dm_op_failed'));
     }
   };
+
+  // iter111 — Tiered approval : approuve un device EN tant que rôle choisi.
+  // Hiérarchie validée côté backend (Modo→user, Admin→user/modo, Créa→tout).
+  const approveAs = async (target_key_id, as_role) => {
+    setApproveOpenFor(null);
+    try {
+      const body = await withCreatorProof(API, axios, { target_key_id, as_role });
+      await axios.post(`${API}/devices/approve`, body);
+      toast.success(`Appareil approuvé comme « ${as_role} »`);
+      refreshList();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('dm_op_failed'));
+    }
+  };
+
+  // iter111 — Quels rôles le caller peut-il accorder ?
+  // - creator → user, modo, admin
+  // - staff (admin/modo) → on affiche tout, le backend rejette si pas le droit
+  const allowedApprovalRoles = role === 'creator'
+    ? ['user', 'modo', 'admin']
+    : ['user', 'modo', 'admin'];
 
   const handleAddByKey = async () => {
     const jwk = parsePublicKeyShareCode(pasteCode);
@@ -241,13 +264,38 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                         </div>
                         <div className="flex flex-col gap-1 flex-shrink-0">
                           {d.role === 'pending' && (
-                            <button
-                              onClick={() => callTarget('/devices/approve', d.key_id)}
-                              data-testid={`approve-${d.key_id}`}
-                              className="px-2 py-1 text-[11px] border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-[#050505] rounded-sm transition"
-                            >
-                              <Check className="w-3 h-3 inline mr-1" />{t('dm_approve')}
-                            </button>
+                            <div className="relative">
+                              <button
+                                onClick={() => setApproveOpenFor(approveOpenFor === d.key_id ? null : d.key_id)}
+                                data-testid={`approve-${d.key_id}`}
+                                className="px-2 py-1 text-[11px] border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-[#050505] rounded-sm transition inline-flex items-center"
+                              >
+                                <Check className="w-3 h-3 inline mr-1" />{t('dm_approve')}
+                                <span className="ml-1 text-[10px]">▾</span>
+                              </button>
+                              {approveOpenFor === d.key_id && (
+                                <div
+                                  data-testid={`approve-menu-${d.key_id}`}
+                                  className="absolute right-0 mt-1 w-48 bg-[#0A0A0A] border border-white/20 rounded-sm shadow-xl z-[80] py-1"
+                                >
+                                  <div className="px-2 py-1 text-[10px] uppercase tracking-widest text-[#71717A] border-b border-white/10">
+                                    Approuver comme…
+                                  </div>
+                                  {allowedApprovalRoles.map((r) => (
+                                    <button
+                                      key={r}
+                                      onClick={() => approveAs(d.key_id, r)}
+                                      data-testid={`approve-as-${r}-${d.key_id}`}
+                                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-emerald-500/10 hover:text-emerald-200 capitalize"
+                                    >
+                                      {r === 'user' && '👤 Utilisateur'}
+                                      {r === 'modo' && '🛡️ Modérateur'}
+                                      {r === 'admin' && '⚙️ Administrateur'}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           )}
                           {d.role !== 'creator' && (
                             <button

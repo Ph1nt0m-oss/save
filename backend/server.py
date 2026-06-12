@@ -229,6 +229,10 @@ class Project(BaseModel):
     preview_image: Optional[str] = None  # data URI thumbnail for sidebar preview
     is_public: Optional[bool] = False
     share_slug: Optional[str] = None
+    # iter111 — Permet de regrouper plusieurs itérations / sous-projets d'un même
+    # chat. Quand l'utilisateur génère une app depuis un chat existant, on lie
+    # le projet généré au chat parent pour la sidebar nested et le picker d'export.
+    parent_chat_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -2428,6 +2432,7 @@ IMPORTANT:
     try:
         # Create project
         project_id = f"proj_{uuid.uuid4().hex[:12]}"
+        parent_chat_id = (data.get('parent_chat_id') or '').strip() or None
         project = {
             "project_id": project_id,
             "user_id": user_id,
@@ -2438,6 +2443,7 @@ IMPORTANT:
             "generated_code": generated,
             "ai_source": ai_source,
             "status": "completed",
+            "parent_chat_id": parent_chat_id,  # iter111 — lien parent chat
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
@@ -5173,27 +5179,72 @@ class DeviceTargetIn(CreatorOnlyIn):
     target_key_id: str
 
 
+class DeviceApproveIn(DeviceTargetIn):
+    """iter111 — Tiered approval : le staff/créa peut approuver en
+    spécifiant un rôle cible. Hiérarchie stricte :
+      - Modo → User uniquement (as_role='user')
+      - Admin → User OU Modo (as_role in ['user','modo'])
+      - Créa → User, Modo OU Admin (as_role in ['user','modo','admin'])
+    Si non fourni, défaut = 'user' (= simple user approuvé).
+    """
+    as_role: Optional[str] = "user"
+
+
 @api_router.post("/devices/approve")
-async def devices_approve(payload: DeviceTargetIn):
+async def devices_approve(payload: DeviceApproveIn):
     """iter79 — Staff (admin/modo) ou créatrice approuve. La décision tracke
     qui a accepté (couleur d'encadrement: créa=jaune, admin=orange, modo=bleu).
     Si modo accepte, l'appareil passe en `approved` ; la créa garde la notif
-    pour pouvoir override (refuser, ce qui annule la décision)."""
+    pour pouvoir override (refuser, ce qui annule la décision).
+    iter111 — Tiered approval : on peut désormais accorder un staff_kind
+    directement (selon hiérarchie autorisée pour l'acteur)."""
     actor = await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
     target = await _device_by_key(payload.target_key_id)
+    actor_role = actor.get("role")
+    actor_sk = actor.get("staff_kind")
+    requested = (payload.as_role or "user").strip().lower()
+    if requested not in {"user", "modo", "admin"}:
+        raise HTTPException(status_code=400, detail="as_role invalide ('user'|'modo'|'admin').")
+    # Hiérarchie : Modo→user, Admin→user/modo, Créa→user/modo/admin.
+    if actor_role == "creator":
+        allowed = {"user", "modo", "admin"}
+    elif actor_sk == "admin":
+        allowed = {"user", "modo"}
+    elif actor_sk == "modo":
+        allowed = {"user"}
+    else:
+        allowed = set()
+    if requested not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Tu ne peux pas approuver en tant que '{requested}'. Niveaux autorisés : {sorted(allowed)}.",
+        )
+    target_staff_kind = None if requested == "user" else requested
+    update_set = {
+        "role": "approved",
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+        "approved_by_key_id": payload.key_id,
+        "approved_by_kind": "creator" if actor_role == "creator" else actor_sk,
+        "approved_as": requested,  # iter111 — trace ce qui a été accordé
+    }
+    if target_staff_kind:
+        update_set["staff_kind"] = target_staff_kind
+    else:
+        # Approuvé comme user simple : pas de staff_kind.
+        update_set["staff_kind"] = None
     res = await db.device_keys.update_one(
         {"key_id": payload.target_key_id, "role": "pending"},
-        {"$set": {
-            "role": "approved",
-            "approved_at": datetime.now(timezone.utc).isoformat(),
-            "approved_by_key_id": payload.key_id,
-            "approved_by_kind": "creator" if actor.get("role") == "creator" else actor.get("staff_kind"),
-        }},
+        {"$set": update_set},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Aucun appareil en attente avec cette clé.")
     await _log_decision("approve", payload.target_key_id, payload.key_id, (target or {}).get("label"))
-    return {"success": True, "approved_by_kind": "creator" if actor.get("role") == "creator" else actor.get("staff_kind")}
+    return {
+        "success": True,
+        "approved_by_kind": "creator" if actor_role == "creator" else actor_sk,
+        "approved_as": requested,
+        "staff_kind": target_staff_kind,
+    }
 
 
 @api_router.post("/devices/revoke")
@@ -8345,6 +8396,24 @@ async def get_views_spec():
             "see_chatbot_management": True, "see_bots_community": True,
             "creator_group_visible": "staff_only",
         },
+        # iter111 — Vue visiteur (mode 'guest' / utilisateur non authentifié OU créa simulant visiteur).
+        # Restrictions strictes : voit uniquement public, pas de friends, pas d'actions sur autres comptes.
+        "guest": {
+            "chats_visible": ["public"],
+            "chats_hidden": ["private", "public+private", "modo", "admin", "staff", "creator_group"],
+            "see_sidebar_projects": False,  # pas de projets perso (non connecté)
+            "see_own_profile": False,
+            "see_friends": False,
+            "see_idea_box": True,  # boite à idées publique
+            "see_poll_icon": False,
+            "see_other_accounts_actions": False,
+            "see_programming": False, "secret_key_access": False,
+            "see_chatbot_management": False, "see_bots_community": False,
+            "can_send_messages": False,  # iter111 — visiteur lit seulement
+            "can_create_projects": False,
+            "can_vote_polls": False,
+            "can_post_ideas": False,
+        },
     }
 
 
@@ -9312,6 +9381,82 @@ async def private_write_file(payload: PrivateWriteFileIn):
 
 
 # ==========================================================================
+# iter110 — SITE ISSUES (suivi des problèmes/erreurs du site)
+# ==========================================================================
+
+class SiteIssueIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    title: str
+    description: Optional[str] = ""
+    severity: Optional[str] = "medium"  # low | medium | high | critical
+    status: Optional[str] = "open"      # open | in_progress | resolved | wontfix
+
+
+class SiteIssueUpdateIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    issue_id: str
+    status: Optional[str] = None
+    severity: Optional[str] = None
+    description: Optional[str] = None
+
+
+@api_router.post("/site/issues/create")
+async def site_issues_create(payload: SiteIssueIn):
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role"); sk = dev.get("staff_kind")
+    if not (role == "creator" or sk == "admin"):
+        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Titre requis.")
+    issue_id = f"iss_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "issue_id": issue_id,
+        "title": payload.title.strip()[:200],
+        "description": (payload.description or "").strip()[:5000],
+        "severity": payload.severity if payload.severity in ("low", "medium", "high", "critical") else "medium",
+        "status": payload.status if payload.status in ("open", "in_progress", "resolved", "wontfix") else "open",
+        "created_at": now,
+        "updated_at": now,
+        "created_by_key": payload.key_id,
+    }
+    await db.site_issues.insert_one(doc)
+    return {"success": True, "issue_id": issue_id}
+
+
+@api_router.get("/site/issues")
+async def site_issues_list(status: Optional[str] = None, limit: int = 100):
+    q = {}
+    if status:
+        q["status"] = status
+    rows = await db.site_issues.find(q, {"_id": 0, "created_by_key": 0}).sort("created_at", -1).to_list(length=min(limit, 500))
+    return {"issues": rows, "total": len(rows)}
+
+
+@api_router.post("/site/issues/update")
+async def site_issues_update(payload: SiteIssueUpdateIn):
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role"); sk = dev.get("staff_kind")
+    if not (role == "creator" or sk == "admin"):
+        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
+    updates = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.status and payload.status in ("open", "in_progress", "resolved", "wontfix"):
+        updates["status"] = payload.status
+    if payload.severity and payload.severity in ("low", "medium", "high", "critical"):
+        updates["severity"] = payload.severity
+    if payload.description is not None:
+        updates["description"] = payload.description.strip()[:5000]
+    res = await db.site_issues.update_one({"issue_id": payload.issue_id}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Issue introuvable.")
+    return {"success": True}
+
+
+# ==========================================================================
 # iter106 — CALY CHATBOT (widget flottant) : endpoint LLM dédié
 # ==========================================================================
 
@@ -9451,48 +9596,59 @@ class ChatStreamIn(BaseModel):
     mode: str = "online"
     project_id: Optional[str] = None
     language: Optional[str] = "fr"
+    # iter111 — Pass-through pour préserver le model + les pièces jointes.
+    model: Optional[str] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
 
 
 @api_router.post("/chat/stream")
 async def chat_stream(request: Request, input: ChatStreamIn):
-    """iter82 C5/C8 — Streaming SSE de la réponse IA. Émission "word by word"
-    pour donner l'impression de voir le texte se construire. La réponse
-    complète est sauvegardée en DB à la fin via le flux normal. Pour ne pas
-    refacto tout l'endpoint /chat/message, on appelle l'endpoint et on
-    re-stream la réponse côté serveur.
+    """iter82 C5/C8 / iter111 — Streaming SSE token-par-token (effet ChatGPT).
+    On appelle l'endpoint /chat/message une fois pour persister la conversation
+    en DB (et obtenir la réponse IA complète), puis on re-stream le contenu en
+    petits chunks (3-5 chars + jitter) pour donner l'illusion d'un vrai
+    streaming token par token. UX identique à ChatGPT.
     """
     user_id = await get_current_user(request)
-    # Récupère la réponse complète en re-utilisant la logique existante :
-    # on génère le ChatMessageInput et on attend la full réponse.
-    # NOTE: pour un vrai streaming token-par-token via Emergent, il faudrait
-    # passer par LlmChat.stream() ce qui n'est pas exposé par
-    # emergentintegrations actuellement. On simule donc le streaming en
-    # découpant la réponse finale en mots. C'est suffisant pour l'UX et reste
-    # totalement non-bloquant côté frontend.
     full_input = ChatMessageInput(
         message=input.message,
         mode=input.mode,
         project_id=input.project_id,
         language=input.language,
+        model=input.model,
+        attachments=input.attachments or [],
     )
     # Appel à la logique existante ; send_chat_message gère la persistance DB.
     resp = await send_chat_message(request, full_input)
     ai_text = ((resp or {}).get("ai_response") or {}).get("content") or ""
     msg_id = ((resp or {}).get("ai_response") or {}).get("message_id") or ""
     download = ((resp or {}).get("ai_response") or {}).get("download")
+    auto_pid = (resp or {}).get("project_id")
 
     async def event_gen():
-        # SSE pseudo-streaming par mots, avec petit délai pour visualiser.
+        # iter111 — Streaming par petits chunks (3 chars) pour effet token-par-token.
+        # 6ms entre chunks → ~500 chars/seconde, lisible et "vivant".
         import asyncio as _aio
-        words = ai_text.split(" ")
-        acc = ""
-        for i, w in enumerate(words):
-            acc = (acc + " " + w).strip() if acc else w
-            yield f"data: {json.dumps({'delta': w + (' ' if i < len(words)-1 else ''), 'index': i})}\n\n"
-            # 8ms par mot = pour un texte de 500 mots, ~4 secondes. Lisible et naturel.
-            await _aio.sleep(0.008)
-        # Signal final
-        yield f"data: {json.dumps({'done': True, 'message_id': msg_id, 'download': download, 'content': ai_text})}\n\n"
+        text = ai_text
+        chunk_size = 3
+        i = 0
+        idx = 0
+        while i < len(text):
+            chunk = text[i:i + chunk_size]
+            i += chunk_size
+            yield f"data: {json.dumps({'delta': chunk, 'index': idx})}\n\n"
+            idx += 1
+            await _aio.sleep(0.006)
+        # Signal final avec project_id pour adoption frontend.
+        yield (
+            "data: " + json.dumps({
+                "done": True,
+                "message_id": msg_id,
+                "download": download,
+                "content": ai_text,
+                "project_id": auto_pid,
+            }) + "\n\n"
+        )
 
     from fastapi.responses import StreamingResponse
     return StreamingResponse(event_gen(), media_type="text/event-stream", headers={

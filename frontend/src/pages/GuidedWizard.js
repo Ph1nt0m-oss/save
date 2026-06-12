@@ -42,6 +42,9 @@ export default function GuidedWizard() {
   const location = useLocation();
   const { language, t } = useLanguage();
   const mode = location.state?.mode || 'online';
+  // iter111 — Si l'utilisateur arrive ici depuis un chat existant, on lie le
+  // projet généré au chat parent (sidebar nested + picker d'export ultérieur).
+  const parentChatId = location.state?.parent_chat_id || null;
 
   const [step, setStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -162,6 +165,7 @@ export default function GuidedWizard() {
           description: summaryDescription(),
           mode,
           wizard_config: { platforms, appTypes, appName, designText, funcText, language },
+          parent_chat_id: parentChatId,  // iter111 — lien parent chat (peut être null)
         },
         { withCredentials: true }
       );
