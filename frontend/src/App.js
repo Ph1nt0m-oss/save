@@ -184,10 +184,10 @@ function AppRouter() {
           path="/private/bots-programming"
           element={<ProtectedRoute><PrivateChatbotProgramming mode="bots" /></ProtectedRoute>}
         />
-        {/* iter112 — Ancienne route SiteIssues redirige vers bots-programming. */}
+        {/* iter112 — Ancienne route SiteIssues → vraie redirection URL (pas un alias). */}
         <Route
           path="/private/site-issues"
-          element={<ProtectedRoute><PrivateChatbotProgramming mode="bots" /></ProtectedRoute>}
+          element={<Navigate to="/private/bots-programming" replace />}
         />
         <Route 
           path="/profile" 

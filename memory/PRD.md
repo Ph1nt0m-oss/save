@@ -235,6 +235,35 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 112 (Renommages Caly/Bots + Sidebar nested + Export picker + Header resserré)
+
+**🟢 Renommages d'onglets (demande utilisatrice)** :
+- Tuile Dashboard "Programmation des chatbots" → **"Programmation de Caly"** (chatbot assistant virtuel, code modifiable admins+créa, masqué en vue simulée). Route `/private/caly-programming`.
+- Tuile Dashboard "Problèmes du site" → **"Programmations des bots et chatbots"** (bots communautaires, code modifiable admins+créa, masqué en vue simulée). Route `/private/bots-programming`.
+- **SiteIssues.js SUPPRIMÉ** : l'idée de répertorier les codes d'erreurs compile était trop hétérogène. Route `/private/site-issues` → vraie redirection URL vers `/private/bots-programming` via `<Navigate replace />`.
+- `PrivateChatbotProgramming.js` refactoré pour accepter un prop `mode='caly'|'bots'` — plus de tabs, chaque page rend son éditeur dédié avec titre + sous-titre clairs.
+
+**🟡 P1 — Sidebar nested visuel par parent_chat_id** :
+- La sidebar Dashboard regroupe désormais les projets enfants sous leur chat parent.
+- Algorithme : `byParent` groupe par `parent_chat_id`, puis `topLevel.forEach` ajoute le parent puis ses enfants indentés (`_depth: 1`, `ml-5 border-l-2 border-l-cyan-400/40`).
+
+**🟡 P1 — Picker d'export multi-projets** :
+- Quand un chat parent a ≥2 enfants et que l'utilisatrice clique APK/EXE/ZIP, modal `export-picker-modal` s'ouvre avec liste des candidats (chat parent + tous ses enfants).
+- L'utilisatrice peut choisir le projet à exporter ou Annuler.
+- Si 1 enfant unique → export direct de l'enfant.
+- Si 0 enfant → export du chat lui-même.
+
+**🟢 Spacings UI ajustés (zoom 67%)** :
+- Header parent : `lg:gap-[15cm]` → `lg:gap-6` (resserré pour ne pas déborder au zoom 100%).
+- AccountsButton cluster : `sm:ml-24` → `sm:ml-2` (Comptes plus proche de Français).
+- CreatorToolbar : `sm:ml-64` → `sm:ml-12` (resserré côté droit).
+- Au zoom 67% sur écran 1920px, la distance naturelle Comptes→ViewModePicker approche le 15cm voulu via la largeur du titre + APK/EXE/ZIP.
+
+**Tests** : 131/131 pytests PASS (iter1xx). `test_iter112_rename_nested_picker.py` ajouté (10 tests static). Testing agent : 10/10 static + 6/6 live backend PASS, 95% frontend e2e (1 mineur fixé : redirection URL stricte pour site-issues).
+
+**🔵 P1 différé** :
+- Refactoring `server.py` (~9800 lignes) : extraction `routes/devices.py` + `routes/community_bots.py` — déféré à iter113 pour éviter régressions massives en cours d'itération.
+
 ### 2026-02-12 — Iter 111 (Tiered Approval + SSE Streaming token-par-token + ViewSpec guest + parent_chat_id + Spacings)
 
 **🔴 P0 — Tiered Approval dans DeviceManager (sécurité hiérarchique stricte)** :
