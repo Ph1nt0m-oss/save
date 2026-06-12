@@ -42,18 +42,18 @@ def test_claude_fable_5_label_in_chat():
 
 
 def test_caly_offset_iter107_or_newer():
-    """Caly à right-36 (iter107) ou right-32 (iter108)."""
+    """Caly à right-36 (iter107), right-32 (iter108) ou right-28 (iter109)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert ("right-36" in caly) or ("right-32" in caly)
+    assert any(rw in caly for rw in ("right-36", "right-32", "right-28"))
     assert "right-64" not in caly
 
 
 def test_dashboard_spacings_iter107():
-    """Dashboard.js : ml-24 (5cm extra) pour langues et SiteModeBadge."""
+    """Dashboard.js : ml-24+ (5cm extra) ou ml-32/40 (iter109) pour langues et SiteModeBadge."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert "ml-3 sm:ml-24" in dash
-    # Doit apparaître deux fois (gauche + droite)
-    assert dash.count("ml-3 sm:ml-24") >= 2
+    # Doit contenir AU MOINS un des spacing widths recents
+    found = sum(1 for m in ("ml-3 sm:ml-24", "ml-3 sm:ml-32", "ml-3 sm:ml-40") if m in dash)
+    assert found >= 2, f"Expected ≥2 spacing widths, got {found}"
 
 
 def test_view_mode_picker_aucune_vue_active():

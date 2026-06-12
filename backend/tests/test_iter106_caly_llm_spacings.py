@@ -42,9 +42,9 @@ def test_orchestrator_supports_full_read():
 
 
 def test_caly_offset_set():
-    """Caly est à un offset right (~3, 7 ou 8cm selon iter)."""
+    """Caly est à un offset right (~3-10cm selon iter)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert any(rw in caly for rw in ("right-64", "right-36", "right-44", "right-32"))
+    assert any(rw in caly for rw in ("right-64", "right-36", "right-44", "right-32", "right-28"))
     assert "right-5 z-" not in caly
 
 
@@ -55,8 +55,7 @@ def test_caly_uses_new_endpoint():
 
 
 def test_dashboard_spacings_increased():
-    """Dashboard.js doit avoir des gaps plus larges (iter106 → iter107 ml-24)."""
+    """Dashboard.js doit avoir des gaps plus larges (iter106 → iter109 ml-40)."""
     dash = Path("/app/frontend/src/pages/Dashboard.js").read_text(encoding="utf-8")
-    assert "lg:gap-16" in dash or "lg:gap-12" in dash
-    # iter106 ml-12 ou iter107 ml-24
-    assert ("ml-3 sm:ml-12" in dash) or ("ml-3 sm:ml-24" in dash)
+    assert any(g in dash for g in ("lg:gap-16", "lg:gap-12", "lg:gap-32"))
+    assert any(m in dash for m in ("ml-3 sm:ml-12", "ml-3 sm:ml-24", "ml-3 sm:ml-32", "ml-3 sm:ml-40"))

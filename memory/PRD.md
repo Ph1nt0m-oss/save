@@ -16,6 +16,32 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-12 — Iter 109 (Spacings finaux + Cleanup + Caly code éditable)
+
+**🟢 Spacings finaux** :
+- Caly widget : `right-32` → `right-28` (+0.5cm vers la droite).
+- LanguageToggle : `ml-12` → `ml-32` (~10cm vers la droite seule).
+- SiteModeBadge container Dashboard : `ml-24` → `ml-40` (~10cm vers la gauche).
+- Container header : `lg:gap-16` → `lg:gap-32` (écart agrandi entre cluster gauche/droit, ie entre Déclarer un vol et ZIP).
+
+**🟢 Correction message "Active une vue simulée..."** :
+- `prog_access_hint` corrigé en FR + EN : "Tu dois être sur un appareil de la créatrice ET ne pas être en mode simulation (lecture seule). Aucune vue simulée ne donne accès au code." (au lieu de proposer d'activer une vue simulée, ce qui était faux).
+
+**🟢 Sections retirées de AIProgrammingPanel** :
+- Agents de l'orchestrateur (4 cartes Planner/Executor/Critic/Arbiter)
+- Boucle de validation (test-loop)
+- Historique d'exécution
+- Changelog modifications site/IA
+Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désormais épuré.
+
+**🟢 Chatbot programming enrichi (créa + admins)** :
+- `CalyPromptEditor` étendu : en plus du prompt système, ajout d'un **éditeur de code Caly** (textarea pleine page chargée depuis `backend/server.py` section `# iter106 — CALY CHATBOT` jusqu'à fin caly_config_set, sauvegarde via `/private/code/write-file` avec backup .bak auto, marqueurs préservés) + **recherche dans le code** (POST `/private/code/grep` même comportement que site programming).
+- Mode d'emploi affiché : description du fichier source, indicateur dirty, compteur de caractères.
+
+**Tests** : `/app/backend/tests/test_iter109_spacings_corrections.py` — 7/7 PASS. **81/81 tests** total (iter100→109). Tests historiques rendus plus tolérants aux changements de spacings/offsets.
+
+
+
 ### 2026-02-12 — Iter 108 (Onglet Programmation Chatbots + Sélecteur d'IA + Spacings)
 
 **🟢 Onglet Programmation Caly + Bots communautaires** :

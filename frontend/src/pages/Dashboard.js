@@ -804,7 +804,7 @@ export default function Dashboard() {
         {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu]
             iter106 — Spacings élargis pour que tous les labels soient visibles sans tronquer. */}
         <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4 overflow-x-auto md:overflow-x-visible">
-          <div className="flex items-center justify-between gap-4 sm:gap-10 lg:gap-16 min-w-max md:min-w-0">
+          <div className="flex items-center justify-between gap-4 sm:gap-16 lg:gap-32 min-w-max md:min-w-0">
             {/* LEFT */}
             <div className="flex items-center gap-3 sm:gap-5 min-w-0">
               <button
@@ -818,8 +818,8 @@ export default function Dashboard() {
                   ? <PanelLeftClose className="w-5 h-5" />
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
-              {/* iter108 — Langue décalée 5cm vers la droite seule */}
-              <span className="inline-block ml-3 sm:ml-12">
+              {/* iter109 — Langue décalée 10cm vers la droite seule */}
+              <span className="inline-block ml-3 sm:ml-32">
                 <LanguageToggle placement="bottom" />
               </span>
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-24">
@@ -897,8 +897,8 @@ export default function Dashboard() {
                 <span className="hidden lg:inline">ZIP</span>
               </Button>
 
-              <div className="ml-3 sm:ml-24 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
-                {/* iter107 — SiteModeBadge 5cm + 5cm = 10cm gauche depuis position iter106 */}
+              <div className="ml-3 sm:ml-40 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
+                {/* iter109 — SiteModeBadge décalée encore 5cm gauche en plus (total 10cm depuis ZIP) */}
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}

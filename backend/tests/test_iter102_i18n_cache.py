@@ -77,7 +77,6 @@ def test_private_programming_no_hardcoded_french():
         "Recherche dans le code",
         "Pattern à chercher",
         "ligne(s) trouvée(s)",
-        "Boucle de validation",
         "Tests en cours…",
         "Lancer pytest backend",
         "Aucun événement persisté",

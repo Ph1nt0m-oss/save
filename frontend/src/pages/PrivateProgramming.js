@@ -348,78 +348,17 @@ function AIProgrammingPanel() {
         </p>
       </section>
 
-      {/* Agents prompts (read-only) */}
-      <section className="col-span-12 lg:col-span-6 bg-[#0A0A0A] border border-white/10 rounded-sm p-4">
-        <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] mb-3 flex items-center gap-2">
-          <Cpu className="w-4 h-4" /> {t('prog_agents_title')}
-        </h2>
-        <div className="space-y-3">
-          {AGENT_PROMPTS.map((a) => {
-            const Ai = a.icon;
-            return (
-              <div key={a.id} className="bg-black/30 border border-white/10 rounded-sm p-3" data-testid={`ai-agent-${a.id}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Ai className={`w-4 h-4 ${a.color}`} />
-                  <span className="font-bold text-sm">{a.label}</span>
-                </div>
-                <p className="text-[11px] text-[#A1A1AA] leading-relaxed">{t(a.descKey)}</p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Test-loop launcher */}
-      <section className="col-span-12 lg:col-span-6 bg-[#0A0A0A] border border-white/10 rounded-sm p-4">
-        <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] mb-3 flex items-center gap-2">
-          <Play className="w-4 h-4" /> {t('prog_test_loop_title')}
-        </h2>
-        <button
-          onClick={runTestLoop}
-          disabled={testRunning}
-          data-testid="ai-run-test-loop"
-          className="w-full px-3 py-2 bg-[#E4FF00] text-[#050505] font-bold text-sm rounded-sm hover:bg-[#E4FF00]/90 disabled:opacity-40 inline-flex items-center justify-center gap-2"
-        >
-          {testRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          {testRunning ? t('prog_test_running') : t('prog_test_launch')}
-        </button>
-        {testResult && (
-          <div className="mt-3 space-y-1 max-h-64 overflow-y-auto">
-            {testResult.map((e, i) => (
-              <div key={i} className="text-[11px] text-white bg-black/40 border border-white/10 rounded-sm p-2">
-                <span className="text-[#71717A] mr-1">[{e.kind}]</span>
-                {e.summary}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* History */}
-      <section className="col-span-12 bg-[#0A0A0A] border border-white/10 rounded-sm p-4">
-        <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] mb-3 flex items-center gap-2">
-          <FolderTree className="w-4 h-4" /> {t('prog_history_title') || "Historique d'exécution"}
-        </h2>
-        {history.length === 0 ? (
-          <div className="text-[11px] text-[#71717A] py-4 text-center">{t('prog_history_empty')}</div>
-        ) : (
-          <div className="space-y-1 max-h-64 overflow-y-auto">
-            {history.map((e, i) => (
-              <div key={i} className="text-[11px] text-white bg-black/30 border border-white/10 rounded-sm p-2 flex items-center gap-2">
-                <span className="text-[#71717A] flex-shrink-0">[{e.kind}]</span>
-                <span className="flex-1 truncate">{e.summary}</span>
-                <span className="text-[10px] text-[#71717A] flex-shrink-0">{new Date(e.ts).toLocaleTimeString()}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* iter92 — Changelog modifications site/IA (sync bidirectionnelle) */}
-      <ChangelogPanel />
+      {/* iter109 — Sections retirées (jugées peu utiles par l'utilisatrice) :
+          - Agents de l'orchestrateur (prompts read-only)
+          - Boucle de validation (test-loop)
+          - Historique d'exécution
+          - Changelog modifications site/IA
+          Le sélecteur d'IA + le code source remplacent ces sections. */}
     </div>
   );
 }
+
+// iter109 — Sections orphelines retirées (test-loop, history, changelog)
 
 // =============================================================================
 // iter92 — CHANGELOG modifications site/IA (sync bidirectionnelle)
