@@ -41,10 +41,10 @@ def test_claude_fable_5_label_in_chat():
     assert "'Claude Fable 5'" in chat
 
 
-def test_caly_right_36_iter107():
-    """Caly déplacée à right-36 (~3cm vers la droite depuis right-64)."""
+def test_caly_offset_iter107_or_newer():
+    """Caly à right-36 (iter107) ou right-32 (iter108)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert "right-36" in caly
+    assert ("right-36" in caly) or ("right-32" in caly)
     assert "right-64" not in caly
 
 

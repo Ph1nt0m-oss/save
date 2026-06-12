@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -818,7 +818,10 @@ export default function Dashboard() {
                   ? <PanelLeftClose className="w-5 h-5" />
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
-              <LanguageToggle placement="bottom" />
+              {/* iter108 — Langue décalée 5cm vers la droite seule */}
+              <span className="inline-block ml-3 sm:ml-12">
+                <LanguageToggle placement="bottom" />
+              </span>
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-24">
                 <TheftButton variant="labelled" />
                 <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
@@ -1117,6 +1120,31 @@ export default function Dashboard() {
                   <div>
                     <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation des IA</h3>
                     <p className="text-xs text-[#A1A1AA]">Architecture, prompts, modules de vérification</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* iter108 — Programmation des chatbots (Caly + bots communautaires) */}
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
+                    toast.error('Accès refusé pour des raisons de sécurité.');
+                    return;
+                  }
+                  navigate('/private/chatbot-programming');
+                }}
+                data-testid="creator-chatbot-prog-btn"
+                className="group bg-gradient-to-br from-pink-500/[0.06] to-rose-500/[0.06] border border-pink-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-pink-400 hover:shadow-[0_8px_30px_rgba(236,72,153,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-pink-500/20 border border-pink-400/40 rounded-full flex items-center justify-center">
+                    <MessageCircleQuestion className="w-6 h-6 text-pink-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation des chatbots</h3>
+                    <p className="text-xs text-[#A1A1AA]">Caly + bots communautaires (prompts, FAQ)</p>
                   </div>
                 </div>
               </motion.button>

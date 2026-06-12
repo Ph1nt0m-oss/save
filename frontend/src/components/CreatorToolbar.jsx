@@ -145,7 +145,8 @@ export default function CreatorToolbar() {
   const viewLocked = device.siteMode === 'guest' && !!device.guestView;
 
   return (
-    <div className="inline-flex items-center gap-1.5 sm:gap-2 flex-wrap" data-testid="creator-toolbar">
+    <div className="inline-flex items-center gap-2 sm:gap-8 flex-wrap" data-testid="creator-toolbar">
+      {/* iter108 — SiteModeBadge 3cm vers la gauche via gap élargi */}
       <SiteModeBadge
         role={device.role}
         siteMode={device.siteMode}

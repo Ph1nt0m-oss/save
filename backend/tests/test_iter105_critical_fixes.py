@@ -34,7 +34,7 @@ def test_caly_is_floating_widget():
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
     assert 'fixed bottom-5' in caly
     # right-5 (iter105) ou right-64 (iter106) ou right-36 (iter107)
-    assert any(rw in caly for rw in ('right-5 z-', 'right-64', 'right-36', 'right-44'))
+    assert any(rw in caly for rw in ('right-5 z-', 'right-64', 'right-36', 'right-44', 'right-32'))
     assert 'caly-floating-btn' in caly
     assert 'header-caly-btn' not in caly
 

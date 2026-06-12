@@ -16,6 +16,28 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-12 — Iter 108 (Onglet Programmation Chatbots + Sélecteur d'IA + Spacings)
+
+**🟢 Onglet Programmation Caly + Bots communautaires** :
+- Nouvelle page `/private/chatbot-programming` (`PrivateChatbotProgramming.js`) avec 2 onglets :
+  - **Caly (chatbot d'aide)** : éditeur du prompt système (textarea), bouton Sauvegarder qui POST `/caly/config`, indicateur "Prompt par défaut" / "Prompt personnalisé", compteur de caractères.
+  - **Bots communautaires** : liste les bots existants (`GET /community-bots`) avec status publié/brouillon. Pour éditer un bot, redirection vers le BotsAdminPanel du top-bar.
+- Bouton "Programmation des chatbots" ajouté dans Dashboard (carte rose à côté des 2 autres). Sécurité identique : créa physique + PAS en simulation.
+- Route déclarée dans `App.js` (testid `creator-chatbot-prog-btn`).
+
+**🟢 Sélecteur d'IA dans AIProgrammingPanel** :
+- En haut de l'onglet "Programmation des IA" : dropdown listant 8 IAs (Orchestrateur, Claude, Gemini, Grok, GPT, Lindy, IA locale Ollama, Caly). Chaque sélection charge le code source correspondant via `/private/code/read-file` avec un filtrage par mot-clé (`anthropic`, `gemini`, `caly_ask`...) pour ne montrer que les blocs pertinents.
+- Code affiché en read-only (~96 lignes max visibles, scroll). Lien vers SiteProgramming pour édition.
+
+**🟢 Spacings finaux iter108** :
+- Caly widget : `right-36` → `right-32` (~1cm vers la droite).
+- LanguageToggle : wrappé dans `<span className="inline-block ml-3 sm:ml-12">` pour la déplacer SEULE de 5cm vers la droite (sans bouger les autres éléments).
+- SiteModeBadge : CreatorToolbar gap `1.5/2` → `2/8` (~3cm de plus entre SiteModeBadge et ViewModePicker).
+
+**Tests** : `/app/backend/tests/test_iter108_chatbot_prog_ai_selector.py` — 7/7 PASS. **74/74 tests** total (iter100→108).
+
+
+
 ### 2026-02-12 — Iter 107 (Sécurité programming + Claude Fable 5 + Spacings)
 
 **🔴 Sécurité programming page** :

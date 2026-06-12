@@ -215,6 +215,21 @@ function AIProgrammingPanel() {
   const [history, setHistory] = useState([]);
   const [testRunning, setTestRunning] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  // iter108 — Sélecteur d'IA avec code source associé
+  const [selectedAI, setSelectedAI] = useState('orchestrator');
+  const [aiCode, setAiCode] = useState('');
+  const [aiCodeLoading, setAiCodeLoading] = useState(false);
+
+  const AI_CODE_FILES = {
+    orchestrator: { label: 'Orchestrateur multi-agents', path: 'backend/orchestrator.py', color: 'text-violet-300' },
+    claude:       { label: 'Claude (Anthropic)',        path: 'backend/server.py',       color: 'text-amber-300', filter: 'anthropic' },
+    gemini:       { label: 'Gemini',                    path: 'backend/server.py',       color: 'text-cyan-300', filter: 'gemini' },
+    grok:         { label: 'Grok (xAI)',                path: 'backend/grok_integration.py', color: 'text-rose-300' },
+    gpt:          { label: 'GPT (OpenAI)',              path: 'backend/server.py',       color: 'text-emerald-300', filter: 'openai' },
+    lindy:        { label: 'Lindy AI',                  path: 'backend/server.py',       color: 'text-yellow-300', filter: 'lindy' },
+    locale:       { label: 'IA locale (Ollama)',        path: 'backend/server.py',       color: 'text-blue-300', filter: 'ollama' },
+    caly:         { label: 'Caly (chatbot)',            path: 'backend/server.py',       color: 'text-pink-300', filter: 'caly_ask' },
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -226,6 +241,49 @@ function AIProgrammingPanel() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  // Charge le code source quand l'IA sélectionnée change
+  useEffect(() => {
+    const cfg = AI_CODE_FILES[selectedAI];
+    if (!cfg) return;
+    setAiCodeLoading(true);
+    (async () => {
+      try {
+        const body = await withCreatorProof(API, axios, { path: cfg.path });
+        const r = await axios.post(`${API}/private/code/read-file`, body);
+        let content = r.data?.content || '';
+        // Si un filtre est défini, on isole les blocs contenant le pattern
+        if (cfg.filter) {
+          const lines = content.split('\n');
+          const blocks = [];
+          let inBlock = false; let block = []; let braceDepth = 0;
+          for (let i = 0; i < lines.length; i++) {
+            const ln = lines[i];
+            if (!inBlock && ln.toLowerCase().includes(cfg.filter.toLowerCase())) {
+              const start = Math.max(0, i - 2);
+              inBlock = true; braceDepth = 0;
+              block = lines.slice(start, i + 1);
+              continue;
+            }
+            if (inBlock) {
+              block.push(ln);
+              // Heuristic end-of-block (empty line after 30+ lines or new def at column 0)
+              if (block.length > 60 || (ln.match(/^(def |class |@)/) && block.length > 5)) {
+                blocks.push(block.join('\n')); block = []; inBlock = false;
+              }
+            }
+          }
+          if (inBlock && block.length > 0) blocks.push(block.join('\n'));
+          content = blocks.length > 0
+            ? blocks.map((b, idx) => `\n# ===== Extrait #${idx + 1} =====\n${b}`).join('\n\n')
+            : `# Aucune occurrence de "${cfg.filter}" trouvée dans ${cfg.path}.\n# Affichage du fichier complet :\n\n${content}`;
+        }
+        setAiCode(content);
+      } catch (e) {
+        setAiCode(`# Erreur de chargement : ${e?.response?.data?.detail || e.message}`);
+      } finally { setAiCodeLoading(false); }
+    })();
+  }, [selectedAI]);
 
   const runTestLoop = async () => {
     setTestRunning(true);
@@ -260,6 +318,36 @@ function AIProgrammingPanel() {
 
   return (
     <div className="grid grid-cols-12 gap-4">
+      {/* iter108 — Sélecteur d'IA + code source associé (read-only ici, édition via SiteProgramming) */}
+      <section className="col-span-12 bg-[#0A0A0A] border border-white/10 rounded-sm p-4" data-testid="ai-code-selector">
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+          <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] flex items-center gap-2">
+            <FileCode className="w-4 h-4" /> Code source par IA
+          </h2>
+          <select
+            value={selectedAI}
+            onChange={(e) => setSelectedAI(e.target.value)}
+            data-testid="ai-code-selector-dropdown"
+            className="bg-[#0F0F13] border border-white/15 rounded-sm px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#E4FF00]"
+          >
+            {Object.entries(AI_CODE_FILES).map(([id, cfg]) => (
+              <option key={id} value={id}>{cfg.label} — {cfg.path}</option>
+            ))}
+          </select>
+        </div>
+        <div className="bg-[#050505] border border-white/10 rounded-sm p-3 max-h-96 overflow-auto" data-testid="ai-code-preview">
+          {aiCodeLoading ? (
+            <Loader2 className="w-5 h-5 animate-spin text-[#E4FF00]" />
+          ) : (
+            <pre className="text-[10px] font-mono text-white whitespace-pre-wrap break-all leading-relaxed">{aiCode}</pre>
+          )}
+        </div>
+        <p className="text-[10px] text-[#71717A] mt-2">
+          💡 Pour éditer, rends-toi sur l'onglet « Programmation du site » et ouvre le fichier
+          <span className="text-cyan-300 font-mono"> {AI_CODE_FILES[selectedAI]?.path}</span>.
+        </p>
+      </section>
+
       {/* Agents prompts (read-only) */}
       <section className="col-span-12 lg:col-span-6 bg-[#0A0A0A] border border-white/10 rounded-sm p-4">
         <h2 className="font-['Chivo'] font-bold text-sm text-[#E4FF00] mb-3 flex items-center gap-2">
