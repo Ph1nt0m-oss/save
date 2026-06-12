@@ -54,26 +54,24 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
   // Cacher le picker si: pas créa ET aucune vue forcée (rien à choisir).
   if (!isCreator && forced.length === 0) return null;
 
-  // iter104 — viewMode === 'creator' est traité comme "aucune simulation"
-  // (la créatrice voit sa vue créatrice par défaut, pas besoin de cocher).
-  // iter114 — Mais la case "Vue Créatrice" doit AFFICHER l'état actif (case
-  // cochée) quand on est en mode écriture, pour clarifier qu'on EST déjà
-  // en vue créatrice (l'utilisatrice était confuse de ne pouvoir rien sélectionner).
-  const isSimulating = !!viewMode && viewMode !== '' && viewMode !== 'creator';
-  const current = isSimulating ? VIEW_META[viewMode] : VIEW_META.creator;
+  // iter115 — Modèle simplifié : viewMode est exactement la valeur active.
+  //   - viewMode === null/undefined → AUCUNE vue active (aucune case cochée)
+  //   - viewMode === 'creator' → case "Vue créatrice" cochée (cliquable + recliquable pour décocher)
+  //   - viewMode === 'user'|'modo'|'admin'|'guest' → simulation active
+  // Cliquer sur la case déjà active la décoche → retour à "Aucune vue active".
+  const isActive = !!viewMode && viewMode !== '';
+  const isSimulating = isActive && viewMode !== 'creator';
+  const current = isActive ? VIEW_META[viewMode] : VIEW_META.creator;
   const CIcon = current ? current.Icon : Eye;
 
   const toggle = (mode) => {
-    // Cliquer sur creator = revenir au mode écriture (par défaut créa)
-    if (mode === 'creator') {
-      setStoredViewMode(null);
-      setOpen(false);
-      return;
-    }
-    // Cliquer sur la case déjà active = décocher (retour mode écriture, viewMode=null)
+    // iter115 — Toggle universel : si la case cliquée est DÉJÀ active, on
+    // décoche (retour à "Aucune vue active"). Sinon on active la vue cliquée.
     if (mode === viewMode) {
       setStoredViewMode(null);
     } else {
+      // 'creator' est stocké explicitement (et plus comme null) pour
+      // matérialiser la case cochée.
       setStoredViewMode(mode);
     }
     setOpen(false);
@@ -92,7 +90,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
         }`}
       >
         <CIcon className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{isSimulating ? t(current.labelKey) : (isCreator ? t('view_creator') : 'Aucune vue active')}</span>
+        <span className="hidden sm:inline">{isActive ? t(current.labelKey) : 'Aucune vue active'}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -106,18 +104,12 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
           {ORDER.map((m) => {
             const meta = VIEW_META[m];
             const Mi = meta.Icon;
-            // iter104 — Logique: 'creator' = baseline (jamais checked). Active = view actuellement simulée.
-            // iter114 — Pour la créa, la case 'creator' est ACTIVE (cochée)
-            // quand pas en simulation, pour rendre la sélectabilité explicite.
-            const active = m === 'creator'
-              ? (isCreator && !isSimulating)
-              : (isSimulating && m === viewMode);
-            // iter105 — Dimming différent selon créa/visiteur :
-            // - Créa : autres vues dimmed si simulation active
-            // - Visiteur : vues NON FORCÉES dimmed (impossibles à sélectionner)
+            // iter115 — Toggle universel : active = case correspond exactement à viewMode.
+            const active = m === viewMode;
+            // iter115 — Dimming : vues NON actives sont grisées si une vue est active (sauf 'creator' jamais dimmed).
             const dimmedByForced = hasForcedConstraint && m !== 'creator' && !forced.includes(m);
             const dimmed = isCreator
-              ? (isSimulating && !active && m !== 'creator')
+              ? (isActive && !active && m !== 'creator')
               : dimmedByForced;
             const disabled = dimmedByForced;  // visiteur ne peut pas cocher les vues non-forcées
             return (

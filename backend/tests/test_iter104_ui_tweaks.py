@@ -95,10 +95,11 @@ def test_guest_views_have_read_only_labels():
 
 
 def test_view_mode_picker_handles_creator_as_default():
-    """iter104 — 'creator' click → revient au mode écriture (null)."""
+    """iter104→iter115 — Le toggle universel sur 'creator' : cliquer active la
+    case Vue créatrice (viewMode='creator'), recliquer décoche (viewMode=null)."""
     picker = Path("/app/frontend/src/components/ViewModePicker.jsx").read_text(encoding="utf-8")
-    assert "if (mode === 'creator')" in picker
-    assert "viewMode !== 'creator'" in picker  # isSimulating exclut creator
+    # iter115 : toggle universel "active = m === viewMode" gère 'creator' comme les autres.
+    assert "const active = m === viewMode;" in picker
 
 
 def test_view_mode_picker_shows_forced_views_hint():

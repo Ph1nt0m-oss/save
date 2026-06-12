@@ -14,17 +14,17 @@ SERVER = (ROOT / "backend" / "server.py").read_text()
 # ---------------------------------------------------------------------- Vue créatrice
 
 
-def test_vue_creatrice_is_active_when_not_simulating():
-    """Pour la créa hors simulation, la case 'creator' doit apparaître ACTIVE
-    (cochée) afin de rendre la sélection visuelle explicite."""
-    assert "active = m === 'creator'" in VMP
-    assert "(isCreator && !isSimulating)" in VMP
+def test_vue_creatrice_clickable_to_toggle():
+    """iter115 — Vue Créatrice est cliquable + recliquable : active si
+    viewMode === 'creator', décoche si recliquée (retour 'Aucune vue active').
+    Modèle de toggle universel : active = m === viewMode."""
+    assert "const active = m === viewMode;" in VMP
 
 
-def test_view_mode_toggle_shows_creator_label_when_not_simulating_for_creator():
-    """Le bouton du picker affiche 'Vue créatrice' (et non 'Aucune vue active')
-    quand l'utilisatrice est créa et hors simulation."""
-    assert "isCreator ? t('view_creator') : 'Aucune vue active'" in VMP
+def test_view_mode_toggle_shows_none_when_no_view_active():
+    """Le bouton du picker affiche 'Aucune vue active' quand viewMode est null,
+    et le label de la vue active sinon (y compris 'Vue créatrice' si 'creator' sélectionné)."""
+    assert "isActive ? t(current.labelKey) : 'Aucune vue active'" in VMP
 
 
 # ---------------------------------------------------------------------- Big access denied

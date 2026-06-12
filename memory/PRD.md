@@ -235,6 +235,18 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 115 (Vue créatrice toggleable)
+
+**🎯 Demande utilisatrice (correction iter114)** :
+- La case "Vue Créatrice" est désormais **cliquable + recliquable** :
+  - Par défaut : viewMode=null → **"Aucune vue active"** (aucune case cochée)
+  - Cliquer "Vue créatrice" → viewMode='creator' → case **cochée** + label toggle "Vue créatrice"
+  - Recliquer "Vue créatrice" → viewMode=null → retour à "Aucune vue active"
+- Modèle de toggle universel : `active = m === viewMode` pour toutes les vues. Plus de cas spécial 'creator'.
+- `isActive` (au lieu de `isSimulating`) gère l'affichage du label dans le bouton toggle.
+
+**Tests** : **161/161 pytests PASS**. `test_iter104_ui_tweaks` et `test_iter114_*` mis à jour pour refléter le nouveau modèle.
+
 ### 2026-02-12 — Iter 114 (Vue créatrice cochée + Big access denied + Changelog + Polling 5s + Streaming natif)
 
 **🔴 P0 — Bug Vue créatrice non sélectionnable visuellement** :
