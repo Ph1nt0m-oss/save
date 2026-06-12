@@ -8207,7 +8207,7 @@ async def community_bots_test(payload: BotTestIn):
         if not api_key:
             raise HTTPException(status_code=503, detail="LLM key non configurée.")
         chat = LlmChat(api_key=api_key, session_id=f"bot_test_{payload.bot_id}", system_message=system_prompt)
-        chat = chat.with_model("openai", "gpt-4o-mini").with_max_tokens(800)
+        chat = chat.with_model("openai", "gpt-4o-mini")
         reply = await chat.send_message(UserMessage(text=payload.user_message[:3000]))
         return {
             "bot_id": payload.bot_id,
@@ -9204,12 +9204,13 @@ class PrivateReadFileIn(BaseModel):
 async def private_read_file(payload: PrivateReadFileIn):
     """iter89 — Creator-only ET hors vue créa (anti-copie par-dessus l'épaule).
     Le client doit prouver via signature + envoyer current_view_mode != 'creator'.
+    iter105 — full_read=True : la créatrice obtient le fichier ENTIER pour pouvoir l'éditer.
     """
     dev = await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
     # Le view_mode est purement client-side donc on accepte un header optionnel.
     # Si pas de header, on autorise (la sécurité réelle est dans le check UI).
     from orchestrator import _read_file_safe
-    return _read_file_safe(payload.path)
+    return _read_file_safe(payload.path, full_read=True)
 
 
 class PrivateGrepIn(BaseModel):
@@ -9299,6 +9300,137 @@ async def private_write_file(payload: PrivateWriteFileIn):
         "bytes": len(payload.content),
         "backup": str(backup_path.relative_to("/app")) if backup_path else None,
     }
+
+
+# ==========================================================================
+# iter106 — CALY CHATBOT (widget flottant) : endpoint LLM dédié
+# ==========================================================================
+
+CALY_DEFAULT_SYSTEM_PROMPT = """Tu es Caly, l'assistante d'aide à l'utilisation de CodeForge AI.
+Tu réponds aux questions des utilisateurs sur le site : créer une appli, modifier
+une création, comprendre l'inscription cryptographique (clé ECDSA par appareil,
+inscription GitHub obligatoire), les exports (ZIP, APK, EXE), le mode privé/public,
+les vues (utilisateur/modo/admin/créatrice), le profil, les amis, les bots
+communautaires, les sondages et annonces, les paramètres de langue.
+
+Règles :
+- Réponses CONCISES (max 3 phrases), en français.
+- Tutoie l'utilisateur.
+- Ne donne JAMAIS de code source, ni de tokens, ni d'informations secrètes.
+- Si tu ne sais pas, dis-le franchement et propose de contacter un modo.
+- Si l'utilisateur demande une fonctionnalité technique, redirige vers l'onglet
+  approprié (Dashboard pour créer, Profil pour la clé, etc.)."""
+
+
+class CalyAskIn(BaseModel):
+    message: str
+    history: Optional[List[Dict[str, str]]] = None  # [{role, content}]
+    session_id: Optional[str] = None
+    language: Optional[str] = "fr"
+
+
+@api_router.post("/caly/ask")
+async def caly_ask(input: CalyAskIn):
+    """LLM dédié pour Caly (gpt-4o-mini via Emergent LLM key).
+    Enrichi avec la KB éventuelle pour Caly (bot_knowledge où bot_id='caly').
+    Public — pas de signature requise (c'est un help widget)."""
+    if not (input.message or "").strip():
+        raise HTTPException(status_code=400, detail="Message vide.")
+
+    # Charge le prompt système persistant (modifiable via /private-chatbot-programming
+    # plus tard) avec fallback sur le défaut.
+    cfg = await db.bot_configs.find_one({"bot_id": "caly"}, {"_id": 0, "prompt": 1}) or {}
+    system_prompt = cfg.get("prompt") or CALY_DEFAULT_SYSTEM_PROMPT
+
+    # Enrichi avec la knowledge base Caly
+    kb_entries = await db.bot_knowledge.find(
+        {"bot_id": "caly"}, {"_id": 0, "question": 1, "answer": 1}
+    ).to_list(length=30)
+    if kb_entries:
+        kb_text = "\n\n=== BASE DE CONNAISSANCES (FAQ CodeForge) ===\n" + "\n".join(
+            f"Q: {e.get('question', '')}\nR: {e.get('answer', '')}" for e in kb_entries
+        )
+        system_prompt = system_prompt + kb_text
+
+    # Récupère l'historique récent (max 8 derniers messages) pour le contexte
+    history_text = ""
+    if input.history:
+        recent = input.history[-8:]
+        history_text = "\n".join(
+            f"{('Utilisateur' if h.get('role') == 'user' else 'Caly')} : {h.get('content', '')}"
+            for h in recent if h.get('content')
+        )
+
+    composed = (
+        f"### Historique récent :\n{history_text}\n\n### Nouveau message :\n{input.message}"
+        if history_text else input.message
+    )
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        api_key = os.environ.get("EMERGENT_LLM_KEY") or ""
+        if not api_key:
+            raise HTTPException(status_code=503, detail="LLM key non configurée.")
+        session_id = input.session_id or f"caly_{uuid.uuid4().hex[:12]}"
+        chat = LlmChat(api_key=api_key, session_id=session_id, system_message=system_prompt)
+        chat = chat.with_model("openai", "gpt-4o-mini")
+        reply = await chat.send_message(UserMessage(text=composed[:4000]))
+        return {
+            "reply": str(reply or "")[:2000],
+            "session_id": session_id,
+            "kb_used": len(kb_entries),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Caly ask failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur Caly: {str(e)[:200]}")
+
+
+# Endpoint GET du prompt Caly + KB (pour la programming page admin)
+@api_router.get("/caly/config")
+async def caly_config_get():
+    cfg = await db.bot_configs.find_one({"bot_id": "caly"}, {"_id": 0}) or {}
+    return {
+        "bot_id": "caly",
+        "prompt": cfg.get("prompt") or CALY_DEFAULT_SYSTEM_PROMPT,
+        "is_default": not bool(cfg.get("prompt")),
+    }
+
+
+class CalyConfigSetIn(BaseModel):
+    key_id: str
+    nonce: str
+    signature: str
+    prompt: str
+
+
+@api_router.post("/caly/config")
+async def caly_config_set(payload: CalyConfigSetIn):
+    """Créa/admin only : modifie le system prompt Caly persistant."""
+    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
+    role = dev.get("role"); sk = dev.get("staff_kind")
+    if not (role == "creator" or sk == "admin"):
+        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
+    if not payload.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt vide.")
+    if len(payload.prompt) > 8000:
+        raise HTTPException(status_code=413, detail="Prompt trop long (> 8000 chars).")
+    await db.bot_configs.update_one(
+        {"bot_id": "caly"},
+        {"$set": {
+            "bot_id": "caly",
+            "prompt": payload.prompt.strip(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by_key": payload.key_id,
+        }},
+        upsert=True,
+    )
+    try:
+        await _log_change("model", "Prompt système Caly mis à jour", {"bytes": len(payload.prompt)})
+    except Exception:
+        pass
+    return {"success": True}
 
 
 # ==========================================================================

@@ -30,9 +30,11 @@ def test_can_write_fallback_for_creator():
 
 
 def test_caly_is_floating_widget():
-    """CalyChatbot doit être un widget flottant fixed bottom-right."""
+    """CalyChatbot doit être un widget flottant fixed bottom + right (offset varie selon iter)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert 'fixed bottom-5 right-5' in caly
+    assert 'fixed bottom-5' in caly
+    # right-5 (iter105) ou right-64 (iter106 décalage)
+    assert ('right-5' in caly) or ('right-64' in caly)
     assert 'caly-floating-btn' in caly
     # L'ancien testid header est supprimé
     assert 'header-caly-btn' not in caly
@@ -59,13 +61,22 @@ def test_chat_ai_label_says_emergent():
 
 
 def test_backend_chat_transcript_uses_emergent_speaker():
-    """server.py doit utiliser 'Emergent' au lieu de 'Caly' dans les transcripts d'historique."""
+    """server.py doit utiliser 'Emergent' au lieu de 'Caly' dans les transcripts d'historique
+    des conversations IA principales. (Caly elle-même garde son nom pour son propre widget.)"""
     src = Path("/app/backend/server.py").read_text(encoding="utf-8")
-    # Pas de "else 'Caly'" dans les transcripts
-    assert "else 'Caly')" not in src
-    assert "else \"Caly\"" not in src
-    # Doit contenir 'Emergent' à la place
+    # Doit contenir 'Emergent' comme speaker dans les transcripts d'historique chat
     assert "else 'Emergent')" in src or 'else "Emergent"' in src
+    # Toutes les occurrences de "Caly" comme speaker doivent être dans le contexte Caly bot
+    # On compte les occurrences problématiques (transcripts d'IA non-Caly)
+    lines = src.split('\n')
+    bad_lines = []
+    for i, line in enumerate(lines):
+        if "else 'Caly')" in line or 'else "Caly")' in line:
+            # Vérifier si on est dans le contexte Caly endpoint (qui DOIT garder "Caly")
+            ctx = '\n'.join(lines[max(0, i-30):i])
+            if 'caly_ask' not in ctx and 'CalyAsk' not in ctx and '/caly/' not in ctx:
+                bad_lines.append((i+1, line.strip()))
+    assert not bad_lines, f"Found 'Caly' speaker in non-Caly contexts: {bad_lines}"
 
 
 def test_view_mode_picker_visible_to_visitors_with_forced():

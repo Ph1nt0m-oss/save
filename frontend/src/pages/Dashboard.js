@@ -801,11 +801,12 @@ export default function Dashboard() {
 
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-        {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu] */}
+        {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu]
+            iter106 — Spacings élargis pour que tous les labels soient visibles sans tronquer. */}
         <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4 overflow-x-auto md:overflow-x-visible">
-          <div className="flex items-center justify-between gap-2 sm:gap-4 min-w-max md:min-w-0">
+          <div className="flex items-center justify-between gap-4 sm:gap-10 lg:gap-16 min-w-max md:min-w-0">
             {/* LEFT */}
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="flex items-center gap-3 sm:gap-5 min-w-0">
               <button
                 onClick={() => setIsSidebarOpen(o => !o)}
                 data-testid="sidebar-toggle-btn"
@@ -818,29 +819,32 @@ export default function Dashboard() {
                   : <PanelLeftOpen className="w-5 h-5" />}
               </button>
               <LanguageToggle placement="bottom" />
-              <TheftButton variant="labelled" />
-              <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
-              <button
-                onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}
-                data-testid="open-groups-btn"
-                title="Tchats de groupe"
-                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
-              >
-                <Users className="w-4 h-4" />
-              </button>
-              {/* iter86 — La créatrice en vue créa n'a pas besoin du système
-                  d'amis (elle peut DM directement). Seules les vues simulées
-                  (user/modo/admin) affichent le bouton Amis. */}
-              {device.viewMode && device.viewMode !== 'creator' && (
+              {/* iter106 — Spacing 5cm entre langues et le reste (déclarer vol, comptes...) */}
+              <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-12">
+                <TheftButton variant="labelled" />
+                <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
                 <button
-                  onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
-                  data-testid="open-friends-btn"
-                  title="Amis & demandes"
+                  onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}
+                  data-testid="open-groups-btn"
+                  title="Tchats de groupe"
                   className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
                 >
-                  <UserCog className="w-4 h-4" />
+                  <Users className="w-4 h-4" />
                 </button>
-              )}
+                {/* iter86 — La créatrice en vue créa n'a pas besoin du système
+                    d'amis (elle peut DM directement). Seules les vues simulées
+                    (user/modo/admin) affichent le bouton Amis. */}
+                {device.viewMode && device.viewMode !== 'creator' && (
+                  <button
+                    onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
+                    data-testid="open-friends-btn"
+                    title="Amis & demandes"
+                    className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
+                  >
+                    <UserCog className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* CENTER */}
@@ -852,8 +856,8 @@ export default function Dashboard() {
               <p className="text-[10px] sm:text-xs text-[#A1A1AA] hidden sm:block truncate">{t('dashSubtitle')}</p>
             </div>
 
-            {/* RIGHT */}
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            {/* RIGHT — iter106 : élargi pour visibilité totale des labels */}
+            <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
               <AnnounceButton />
               <Button
                 onClick={() => exportProject('apk')}
@@ -891,7 +895,8 @@ export default function Dashboard() {
                 <span className="hidden lg:inline">ZIP</span>
               </Button>
 
-              <div className="ml-1 sm:ml-2 flex items-center gap-1.5 sm:gap-2 border-l border-white/10 pl-1.5 sm:pl-2.5">
+              <div className="ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
+                {/* iter106 — SiteModeBadge 5cm vers la gauche via ml-3/12, plus de séparation */}
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}

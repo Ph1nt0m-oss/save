@@ -63,14 +63,18 @@ export default function CalyChatbot() {
     setMessages((m) => [...m, { role: 'user', content: userMsg }]);
     setLoading(true);
     try {
-      const r = await axios.post(`${API}/chat/message`, {
+      // iter106 — Endpoint dédié /caly/ask (LLM gpt-4o-mini + KB)
+      const history = messages.map((m) => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content || '',
+      }));
+      const r = await axios.post(`${API}/caly/ask`, {
         message: userMsg,
+        history,
         session_id: sessionId,
-        mode: 'online',
-        model: 'gpt-5.2',
-        system_prompt: CALY_SYSTEM_PROMPT,
+        language: 'fr',
       }, { withCredentials: true });
-      const aiText = r?.data?.ai_response?.content || 'Désolée, je n\'ai pas compris. Tu peux reformuler ?';
+      const aiText = r?.data?.reply || 'Désolée, je n\'ai pas compris. Tu peux reformuler ?';
       setMessages((m) => [...m, { role: 'caly', content: aiText }]);
     } catch {
       setMessages((m) => [...m, { role: 'caly', content: 'Connexion impossible. Réessaie dans un moment.' }]);
@@ -98,7 +102,7 @@ export default function CalyChatbot() {
         onClick={() => setOpen(true)}
         data-testid="caly-floating-btn"
         title="Caly — Assistante d'aide à l'utilisation"
-        className="fixed bottom-5 right-5 z-[90] inline-flex items-center justify-center w-12 h-12 rounded-full bg-pink-500/95 border-2 border-pink-300 text-white shadow-[0_8px_24px_rgba(236,72,153,0.45)] hover:bg-pink-400 hover:scale-105 transition-all"
+        className="fixed bottom-5 right-64 z-[90] inline-flex items-center justify-center w-12 h-12 rounded-full bg-pink-500/95 border-2 border-pink-300 text-white shadow-[0_8px_24px_rgba(236,72,153,0.45)] hover:bg-pink-400 hover:scale-105 transition-all"
       >
         <MessageCircleQuestion className="w-5 h-5" />
       </button>

@@ -227,11 +227,17 @@ def _safe_path(rel: str) -> Optional[str]:
         return None
     return full
 
-def _read_file_safe(rel: str, max_bytes: int = 60000) -> Dict[str, Any]:
+def _read_file_safe(rel: str, max_bytes: int = 60000, full_read: bool = False) -> Dict[str, Any]:
+    """iter105 — full_read=True bypass la limite pour la créatrice qui veut éditer."""
     full = _safe_path(rel)
     if not full or not os.path.isfile(full):
         return {"ok": False, "error": "not_found", "path": rel}
     try:
+        if full_read:
+            with open(full, "rb") as f:
+                data = f.read()
+            text = data.decode("utf-8", errors="replace")
+            return {"ok": True, "path": rel, "content": text, "truncated": False, "bytes": len(data)}
         with open(full, "rb") as f:
             data = f.read(max_bytes + 1)
         truncated = len(data) > max_bytes

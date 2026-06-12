@@ -16,6 +16,30 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-12 — Iter 106 (Caly LLM réel + No truncation + Spacings)
+
+**🟢 Caly connectée à un vrai LLM** :
+- Nouveau endpoint `POST /api/caly/ask` (public, pas de signature) : gpt-4o-mini via Emergent LLM key, system prompt `CALY_DEFAULT_SYSTEM_PROMPT` (modifiable), enrichi automatiquement par la KB bot_knowledge où `bot_id='caly'`. Historique des 8 derniers messages passé pour le contexte.
+- Frontend `CalyChatbot.jsx` : `/chat/message` (générique) remplacé par `/caly/ask` (dédié).
+- Test réel : "Comment je crée mon premier projet ?" → réponse pertinente concise reçue ✅
+- Endpoints admin : `GET /api/caly/config` (lecture prompt persistant) + `POST /api/caly/config` (créa/admin only, modifie le prompt système).
+- Collection MongoDB : `bot_configs` (`bot_id`, `prompt`, timestamps).
+
+**🟢 Truncation supprimée pour la créatrice** :
+- `orchestrator._read_file_safe(rel, full_read=False)` ajoute paramètre `full_read=True` qui bypasse la limite 60KB et retourne le fichier ENTIER (`truncated=False`).
+- `/api/private/code/read-file` passe maintenant `full_read=True` systématiquement (créa-only, déjà gated par signature).
+- Effet : `PrivateProgramming.js` charge le code complet, éditable, sans message "(tronqué)" sur les gros fichiers comme server.py (~9500 lignes).
+
+**🟢 Spacings élargis dans la top-bar Dashboard** :
+- Container : gap 4→10 (sm) → 16 (lg) entre les 3 zones (left/center/right).
+- LEFT : gap 3→5 entre items ; bloc `[Theft + Comptes + Tchats + Amis]` séparé par `ml-3 sm:ml-12` (~5cm) du LanguageToggle.
+- RIGHT : gap 3→4 entre items ; bloc `[CreatorToolbar + IdeasButton + BotsAdmin + Notifications + UserMenu]` séparé par `ml-3 sm:ml-12` (~5cm) du bouton ZIP.
+- Caly widget flottant : déplacé de `right-5` à `right-64` (~7cm vers la gauche depuis le centre du bouton).
+
+**Tests ajoutés** : `/app/backend/tests/test_iter106_caly_llm_spacings.py` — 8/8 PASS. **59/59 tests** total (iter100→106). Caly endpoint testé en live (réponse gpt-4o-mini reçue).
+
+
+
 ### 2026-02-12 — Iter 105 (Bugs critiques + Caly widget flottant)
 
 **🔴 P0 résolu — Bug "Mode lecture seule" pour la créatrice** :
