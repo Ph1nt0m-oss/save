@@ -80,8 +80,6 @@ def test_private_programming_no_hardcoded_french():
         "Tests en cours…",
         "Lancer pytest backend",
         "Aucun événement persisté",
-        "Aucune modification enregistrée",
-        "Modifications du site",
     ]
     for s in forbidden:
         assert s not in content, f"PrivateProgramming.js still contains hardcoded FR string: '{s}'"

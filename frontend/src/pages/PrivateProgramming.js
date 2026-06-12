@@ -82,6 +82,23 @@ function SiteProgrammingPanel() {
   const [editBuffer, setEditBuffer] = useState('');
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  // iter114 — Historique des modifications du site (changelog auto).
+  const [changes, setChanges] = useState([]);
+  const [showChanges, setShowChanges] = useState(true);
+  const [loadingChanges, setLoadingChanges] = useState(false);
+
+  const loadChanges = async () => {
+    setLoadingChanges(true);
+    try {
+      const body = await withCreatorProof(API, axios, { limit: 50 });
+      const r = await axios.post(`${API}/private/changelog`, body);
+      setChanges(r.data?.changes || []);
+    } catch (e) {
+      // Silencieux — pas critique. Afficher juste une liste vide.
+    } finally {
+      setLoadingChanges(false);
+    }
+  };
 
   const loadFile = async (rel) => {
     if (!rel) return;
@@ -125,9 +142,54 @@ function SiteProgrammingPanel() {
   };
 
   useEffect(() => { loadFile('backend/server.py'); /* eslint-disable-line */ }, []);
+  // iter114 — Charge le changelog au premier rendu + toutes les 30 secondes pour suivi "live".
+  useEffect(() => {
+    loadChanges();
+    const id = setInterval(loadChanges, 30000);
+    return () => clearInterval(id);
+    /* eslint-disable-next-line */
+  }, []);
 
   return (
-    <div className="grid grid-cols-12 gap-4 h-[calc(100vh-180px)]">
+    <div className="space-y-4">
+      {/* iter114 — Historique des modifications du site */}
+      <details
+        open={showChanges}
+        onToggle={(e) => setShowChanges(e.target.open)}
+        data-testid="site-changelog-panel"
+        className="bg-[#0A0A0A] border border-white/10 rounded-sm"
+      >
+        <summary className="cursor-pointer p-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/[0.02]">
+          <FileCode className="w-4 h-4 text-emerald-300" />
+          <span>Historique des modifications</span>
+          <span className="text-[10px] text-[#71717A] font-normal">({changes.length} entrée{changes.length > 1 ? 's' : ''})</span>
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); loadChanges(); }}
+            className="ml-auto text-[10px] text-cyan-300 hover:text-cyan-200"
+            data-testid="changelog-refresh"
+          >
+            {loadingChanges ? '⟳ rafraîchissement…' : '↻ rafraîchir'}
+          </button>
+        </summary>
+        <div className="border-t border-white/10 p-3 max-h-72 overflow-y-auto space-y-1.5" data-testid="site-changelog-list">
+          {changes.length === 0 && (
+            <div className="text-[11px] text-[#71717A] italic">
+              Aucune modification enregistrée. Les ajouts/changements de modèles, prompts, modes site, déploiements, etc. apparaîtront ici en direct.
+            </div>
+          )}
+          {changes.map((c, i) => (
+            <div key={i} className="text-[11px] font-mono text-white/90 border-l-2 border-emerald-400/40 pl-2 py-0.5">
+              <span className="text-[10px] text-[#71717A]">{(c.ts || '').slice(0, 19).replace('T', ' ')}</span>
+              {' · '}
+              <span className="text-cyan-300 uppercase text-[9px]">{c.category}</span>
+              {' · '}
+              <span>{c.summary}</span>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      <div className="grid grid-cols-12 gap-4 h-[calc(100vh-260px)]">
       <aside className="col-span-12 lg:col-span-4 bg-[#0A0A0A] border border-white/10 rounded-sm flex flex-col overflow-hidden">
         <header className="p-3 border-b border-white/10 flex items-center gap-2">
           <SearchIcon className="w-4 h-4 text-[#E4FF00]" />
@@ -195,6 +257,7 @@ function SiteProgrammingPanel() {
           />
         </div>
       </main>
+      </div>
     </div>
   );
 }

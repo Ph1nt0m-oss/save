@@ -54,7 +54,7 @@ export default function PrivateChatbotProgramming({ mode = 'caly' }) {
         <p className="text-xs text-[#A1A1AA] mb-6">{subtitle}</p>
 
         {!allowed ? (
-          <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-8 text-center max-w-md mx-auto">
+          <div className="bg-red-500/10 border border-red-500/40 rounded-sm p-8 text-center max-w-md mx-auto" data-testid="private-access-denied">
             <h2 className="text-lg font-bold text-red-200 mb-2">{t('prog_access_denied')}</h2>
             <p className="text-sm text-red-100/90">{t('prog_access_body')}</p>
             <p className="text-xs text-amber-200/90 mt-3">{t('prog_access_hint')}</p>

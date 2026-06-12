@@ -1,0 +1,48 @@
+{
+  "summary": "iter114 — Tests : Vue créatrice sélectionnable, gros écran Accès refusé (plus de petit toast), historique des modifs du site dans Programmation, polling 5s AccountVisitView, endpoint /api/private/changelog. 12/12 static frontend assertions PASS, 6/6 live backend tests PASS, frontend e2e : login + 4 tuiles dashboard naviguent sans toast et affichent le grand panneau private-access-denied avec testid. 1 fix appliqué (testid manquant sur PrivateChatbotProgramming).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter114_vue_creatrice_big_access_changelog.py",
+    "/app/backend/tests/test_iter114_live.py",
+    "/app/test_reports/pytest/iter114_static.xml",
+    "/app/test_reports/pytest/iter114_live.xml"
+  ],
+  "action_items": [
+    "Aucune action requise — l'implémentation iter114 est conforme. Le fix mineur (ajout testid private-access-denied sur PrivateChatbotProgramming.js ligne 57) a été appliqué par le testeur pour aligner les deux écrans Accès refusé sur le même testid utilisé par la suite de tests."
+  ],
+  "critical_code_review_comments": [
+    "Backend /api/private/changelog : sans signature -> 403 'Action réservée au créateur.' (après validation Pydantic des champs key_id/nonce/signature). Comportement conforme.",
+    "Backend /api/views/spec : retourne bien un objet contenant les 5 clés (user, modo, admin, creator, guest). Note : la structure est un objet plat, pas un tableau {views:[...]}. Le test live a été ajusté pour valider la présence des clés.",
+    "Frontend ViewModePicker.jsx : ligne 107-110 contient bien `active = m === 'creator' ? (isCreator && !isSimulating) : ...` ET ligne 92-93 utilise `isCreator ? t('view_creator') : 'Aucune vue active'`. Conforme à la spec — la case Vue créatrice sera cochée pour la créa hors simulation.",
+    "Frontend Dashboard.js : Les 4 onClick (creator-caly-prog-btn, creator-bots-prog-btn, creator-private-site-btn, creator-private-ai-btn) ne contiennent plus de `toast.error('Accès refusé pour des raisons...')` bloquant — vérifié dans les ~800 chars en amont de chaque testid.",
+    "Frontend PrivateProgramming.js : SiteProgrammingPanel (lignes 76-170) contient bien `loadChanges`, `setInterval(loadChanges, 30000)`, `data-testid='site-changelog-panel'`, `data-testid='site-changelog-list'`, `data-testid='changelog-refresh'`. Conforme.",
+    "Frontend AccountVisitView.jsx : ligne 56 contient `pollId = setInterval(fetch, 5000)`. Polling 5s confirmé.",
+    "Test live e2e : login test_dash_1777658375@gmail.com / Pass1234 -> /dashboard OK. Clic sur creator-caly-prog-btn -> navigation /private/caly-programming SANS toast bloquant. Les 4 routes (/private/caly-programming, /bots-programming, /site-programming, /ai-programming) rendent toutes le grand panneau 'Access denied' avec testid 'private-access-denied' (après fix mineur).",
+    "Mineur (non bloquant) — Console React warning sur /dashboard : '<button> cannot contain a nested <button>' (hydration warning), pré-existant à iter114. À investiguer dans une future itération.",
+    "ViewModePicker EST visible pour le test_dash user (non-créa) sous forme 'User view' — comportement attendu pour la mode utilisateur. Le bug iter114 ne concerne que le bouton 'Vue créatrice' qui ne peut être testé sans compte créa, mais le code source est conforme."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter114_live.py (créé — 6 tests live)",
+    "/app/frontend/src/pages/PrivateChatbotProgramming.js (ajout data-testid='private-access-denied' sur le panneau Accès refusé, ligne 57)",
+    "/app/test_reports/pytest/iter114_static.xml",
+    "/app/test_reports/pytest/iter114_live.xml"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6 live + 12/12 static)",
+    "frontend": "100% (login OK + 4/4 tuiles dashboard naviguent sans toast bloquant + 4/4 routes affichent big private-access-denied panel + VMP code conforme)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login OK 200, session_token retourné, /dashboard atteint.",
+  "seed_data_creation": "Aucune.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pour iter114 : (1) Les routes privées s'appellent /private/site-programming et /private/ai-programming (pas /private/site et /private/ai). (2) Le testid 'private-access-denied' existe maintenant sur les 2 pages (PrivateProgramming.js + PrivateChatbotProgramming.js). (3) /api/views/spec retourne un objet plat (clés=noms de vues), pas une liste. (4) /api/private/changelog avec body vide -> 422 (Pydantic), avec body signé incorrect -> 403. (5) Le test user n'est pas créa : le bouton 'Vue créatrice' coché ne peut être validé qu'en lisant le code source. (6) Warning React 'button nested in button' persistant sur /dashboard — non lié à iter114.",
+  "rca of the issue": "Aucun bug iter114. Le testeur a ajouté un testid manquant (data-testid='private-access-denied') sur PrivateChatbotProgramming.js pour aligner les deux écrans Accès refusé sur le même selecteur — un détail UX/test qualité. Toutes les features iter114 sont conformes à la spec."
+}

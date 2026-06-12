@@ -38,14 +38,24 @@ export default function AccountVisitView({ target, onClose }) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let pollId = null;
+    const fetch = async () => {
       try {
         const body = await withCreatorProof(API, axios, { target_key_id: target.key_id });
         const r = await axios.post(`${API}/accounts/visit`, body);
         if (!cancelled) setData(r.data);
-      } catch (e) { toast.error(e?.response?.data?.detail || 'Erreur'); }
-    })();
-    return () => { cancelled = true; };
+      } catch (e) {
+        // Silencieux après le premier load — évite de spammer la toast en polling.
+        if (!data) toast.error(e?.response?.data?.detail || 'Erreur');
+      }
+    };
+    fetch();
+    // iter114 — Polling toutes les 5 secondes : la créatrice voit en direct
+    // les nouveaux chats / messages / projets du compte visité, même si la
+    // génération est en cours côté utilisateur.
+    pollId = setInterval(fetch, 5000);
+    return () => { cancelled = true; if (pollId) clearInterval(pollId); };
+    /* eslint-disable-next-line */
   }, [target.key_id]);
 
   const deleteProject = async (project_id) => {

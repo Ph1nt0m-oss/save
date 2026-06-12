@@ -56,6 +56,9 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
 
   // iter104 — viewMode === 'creator' est traité comme "aucune simulation"
   // (la créatrice voit sa vue créatrice par défaut, pas besoin de cocher).
+  // iter114 — Mais la case "Vue Créatrice" doit AFFICHER l'état actif (case
+  // cochée) quand on est en mode écriture, pour clarifier qu'on EST déjà
+  // en vue créatrice (l'utilisatrice était confuse de ne pouvoir rien sélectionner).
   const isSimulating = !!viewMode && viewMode !== '' && viewMode !== 'creator';
   const current = isSimulating ? VIEW_META[viewMode] : VIEW_META.creator;
   const CIcon = current ? current.Icon : Eye;
@@ -89,7 +92,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
         }`}
       >
         <CIcon className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{isSimulating ? t(current.labelKey) : 'Aucune vue active'}</span>
+        <span className="hidden sm:inline">{isSimulating ? t(current.labelKey) : (isCreator ? t('view_creator') : 'Aucune vue active')}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -104,7 +107,11 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
             const meta = VIEW_META[m];
             const Mi = meta.Icon;
             // iter104 — Logique: 'creator' = baseline (jamais checked). Active = view actuellement simulée.
-            const active = isSimulating && m === viewMode;
+            // iter114 — Pour la créa, la case 'creator' est ACTIVE (cochée)
+            // quand pas en simulation, pour rendre la sélectabilité explicite.
+            const active = m === 'creator'
+              ? (isCreator && !isSimulating)
+              : (isSimulating && m === viewMode);
             // iter105 — Dimming différent selon créa/visiteur :
             // - Créa : autres vues dimmed si simulation active
             // - Visiteur : vues NON FORCÉES dimmed (impossibles à sélectionner)

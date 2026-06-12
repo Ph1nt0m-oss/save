@@ -1062,10 +1062,9 @@ export default function Dashboard() {
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
-                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
-                    toast.error('Accès refusé pour des raisons de sécurité.');
-                    return;
-                  }
+                  // iter114 — Navigate toujours ; la page affiche la grande boîte
+                  // "Accès refusé pour des raisons de sécurité" si l'utilisateur
+                  // n'a pas les droits (plus de petit toast/icône "i").
                   navigate('/private/caly-programming');
                 }}
                 data-testid="creator-caly-prog-btn"
@@ -1087,10 +1086,7 @@ export default function Dashboard() {
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
-                  if (device.role !== 'creator' || (device.viewMode && device.viewMode !== 'creator')) {
-                    toast.error('Accès refusé pour des raisons de sécurité.');
-                    return;
-                  }
+                  // iter114 — Navigate toujours ; la page affiche la grande boîte d'accès refusé.
                   navigate('/private/bots-programming');
                 }}
                 data-testid="creator-bots-prog-btn"
@@ -1213,10 +1209,7 @@ export default function Dashboard() {
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
-                  if (device.role !== 'creator' || device.viewMode === 'guest') {
-                    toast.error('Accès refusé pour des raisons de sécurité.');
-                    return;
-                  }
+                  // iter114 — Navigate toujours ; la page rend la grande boîte d'accès refusé si pas créa.
                   navigate('/private/site-programming');
                 }}
                 data-testid="creator-private-site-btn"
@@ -1234,10 +1227,7 @@ export default function Dashboard() {
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
-                  if (device.role !== 'creator' || device.viewMode === 'guest') {
-                    toast.error('Accès refusé pour des raisons de sécurité.');
-                    return;
-                  }
+                  // iter114 — Navigate toujours ; la page rend la grande boîte d'accès refusé si pas créa.
                   navigate('/private/ai-programming');
                 }}
                 data-testid="creator-private-ai-btn"
