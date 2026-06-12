@@ -514,7 +514,7 @@ export default function Chat() {
                           const mdl = parts.slice(2).join(':') || '';
                           if (prov === 'anthropic') label = mdl.includes('opus') ? 'Claude Opus 4.5' : mdl.includes('sonnet') ? 'Claude Sonnet 4.5' : 'Claude';
                           else if (prov === 'gemini') label = mdl.includes('flash') ? 'Gemini 3 Flash' : 'Gemini 3 Pro';
-                          else if (prov === 'openai') label = 'Caly (GPT-5.2)';
+                          else if (prov === 'openai') label = 'Emergent (GPT-5.2)';
                           else label = `${prov} / ${mdl}`;
                         } else if (src.startsWith('ollama:')) {
                           label = `Ollama · ${src.split(':').slice(1).join(':')}`;

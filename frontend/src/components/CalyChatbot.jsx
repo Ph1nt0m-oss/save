@@ -92,13 +92,15 @@ export default function CalyChatbot() {
 
   return (
     <>
+      {/* iter105 — Caly est désormais un widget chatbot flottant en bas à droite
+          (pattern Intercom/Crisp), pas un bouton de top-bar. */}
       <button
         onClick={() => setOpen(true)}
-        data-testid="header-caly-btn"
+        data-testid="caly-floating-btn"
         title="Caly — Assistante d'aide à l'utilisation"
-        className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-pink-500/10 border border-pink-400/40 text-pink-400 hover:bg-pink-500/20 hover:text-pink-300 transition-colors"
+        className="fixed bottom-5 right-5 z-[90] inline-flex items-center justify-center w-12 h-12 rounded-full bg-pink-500/95 border-2 border-pink-300 text-white shadow-[0_8px_24px_rgba(236,72,153,0.45)] hover:bg-pink-400 hover:scale-105 transition-all"
       >
-        <MessageCircleQuestion className="w-4 h-4" />
+        <MessageCircleQuestion className="w-5 h-5" />
       </button>
 
       <AnimatePresence>

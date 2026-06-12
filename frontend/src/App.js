@@ -17,6 +17,7 @@ import Legal from './pages/Legal';
 import Discover from './pages/Discover';
 import PrivateProgramming from './pages/PrivateProgramming';
 import FeedbackButton from './components/FeedbackButton';
+import CalyChatbot from './components/CalyChatbot';
 import SiteLockedOverlay from './components/SiteLockedOverlay';
 import ViewModePreviewBanner from './components/ViewModePreviewBanner';
 import SessionRequestNotifier from './components/SessionRequestNotifier';
@@ -197,6 +198,8 @@ function App() {
             <AuthProvider>
               <AppRouter />
               <FeedbackButton />
+              {/* iter105 — CalyChatbot widget flottant global (bottom-right) */}
+              <CalyChatbot />
               <Toaster 
                 position="top-right"
                 theme="dark"

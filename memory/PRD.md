@@ -16,6 +16,28 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-12 — Iter 105 (Bugs critiques + Caly widget flottant)
+
+**🔴 P0 résolu — Bug "Mode lecture seule" pour la créatrice** :
+- `useDeviceIdentity.canWrite` : la branche `state.siteMode === 'guest'` retournait `canWrite=false` INCONDITIONNELLEMENT, bloquant la créatrice elle-même quand elle mettait le site en mode visite. Fix : `canWrite = state.role === 'creator'` pour cette branche. Fallback final aussi corrigé pour autoriser la créa par défaut. La créa peut maintenant TOUJOURS éditer le code et écrire, peu importe le siteMode.
+
+**🟢 Caly → widget chatbot flottant bottom-right (pattern Intercom/Crisp)** :
+- Retrait du top-bar Dashboard. CalyChatbot.jsx devient un bouton `fixed bottom-5 right-5` z-90 (rond rose 12×12 avec icône `MessageCircleQuestion`, shadow 24px).
+- Monté globalement dans `App.js` à côté de `<FeedbackButton />` pour être présent partout (login, dashboard, chat, profile…).
+- testid renommé `caly-floating-btn` (l'ancien `header-caly-btn` supprimé).
+
+**🟢 "Emergent" remplace "Caly" comme nom d'IA dans les chats** :
+- Frontend `Chat.js` ligne 517 : badge IA OpenAI affiche maintenant "Emergent (GPT-5.2)".
+- Backend `server.py` 2 transcripts d'historique : speaker non-user passe de "Caly" à "Emergent".
+
+**🟢 Dimming des vues forcées migré du créa vers le visiteur** :
+- `SiteModeBadge` : retrait de la logique de dimming dans le dropdown guest_views. La créatrice peut cocher librement.
+- `ViewModePicker` : ne s'affiche plus uniquement pour les créa. Désormais visible aussi pour les visiteurs SI guest_views forcés. Les vues non-autorisées sont disabled + texte "🔒 Non autorisé par la créatrice" sous l'option. Hover et clic bloqués.
+
+**Tests ajoutés** : `/app/backend/tests/test_iter105_critical_fixes.py` — 10/10 PASS. **51/51 tests** total (iter100→105). Screenshot confirme : Report theft rouge, Caly rose flottant en bas à droite.
+
+
+
 ### 2026-02-12 — Iter 104 (UI polish + édition directe du code)
 
 **🟢 Renommage bouton ZIP** :

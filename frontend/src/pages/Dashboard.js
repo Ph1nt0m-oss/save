@@ -34,7 +34,6 @@ import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
-import CalyChatbot from '../components/CalyChatbot';
 import BotsAdminPanel from '../components/BotsAdminPanel';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useViewSpec from '../hooks/useViewSpec';
@@ -895,8 +894,7 @@ export default function Dashboard() {
               <div className="ml-1 sm:ml-2 flex items-center gap-1.5 sm:gap-2 border-l border-white/10 pl-1.5 sm:pl-2.5">
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
-                {/* iter104 — CalyChatbot en rose, à côté du rond jaune des idées */}
-                <CalyChatbot />
+                {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}
                 {/* iter101 — Bouton Bots Community : visible selon viewSpec */}
                 {viewSpec.canSeeBotsAdmin && (
                   <button

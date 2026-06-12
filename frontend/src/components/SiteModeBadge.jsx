@@ -176,9 +176,8 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
                 const sel = opt.id === null
                   ? activeGuestViews.length === 0
                   : activeGuestViews.includes(opt.id);
-                // iter104 — Quand au moins une vue est forcée, on grise les non-sélectionnées
-                // pour bien faire comprendre que les visiteurs ne pourront pas y accéder.
-                const dimmed = opt.id !== null && activeGuestViews.length > 0 && !sel;
+                // iter105 — Sur la badge créa : aucun dimming. La créa peut sélectionner librement.
+                // Le dimming est appliqué côté ViewModePicker du visiteur uniquement.
                 return (
                   <button
                     key={String(opt.id)}
@@ -187,15 +186,11 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
                     disabled={saving}
                     data-testid={`guest-view-opt-${opt.id || 'free'}`}
                     className={`w-full text-left text-[11px] px-2 py-1 rounded-sm transition flex items-center gap-2 ${
-                      sel ? 'bg-[#E4FF00]/15 text-[#E4FF00]'
-                          : dimmed ? 'text-white/30 hover:bg-white/[0.03]'
-                          : 'text-white hover:bg-white/[0.05]'
+                      sel ? 'bg-[#E4FF00]/15 text-[#E4FF00]' : 'text-white hover:bg-white/[0.05]'
                     }`}
                   >
                     <span className={`w-3.5 h-3.5 flex-shrink-0 border rounded-sm flex items-center justify-center transition ${
-                      sel ? 'border-[#E4FF00] bg-[#E4FF00]/20'
-                          : dimmed ? 'border-white/15'
-                          : 'border-white/30'
+                      sel ? 'border-[#E4FF00] bg-[#E4FF00]/20' : 'border-white/30'
                     }`}>
                       {sel && <Check className="w-2.5 h-2.5 text-[#E4FF00]" />}
                     </span>

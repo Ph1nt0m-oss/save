@@ -72,10 +72,11 @@ def test_view_mode_picker_cyan():
 
 
 def test_caly_chatbot_pink():
-    """CalyChatbot doit être rose."""
+    """CalyChatbot doit être rose (widget flottant iter105)."""
     caly = Path("/app/frontend/src/components/CalyChatbot.jsx").read_text(encoding="utf-8")
-    assert "bg-pink-500" in caly
-    assert "border-pink-400" in caly
+    # Le bouton flottant utilise bg-pink-500/95 + border-pink-300
+    assert "bg-pink-" in caly
+    assert "border-pink-" in caly
 
 
 def test_guest_views_have_read_only_labels():

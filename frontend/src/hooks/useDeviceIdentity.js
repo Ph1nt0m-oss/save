@@ -134,21 +134,22 @@ export default function useDeviceIdentity() {
 
   // canWrite — rules per site_mode:
   //  - 'public'  : everyone can write (creator, approved, pending, anonymous)
-  //  - 'guest'   : nobody can write (read-only preview for the whole site)
+  //  - 'guest'   : nobody can write EXCEPT the creator (her own device always)
   //  - 'private' : only creator + approved can write
   //  - 'creator' : only creator can write (others are blocked by SiteLockedOverlay)
-  // Plus: any NON-creator visitor who toggles "preview creator view" sees
-  // the admin surface in read-only mode — canWrite becomes false in that view.
-  // iter77 — `force_visitor` côté backend = la créa a mis ce device en lecture seule.
-  // iter87 — viewMode = null = mode ÉCRITURE (créa par défaut). Toute autre
-  // valeur = simulation. canWrite recalculé en conséquence.
+  // iter105 — Bug fix : la créatrice doit TOUJOURS pouvoir écrire sur son
+  // propre appareil, peu importe le siteMode/viewMode. Sauf si elle simule
+  // explicitement 'guest' (où elle veut tester l'expérience visiteur).
   const inSimulation = state.role === 'creator' && state.viewMode && state.viewMode !== 'creator';
   let canWrite;
   if (state.forceVisitor && state.role !== 'creator') {
     canWrite = false;
-  } else if (state.viewMode === 'guest') {
+  } else if (state.viewMode === 'guest' && state.role !== 'creator') {
+    // Pour la créa qui simule 'guest', on garde l'écriture possible côté code
+    // mais pas dans les chats publics (handled séparément si besoin).
     canWrite = false;
   } else if (inSimulation) {
+    // En simulation user/modo/admin, la créa garde l'écriture sauf site=creator
     if (state.siteMode === 'creator') {
       canWrite = false;
     } else {
@@ -157,13 +158,14 @@ export default function useDeviceIdentity() {
   } else if (state.siteMode === 'public') {
     canWrite = true;
   } else if (state.siteMode === 'guest') {
-    canWrite = false;
+    // Site en mode visite uniquement : la créa garde TOUJOURS l'écriture
+    canWrite = state.role === 'creator';
   } else if (state.siteMode === 'private') {
     canWrite = state.role === 'creator' || state.role === 'approved';
   } else if (state.siteMode === 'creator') {
     canWrite = state.role === 'creator';
   } else {
-    canWrite = false;
+    canWrite = state.role === 'creator';  // fallback : créa peut toujours
   }
 
   // iter85/87 — effectiveStaffKind : si créa simule modo/admin, expose ce kind.

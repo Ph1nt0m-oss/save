@@ -29,13 +29,19 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews }
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
-  if (role !== 'creator') return null;
-
-  // iter104 — Cohérence avec guestViews forcés : si la créa simule 'guest', la vue
-  // effective dépend des views forcées (1ère de la liste sinon 'user' par défaut).
+  // iter105 — Le picker est désormais visible aussi pour les visiteurs et
+  // utilisateurs/modos/admins, MAIS avec un comportement différent :
+  // - Créa : peut basculer librement entre toutes les vues (simulation)
+  // - Visiteurs non-créa : peuvent choisir UNIQUEMENT parmi les vues forcées
+  //   par la créa via guest_views. Si aucune vue forcée → free (libre choix).
+  const isCreator = role === 'creator';
   const forced = Array.isArray(guestViews) && guestViews.length > 0
     ? guestViews
     : (guestView ? [guestView] : []);
+  const hasForcedConstraint = !isCreator && forced.length > 0;
+
+  // Cacher le picker si: pas créa ET aucune vue forcée (rien à choisir).
+  if (!isCreator && forced.length === 0) return null;
 
   // iter104 — viewMode === 'creator' est traité comme "aucune simulation"
   // (la créatrice voit sa vue créatrice par défaut, pas besoin de cocher).
@@ -88,15 +94,24 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews }
             const Mi = meta.Icon;
             // iter104 — Logique: 'creator' = baseline (jamais checked). Active = view actuellement simulée.
             const active = isSimulating && m === viewMode;
-            // Si une simulation est active, les autres options sont greyées (mais cliquables pour switch)
-            const dimmed = isSimulating && !active && m !== 'creator';
+            // iter105 — Dimming différent selon créa/visiteur :
+            // - Créa : autres vues dimmed si simulation active
+            // - Visiteur : vues NON FORCÉES dimmed (impossibles à sélectionner)
+            const dimmedByForced = hasForcedConstraint && m !== 'creator' && !forced.includes(m);
+            const dimmed = isCreator
+              ? (isSimulating && !active && m !== 'creator')
+              : dimmedByForced;
+            const disabled = dimmedByForced;  // visiteur ne peut pas cocher les vues non-forcées
             return (
               <button
                 key={m}
                 type="button"
-                onClick={() => toggle(m)}
+                onClick={() => !disabled && toggle(m)}
+                disabled={disabled}
                 data-testid={`view-mode-pick-${m}`}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-white/[0.05] flex items-start gap-2 transition-opacity ${
+                className={`w-full text-left px-3 py-2 text-xs flex items-start gap-2 transition-opacity ${
+                  disabled ? 'cursor-not-allowed' : 'hover:bg-white/[0.05]'
+                } ${
                   active ? `${meta.color} bg-white/[0.04]`
                          : dimmed ? 'text-white/40'
                          : 'text-white'
@@ -113,10 +128,14 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews }
                 <div className="flex-1 min-w-0">
                   <div className="font-['Chivo'] font-bold">{t(meta.labelKey)}</div>
                   <div className="text-[10px] text-[#A1A1AA]">{meta.desc}</div>
-                  {/* iter104 — Indique les vues forcées si la créa simule 'guest' */}
-                  {m === 'guest' && forced.length > 0 && (
+                  {isCreator && m === 'guest' && forced.length > 0 && (
                     <div className="text-[10px] text-amber-300 mt-0.5">
                       ↳ Forcée vers : {forced.join(', ')}
+                    </div>
+                  )}
+                  {disabled && (
+                    <div className="text-[10px] text-amber-300/70 mt-0.5">
+                      🔒 Non autorisé par la créatrice
                     </div>
                   )}
                 </div>

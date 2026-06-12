@@ -2984,7 +2984,7 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                 history_docs_all = await history_cursor.to_list(length=None)
                 history_docs = history_docs_all[:-1] if history_docs_all else []
                 transcript = "\n".join(
-                    f"{('Utilisateur' if h.get('role') == 'user' else 'Caly')} : {h.get('content', '').strip()}"
+                    f"{('Utilisateur' if h.get('role') == 'user' else 'Emergent')} : {h.get('content', '').strip()}"
                     for h in history_docs
                 )
                 composed_prompt = (
@@ -3087,7 +3087,7 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                 if history_docs:
                     lines = []
                     for h in history_docs:
-                        speaker = "Utilisateur" if h.get("role") == "user" else "Caly"
+                        speaker = "Utilisateur" if h.get("role") == "user" else "Emergent"
                         lines.append(f"{speaker} : {h.get('content', '').strip()}")
                     transcript = "\n".join(lines)
 
