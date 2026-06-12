@@ -152,6 +152,7 @@ export default function CreatorToolbar() {
         siteModes={device.siteModes}
         viewMode={device.viewMode}
         guestView={device.guestView}
+        guestViews={device.guestViews}
         onChange={() => device.refresh()}
       />
 
@@ -163,6 +164,7 @@ export default function CreatorToolbar() {
         viewMode={device.viewMode}
         siteMode={device.siteMode}
         guestView={device.guestView}
+        guestViews={device.guestViews}
       />
 
       {/* History panel removed in iter57: the right-side panel is now

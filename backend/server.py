@@ -4872,6 +4872,13 @@ async def device_verify(payload: DeviceVerifyIn):
 
     # iter83 C11 — Renvoie aussi site_modes (liste) pour le frontend.
     site_modes_list = _normalize_modes(site_mode)
+    # iter103 — Inclure guest_views (forced views multi-select) dans la réponse
+    sm_doc = await db.site_config.find_one(
+        {"_id": "site_mode"}, {"_id": 0, "guest_view": 1, "guest_views": 1}
+    ) or {}
+    gv_list = sm_doc.get("guest_views")
+    if not isinstance(gv_list, list) or not gv_list:
+        gv_list = [sm_doc.get("guest_view")] if sm_doc.get("guest_view") else []
     return {
         "verified": True,
         "role": role,
@@ -4879,6 +4886,8 @@ async def device_verify(payload: DeviceVerifyIn):
         "can_access": can_access,
         "site_mode": site_modes_list[0],  # legacy str = premier mode
         "site_modes": site_modes_list,    # nouveau : liste complète
+        "guest_view": gv_list[0] if gv_list else None,  # legacy
+        "guest_views": gv_list,            # iter103
         "kick_reason": kick_reason,
         "excluded_until": excluded_until,
         "force_visitor": bool(dev.get("force_visitor", False)),  # iter77
@@ -4894,14 +4903,19 @@ async def get_site_mode_public():
     iter83 C11 — Renvoie maintenant aussi `modes` (liste). `mode` reste pour
     compat ascendante = première entrée de la liste."""
     doc = await db.site_config.find_one(
-        {"_id": "site_mode"}, {"_id": 0, "mode": 1, "guest_view": 1, "modes": 1},
+        {"_id": "site_mode"}, {"_id": 0, "mode": 1, "guest_view": 1, "guest_views": 1, "modes": 1},
     )
     raw = doc or {}
     modes = _normalize_modes(raw.get("modes") if isinstance(raw.get("modes"), list) and raw.get("modes") else raw.get("mode"))
+    # iter103 — guest_views (list) avec fallback legacy guest_view (str)
+    gv_list = raw.get("guest_views")
+    if not isinstance(gv_list, list) or not gv_list:
+        gv_list = [raw.get("guest_view")] if raw.get("guest_view") else []
     return {
         "mode": modes[0],
         "modes": modes,
-        "guest_view": raw.get("guest_view"),
+        "guest_view": gv_list[0] if gv_list else None,  # legacy
+        "guest_views": gv_list,
     }
 
 
@@ -4912,7 +4926,8 @@ class SiteModeSetIn(BaseModel):
     key_id: str
     nonce: str
     signature: str
-    guest_view: Optional[str] = None  # 'creator' | 'user' | 'modo' | 'admin' | None (free)
+    guest_view: Optional[str] = None  # legacy single-view (kept for compat)
+    guest_views: Optional[List[str]] = None  # iter103 — multi-select forced views
 
 
 @api_router.put("/system/site-mode")
@@ -4923,6 +4938,9 @@ async def set_site_mode(payload: SiteModeSetIn):
 
     iter83 C11 — Supporte multi-checkbox via `payload.modes` (liste). Kick
     appliqué pour les devices qui n'ont aucun mode actif compatible.
+    iter103 — `guest_views` (liste) remplace `guest_view` (str). Si plusieurs
+    vues sont cochées, le visiteur peut choisir parmi ce sous-ensemble. La
+    1ère vue de la liste est utilisée comme défaut.
     """
     # Détermine la liste finale.
     if payload.modes is not None:
@@ -4940,7 +4958,15 @@ async def set_site_mode(payload: SiteModeSetIn):
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
 
     # Optional sub-view forcing for guest mode.
-    guest_view = getattr(payload, 'guest_view', None)
+    # iter103 — Priorité à `guest_views` (liste). Fallback legacy `guest_view`.
+    valid_views = {"user", "modo", "admin", "creator"}
+    if payload.guest_views is not None:
+        guest_views = [v for v in payload.guest_views if v in valid_views]
+    elif payload.guest_view:
+        guest_views = [payload.guest_view] if payload.guest_view in valid_views else []
+    else:
+        guest_views = []
+    guest_view = guest_views[0] if guest_views else None  # legacy mirror
     is_guest_mode = "guest" in modes
 
     await db.site_config.update_one(
@@ -4948,7 +4974,8 @@ async def set_site_mode(payload: SiteModeSetIn):
         {"$set": {
             "mode": modes[0],            # legacy str pour compat
             "modes": modes,              # nouvelle source de vérité
-            "guest_view": guest_view if is_guest_mode else None,
+            "guest_view": guest_view if is_guest_mode else None,  # legacy
+            "guest_views": guest_views if is_guest_mode else [],   # iter103
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
         upsert=True,
@@ -4960,7 +4987,8 @@ async def set_site_mode(payload: SiteModeSetIn):
         await _log_change(
             "site_mode",
             f"Mode du site changé → {', '.join(modes)}",
-            {"modes": modes, "guest_view": guest_view if is_guest_mode else None},
+            {"modes": modes, "guest_view": guest_view if is_guest_mode else None,
+             "guest_views": guest_views if is_guest_mode else []},
         )
     except Exception:
         pass
@@ -4972,7 +5000,7 @@ async def set_site_mode(payload: SiteModeSetIn):
         if not _device_matches_mode(d, modes):
             await db.user_sessions.delete_many({"device_key_id": d["key_id"]})
 
-    return {"mode": modes[0], "modes": modes, "guest_view": guest_view}
+    return {"mode": modes[0], "modes": modes, "guest_view": guest_view, "guest_views": guest_views}
 
 
 class CreatorOnlyIn(BaseModel):

@@ -77,6 +77,7 @@ export default function useDeviceIdentity() {
         siteMode: result.site_mode || 'public',
         siteModes: Array.isArray(result.site_modes) ? result.site_modes : (result.site_mode ? [result.site_mode] : ['public']),
         guestView: result.guest_view || null,
+        guestViews: Array.isArray(result.guest_views) ? result.guest_views : (result.guest_view ? [result.guest_view] : []),
         canAccess: !!result.can_access,
         kickReason: result.kick_reason || null,
         forceVisitor: !!result.force_visitor,  // iter77

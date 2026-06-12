@@ -15,7 +15,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 let _cachedSpec = null;
 
 export default function useViewSpec() {
-  const { device } = useDeviceIdentity();
+  const device = useDeviceIdentity() || {};
   const [spec, setSpec] = useState(_cachedSpec);
 
   useEffect(() => {
@@ -29,11 +29,11 @@ export default function useViewSpec() {
   // viewMode prioritaire : si la créatrice simule une vue, on prend la vue simulée.
   // Sauf pour see_programming + secret_key_access : ces 2 restent liés à role
   // physique 'creator' (signature ECDSA), pas à la vue simulée.
-  const effectiveView = device.viewMode || device.role || 'user';
+  const effectiveView = device?.viewMode || device?.role || 'user';
   const viewSpec = spec?.[effectiveView] || spec?.user || {};
 
   // Override : programming et secret_key_access toujours basés sur role physique
-  const isPhysicallyCreator = device.role === 'creator';
+  const isPhysicallyCreator = device?.role === 'creator';
   return {
     spec,
     viewSpec,

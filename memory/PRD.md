@@ -16,6 +16,22 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-12 — Iter 103 (Fix crash useViewSpec + Multi-checkbox guest_views)
+
+**🔴 P0 — Fix crash bloquant Dashboard** :
+- `useViewSpec` destructurait `{ device }` mais `useDeviceIdentity()` retourne le state directement. Résultat : `device` était `undefined` → crash "can't access property viewMode". Fix : `const device = useDeviceIdentity() || {};` + optional chaining sur `device?.viewMode` / `device?.role`. Dashboard se charge maintenant correctement.
+
+**🟢 Multi-checkbox forced views (guest_views)** :
+- Backend `/system/site-mode` (PUT + GET) accepte maintenant `guest_views: List[str]` en plus du legacy `guest_view: str`. La cohabitation est gérée : le 1er item de la liste est miroirée dans `guest_view`.
+- `/devices/verify` retourne aussi `guest_views` (liste) et `guest_view` (legacy).
+- Frontend `SiteModeBadge` : remplacement des radios par des cases à cocher. La créatrice peut maintenant cocher PLUSIEURS vues à forcer (ex: user + modo) → le visiteur choisira parmi ce sous-ensemble. Aucune coche = libre (au choix du visiteur).
+- `useDeviceIdentity` expose maintenant `guestViews` (array) en plus de `guestView` (legacy str).
+- Sémantique conservée : juste "creator" coché en mode site → pas de visiteurs ; "creator + guest" → visiteurs autorisés. Le helper backend `_device_matches_mode` exclut déjà correctement le staff du mode `public` (line 4577).
+
+**Tests ajoutés** : `/app/backend/tests/test_iter103_guest_views_multi.py` — 6/6 PASS (route registrée, payload accepte liste, hook frontend handle device undefined, checkboxes wired). **30/30 tests** total (iter100/101/102/103).
+
+
+
 ### 2026-02-11 — Iter 102.5 (Auto GitHub push, Bots Test+KB, Chat cleanup)
 
 **🟢 Auto GitHub push à la création** :
