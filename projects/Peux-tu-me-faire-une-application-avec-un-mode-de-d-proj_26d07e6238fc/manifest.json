@@ -1,0 +1,32 @@
+{
+  "name": "FitCoach Pro - Entraînement Intelligent",
+  "short_name": "FitCoach",
+  "description": "Application de coaching sportif avec défis quotidiens et correction en direct",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%23050505' width='512' height='512'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-size='256' fill='%23E4FF00'%3E💪%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "fitness", "sports"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Défis du jour",
+      "url": "./index.html",
+      "description": "Voir les défis quotidiens"
+    },
+    {
+      "name": "Session Live",
+      "url": "./index.html",
+      "description": "Démarrer une session coaching"
+    }
+  ]
+}
