@@ -1,0 +1,33 @@
+{
+  "name": "DanceFlow - Coach de Danse",
+  "short_name": "DanceFlow",
+  "description": "Ton coach de danse personnel avec défis quotidiens et corrections en direct",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#E4FF00",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect fill='%23050505' width='200' height='200'/%3E%3Ctext x='100' y='130' font-size='120' text-anchor='middle' fill='%23E4FF00'%3E💃%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%23050505' width='512' height='512'/%3E%3Ctext x='256' y='350' font-size='300' text-anchor='middle' fill='%23E4FF00'%3E💃%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "lifestyle", "education"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Défi du jour",
+      "url": "/?challenge=daily",
+      "description": "Accède au défi quotidien"
+    }
+  ]
+}
