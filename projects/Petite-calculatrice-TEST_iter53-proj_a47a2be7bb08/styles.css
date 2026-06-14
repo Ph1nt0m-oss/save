@@ -1,0 +1,42 @@
+:root{color-scheme:dark}
+
+/* Finition "Emergent-like" */
+.card{box-shadow:0 16px 40px rgba(0,0,0,.45)}
+
+.display{
+  text-shadow: 0 0 18px rgba(0,212,255,0.10);
+}
+
+.btn{
+  position:relative;
+  overflow:hidden;
+}
+
+/* Effet de sheen subtil */
+.btn::after{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background: radial-gradient(120px 80px at var(--x, 20%) var(--y, 20%), rgba(255,255,255,.10), transparent 60%);
+  opacity:0;
+  transition:opacity .2s ease;
+  pointer-events:none;
+}
+
+.btn:hover::after{opacity:1}
+
+/* Micro animation au clic */
+.calc-press{
+  transform: translateZ(0);
+}
+
+/* Barre de défilement (historique) */
+*::-webkit-scrollbar{height:10px;width:10px}
+*::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:999px;border:2px solid rgba(15,15,19,.8)}
+*::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:999px}
+
+/* Accessibilité : réduire animations */
+@media (prefers-reduced-motion: reduce){
+  *{scroll-behavior:auto !important}
+  .btn, .btn::after{transition:none !important}
+}
