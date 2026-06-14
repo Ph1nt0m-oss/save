@@ -1,0 +1,132 @@
+{
+  "summary": "iter124 backend-only validation. ALL 4 priorities cocheés validées : (P2) lifespan handlers FastAPI (asynccontextmanager) + suppression de @app.on_event — démarrage propre 'MongoDB indexes ready' + 'Auth cleanup background task started' sans aucun DeprecationWarning. (P3 prereq) services/file_builders.py importable et expose sanitize_filename + make_file_service + FileService. (P3) routes/chat_exports_routes.py mounte 4 endpoints (/chat/models GET, /chat/analyze-attachment POST, /chat/export-ipynb/{id} GET, /chat/export-docx/{id} GET) — tous correctement protégés par auth, body validation OK, happy-paths authentifiés OK. (P3) pre-commit hook /app/scripts/pre-commit-server-size.sh exécutable, passe avec server.py = 4828 L < seuil 5500. Aucune régression iter119–iter123. 22/22 PASS sur la suite iter124 dédiée + 123/123 PASS sur la régression cumulée 8 suites antérieures. Total 145/145 PASS / 0 FAIL / 0 SKIP. server.py est à 4828 L (−38.8% depuis iter120 = 7892 L). openapi.json à localhost:8001 retourne 200 avec 190 paths dont les 4 nouveaux iter124 + tous les retained et tous les iter123.",
+  "test_results": {
+    "iter124_dedicated_suite": {
+      "file": "backend/tests/test_iter124_full_decompose.py",
+      "total": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "note": "Tests must be run from /app/backend (cwd) so the services module is resolvable. Running from /app fails 3 file_builders tests with ModuleNotFoundError. Not a code bug — just a CWD/sys.path issue. Recommend documenting in conftest or adding a sys.path tweak."
+    },
+    "regression_cumulative_suites": {
+      "files": [
+        "test_iter123_decompose_chat.py",
+        "test_iter123_supplement.py",
+        "test_iter122_decompose_preview_projects.py",
+        "test_iter121_decompose.py",
+        "test_iter120_refactor_heavy_auth.py",
+        "test_chat_iter29.py",
+        "test_email_auth.py",
+        "test_forgot_password_iter30.py"
+      ],
+      "total": 123,
+      "passed": 123,
+      "failed": 0,
+      "skipped": 0
+    },
+    "grand_total": "145 passed / 0 failed / 0 skipped"
+  },
+  "live_curl_verifications": {
+    "iter124_new_endpoints_unauth": {
+      "GET /api/chat/models (no auth)": "401 OK",
+      "POST /api/chat/analyze-attachment (no body)": "422 OK",
+      "GET /api/chat/export-ipynb/proj_unknown (no auth)": "401 OK",
+      "GET /api/chat/export-docx/proj_unknown (no auth)": "401 OK"
+    },
+    "retained_in_server_py_unauth": {
+      "POST /api/auth/login {unknown email}": "404 OK",
+      "GET /api/auth/me (no auth)": "401 OK",
+      "POST /api/chat/message {valid body, no auth}": "401 OK",
+      "POST /api/sandbox/python {valid body, no auth}": "401 OK",
+      "GET /api/download/generated/foo (no auth)": "401 OK"
+    },
+    "iter123_regression_unauth": {
+      "GET /api/chat/history": "401 OK",
+      "POST /api/chat/tts": "401 OK",
+      "POST /api/chat/stream": "401 OK",
+      "POST /api/chat/orchestrate {empty body}": "422 OK",
+      "POST /api/exports/pending {empty body}": "422 OK"
+    },
+    "iter119_iter122_regression": {
+      "GET /api/caly/config": "200 OK",
+      "GET /api/site/issues": "200 OK",
+      "GET /api/preview/demo/web": "200 OK",
+      "GET /api/projects (no auth)": "401 OK"
+    },
+    "openapi": {
+      "url": "http://localhost:8001/openapi.json",
+      "status": "200",
+      "total_paths": 190,
+      "iter124_new_endpoints_registered": [
+        "/api/chat/models",
+        "/api/chat/analyze-attachment",
+        "/api/chat/export-ipynb/{project_id}",
+        "/api/chat/export-docx/{project_id}"
+      ]
+    }
+  },
+  "lifespan_validation": {
+    "implementation": "asynccontextmanager _lifespan(app) at server.py:188, mounted via FastAPI(lifespan=_lifespan) at line 237. Background helpers _periodic_auth_cleanup + _periodic_kick_sweeper declared at line 4796, referenced inside _lifespan closure — Python resolves at runtime, intentional pattern.",
+    "deprecated_decorator_search": "ZERO @app.on_event refs in /app/backend/server.py (only one comment mentioning the deprecation).",
+    "startup_logs": "Last 10 restarts all show '✅ MongoDB indexes ready' + '✅ Auth cleanup background task started (every 10 min)'. ZERO DeprecationWarning entries in /var/log/supervisor/backend.err.log.",
+    "verdict": "PASS — clean lifespan migration."
+  },
+  "file_builders_service_validation": {
+    "path": "/app/backend/services/file_builders.py (213 L)",
+    "exports_verified": ["sanitize_filename (callable)", "make_file_service (factory)", "FileService (class)"],
+    "test_passed_when_run_from_backend_cwd": true,
+    "verdict": "PASS — module clean, importable, exposes expected API surface."
+  },
+  "pre_commit_hook_validation": {
+    "path": "/app/scripts/pre-commit-server-size.sh",
+    "permissions": "-rwxr-xr-x (executable)",
+    "execution_output": "✅ server.py = 4828 lignes (seuil 5500) — exit 0",
+    "verdict": "PASS"
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "tests/test_iter124_full_decompose.py::TestFileBuildersService",
+        "issue": "3 tests in this class fail with ModuleNotFoundError when pytest is invoked from /app (which is the standard rootdir). They only pass when pytest is invoked from /app/backend. The other 19 tests pass from either location. Recommend adding a `sys.path.insert(0, '/app/backend')` inside the test file (or in /app/backend/tests/conftest.py if not already present) so the suite is location-independent. Not a production bug — services/file_builders.py itself is fine.",
+        "priority": "LOW",
+        "impact": "Cosmetic CI/CD ergonomics — tests are 100% green when run from the documented cwd /app/backend."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "note": "Frontend testing skipped per request (testing_type: 'backend only(skip frontend)')."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter124_full_decompose.py",
+    "/app/test_reports/pytest/iter124_results.xml",
+    "/app/test_reports/pytest/iter124_regression.xml"
+  ],
+  "action_items": [
+    "Optional (low priority): make /app/backend/tests/test_iter124_full_decompose.py location-independent by adding sys.path.insert(0, str(Path(__file__).resolve().parent.parent)) at the top, so the 3 file_builders tests pass regardless of pytest cwd. Currently they only pass when invoked from /app/backend.",
+    "No other action required. iter124 is fully validated and production-ready."
+  ],
+  "critical_code_review_comments": [
+    "Lifespan migration is textbook-clean. The asynccontextmanager pattern at server.py:188 with forward-references to _periodic_auth_cleanup/_periodic_kick_sweeper defined at line 4796 is intentional and Python-correct (closure resolves at call time). Zero DeprecationWarning emitted by FastAPI/uvicorn at startup.",
+    "services/file_builders.py is the long-overdue extraction step the iter123 reviewer recommended. Now /chat/message can in principle be extracted in a future round without the closure-binding trap that bit iter122 — the heavy helpers (_build_docx/_build_pdf/_build_image/_build_pptx/_build_xlsx/_run_python_sandbox) are reachable via the service module.",
+    "chat_exports_routes.py (447 L, 4 endpoints) is clean: Pydantic models at module level, no `from __future__ import annotations`, factory accepts only services (db, get_current_user, llm clients). Same correct pattern as iter123.",
+    "server.py is now 4828 lines (−3064 from iter120's 7892 = −38.8%). Pre-commit hook at threshold 5500 gives 672 lines of headroom — sensible safety margin while still pressuring further extraction.",
+    "/chat/message (~555 L monolith) intentionally stays in server.py — its 12 internal helpers are now also in services/file_builders.py, paving the way for a safe extraction in a future iteration. The decision to defer is correct: extracting it now would still couple to LLM client closures.",
+    "Test suite quality: the iter124 dedicated suite covers both unauthenticated 401 negative paths AND 2 authenticated happy-paths (/chat/models returning {online, offline, context} and /chat/export-ipynb/X returning 404 for unknown project). This pattern catches body-binding / Pydantic closure regressions early — keep using it for future extractions."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (145/145 tests passing across iter124 suite + 8 regression suites; 0 failures, 0 skipped)",
+    "frontend": "N/A — skipped per request"
+  },
+  "test_credentials": "All tests use dynamically seeded transient users via conftest.seed_verified_user + seed_session_for (e.g. seed-<uuid>@codeforge.test). No production credentials needed. Test data cleaned up in teardown.",
+  "seed_data_creation": "Test fixtures created and cleaned up ~5 transient users + sessions + projects across the iter124 happy-path tests. All cleanup verified by inspection of conftest.py teardown logic.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter124 fully validated, no issues. server.py at 4828 L. Pre-commit hook at threshold 5500 active. services/file_builders.py is the new extraction surface — future agents who want to extract /chat/message can use it as a stable boundary. The 4 new chat_exports endpoints follow the same correct pattern as iter123 (module-level Pydantic, no __future__ annotations, factory accepts only services). One ergonomic gotcha: run pytest from /app/backend (NOT /app) so that 'services' resolves as a top-level module — or fix the sys.path in /app/backend/tests/test_iter124_full_decompose.py (low-priority action item). Lifespan handler at server.py:188 with forward references to functions at line 4796 is intentional Python and works correctly.",
+  "rca of the issue": "N/A — no production issues found this iteration. The only finding is a cosmetic test-ergonomics nit (pytest cwd dependency for 3 of 22 tests in test_iter124_full_decompose.py), which is documented as a LOW-priority optional fix."
+}
