@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+* {
+  font-family: 'Inter', sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #050505;
+  color: #FFFFFF;
+}
+
+#root {
+  display: contents;
+}
+
+/* Animations */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideDown {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(228, 255, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(228, 255, 0, 0.5);
+  }
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Scrollbar personnalisée */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(228, 255, 0, 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(228, 255, 0, 0.5);
+}
+
+/* Responsif */
+@media (max-width: 640px) {
+  body {
+    padding: 0;
+  }
+
+  #root {
+    padding: 0;
+  }
+}
+
+/* Focus styles pour l'accessibilité */
+button:focus-visible {
+  outline: 2px solid #E4FF00;
+  outline-offset: 2px;
+}
+
+/* Éviter le zoom sur iOS */
+input {
+  font-size: 16px;
+}
