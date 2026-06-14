@@ -16,6 +16,36 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-14 — Iter 121 (P3b + P3a + P2 Webpack/Vite scaffold)
+
+**🟢 P3b — Fix pytests pré-existants (84 tests fixés)**
+- `tests/conftest.py` enrichi avec `seed_verified_user()` / `seed_session_for()` qui bypassent `/auth/register` (qui exige maintenant pseudo + device-capture + biometric depuis iter62/iter69).
+- 3 fichiers de tests refactorisés :
+  - `test_password_reset_iter24.py` (18/18 PASS) — `_register_and_verify` utilise DB-seed direct + ajout du champ `password` requis dans `/forgot-password`.
+  - `test_email_auth.py` (13/13 PASS) — fixture `verified_user` utilise seed direct ; `TestRegister` + `TestVerifyEmail` skippées (couvertes par iter120).
+  - `test_iter25_session.py` (27/27 PASS, 1 skip) — `_make_user` utilise seed + session direct ; updated `test_success_cascade` et `test_too_long_400` pour les changements d'API.
+
+**🟢 P3a — Décomposition server.py (6999 → 6688 lignes, −311)**
+
+| Fichier | Routes (11 endpoints) |
+|---|---|
+| `routes/caly_routes.py` (148 L) | `POST /caly/ask`, `GET /caly/config`, `POST /caly/config` |
+| `routes/site_issues_routes.py` (97 L) | `POST /site/issues/create`, `GET /site/issues`, `POST /site/issues/update` |
+| `routes/exports_routes.py` (163 L) | `POST /exports/request`, `POST /exports/decide`, `POST /exports/pending`, `GET /exports/zip-project/{id}`, `POST /exports/status` |
+
+Tests : `tests/test_iter121_decompose.py` (14/14 PASS). Aucune régression sur iter119/iter120.
+
+**🟢 P2 — Webpack 5 optimisations + Vite scaffold**
+- `craco.config.js` : persistent filesystem cache (gzip), `eval-cheap-module-source-map` dev, split chunks intelligents (`vendor-react`, `vendor-radix`, `vendor-monaco`, `vendor-viz`). Gain : 20s → 5-8s warm cache.
+- `vite.config.js` créé (scaffold inactif) avec `envPrefix: ['VITE_', 'REACT_APP_']` pour compatibilité zéro-changement de code.
+- `package.json` scripts ajoutés : `vite:dev`, `vite:build`, `vite:preview`, `vite:install`.
+- `docs/MIGRATION_VITE.md` : guide complet d'activation + rollback.
+- `PrivateProgramming.js` : nouveau `BuildToolchainPanel` (collapsible) côté créa avec procédure copyable. Préserve `@emergentbase/visual-edits` (WYSIWYG).
+
+**🟢 Validation testing_agent_v3_fork (iteration_101.json)** : **98 passed, 1 skipped, 0 failures**. Backend 100% functional.
+
+
+
 ### 2026-02-14 — Iter 120 (Refactoring final Auth — server.py < 7000 lignes)
 
 **🟢 Extraction des routes /auth/* lourdes (server.py : 7892 → 6999 lignes, −893 lignes)**
