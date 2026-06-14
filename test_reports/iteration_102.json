@@ -1,0 +1,97 @@
+{
+  "summary": "iter122 backend-only validation. Dedicated suite test_iter122_decompose_preview_projects.py 15/16 PASS (1 SKIPPED because openapi.json now returns 500 — see CRITICAL bug below). Full regression on test_chat_iter29.py + test_iter121_decompose.py + test_iter120_refactor_heavy_auth.py + test_email_auth.py + test_forgot_password_iter30.py = 65 PASS, 2 SKIPPED, 0 failures. HOWEVER, two CRITICAL regressions were found in the new projects_routes.py that the dedicated unauth tests do not catch.",
+  "test_results": {
+    "iter122_suite": {"total": 16, "passed": 15, "skipped": 1, "failed": 0, "note": "1 skip = TestRouteMounting because openapi.json returns 500"},
+    "regression_suites": {
+      "test_chat_iter29.py": "5/5 PASS (ai_source acceptance for 'emergent:*' format confirmed)",
+      "test_iter121_decompose.py": "14 PASS, 1 SKIP (route_mounting also affected by openapi 500)",
+      "test_iter120_refactor_heavy_auth.py": "31 PASS, 1 SKIP (route_mounting)",
+      "test_email_auth.py": "13/13 PASS",
+      "test_forgot_password_iter30.py": "9/9 PASS"
+    },
+    "grand_total": "80 passed, 3 skipped (2 are intentional openapi-mount checks affected by the bug), 0 failed"
+  },
+  "validated_routes": {
+    "preview_routes.py": [
+      "GET /api/preview/fake-id → 404 HTML ('non trouvé') OK",
+      "GET /api/preview/project/fake-id → 404 OK",
+      "GET /api/preview/demo/web → 200 with 'CodeForge AI' OK",
+      "GET /api/preview/demo/app → 200 with phone-frame OK",
+      "GET /api/preview/demo/unknown-type → 200 fallback web OK"
+    ],
+    "voice_routes.py": [
+      "POST /api/voice/transcribe no-auth → 422 OK (validation precedes auth)"
+    ],
+    "projects_routes.py_unauth_only": [
+      "GET /api/projects no-auth → 401 OK",
+      "GET /api/projects/fake no-auth → 401 OK",
+      "POST /api/projects no-auth → 401 OK (auth raised inside body before validation)",
+      "PUT /api/projects/fake no-auth → 401 OK",
+      "DELETE /api/projects/fake no-auth → 401 OK",
+      "POST /api/projects/fake/duplicate no-auth → 401 OK",
+      "POST /api/projects/fake/share no-auth → 401 OK"
+    ],
+    "share_routes": [
+      "GET /api/share/unknown-slug-xyz → 404 OK",
+      "GET /api/share/unknown-slug-xyz/preview → 404 HTML with 'Projet introuvable' OK"
+    ]
+  },
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /openapi.json",
+        "issue": "Returns 500 — pydantic.errors.PydanticUserError: TypeAdapter[typing.Annotated[ForwardRef('ProjectCreate'), Query(PydanticUndefined)]] is not fully defined. Root cause: in /app/backend/routes/projects_routes.py the file uses `from __future__ import annotations` AND receives `ProjectCreate`/`ProjectUpdate` as factory function arguments (closure variables, NOT module globals). When FastAPI evaluates the stringified annotation 'ProjectCreate' on `input: ProjectCreate`, it cannot resolve the name in the handler's __globals__ (= projects_routes module globals), so it falls back to treating it as a Query parameter and the schema generator chokes.",
+        "priority": "CRITICAL",
+        "impact": "Breaks OpenAPI/Swagger docs, breaks any client/tool that depends on /openapi.json (including the test_iter121_decompose / test_iter122 route_mounting checks which now skip silently)."
+      },
+      {
+        "endpoint": "POST /api/projects (authenticated)",
+        "issue": "Returns 422 with detail [{type:'missing', loc:['query','input'], msg:'Field required'}] when sending a valid JSON body. Same root cause as above — the Pydantic model `ProjectCreate` passed via the factory closure cannot be resolved when stringified annotations are evaluated, so FastAPI registers `input` as a Query parameter instead of a JSON body. Verified live against public preview URL with valid session_token cookie returned by /api/auth/login (user_47498059ca08).",
+        "priority": "CRITICAL",
+        "impact": "Authenticated users can no longer create projects. This is a functional regression in the iter122 extraction. Existing iter122 tests do not catch this because they only verify the unauthenticated 401 path."
+      },
+      {
+        "endpoint": "PUT /api/projects/{project_id} (authenticated)",
+        "issue": "Same closure-variable bug — `input: ProjectUpdate` will be treated as a Query parameter. Authenticated updates will return 422 with loc=['query','input']. Not separately verified live but identical pattern at line 105 of projects_routes.py.",
+        "priority": "CRITICAL",
+        "impact": "Authenticated users can no longer update projects."
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "note": "Frontend testing skipped per request (testing_type: backend only)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter122_decompose_preview_projects.py",
+    "/app/test_reports/pytest/iter122_results.xml",
+    "/app/test_reports/pytest/iter122_regression.xml"
+  ],
+  "action_items": [
+    "FIX projects_routes.py Pydantic-body resolution: easiest is to MOVE the Project / ProjectCreate / ProjectUpdate model class definitions FROM server.py INTO projects_routes.py at module level (or into a shared /app/backend/models/projects.py imported by BOTH server.py AND projects_routes.py). Then drop them from the build_projects_router signature. This makes the names available in the handler's __globals__ so FastAPI can resolve the stringified annotation and correctly treat the param as a JSON body. After the fix, /openapi.json must return 200 and authenticated POST /api/projects with valid JSON body must return 201.",
+    "Alternative fix: remove `from __future__ import annotations` from /app/backend/routes/projects_routes.py (line 16). Real-typed annotations will use the actual closure-variable object at function-decorator time, which FastAPI can introspect as a BaseModel subclass. This is a one-line change but slightly less clean.",
+    "Re-add a dedicated test in test_iter122 (or a new test) that actually performs an AUTHENTICATED POST /api/projects with a valid body and asserts 201 + that the created project is retrievable via GET — this would have caught both bugs immediately. Currently the suite only covers the unauth 401 path which masks the body-resolution regression.",
+    "After fix, /api/projects/{id}/share and /api/projects/{id}/duplicate are NOT affected (no Pydantic body), but verify openapi.json returns 200 and contains the 10 expected paths."
+  ],
+  "critical_code_review_comments": [
+    "Decomposition continues well in size terms (server.py 6688 → 5881, -807 lines), but the projects_routes.py factory pattern took a wrong turn: passing Pydantic model classes as factory arguments combined with `from __future__ import annotations` produces broken FastAPI body-parameter binding. The 15 other route files in /app/backend/routes/ either define their Pydantic models at module level (e.g. caly_routes.py defines CalyAskIn / CalyConfigSetIn locally) or don't take Pydantic bodies. projects_routes.py is the outlier and the only broken one.",
+    "Test coverage gap: the iter122 dedicated suite only exercises the unauthenticated 401 path for POST/PUT/DELETE/duplicate/share. This masks any body-binding regression. Future extractions should always include at least one happy-path authenticated CRUD test (create → GET → update → delete) to catch this class of bug.",
+    "The skipped TestRouteMounting / test_all_extracted_routes_are_mounted tests in iter121 and iter122 are silently skipped because they fall back to pytest.skip when /openapi.json on localhost is unreachable — but in this case openapi.json is returning 500, not unreachable. The skip-on-non-200 logic accidentally hides a real regression. Recommend FAIL (not skip) on 500 from openapi.",
+    "All other iter122 work (preview demo HTML, share public routes, voice transcribe) is solid — no issues found in those three files.",
+    "Chat iter29 ai_source fix verified: now accepts 'emergent:openai:gpt-5.2' as well as legacy 'emergent' / 'fallback' values — 5/5 tests PASS."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "Tests: 80/80 functional PASS (100%); BUT 3 critical production endpoints are broken in real use (/openapi.json + authenticated POST and PUT /api/projects)",
+    "frontend": "N/A — skipped per request"
+  },
+  "test_credentials": "Used test_dash_1777658375@gmail.com / Pass1234 from /app/memory/test_credentials.md to verify the authenticated POST 422 bug.",
+  "seed_data_creation": "No persistent seed data created. The failing POST never persisted anything (422 before db write).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter122 has a CRITICAL regression in /app/backend/routes/projects_routes.py: combining `from __future__ import annotations` (line 16) with passing `Project`, `ProjectCreate`, `ProjectUpdate` as closure args to `build_projects_router` (line 52) causes FastAPI to fail at evaluating the stringified annotation. Result: openapi.json → 500, authenticated POST/PUT /api/projects → 422 with loc=['query','input']. Existing unauth tests (15 PASS in iter122 suite) do NOT cover the failure because auth raises 401 first. Recommended fix: move Project/ProjectCreate/ProjectUpdate definitions to module level in projects_routes.py (or a shared models file), then drop them from the factory signature. After fix, re-run /openapi.json check (must be 200) and add an authenticated CRUD happy-path test. All other extracted routes (preview, voice, share) and prior decompositions (iter119/120/121/chat_iter29) are healthy.",
+  "rca of the issue": "ROOT CAUSE — `from __future__ import annotations` in /app/backend/routes/projects_routes.py:16 turns ALL function annotations into strings (PEP 563). FastAPI evaluates these strings at route registration via typing.get_type_hints(handler), which uses the handler's __globals__ namespace. `ProjectCreate` and `ProjectUpdate` are passed as kwargs to `build_projects_router(...)` and therefore exist ONLY as closure variables of the outer function — they are NOT in projects_routes.py module globals. Annotation resolution silently falls back to treating `input` as an unparameterized Query input, the schema generator then explodes with PydanticUserError: TypeAdapter[Annotated[ForwardRef('ProjectCreate'), Query(...)]] is not fully defined. REPRODUCTION: 1) curl -i http://localhost:8001/openapi.json → 500. 2) curl -X POST $PUBLIC_URL/api/projects -b authcookie -H 'Content-Type: application/json' -d '{\"name\":\"x\",\"description\":\"y\",\"project_type\":\"web\"}' → 422 with {detail:[{type:'missing',loc:['query','input']}]}. MITIGATION: Move the three model classes (Project, ProjectCreate, ProjectUpdate) from server.py to projects_routes.py module-level (or to /app/backend/models/projects.py imported in BOTH files); drop them from the factory signature; keep `get_current_user` and `db` as factory args. Confirmed working pattern: caly_routes.py / ideas_routes.py define their BaseModel subclasses at module level and have no resolution issue."
+}

@@ -63,8 +63,9 @@ class TestChatOnlineFr:
             assert forbidden.lower() not in content.lower(), f"Forbidden '{forbidden}' in response: {content[:200]}"
         # short-ish
         assert len(content) < 800, f"Response too long ({len(content)} chars): {content[:200]}"
-        # ai_source preferred to be emergent_gpt4o (but fallback is acceptable if key missing)
-        assert ai.get("ai_source") in ("emergent_gpt4o", "fallback"), f"Unexpected source: {ai.get('ai_source')}"
+        # ai_source preferred to be emergent:* (any provider/model) but fallback acceptable if key missing
+        src = ai.get("ai_source", "")
+        assert src.startswith("emergent") or src == "fallback", f"Unexpected source: {src}"
         print(f"[FR online] source={ai.get('ai_source')} len={len(content)} content={content[:120]!r}")
 
 
