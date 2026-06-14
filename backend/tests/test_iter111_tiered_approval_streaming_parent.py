@@ -10,6 +10,9 @@ API = (
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVER = (ROOT / "backend" / "server.py").read_text()
+# iter116 — Les modèles + endpoints /devices/* ont migré dans routes/devices_routes.py.
+DEVICES_ROUTES = (ROOT / "backend" / "routes" / "devices_routes.py").read_text()
+SERVER_AND_DEVICES = SERVER + "\n" + DEVICES_ROUTES
 DASH = (ROOT / "frontend" / "src" / "pages" / "Dashboard.js").read_text()
 SMB = (ROOT / "frontend" / "src" / "components" / "SiteModeBadge.jsx").read_text()
 DM = (ROOT / "frontend" / "src" / "components" / "DeviceManager.jsx").read_text()
@@ -35,16 +38,16 @@ def test_site_mode_dropdown_right_iter113():
 
 def test_devices_approve_accepts_as_role():
     """Le payload DeviceApproveIn doit avoir le champ as_role."""
-    assert "class DeviceApproveIn" in SERVER
-    assert "as_role" in SERVER
+    assert "class DeviceApproveIn" in SERVER_AND_DEVICES
+    assert "as_role" in SERVER_AND_DEVICES
 
 
 def test_devices_approve_hierarchy_logic():
     """La hiérarchie strict est implémentée côté backend."""
     # Modo → user uniquement ; Admin → user/modo ; Créa → tout.
-    assert 'allowed = {"user", "modo", "admin"}' in SERVER  # créa
-    assert 'allowed = {"user", "modo"}' in SERVER  # admin
-    assert 'allowed = {"user"}' in SERVER  # modo
+    assert 'allowed = {"user", "modo", "admin"}' in SERVER_AND_DEVICES  # créa
+    assert 'allowed = {"user", "modo"}' in SERVER_AND_DEVICES  # admin
+    assert 'allowed = {"user"}' in SERVER_AND_DEVICES  # modo
 
 
 def test_devices_approve_endpoint_alive():

@@ -235,6 +235,28 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 116 (Session dédiée refactoring server.py — extraction routes/devices + routes/community_bots)
+
+**🎯 P1 — Refactoring server.py (RÉALISÉ)** :
+- **24 endpoints migrés** depuis `server.py` (qui passait ~9900 lignes) vers deux nouveaux modules dédiés :
+  - 🔧 `routes/devices_routes.py` (553 lignes) — **17 endpoints** :
+    `/devices/register, /challenge, /verify, /list, /decisions, /decisions/clear, /decisions/undo, /pending-count, /pending-stream (SSE), /approve, /revoke, /disconnect, /promote-creator, /add-by-key, /send-to-creator, /block, /unblock`
+  - 🤖 `routes/community_bots_routes.py` (243 lignes) — **8 endpoints** :
+    `/community-bots/create, /list, /delete, /rate, /test, /knowledge/upsert, /knowledge/list, /knowledge/delete`
+
+**Pattern d'extraction** : Factories `build_X_router(db, ...deps)` qui injectent les dépendances (verify_signed, device_by_key, log_decision, etc.) — découplage total des helpers tout en réutilisant le même code de production. Inclus via `app.include_router(..., prefix='/api')` dans server.py.
+
+**Résultat** :
+- `server.py` : **9909 → 9057 lignes** (-852 lignes, -8.6%)
+- 0 régression : tous les endpoints HTTP répondent comme avant (status codes + payloads identiques).
+- Modèles Pydantic (`DeviceApproveIn`, `CommunityBotIn`, `BotRateIn`, etc.) migrés en même temps.
+
+**Tests** : **176/176 pytests PASS**. 15 nouveaux tests `test_iter116_refactor_devices_community_bots.py` qui valident :
+- Fichiers extraits existent + factories exposées
+- server.py ne contient plus les décorateurs `@api_router.post('/devices/...')`
+- server.py inclut bien les deux nouveaux routers
+- 10 endpoints HTTP testés en live (status codes corrects sur calls sans signature)
+
 ### 2026-02-12 — Iter 115 (Vue créatrice toggleable)
 
 **🎯 Demande utilisatrice (correction iter114)** :
