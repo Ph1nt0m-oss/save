@@ -4223,31 +4223,6 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
 
 # ==================== USER PREFERENCES ====================
 
-class UserPreferences(BaseModel):
-    theme: Optional[str] = 'dark'         # 'dark' | 'light' | 'auto'
-    contrast: Optional[str] = 'normal'    # 'normal' | 'high'
-    accent: Optional[str] = '#E4FF00'
-    notifications_email: Optional[bool] = True
-    notifications_push: Optional[bool] = False
-
-@api_router.get("/auth/preferences")
-async def get_user_preferences(request: Request):
-    user_id = await get_current_user(request)
-    doc = await db.user_preferences.find_one({"user_id": user_id}, {"_id": 0, "user_id": 0}) or {}
-    base = UserPreferences().model_dump()
-    base.update({k: v for k, v in doc.items() if k in base})
-    return base
-
-@api_router.put("/auth/preferences")
-async def put_user_preferences(request: Request, prefs: UserPreferences):
-    user_id = await get_current_user(request)
-    payload = prefs.model_dump()
-    await db.user_preferences.update_one(
-        {"user_id": user_id},
-        {"$set": {**payload, "user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True,
-    )
-    return payload
 
 
 
@@ -6921,133 +6896,8 @@ async def _log_change(category: str, summary: str, details: Optional[Dict[str, A
 
 
 # ---------------- USER pseudo update ----------------
-class UpdatePseudoIn(BaseModel):
-    new_pseudo: str
-
-@api_router.post("/auth/update-pseudo")
-async def auth_update_pseudo(request: Request, payload: UpdatePseudoIn):
-    user_id = await get_current_user(request)
-    p = (payload.new_pseudo or "").strip()
-    if not (1 <= len(p) <= 30):
-        raise HTTPException(status_code=400, detail="Pseudo invalide (1-30).")
-    # iter75: "créatrice" no longer reserved.
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "email": 1})
-    if not user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
-    await db.users.update_one({"user_id": user_id}, {"$set": {"pseudo": p, "pseudo_lower": p.lower()}})
-    if user.get("email"):
-        await db.device_keys.update_many(
-            {"email": user["email"]},
-            {"$set": {"pseudo": p, "label": p}},
-        )
-    return {"success": True, "pseudo": p}
 
 
-# ---------------- THEFT recovery — email fallback ----------------
-class TheftEmailIn(BaseModel):
-    email: str
-
-@api_router.post("/auth/theft-email-request")
-async def auth_theft_email_request(payload: TheftEmailIn):
-    """Send a magic-link to the account email; clicking it revokes ALL
-    creator+approved device keys tied to that email so the user can
-    re-onboard fresh on the new device.
-
-    Idempotent: always returns 200 even if the email is unknown (to avoid
-    enumeration). The actual mail is only sent when a matching user exists.
-    """
-    email = (payload.email or "").strip().lower()
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="Email invalide.")
-    user = await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1})
-    if user:
-        token = uuid.uuid4().hex
-        await db.theft_email_tokens.insert_one({
-            "token": token,
-            "email": email,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "used": False,
-        })
-        frontend_base = _clean_origin(os.environ.get("FRONTEND_URL", "")) or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", "")) or ""
-        link = f"{frontend_base}/theft-confirm?token={token}" if frontend_base else f"/theft-confirm?token={token}"
-        # Best-effort send via the unified pipeline (SMTP → Resend).
-        try:
-            html = (
-                "<div style='font-family:system-ui,sans-serif;background:#050505;color:#fff;padding:32px;max-width:560px;margin:0 auto'>"
-                "<h1 style='color:#E4FF00;margin:0 0 16px'>CodeForge AI</h1>"
-                "<p style='color:#E4E4E7'>Tu reçois ce mail parce qu'une procédure de récupération en cas de vol a été demandée depuis un nouvel appareil.</p>"
-                "<p style='color:#FF6B6B'><strong>Si ce n'est pas toi, ignore ce message.</strong></p>"
-                "<p style='color:#E4E4E7'>Sinon, clique ci-dessous pour révoquer tous les anciens appareils enregistrés sous ton compte :</p>"
-                f"<p style='margin:24px 0'><a href='{link}' style='background:#E4FF00;color:#050505;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block'>Confirmer la récupération</a></p>"
-                f"<p style='color:#A1A1AA;font-size:12px'>Ou copie ce lien : <span style='color:#00D4FF;word-break:break-all'>{link}</span></p>"
-                "<p style='color:#A1A1AA;font-size:12px'>Ce lien expire dans 30 minutes.</p>"
-                "</div>"
-            )
-            await _send_email(email, "CodeForge AI — Récupération en cas de vol", html)
-        except Exception as e:
-            logger.warning(f"theft-email send failed: {e}")
-    # Always 200 — no enumeration leak.
-    return {"success": True}
-
-
-@api_router.get("/auth/theft-email-confirm")
-async def auth_theft_email_confirm(token: str):
-    row = await db.theft_email_tokens.find_one({"token": token}, {"_id": 0})
-    if not row or row.get("used"):
-        raise HTTPException(status_code=404, detail="Lien invalide ou déjà utilisé.")
-    # Token expires after 30 min.
-    try:
-        created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-        if (datetime.now(timezone.utc) - created).total_seconds() > 1800:
-            raise HTTPException(status_code=410, detail="Lien expiré.")
-    except (KeyError, ValueError):
-        raise HTTPException(status_code=410, detail="Lien expiré.")
-    email = row["email"]
-    # Revoke every device key bound to this email.
-    r = await db.device_keys.update_many(
-        {"email": email, "role": {"$in": ["creator", "approved"]}},
-        {"$set": {"role": "revoked", "revoked_at": datetime.now(timezone.utc).isoformat(), "revoked_reason": "theft_email_recovery"}},
-    )
-    await db.theft_email_tokens.update_one({"token": token}, {"$set": {"used": True}})
-    return {"success": True, "revoked_count": r.modified_count}
-
-
-class TheftIrisVerifyIn(BaseModel):
-    """iter71/75: optional iris re-confirmation. iter75 retired the
-    email-token leg and now accepts an email directly so the backend
-    can look up the iris baseline without a one-time-use link in the
-    user's compromised inbox."""
-    token: Optional[str] = None  # legacy — accepted for backwards-compat
-    email: Optional[str] = None
-    hashes: List[str]
-
-
-@api_router.post("/auth/theft-iris-verify")
-async def auth_theft_iris_verify(payload: TheftIrisVerifyIn):
-    if not isinstance(payload.hashes, list) or len(payload.hashes) < 3:
-        raise HTTPException(status_code=400, detail="3 captures iris sont requises.")
-    if any((not isinstance(h, str)) or len(h) < 20 or len(h) > 128 for h in payload.hashes[:3]):
-        raise HTTPException(status_code=400, detail="Empreintes iris invalides.")
-    # Resolve target email: iter75 prefers `email` directly; falls back
-    # to the legacy `token` lookup so older clients still work.
-    email = (payload.email or "").strip().lower() or None
-    if not email and payload.token:
-        row = await db.theft_email_tokens.find_one({"token": payload.token}, {"_id": 0, "email": 1})
-        if row:
-            email = row.get("email")
-    if not email:
-        raise HTTPException(status_code=400, detail="Email du compte requis.")
-    user = await db.users.find_one({"email": email}, {"_id": 0, "biometric": 1})
-    if not user or (user.get("biometric") or {}).get("kind") != "iris":
-        logger.info(f"theft-iris-verify: no iris baseline for {email}, accepting capture as observation only")
-    await db.theft_iris_attempts.insert_one({
-        "email": email,
-        "hashes": payload.hashes[:3],
-        "token": payload.token,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "verified": False,  # real matching comes in the next sprint
-    })
-    return {"success": True, "revoked_count": 0}
 
 
 # Helper used by ideas/polls to verify any signature (not creator-restricted).
@@ -7915,6 +7765,19 @@ app.include_router(
         device_by_key=_device_by_key,
         log_decision=_log_decision,
         rp_id_from_origin=_rp_id_from_origin,
+    ),
+    prefix="/api",
+)
+
+# iter119 — slice 5h : /auth/* extras (6 endpoints) — preferences + update-pseudo + theft
+from routes.auth_extras_routes import build_auth_extras_router  # noqa: E402
+app.include_router(
+    build_auth_extras_router(
+        db,
+        get_current_user=get_current_user,
+        send_email=_send_email,
+        clean_origin=_clean_origin,
+        logger=logger,
     ),
     prefix="/api",
 )

@@ -235,6 +235,25 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 119 (Refactoring suite — extraction /auth/* extras)
+
+**🎯 Refactoring server.py (suite iter116-117-118)** — 6 endpoints auth migrés :
+- 🔐 `routes/auth_extras_routes.py` (167 lignes) — **6 endpoints "satellites" auth** :
+  `GET/PUT /auth/preferences, /auth/update-pseudo, /auth/theft-email-request, /auth/theft-email-confirm, /auth/theft-iris-verify`
+
+**Résultat global iter116→119** :
+- `server.py` : **9909 → 7877 lignes** (**-2032 lignes, -20.5%**)
+- **68 endpoints au total** migrés vers **8 nouveaux modules** :
+  - `devices_routes` (17), `community_bots_routes` (8), `accounts_routes` (16), `private_routes` (5)
+  - `system_routes` (4), `ideas_routes` (7), `webauthn_routes` (6), `auth_extras_routes` (6)
+- 0 régression : tous les endpoints HTTP testés en live (status codes corrects).
+
+**Tests** : **214/214 pytests PASS** (11 nouveaux iter119).
+
+**Objectif <7000 lignes pas atteint (mais -20.5% réalisé)** :
+- Restantes dans server.py : routes /auth/* lourdes (register, login, magic-link, verify-email, resend-verification, verification-status, change-password, change-email, forgot/confirm/reset password, sms/* x2, session-* x3, ocr-device-info, me, heartbeat, disconnect-soft, logout, export = ~22 endpoints) + /chat/message + /projects + helpers globaux.
+- Pour passer <7000 il faudrait extraire ~880 lignes supplémentaires, principalement password reset (3 endpoints, ~263 lignes) + magic-link/verify-email (4 endpoints, ~287 lignes) + session-* (3 endpoints, ~200 lignes). **Faisable en session dédiée** (~1h) car ces endpoints sont moyennement imbriqués avec `_send_email`, `_create_session_for_user`, `_password_strength_check` qu'on peut passer en deps factory.
+
 ### 2026-02-12 — Iter 118 (Refactoring suite — extraction routes/ideas + routes/webauthn)
 
 **🎯 Refactoring server.py (suite iter116 + iter117)** — 13 endpoints supplémentaires migrés :
