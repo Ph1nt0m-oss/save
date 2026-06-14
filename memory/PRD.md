@@ -235,6 +235,27 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 120 (Tentative extraction auth password+session — annulée pour cause de helpers inline)
+
+**🔴 Tentative d'extraction `/auth/forgot-password + confirm-password-reset + reset-password + session-*`** (~330 lignes ciblées) :
+- Création de `routes/auth_pwreset_session_routes.py` avec factory `build_auth_pwreset_session_router(server_module)`.
+- **ÉCHEC** : à l'exécution, le module crashe car les helpers attendus (`_create_session_for_user`, `_password_strength_check`, `_user_to_safe_dict`, `log_auth_error`) **n'existent pas en tant que fonctions extractibles dans server.py** — la logique session/strength est inline dans `/auth/login` / `/auth/register`.
+- **Code restauré** dans server.py via réinjection avant `app.include_router(api_router)`. Fichier `routes/auth_pwreset_session_routes.py` supprimé.
+
+**Résultat** : server.py reste à **7892 lignes** (215 lignes ont juste été déplacées vers la fin du module). Objectif <7000 **non atteint cette session**.
+
+**Cumul réel iter116→120** :
+- `server.py` : 9909 → **7892 lignes** (**-2017 lignes, -20.4%**)
+- 8 nouveaux modules de routes (62 endpoints migrés) — **aucune régression**.
+- **214/214 pytests PASS**.
+
+**🎯 Pour atteindre <7000 dans une vraie session dédiée auth (1-2h)** :
+- Phase 1 : Extraire les helpers `_create_session_for_user`, `_password_strength_check`, `_user_to_safe_dict`, `log_auth_error` depuis `/auth/login` et `/auth/register` vers `lib/auth_helpers.py` (~150 lignes).
+- Phase 2 : Importer ces helpers en haut de server.py.
+- Phase 3 : Migrer alors les 6 endpoints auth password/session vers `routes/auth_pwreset_session_routes.py` avec helpers passés en deps factory propres.
+- Phase 4 : Migrer également `/auth/magic-link, verify-email, resend-verification, verification-status, sms/*` (~390 lignes).
+- Total visé : ~850 lignes → server.py <7050. Nécessite testing extensif sur tous les flows auth (register, login, magic-link, password reset, theft recovery).
+
 ### 2026-02-12 — Iter 119 (Refactoring suite — extraction /auth/* extras)
 
 **🎯 Refactoring server.py (suite iter116-117-118)** — 6 endpoints auth migrés :
