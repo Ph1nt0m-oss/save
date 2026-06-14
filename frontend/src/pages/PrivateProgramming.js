@@ -189,6 +189,9 @@ function SiteProgrammingPanel() {
         </div>
       </details>
 
+      {/* iter121 — Build toolchain (CRA → Vite migration) */}
+      <BuildToolchainPanel />
+
       <div className="grid grid-cols-12 gap-4 h-[calc(100vh-260px)]">
       <aside className="col-span-12 lg:col-span-4 bg-[#0A0A0A] border border-white/10 rounded-sm flex flex-col overflow-hidden">
         <header className="p-3 border-b border-white/10 flex items-center gap-2">
@@ -542,5 +545,140 @@ function ChangelogPanel() {
         </div>
       )}
     </section>
+  );
+}
+
+
+// =============================================================================
+// iter121 — BUILD TOOLCHAIN PANEL : CRA + Webpack 5 cache (actif) ↔ Vite (scaffold)
+// Affiche le statut du bundler frontend et les étapes pour basculer vers Vite.
+// L'activation Vite n'est PAS automatique — elle requiert manipulation manuelle
+// des fichiers (renommage .js → .jsx, déplacement index.html, etc.). Cette UI
+// expose la procédure et le doc /app/docs/MIGRATION_VITE.md.
+// =============================================================================
+function BuildToolchainPanel() {
+  const [open, setOpen] = useState(false);
+  const [showVite, setShowVite] = useState(false);
+
+  const copyCmd = (cmd) => {
+    navigator.clipboard?.writeText(cmd).then(
+      () => toast.success('Commande copiée'),
+      () => toast.error('Impossible de copier')
+    );
+  };
+
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen(e.target.open)}
+      data-testid="build-toolchain-panel"
+      className="bg-[#0A0A0A] border border-white/10 rounded-sm"
+    >
+      <summary className="cursor-pointer p-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/[0.02]">
+        <Cpu className="w-4 h-4 text-amber-300" />
+        <span>Build toolchain</span>
+        <span className="ml-2 text-[10px] text-emerald-300 font-mono">CRA + Webpack 5 cache</span>
+        <span className="ml-auto text-[10px] text-[#71717A] font-normal">iter121</span>
+      </summary>
+      <div className="border-t border-white/10 p-4 space-y-4">
+        {/* Statut actuel */}
+        <div className="bg-black/30 border border-emerald-400/20 rounded-sm p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-bold text-emerald-300">Bundler actif : CRA / CRACO</span>
+          </div>
+          <ul className="text-[11px] text-white/80 space-y-1 ml-4">
+            <li>• Webpack 5 <span className="text-cyan-300 font-mono">filesystem cache</span> activé (gzip)</li>
+            <li>• Cache dir : <span className="text-cyan-300 font-mono">node_modules/.cache/webpack</span></li>
+            <li>• Split chunks intelligents : <span className="text-cyan-300 font-mono">vendor-react</span>, <span className="text-cyan-300 font-mono">vendor-radix</span>, <span className="text-cyan-300 font-mono">vendor-monaco</span>, <span className="text-cyan-300 font-mono">vendor-viz</span></li>
+            <li>• Dev source map : <span className="text-cyan-300 font-mono">eval-cheap-module-source-map</span> (HMR rapide)</li>
+            <li>• ✅ Compatibilité <span className="text-cyan-300 font-mono">@emergentbase/visual-edits</span> (éditeur WYSIWYG)</li>
+          </ul>
+          <p className="text-[10px] text-[#A1A1AA] mt-2 leading-relaxed">
+            Gain typique : 1er build froid ~20s ; builds suivants ~5-8s ; HMR ~150-300ms.
+          </p>
+        </div>
+
+        {/* Scaffold Vite prêt */}
+        <div className="bg-black/30 border border-amber-400/20 rounded-sm p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="text-xs font-bold text-amber-300">Vite (scaffold prêt — non activé)</span>
+            </div>
+            <button
+              onClick={() => setShowVite((v) => !v)}
+              data-testid="vite-show-procedure-btn"
+              className="text-[10px] text-amber-300 hover:text-amber-200 underline"
+            >
+              {showVite ? 'Masquer' : 'Voir la procédure'}
+            </button>
+          </div>
+          <p className="text-[11px] text-white/80 leading-relaxed">
+            Vite ferait passer le 1er build à <span className="text-cyan-300 font-mono">~5s</span> et le HMR à <span className="text-cyan-300 font-mono">~30-100ms</span>,
+            mais désactive l&apos;éditeur visuel Emergent (plugin Webpack-only).
+          </p>
+          {showVite && (
+            <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+              <p className="text-[11px] text-amber-200 leading-relaxed">
+                ⚠️ Manipulation manuelle requise — pas de bouton &quot;Activer&quot;. Procédure :
+              </p>
+              <ol className="text-[11px] text-white/80 space-y-2 ml-2 list-decimal list-inside">
+                <li>
+                  Installe Vite :
+                  <button
+                    onClick={() => copyCmd('cd /app/frontend && yarn vite:install')}
+                    data-testid="vite-step-install"
+                    className="ml-2 px-2 py-0.5 text-[10px] bg-[#0F0F13] border border-white/15 rounded-sm font-mono text-cyan-300 hover:bg-white/[0.05]"
+                  >
+                    📋 yarn vite:install
+                  </button>
+                </li>
+                <li>
+                  Renomme les fichiers JSX :
+                  <button
+                    onClick={() => copyCmd("cd /app/frontend && find src -name '*.js' -exec grep -l 'from \\'react\\'' {} \\; | xargs -I{} sh -c 'mv \"{}\" \"${1%.js}.jsx\"' sh {}")}
+                    data-testid="vite-step-rename"
+                    className="ml-2 px-2 py-0.5 text-[10px] bg-[#0F0F13] border border-white/15 rounded-sm font-mono text-cyan-300 hover:bg-white/[0.05]"
+                  >
+                    📋 mv .js → .jsx
+                  </button>
+                </li>
+                <li>
+                  Déplace <span className="text-cyan-300 font-mono">public/index.html</span> à la racine (et remplace <span className="text-cyan-300 font-mono">%PUBLIC_URL%</span> par <span className="text-cyan-300 font-mono">/</span>)
+                </li>
+                <li>
+                  Lance le dev server :
+                  <button
+                    onClick={() => copyCmd('cd /app/frontend && yarn vite:dev')}
+                    data-testid="vite-step-dev"
+                    className="ml-2 px-2 py-0.5 text-[10px] bg-[#0F0F13] border border-white/15 rounded-sm font-mono text-cyan-300 hover:bg-white/[0.05]"
+                  >
+                    📋 yarn vite:dev
+                  </button>
+                </li>
+                <li>
+                  Build prod :
+                  <button
+                    onClick={() => copyCmd('cd /app/frontend && yarn vite:build')}
+                    data-testid="vite-step-build"
+                    className="ml-2 px-2 py-0.5 text-[10px] bg-[#0F0F13] border border-white/15 rounded-sm font-mono text-cyan-300 hover:bg-white/[0.05]"
+                  >
+                    📋 yarn vite:build
+                  </button>
+                  <span className="text-[10px] text-[#71717A] ml-1">→ output dans <span className="font-mono">frontend/dist/</span></span>
+                </li>
+              </ol>
+              <p className="text-[10px] text-[#A1A1AA] mt-2 leading-relaxed">
+                📚 Doc complète : <span className="font-mono text-cyan-300">/app/docs/MIGRATION_VITE.md</span> (rollback inclus)
+              </p>
+              <div className="bg-rose-500/10 border border-rose-400/30 rounded-sm p-2 text-[10px] text-rose-200 leading-relaxed">
+                <strong>⚠️ Risque :</strong> migrer désactive l&apos;éditeur visuel Emergent (WYSIWYG). Le rollback CRA est documenté mais long (~10 min).
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </details>
   );
 }

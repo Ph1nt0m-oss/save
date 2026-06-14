@@ -67,7 +67,11 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
-    "test": "craco test"
+    "test": "craco test",
+    "vite:dev": "vite --host 0.0.0.0 --port 3000",
+    "vite:build": "vite build",
+    "vite:preview": "vite preview --host 0.0.0.0 --port 3000",
+    "vite:install": "yarn add -D vite @vitejs/plugin-react"
   },
   "browserslist": {
     "production": [
