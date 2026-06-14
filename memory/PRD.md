@@ -16,6 +16,34 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-14 — Iter 122 (Décomposition continue + fix test_chat_iter29)
+
+**🟢 Décomposition server.py (6688 → 5881 lignes, −807)**
+
+| Fichier | Routes (12 endpoints) |
+|---|---|
+| `routes/preview_routes.py` (519 L) | `GET /preview/{id}`, `GET /preview/project/{id}`, `GET /preview/demo/{type}` (3 endpoints + ~500L HTML demo) |
+| `routes/voice_routes.py` (78 L) | `POST /voice/transcribe` (Whisper STT) |
+| `routes/projects_routes.py` (260 L) | `POST/GET/PUT/DELETE /projects[/{id}]`, `POST /projects/{id}/duplicate`, `POST /projects/{id}/share`, `GET /share/{slug}`, `GET /share/{slug}/preview` (8 endpoints) |
+
+**🐛 Bug critique trouvé et corrigé par testing_agent_v3_fork (iteration_102)**
+
+`from __future__ import annotations` + Pydantic models passés en closure args dans `build_projects_router(...)` → FastAPI évalue les annotations stringifiées dans `__globals__` du module, ne trouve pas `ProjectCreate`/`ProjectUpdate`, et les traite comme paramètres Query. Conséquences :
+- `/openapi.json` → 500 (PydanticUserError)
+- `POST/PUT /api/projects` authentifié → 422 (loc=['query','input'])
+
+**Fix appliqué** : suppression de `from __future__ import annotations` dans `projects_routes.py`. OpenAPI revient à 200, CRUD complet fonctionnel.
+
+**Test ajouté** : `TestProjectsAuthenticatedCRUD` qui exerce le happy-path complet (create → get → update → list → delete + duplicate). Le `TestRouteMounting` fail désormais loud sur 500 OpenAPI au lieu de silently skip (anti-regression).
+
+**🟢 Fix test_chat_iter29.py** : `ai_source` accepte maintenant `emergent:openai:gpt-5.2` (préfixe `emergent:*`) en plus de `fallback`. 5/5 PASS.
+
+**🟢 Validation finale** : 132 tests passed, 1 skipped, 0 failures. Suites couvertes : iter122 (18) + iter121 (15) + iter120 (26) + iter119 (11) + chat_iter29 (5) + email_auth (13) + password_reset_iter24 (18) + iter25_session (27).
+
+**📊 Bilan cumulé décomposition** : server.py 7892 (start iter120) → 5881 (now) = **−2011 lignes** sur 4 iters. 13 nouveaux fichiers de routes factory-style dans `/app/backend/routes/`.
+
+
+
 ### 2026-02-14 — Iter 121 (P3b + P3a + P2 Webpack/Vite scaffold)
 
 **🟢 P3b — Fix pytests pré-existants (84 tests fixés)**

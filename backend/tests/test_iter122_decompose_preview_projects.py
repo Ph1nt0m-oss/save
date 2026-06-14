@@ -7,6 +7,8 @@ import requests
 from pathlib import Path
 from dotenv import load_dotenv
 
+from conftest import seed_verified_user, seed_session_for
+
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 API = (os.environ.get("REACT_APP_BACKEND_URL") or "http://localhost:8001").rstrip("/") + "/api"
 
@@ -99,11 +101,81 @@ class TestShareRoutes:
         assert "Projet introuvable" in r.text
 
 
+class TestProjectsAuthenticatedCRUD:
+    """iter122 — Catches the body-binding regression (testing_agent iteration_102)."""
+
+    @pytest.fixture
+    def auth_headers(self):
+        _, _, uid = seed_verified_user()
+        token = seed_session_for(uid)
+        return {"Authorization": f"Bearer {token}"}, uid
+
+    def test_create_then_get_then_update_then_delete(self, auth_headers):
+        headers, uid = auth_headers
+        # Create
+        r = requests.post(
+            f"{API}/projects",
+            json={"name": "iter122 test", "description": "extracted route", "project_type": "web"},
+            headers=headers,
+            timeout=15,
+        )
+        assert r.status_code == 201, r.text
+        proj = r.json()
+        pid = proj["project_id"]
+        assert proj["name"] == "iter122 test"
+        # Get one
+        r = requests.get(f"{API}/projects/{pid}", headers=headers, timeout=10)
+        assert r.status_code == 200, r.text
+        # Update
+        r = requests.put(
+            f"{API}/projects/{pid}",
+            json={"name": "iter122 updated"},
+            headers=headers,
+            timeout=10,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["name"] == "iter122 updated"
+        # List (must include our project)
+        r = requests.get(f"{API}/projects", headers=headers, timeout=10)
+        assert r.status_code == 200
+        ids = [p["project_id"] for p in r.json()]
+        assert pid in ids
+        # Delete
+        r = requests.delete(f"{API}/projects/{pid}", headers=headers, timeout=10)
+        assert r.status_code == 200
+        # 404 after delete
+        r = requests.get(f"{API}/projects/{pid}", headers=headers, timeout=10)
+        assert r.status_code == 404
+
+    def test_duplicate_creates_copy(self, auth_headers):
+        headers, _ = auth_headers
+        # Create then duplicate
+        r = requests.post(
+            f"{API}/projects",
+            json={"name": "Original", "description": "src", "project_type": "web"},
+            headers=headers,
+            timeout=10,
+        )
+        assert r.status_code == 201
+        pid = r.json()["project_id"]
+        r2 = requests.post(f"{API}/projects/{pid}/duplicate", headers=headers, timeout=10)
+        assert r2.status_code == 200, r2.text
+        body = r2.json()
+        assert body["project_id"] != pid
+        assert "(copie)" in body["project"]["name"]
+        # Cleanup
+        requests.delete(f"{API}/projects/{pid}", headers=headers, timeout=10)
+        requests.delete(f"{API}/projects/{body['project_id']}", headers=headers, timeout=10)
+
+
 class TestRouteMounting:
     def test_extracted_routes_in_openapi(self):
         r = requests.get("http://localhost:8001/openapi.json", timeout=10)
+        # FAIL loud on 500 (PydanticUserError) — silently skipping hid the iter122 regression
+        if r.status_code == 500:
+            raise AssertionError(f"openapi.json returns 500 (regression): {r.text[:300]}")
         if r.status_code != 200:
-            pytest.skip("OpenAPI not reachable on localhost")
+            pytest.skip(f"OpenAPI not reachable on localhost (got {r.status_code})")
         paths = set(r.json().get("paths", {}).keys())
         expected = {
             # preview

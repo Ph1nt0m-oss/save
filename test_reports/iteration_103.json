@@ -1,0 +1,110 @@
+{
+  "summary": "iter123 backend-only validation. Decomposition of 12 chat/orchestrate endpoints into 3 new route files (chat_advanced_routes.py, chat_history_routes.py, chat_generate_routes.py) is FULLY HEALTHY. Combined results: 123 PASS / 0 FAIL / 0 SKIP across 8 test suites. iter123 dedicated suite 20/20, iter123 supplement 18/18 (added by me, covers items not in original suite), regression on iter120/121/122/chat_iter29/email_auth/forgot_password 85/85. The iter122 critical bug (closures + `from __future__ import annotations` breaking Pydantic body binding) is NOT present in any of the three new files — all Pydantic models are correctly defined at module level. openapi.json returns 200 with all 12 new endpoints + retained server.py endpoints present. Authenticated happy-paths verified live: GET /api/chat/history returns 200 with list, POST /api/chat/stream returns 200 SSE stream with delta + done events.",
+  "test_results": {
+    "iter123_suite": {"total": 20, "passed": 20, "skipped": 0, "failed": 0, "file": "tests/test_iter123_decompose_chat.py"},
+    "iter123_supplement_suite": {"total": 18, "passed": 18, "skipped": 0, "failed": 0, "file": "tests/test_iter123_supplement.py (added by testing agent)", "covers": "auth/login 404 unknown email, auth/register 422 missing fields, chat/message + chat/models + auth/me + chat/analyze-attachment + chat/export-ipynb/X + chat/export-docx/X 401 unauth, exports/pending validation, forgot-password 422 missing, openapi.json contents, AUTHENTICATED /chat/history + /chat/stream SSE happy-paths"},
+    "regression_suites": {
+      "test_iter120_refactor_heavy_auth.py": "PASS",
+      "test_iter121_decompose.py": "PASS",
+      "test_iter122_decompose_preview_projects.py": "PASS",
+      "test_chat_iter29.py": "PASS",
+      "test_email_auth.py": "PASS",
+      "test_forgot_password_iter30.py": "PASS",
+      "combined_regression_total": "85 passed / 0 failed / 0 skipped"
+    },
+    "grand_total": "123 passed, 0 failed, 0 skipped"
+  },
+  "validated_endpoints": {
+    "chat_advanced_routes.py_unauth_401": [
+      "POST /api/chat/translate-messages",
+      "POST /api/chat/suggest-enhancements",
+      "POST /api/chat/tts",
+      "POST /api/chat/orchestrate",
+      "POST /api/chat/orchestrate-stream",
+      "POST /api/orchestrate/test-loop",
+      "POST /api/chat/stream"
+    ],
+    "chat_history_routes.py_unauth_401": [
+      "GET /api/chat/history",
+      "POST /api/chat/attach"
+    ],
+    "chat_generate_routes.py_unauth_401": [
+      "POST /api/chat/generate-docx",
+      "POST /api/chat/generate-pdf",
+      "POST /api/chat/generate-image"
+    ],
+    "retained_in_server.py": [
+      "POST /api/auth/login (404 unknown email) OK",
+      "POST /api/auth/register (422 missing fields) OK",
+      "POST /api/chat/message (401 unauth) OK",
+      "GET  /api/chat/models (401 unauth) OK",
+      "GET  /api/auth/me (401 unauth) OK",
+      "POST /api/chat/analyze-attachment (401 unauth) OK",
+      "GET  /api/chat/export-ipynb/{id} (401 unauth) OK",
+      "GET  /api/chat/export-docx/{id} (401 unauth) OK"
+    ],
+    "authenticated_happy_paths": [
+      "GET /api/chat/history with valid session_token cookie → 200 returns list (empty for fresh user) — VERIFIED LIVE",
+      "POST /api/chat/stream {message:'Bonjour',mode:'online'} with valid session_token cookie → 200 text/event-stream, observed SSE delta + done events — VERIFIED LIVE"
+    ],
+    "regression_iter119_iter122": [
+      "GET /api/caly/config → 200",
+      "GET /api/site/issues → 200",
+      "GET /api/preview/demo/web → 200",
+      "GET /api/projects → 401 (unauth)",
+      "POST /api/auth/magic-link → 200 (neutral message)",
+      "POST /api/auth/forgot-password (missing fields) → 422",
+      "POST /api/exports/pending without valid creator key → 403/422 (not 404 as spec said, but consistent rejection)"
+    ],
+    "openapi": "GET http://localhost:8001/openapi.json → 200, contains all 12 new extracted endpoints AND all retained server.py endpoints"
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/exports/pending",
+        "issue": "Review spec expected '404 sans clé' but actual implementation requires a JSON body (key_id, nonce, signature) and returns 422 if missing, 403 ('Action réservée au créateur.') if key invalid. Behavior is correct (rejects unauthorized callers) but the documented expected status code in the review request is inaccurate.",
+        "priority": "LOW",
+        "impact": "Documentation/spec mismatch only, not a functional bug."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "note": "Frontend testing skipped per request (testing_type: backend only)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter123_decompose_chat.py",
+    "/app/backend/tests/test_iter123_supplement.py",
+    "/app/test_reports/pytest/iter123_results.xml",
+    "/app/test_reports/pytest/iter123_supplement.xml",
+    "/app/test_reports/pytest/iter123_regression.xml"
+  ],
+  "action_items": [
+    "No action required. iter123 decomposition is clean and ready. The 3 new route files all follow the correct pattern (module-level Pydantic models, no `from __future__ import annotations`), explicitly avoiding the iter122 closure-binding regression.",
+    "Optional: align the review-request spec for /api/exports/pending (it's POST not GET, returns 403/422 not 404) so future agents don't get a false-positive bug report."
+  ],
+  "critical_code_review_comments": [
+    "iter123 decomposition is the cleanest of the recent rounds. All three new files (chat_advanced_routes.py 585L, chat_history_routes.py 63L, chat_generate_routes.py 55L) define Pydantic input models at module level and do NOT use `from __future__ import annotations`. This is the correct pattern that avoids the iter122 bug where ProjectCreate/ProjectUpdate were passed as closure args.",
+    "server.py is now 5224 lines (down from 7892 at iter120 start = -33.8%, -657 lines this round). Still above the 700-line guideline but trending strongly in the right direction.",
+    "The /chat/message endpoint correctly stayed in server.py — it uses 12 helper functions (_build_docx, _build_pdf, _build_image, _build_pptx, _build_xlsx, _build_plain, _run_python_sandbox, _context_limit, etc.) that are also entangled. Moving it would require passing all of those as factory args, which is the same trap that caused the iter122 bug. The decision to skip is sound.",
+    "The /chat/stream extraction is non-trivial (handles SSE, auto-creates a project, persists chat_messages) and works end-to-end under authentication — verified live in this run.",
+    "Suggestion (not blocking): consider extracting the message generation helpers (_build_docx/pdf/image/pptx/xlsx/plain, _run_python_sandbox) into a /app/backend/services/ module so that future extraction of /chat/message becomes safe.",
+    "Test coverage: the iter123 dedicated suite focused on unauthenticated 401 paths only, exactly the gap that masked the iter122 regression. My supplement adds two authenticated happy-paths (/chat/history, /chat/stream SSE) which catch any Pydantic body-binding or closure regression. Recommend keeping this style for future extracts."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter123_supplement.py (CREATED — 18 supplemental tests including authenticated /chat/stream SSE and /chat/history happy-paths)"
+  ],
+  "success_rate": {
+    "backend": "100% (123/123 tests passing, 0 failures, 0 skipped)",
+    "frontend": "N/A — skipped per request"
+  },
+  "test_credentials": "Used dynamically seeded users via conftest.seed_verified_user + seed_session_for (no production credentials needed). All test data cleaned up in teardown.",
+  "seed_data_creation": "Test created and cleaned up 2 transient users (seed-{uuid}@codeforge.test) with session_tokens for the two authenticated happy-path tests. Cleanup in teardown_method removes users + sessions + chat_messages + projects.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter123 fully validated, no issues. Server.py at 5224L. The 3 new files (chat_advanced_routes.py, chat_history_routes.py, chat_generate_routes.py) all follow the correct pattern: module-level Pydantic models, no `from __future__ import annotations`, factory accepts only services (db, get_current_user, llm clients) — NOT Pydantic classes. iter122 bug is gone (openapi.json returns 200). My supplement file /app/backend/tests/test_iter123_supplement.py adds happy-path coverage for /chat/stream SSE and /chat/history — keep using this pattern for future extractions to catch body-binding regressions early. /chat/message remains in server.py intentionally (entangled with 12 helpers); future agents should NOT attempt to extract it without first extracting helpers to /app/backend/services/.",
+  "rca of the issue": "N/A — no issues found this iteration. The previously-reported iter122 critical bug (openapi.json 500 + /api/projects POST 422) was already fixed before iter123 testing began (openapi.json now returns 200, projects POST handling restored). iter123 extractions did not introduce any new regressions."
+}

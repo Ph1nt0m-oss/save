@@ -2612,52 +2612,6 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
         logger.error(f"Error in chat: {e}")
         raise HTTPException(status_code=500, detail=f"Erreur de chat: {str(e)}")
 
-@api_router.get("/chat/history")
-async def get_chat_history(request: Request, project_id: Optional[str] = None, limit: int = 50):
-    """Get chat history for user or specific project"""
-    user_id = await get_current_user(request)
-    
-    query = {"user_id": user_id}
-    if project_id:
-        query["project_id"] = project_id
-    
-    messages = await db.chat_messages.find(
-        query,
-        {"_id": 0}
-    ).sort("timestamp", 1).limit(limit).to_list(limit)
-    
-    return messages
-
-
-class ChatAttachInput(BaseModel):
-    message_id: Optional[str] = None
-    project_id: str
-    attach_all_orphans: Optional[bool] = False  # if true, attach all messages with project_id=null
-
-
-@api_router.post("/chat/attach")
-async def attach_chat_to_project(request: Request, payload: ChatAttachInput):
-    """Attach an orphan chat message (project_id=null) to a project — used when
-    a user pins a free-running chat to the sidebar."""
-    user_id = await get_current_user(request)
-    # Validate the project belongs to the user.
-    proj = await db.projects.find_one({"project_id": payload.project_id, "user_id": user_id}, {"_id": 0})
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
-    if payload.attach_all_orphans:
-        result = await db.chat_messages.update_many(
-            {"user_id": user_id, "project_id": None},
-            {"$set": {"project_id": payload.project_id}},
-        )
-        return {"updated": result.modified_count}
-    if not payload.message_id:
-        raise HTTPException(status_code=400, detail="message_id or attach_all_orphans required")
-    result = await db.chat_messages.update_one(
-        {"message_id": payload.message_id, "user_id": user_id},
-        {"$set": {"project_id": payload.project_id}},
-    )
-    return {"updated": result.modified_count}
-
 
 # ==================== WIZARD AI HELPERS ====================
 
@@ -2772,20 +2726,9 @@ async def chat_analyze_attachment(request: Request, file: UploadFile = File(...)
 
 
 # ---- File GENERATION (docx / pdf / image) ----
-
-class GenerateDocxInput(BaseModel):
-    title: Optional[str] = "Document"
-    sections: List[Dict[str, Any]] = []     # [{ "heading": str, "content": str }]
-
-
-class GeneratePdfInput(BaseModel):
-    title: Optional[str] = "Document"
-    sections: List[Dict[str, Any]] = []
-
-
-class GenerateImageInput(BaseModel):
-    prompt: str
-    size: Optional[str] = "1024x1024"
+# Models GenerateDocxInput/GeneratePdfInput/GenerateImageInput extraits dans
+# routes/chat_generate_routes.py (iter123 slice 5u). Les helpers _build_docx
+# /_build_pdf /_build_image restent ici car utilisés aussi par send_chat_message.
 
 
 def _store_generated(blob: bytes, filename: str, mime: str, user_id: str) -> Dict[str, str]:
@@ -3126,28 +3069,6 @@ async def sandbox_reset(request: Request, payload: SessionResetInput):
     from cfaction_engine import reset_sandbox_session
     ok = reset_sandbox_session(payload.session_id)
     return {"reset": ok, "session_id": payload.session_id}
-
-
-@api_router.post("/chat/generate-docx")
-async def chat_generate_docx(request: Request, payload: GenerateDocxInput):
-    user_id = await get_current_user(request)
-    return await _build_docx(user_id, payload.title or "Document", payload.sections or [])
-
-
-@api_router.post("/chat/generate-pdf")
-async def chat_generate_pdf(request: Request, payload: GeneratePdfInput):
-    user_id = await get_current_user(request)
-    return await _build_pdf(user_id, payload.title or "Document", payload.sections or [])
-
-
-@api_router.post("/chat/generate-image")
-async def chat_generate_image(request: Request, payload: GenerateImageInput):
-    user_id = await get_current_user(request)
-    try:
-        return await _build_image(user_id, payload.prompt)
-    except Exception as e:
-        logger.warning(f"image gen failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Génération d'image impossible : {e}")
 
 
 @api_router.get("/chat/export-ipynb/{project_id}")
@@ -4715,236 +4636,6 @@ async def invalidate_project_name_cache(request: Request, project_id: str):
 
 
 # iter94 — Traduction dynamique des CONTENUS des messages de chat.
-# Endpoint batch + cache MongoDB par (message_id × lang). Cache hit = 0 LLM call.
-class TranslateMessagesBatchIn(BaseModel):
-    messages: List[Dict[str, Any]]  # [{message_id, content}]
-    target_lang: str
-
-
-@api_router.post("/chat/translate-messages")
-async def translate_chat_messages(request: Request, payload: TranslateMessagesBatchIn):
-    """Traduit en BATCH les contenus des messages de chat dans la langue cible.
-    Cache MongoDB indexé par (message_id, lang). Sert pour /chat (Chat.js).
-
-    Comportement : pour chaque message :
-      - Si déjà en cache → retourne la traduction immédiatement
-      - Sinon → appelle gpt-5.2 en batch (5 messages par call max) puis cache
-    """
-    user_id = await get_current_user(request)
-    target = (payload.target_lang or "en").strip().lower()
-    items = payload.messages or []
-    if not items or not target:
-        return {"translations": {}}
-    # Limite anti-abus
-    items = items[:200]
-    msg_ids = [m.get("message_id") for m in items if m.get("message_id")]
-    if not msg_ids:
-        return {"translations": {}}
-    # Cache lookup en bulk
-    cached_rows = await db.chat_message_translations.find(
-        {"message_id": {"$in": msg_ids}, "lang": target},
-        {"_id": 0, "message_id": 1, "translated": 1},
-    ).to_list(length=len(msg_ids))
-    cache_map = {r["message_id"]: r["translated"] for r in cached_rows}
-    # Filtrer les messages non-cached
-    todo = [m for m in items if m.get("message_id") not in cache_map and (m.get("content") or "").strip()]
-    if not todo:
-        return {"translations": cache_map, "cached_hits": len(cache_map)}
-    # Appel LLM batch
-    new_translations: Dict[str, str] = {}
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        key = os.environ.get("EMERGENT_LLM_KEY")
-        if not key:
-            return {"translations": cache_map, "error": "llm_unavailable"}
-        # Batch par paquets de 8 pour rester sous la limite contextuelle.
-        BATCH = 8
-        for offset in range(0, len(todo), BATCH):
-            chunk = todo[offset:offset + BATCH]
-            joined = "\n".join(f"[{i}] {(m.get('content') or '')[:1500]}" for i, m in enumerate(chunk))
-            chat = LlmChat(
-                api_key=key,
-                session_id=f"trans_msg_{uuid.uuid4().hex[:6]}",
-                system_message=(
-                    f"Translate each numbered message into {target}. "
-                    f"Output ONLY the translations in the exact same numbered format ([0] xxx). "
-                    f"Keep meaning, tone, and formatting. No quotes, no prose."
-                ),
-            ).with_model("openai", "gpt-5.2")
-            response = (await chat.send_message(UserMessage(text=joined)) or "").strip()
-            # Parser la réponse
-            lines = [l for l in response.split("\n") if l.strip()]
-            for line in lines:
-                line = line.strip()
-                if not line.startswith("["):
-                    continue
-                try:
-                    bracket_end = line.index("]")
-                    idx_str = line[1:bracket_end]
-                    idx = int(idx_str)
-                    text = line[bracket_end + 1:].strip()
-                    if 0 <= idx < len(chunk) and text:
-                        mid = chunk[idx].get("message_id")
-                        if mid:
-                            new_translations[mid] = text[:2000]
-                except (ValueError, IndexError):
-                    continue
-        # Bulk cache
-        if new_translations:
-            await db.chat_message_translations.insert_many([
-                {
-                    "message_id": mid,
-                    "lang": target,
-                    "translated": txt,
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                    "user_id": user_id,
-                }
-                for mid, txt in new_translations.items()
-            ])
-    except Exception as e:
-        logger.warning(f"chat messages translate failed: {e}")
-    cache_map.update(new_translations)
-    return {"translations": cache_map, "cached_hits": len(cached_rows), "new_translations": len(new_translations)}
-
-
-# iter95 — VRAI agent LLM analyseur pour les suggestions d'amélioration.
-# Remplace l'heuristique mots-clés (iter94 frontend) par un appel claude-sonnet
-# qui analyse le contexte (dernière réponse IA + project_type) et propose
-# 3-5 suggestions actionnables et CONTEXTUELLES.
-class EnhancementAnalyzeIn(BaseModel):
-    last_ai_message: str
-    project_type: Optional[str] = None  # 'chat' | 'web' | 'mobile' | 'api' | None
-    language: Optional[str] = "fr"
-
-
-@api_router.post("/chat/suggest-enhancements")
-async def suggest_enhancements(request: Request, payload: EnhancementAnalyzeIn):
-    """iter95 — Analyse la dernière réponse IA et propose des suggestions
-    contextuelles d'amélioration via claude-sonnet. Retourne une liste de
-    suggestions {id, kind, title, description}.
-
-    `kind` ∈ {'feature', 'fix', 'design', 'integration', 'performance'}
-    """
-    await get_current_user(request)  # auth required
-    text = (payload.last_ai_message or "").strip()
-    if not text:
-        return {"suggestions": []}
-    lang = (payload.language or "fr").strip().lower()
-    project_type = payload.project_type or "chat"
-
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        key = os.environ.get("EMERGENT_LLM_KEY")
-        if not key:
-            return {"suggestions": [], "error": "llm_unavailable"}
-        prompt = (
-            f"Analyse la réponse précédente de l'assistant IA (en {lang}) et propose 3 à 5 "
-            f"améliorations CONCRÈTES et ACTIONNABLES que l'utilisateur pourrait demander ensuite. "
-            f"Contexte projet : {project_type}.\n\n"
-            f"Réponse IA :\n\"\"\"{text[:3000]}\"\"\"\n\n"
-            f"Réponds STRICTEMENT en JSON valide avec ce format :\n"
-            f'[{{"kind": "feature|fix|design|integration|performance", "title": "court titre (≤60 chars)", "description": "explication concrète (≤180 chars)"}}, ...]\n\n'
-            f"Règles :\n"
-            f"- Choisis le 'kind' qui correspond le mieux à chaque suggestion\n"
-            f"- Titres courts et orientés action (verbe à l'infinitif)\n"
-            f"- Descriptions concrètes (pas de blabla)\n"
-            f"- Adapte au contexte projet ({project_type})\n"
-            f"- Réponds UNIQUEMENT le JSON, rien d'autre."
-        )
-        chat = LlmChat(
-            api_key=key,
-            session_id=f"enh_sug_{uuid.uuid4().hex[:6]}",
-            system_message=(
-                "You are an expert software architect and product manager. "
-                "You analyze AI responses and propose contextual, actionable "
-                "enhancement suggestions. Always respond in valid JSON only."
-            ),
-        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-        response = (await chat.send_message(UserMessage(text=prompt)) or "").strip()
-        # Parse JSON (strip ```json fences if present)
-        if response.startswith("```"):
-            lines = response.split("\n")
-            response = "\n".join(lines[1:-1]) if len(lines) >= 3 else response
-        import json as _json
-        parsed = _json.loads(response)
-        if not isinstance(parsed, list):
-            return {"suggestions": []}
-        # Validate + assign IDs
-        suggestions = []
-        valid_kinds = {"feature", "fix", "design", "integration", "performance"}
-        for i, item in enumerate(parsed[:5]):
-            if not isinstance(item, dict):
-                continue
-            kind = item.get("kind") or "feature"
-            if kind not in valid_kinds:
-                kind = "feature"
-            title = str(item.get("title") or "").strip()[:80]
-            desc = str(item.get("description") or "").strip()[:200]
-            if not title:
-                continue
-            suggestions.append({
-                "id": f"enh-llm-{uuid.uuid4().hex[:8]}",
-                "kind": kind,
-                "title": title,
-                "description": desc,
-            })
-        return {"suggestions": suggestions}
-    except Exception as e:
-        logger.warning(f"enhancement suggestion failed: {e}")
-        return {"suggestions": [], "error": str(e)[:200]}
-
-
-# iter95 — Voice mode / TTS pour les réponses IA.
-# Endpoint TTS via OpenAI TTS API (emergentintegrations gpt-tts).
-class TTSIn(BaseModel):
-    text: str
-    voice: Optional[str] = "alloy"  # alloy/echo/fable/onyx/nova/shimmer
-
-
-@api_router.post("/chat/tts")
-async def chat_tts(request: Request, payload: TTSIn):
-    """iter95 — Convertit un texte en audio MP3 via OpenAI TTS.
-    Retourne l'audio en base64 pour le frontend (player <audio>)."""
-    await get_current_user(request)
-    text = (payload.text or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Texte vide.")
-    if len(text) > 4000:
-        text = text[:4000]  # truncate pour respecter la limite OpenAI TTS
-    voice = payload.voice or "alloy"
-    if voice not in ("alloy", "echo", "fable", "onyx", "nova", "shimmer"):
-        voice = "alloy"
-    try:
-        from openai import AsyncOpenAI
-        key = os.environ.get("EMERGENT_LLM_KEY")
-        if not key:
-            raise HTTPException(status_code=503, detail="TTS indisponible (clé manquante).")
-        client = AsyncOpenAI(
-            api_key=key,
-            base_url="https://integrations.emergentagent.com/llm",
-            timeout=30.0,
-        )
-        response = await client.audio.speech.create(
-            model="tts-1",
-            voice=voice,
-            input=text,
-            response_format="mp3",
-        )
-        # Lit l'audio binaire
-        audio_bytes = response.read() if hasattr(response, 'read') else response.content
-        import base64
-        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-        return {
-            "audio_base64": audio_b64,
-            "mime_type": "audio/mpeg",
-            "voice": voice,
-            "char_count": len(text),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning(f"TTS failed: {e}")
-        raise HTTPException(status_code=503, detail=f"TTS indisponible: {str(e)[:150]}")
 
 
 async def _log_change(category: str, summary: str, details: Optional[Dict[str, Any]] = None):
@@ -5037,128 +4728,6 @@ class GroupSendIn(BaseModel):
 # iter83 C7 — ORCHESTRATEUR MULTI-AGENTS (planner/critic/executor/arbiter)
 # ==========================================================================
 
-from orchestrator import orchestrate as _run_orchestrate
-from orchestrator import orchestrate_stream as _stream_orchestrate
-from orchestrator import orchestrate_actions as _stream_actions
-
-
-class OrchestrateIn(BaseModel):
-    message: str
-    project_id: Optional[str] = None
-    language: Optional[str] = "fr"
-    enable_commit: Optional[bool] = False  # iter86 — opt-in pour push GitHub réel
-    enable_preview_rebuild: Optional[bool] = False  # iter88 — opt-in pour rebuild yarn
-
-
-async def _persist_event(event: Dict[str, Any], *, user_id: str, session_id: str, project_id: Optional[str]):
-    """Sauvegarde un événement d'orchestration en DB pour rappel ultérieur via
-    /orchestrate/event/{event_id}/details."""
-    try:
-        await db.orchestrator_events.insert_one({
-            "event_id": event.get("event_id"),
-            "user_id": user_id,
-            "session_id": session_id,
-            "project_id": project_id,
-            "kind": event.get("kind"),
-            "summary": event.get("summary"),
-            "details": event.get("details"),
-            "ts": event.get("ts"),
-        })
-    except Exception:
-        pass
-
-
-@api_router.post("/chat/orchestrate")
-async def chat_orchestrate(request: Request, payload: OrchestrateIn):
-    """C7 — Lance la pipeline planner→executor→critic→arbiter et persiste
-    tous les événements en base. Retourne aussi la liste pour le client."""
-    user_id = await get_current_user(request)
-    session_id = f"orch_{user_id}_{payload.project_id or 'global'}"
-    result = await _run_orchestrate(
-        payload.message, session_id=session_id, language=payload.language or "fr",
-    )
-    try:
-        for evt in (result.get("events") or []):
-            await _persist_event(evt, user_id=user_id, session_id=session_id, project_id=payload.project_id)
-    except Exception:
-        pass
-    return result
-
-
-@api_router.post("/chat/orchestrate-stream")
-async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
-    """iter84 C7+C5/C8 — Stream d'ACTIONS Emergent-style.
-
-    iter86 — Wirage on_commit RÉEL via push_to_github (si GITHUB_ENABLED).
-    Si l'utilisateur passe `enable_commit=true` dans le body, l'orchestrator
-    pousse le code généré sur une branche `orchestrate/{session_id[-12:]}`.
-    """
-    user_id = await get_current_user(request)
-    session_id = f"orch_{user_id}_{payload.project_id or 'global'}"
-    lang = payload.language or "fr"
-
-    async def persist(evt):
-        await _persist_event(evt, user_id=user_id, session_id=session_id, project_id=payload.project_id)
-
-    # iter86 — Hook on_commit : push réel sur GitHub si activé + opt-in
-    async def on_commit_real(branch: str, summary: str, content: str):
-        if not GITHUB_ENABLED:
-            return {"ok": False, "error": "GITHUB_DISABLED"}
-        if not getattr(payload, "enable_commit", False):
-            return {"ok": False, "note": "enable_commit=false (opt-in)"}
-        safe_branch = branch.replace("/", "-").replace(" ", "-")[:48]
-        file_path = f"orchestrate-runs/{safe_branch}.py"
-        body = f"# Orchestrator run for: {summary}\n# Branch: {branch}\n\n{content}\n"
-        ok = await push_to_github(file_path, body, branch="main", retries=2)
-        return {"ok": bool(ok), "ref": file_path, "branch_label": branch}
-
-    # iter88 — Hook on_preview : rebuild RÉEL du frontend si opt-in
-    async def on_preview_real():
-        if not getattr(payload, "enable_preview_rebuild", False):
-            return {"ok": False, "note": "enable_preview_rebuild=false (opt-in)", "url": os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"}
-        import subprocess as _sub
-        import asyncio as _aio
-        try:
-            # Best-effort yarn build dans /app/frontend, timeout 90s.
-            loop = _aio.get_event_loop()
-            proc = await loop.run_in_executor(
-                None,
-                lambda: _sub.run(
-                    ["yarn", "build"],
-                    capture_output=True, text=True, timeout=90, cwd="/app/frontend",
-                ),
-            )
-            base_url = os.environ.get("PREVIEW_BASE_URL") or "https://no-code-builder-25.preview.emergentagent.com"
-            return {
-                "ok": proc.returncode == 0,
-                "url": base_url,
-                "returncode": proc.returncode,
-                "build_summary": ((proc.stdout or "")[-2000:] + (("\n" + (proc.stderr or "")[-1000:]) if proc.stderr else "")),
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)[:300]}
-
-    async def event_gen():
-        try:
-            async for evt in _stream_actions(
-                payload.message, session_id=session_id, language=lang,
-                persist_event=persist,
-                on_commit=on_commit_real,
-                on_preview=on_preview_real,
-            ):
-                # On retire `details` du payload SSE pour ne pas surcharger ;
-                # le client peut les fetch via /orchestrate/event/{id}/details
-                payload_evt = {k: v for k, v in evt.items() if k != "details"}
-                yield f"data: {json.dumps(payload_evt, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'kind': 'error', 'summary': str(e)[:300]}, ensure_ascii=False)}\n\n"
-
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-    })
-
 
 # iter95 — Routes /orchestrate/event/{id}/details et /orchestrate/history
 # déplacées dans routes/orchestrate_routes.py via build_orchestrate_router(...).
@@ -5169,107 +4738,6 @@ async def chat_orchestrate_stream(request: Request, payload: OrchestrateIn):
 class OrchestrateHistoryIn(BaseModel):
     project_id: Optional[str] = None
     limit: int = 50
-
-
-# iter85 — Testing-agents-en-boucle : endpoint qui lance pytest sur les tests
-# backend et émet des événements test_run (start/passed/failed/done) via SSE.
-class TestLoopIn(BaseModel):
-    target: Optional[str] = "backend"
-    path: Optional[str] = "tests/"
-    project_id: Optional[str] = None
-
-
-@api_router.post("/orchestrate/test-loop")
-async def orchestrate_test_loop(request: Request, payload: TestLoopIn):
-    """iter85 — Pipeline de validation automatique en boucle. Lance pytest
-    en interne et émet des événements test_run au fur et à mesure. Le
-    frontend peut afficher ces events dans OrchestrationLog.
-
-    Best-effort : si pytest échoue, on émet `test_run failed` mais on ne
-    relance pas automatiquement (la boucle de correction est laissée au
-    chat orchestrator pour l'instant)."""
-    user_id = await get_current_user(request)
-    session_id = f"testloop_{user_id}_{payload.project_id or 'global'}"
-
-    async def event_gen():
-        import subprocess as _sub
-        evt0 = {
-            "event_id": f"evt_{uuid.uuid4().hex[:16]}",
-            "kind": "test_run",
-            "summary": f"Lancement des tests : {payload.target}/{payload.path}",
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }
-        await _persist_event(evt0, user_id=user_id, session_id=session_id, project_id=payload.project_id)
-        yield f"data: {json.dumps(evt0, ensure_ascii=False)}\n\n"
-
-        try:
-            if payload.target == "backend":
-                # Lancement pytest restreint à un path safe sous /app/backend
-                safe_path = (payload.path or "tests/").lstrip("/")
-                if ".." in safe_path:
-                    raise HTTPException(status_code=400, detail="Path invalide.")
-                full_path = os.path.normpath(os.path.join("/app/backend", safe_path))
-                if not full_path.startswith("/app/backend"):
-                    raise HTTPException(status_code=400, detail="Path hors backend.")
-
-                proc = _sub.run(
-                    ["python", "-m", "pytest", full_path, "-q", "--tb=short", "--no-header"],
-                    capture_output=True, text=True, timeout=90, cwd="/app/backend",
-                )
-                # Extrait des stats du dernier passage : "X passed, Y failed"
-                summary_line = ""
-                for line in (proc.stdout or "").splitlines()[::-1]:
-                    if "passed" in line or "failed" in line or "error" in line:
-                        summary_line = line.strip(); break
-                kind = "test_run" if proc.returncode in (0, 5) else "error"
-                summary = summary_line or (f"pytest exit {proc.returncode}")
-                evt1 = {
-                    "event_id": f"evt_{uuid.uuid4().hex[:16]}",
-                    "kind": kind,
-                    "summary": summary,
-                    "details": {
-                        "returncode": proc.returncode,
-                        "stdout": (proc.stdout or "")[-8000:],
-                        "stderr": (proc.stderr or "")[-2000:],
-                    },
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                }
-                await _persist_event(evt1, user_id=user_id, session_id=session_id, project_id=payload.project_id)
-                # Stream payload sans details (lazy via /orchestrate/event/{id})
-                p1 = {k: v for k, v in evt1.items() if k != "details"}
-                yield f"data: {json.dumps(p1, ensure_ascii=False)}\n\n"
-            else:
-                evt1 = {
-                    "event_id": f"evt_{uuid.uuid4().hex[:16]}",
-                    "kind": "error",
-                    "summary": f"target inconnu : {payload.target}",
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                }
-                await _persist_event(evt1, user_id=user_id, session_id=session_id, project_id=payload.project_id)
-                yield f"data: {json.dumps(evt1, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            evt_err = {
-                "event_id": f"evt_{uuid.uuid4().hex[:16]}",
-                "kind": "error",
-                "summary": f"test-loop crash : {str(e)[:200]}",
-                "ts": datetime.now(timezone.utc).isoformat(),
-            }
-            yield f"data: {json.dumps(evt_err, ensure_ascii=False)}\n\n"
-
-        evt_done = {
-            "event_id": f"evt_{uuid.uuid4().hex[:16]}",
-            "kind": "complete",
-            "summary": "Test-loop terminé",
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }
-        await _persist_event(evt_done, user_id=user_id, session_id=session_id, project_id=payload.project_id)
-        yield f"data: {json.dumps(evt_done, ensure_ascii=False)}\n\n"
-
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-    })
 
 
 # iter84 — Observabilité vidéo mobile (logs structurés en cas d'échec)
@@ -5325,170 +4793,8 @@ async def observability_video_event(payload: VideoEventIn, request: Request):
 
 
 # ==========================================================================
-# iter82 — CHAT STREAMING SSE (C5/C8) : streaming pseudo-token-par-token
+# iter82 — CHAT STREAMING SSE (C5/C8) — extraite vers routes/chat_advanced_routes.py
 # ==========================================================================
-
-class ChatStreamIn(BaseModel):
-    message: str
-    mode: str = "online"
-    project_id: Optional[str] = None
-    language: Optional[str] = "fr"
-    # iter111 — Pass-through pour préserver le model + les pièces jointes.
-    model: Optional[str] = None
-    attachments: Optional[List[Dict[str, Any]]] = None
-
-
-@api_router.post("/chat/stream")
-async def chat_stream(request: Request, input: ChatStreamIn):
-    """iter114 — VRAI streaming token-par-token via emergentintegrations
-    stream_message() (au lieu du pseudo-streaming par chunks de l'iter111).
-    Pour les cas complexes (attachments, mode offline, projet déjà lié),
-    on retombe sur le pseudo-streaming basé sur send_chat_message pour
-    conserver toute la logique business.
-    """
-    user_id = await get_current_user(request)
-    has_attachments = bool(input.attachments)
-    is_offline = (input.mode or "online").lower() == "offline"
-
-    # Fallback simple : modes complexes → réutilise le pseudo-streaming.
-    if has_attachments or is_offline:
-        full_input = ChatMessageInput(
-            message=input.message, mode=input.mode,
-            project_id=input.project_id, language=input.language,
-            model=input.model, attachments=input.attachments or [],
-        )
-        resp = await send_chat_message(request, full_input)
-        ai_text = ((resp or {}).get("ai_response") or {}).get("content") or ""
-        msg_id = ((resp or {}).get("ai_response") or {}).get("message_id") or ""
-        download = ((resp or {}).get("ai_response") or {}).get("download")
-        auto_pid = (resp or {}).get("project_id")
-
-        async def fallback_gen():
-            import asyncio as _aio
-            text = ai_text
-            i = 0; idx = 0
-            while i < len(text):
-                yield f"data: {json.dumps({'delta': text[i:i+3], 'index': idx})}\n\n"
-                i += 3; idx += 1
-                await _aio.sleep(0.006)
-            yield "data: " + json.dumps({
-                "done": True, "message_id": msg_id, "download": download,
-                "content": ai_text, "project_id": auto_pid,
-            }) + "\n\n"
-
-        from fastapi.responses import StreamingResponse
-        return StreamingResponse(fallback_gen(), media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
-
-    # ----------------- NATIVE STREAMING PATH (online, no attachments) -----------------
-    # Auto-create un chat project si pas fourni (mirroir send_chat_message).
-    project_id_eff = input.project_id
-    auto_created = False
-    if not project_id_eff:
-        short = (input.message or "Nouveau chat").strip().replace("\n", " ")
-        short = short[:40] + ("…" if len(short) > 40 else "")
-        new_proj = {
-            "project_id": f"proj_{uuid.uuid4().hex[:12]}",
-            "user_id": user_id,
-            "name": short or "Nouveau chat",
-            "description": "",
-            "project_type": "chat",
-            "ai_mode": "online",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.projects.insert_one(new_proj)
-        project_id_eff = new_proj["project_id"]
-        auto_created = True
-
-    # Sauvegarde le message utilisateur.
-    user_msg_doc = {
-        "message_id": f"msg_{uuid.uuid4().hex[:16]}",
-        "user_id": user_id, "project_id": project_id_eff,
-        "role": "user", "content": input.message, "mode": input.mode,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.chat_messages.insert_one(user_msg_doc)
-
-    # Construit le system prompt (version simplifiée de send_chat_message,
-    # focalisée Caly conversationnelle, multi-langue).
-    user_language = (input.language or "fr").lower()
-    language_names = {
-        "fr": "français", "en": "English", "es": "español", "pt": "português",
-        "de": "Deutsch", "nl": "Nederlands", "ru": "русский",
-        "zh": "中文（简体）", "zh-tw": "中文（繁體）",
-        "hi": "हिन्दी", "ja": "日本語",
-    }
-    lang_label = language_names.get(user_language, "français")
-    system_prompt = (
-        f"Tu es Caly, un assistant conversationnel chaleureux et direct. "
-        f"Réponds dans la langue de l'utilisateur : **{lang_label}**. "
-        f"Sois vif, concret, et donne une vraie réponse plutôt qu'un mode d'emploi. "
-        f"Ne propose JAMAIS de créer une application/site/script sauf si l'utilisateur le demande explicitement."
-    )
-
-    # Modèle par défaut : openai gpt-4o-mini (rapide + bon marché + supporté).
-    requested = (input.model or "").strip().lower()
-    if requested.startswith("claude") or "anthropic" in requested:
-        provider, model_id = "anthropic", "claude-sonnet-4-5-20250929"
-    elif requested.startswith("gemini"):
-        provider, model_id = "gemini", "gemini-3-flash-preview"
-    else:
-        provider, model_id = "openai", "gpt-4o-mini"
-
-    msg_id_final = f"msg_{uuid.uuid4().hex[:16]}"
-
-    async def native_stream_gen():
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
-        full_text = ""
-        idx = 0
-        try:
-            chat = LlmChat(
-                api_key=os.environ.get("EMERGENT_LLM_KEY"),
-                session_id=f"chat_stream_{project_id_eff}",
-                system_message=system_prompt,
-            ).with_model(provider, model_id)
-
-            async for event in chat.stream_message(UserMessage(text=input.message)):
-                if isinstance(event, TextDelta):
-                    delta = event.content or ""
-                    if not delta:
-                        continue
-                    full_text += delta
-                    yield f"data: {json.dumps({'delta': delta, 'index': idx})}\n\n"
-                    idx += 1
-                elif isinstance(event, StreamDone):
-                    break
-        except Exception as e:
-            logger.warning(f"chat/stream native streaming failed: {e}; fallback message")
-            fallback_text = "Désolée, le service de chat est momentanément indisponible. Réessaie dans un instant."
-            full_text = full_text or fallback_text
-            yield f"data: {json.dumps({'delta': fallback_text if not idx else '', 'index': idx})}\n\n"
-
-        # Persistance de la réponse IA finale en DB.
-        try:
-            await db.chat_messages.insert_one({
-                "message_id": msg_id_final,
-                "user_id": user_id, "project_id": project_id_eff,
-                "role": "assistant", "content": full_text,
-                "mode": input.mode, "model_id": model_id, "ai_source": provider,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-        except Exception as e:
-            logger.warning(f"chat/stream DB persist failed: {e}")
-
-        # Event final.
-        yield "data: " + json.dumps({
-            "done": True,
-            "message_id": msg_id_final,
-            "content": full_text,
-            "project_id": project_id_eff if auto_created else None,
-        }) + "\n\n"
-
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(native_stream_gen(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-    })
 
 
 # Include the router in the main app
@@ -5782,6 +5088,43 @@ app.include_router(
         Project=Project,
         ProjectCreate=ProjectCreate,
         ProjectUpdate=ProjectUpdate,
+    ),
+    prefix="/api",
+)
+
+# iter123 — slice 5s : /chat/translate-messages + /chat/suggest-enhancements + /chat/tts
+#                      + /chat/orchestrate(-stream) + /orchestrate/test-loop + /chat/stream (7 endpoints, ~640 L)
+from routes.chat_advanced_routes import build_chat_advanced_router  # noqa: E402
+app.include_router(
+    build_chat_advanced_router(
+        db,
+        get_current_user=get_current_user,
+        logger=logger,
+        send_chat_message_fn=send_chat_message,
+        ChatMessageInput_cls=ChatMessageInput,
+        GITHUB_ENABLED=GITHUB_ENABLED,
+        push_to_github=push_to_github,
+    ),
+    prefix="/api",
+)
+
+# iter123 — slice 5t : /chat/history + /chat/attach (2 endpoints)
+from routes.chat_history_routes import build_chat_history_router  # noqa: E402
+app.include_router(
+    build_chat_history_router(db, get_current_user=get_current_user),
+    prefix="/api",
+)
+
+# iter123 — slice 5u : /chat/generate-* (3 endpoints — docx/pdf/image)
+from routes.chat_generate_routes import build_chat_generate_router  # noqa: E402
+app.include_router(
+    build_chat_generate_router(
+        db,
+        get_current_user=get_current_user,
+        build_docx=_build_docx,
+        build_pdf=_build_pdf,
+        build_image=_build_image,
+        logger=logger,
     ),
     prefix="/api",
 )

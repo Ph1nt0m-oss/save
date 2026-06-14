@@ -13,8 +13,6 @@
 
 Helpers injectés : db, get_current_user, Project, ProjectCreate, ProjectUpdate.
 """
-from __future__ import annotations
-
 import os
 import unicodedata as _ud
 import re as _re
