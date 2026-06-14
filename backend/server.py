@@ -306,152 +306,6 @@ async def get_current_user(request: Request) -> str:
 
     return session_doc["user_id"]
 
-class SMSAuthRequest(BaseModel):
-    phone_number: str
-    code: Optional[str] = None
-
-# ==================== AUTH ROUTES ====================
-
-async def send_sms_via_twilio(phone_number: str, message: str) -> bool:
-    """Send SMS via Twilio if configured, otherwise return False"""
-    twilio_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-    twilio_token = os.environ.get('TWILIO_AUTH_TOKEN')
-    twilio_phone = os.environ.get('TWILIO_PHONE_NUMBER')
-    
-    if not all([twilio_sid, twilio_token, twilio_phone]):
-        logger.warning("Twilio not configured - SMS will be simulated")
-        return False
-    
-    try:
-        # Twilio API call
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json",
-                auth=(twilio_sid, twilio_token),
-                data={
-                    "From": twilio_phone,
-                    "To": phone_number,
-                    "Body": message
-                }
-            )
-            
-            if response.status_code in [200, 201]:
-                logger.info(f"SMS sent successfully to {phone_number}")
-                return True
-            else:
-                logger.error(f"Twilio error: {response.text}")
-                return False
-    except Exception as e:
-        logger.error(f"Twilio exception: {e}")
-        return False
-
-@api_router.post("/auth/sms/send")
-async def send_sms_code(request: SMSAuthRequest):
-    """Send SMS verification code (for offline auth)"""
-    try:
-        # Generate 6-digit code
-        code = str(uuid.uuid4().int)[:6]
-        
-        # Store code in database (expires in 5 minutes)
-        await db.sms_codes.insert_one({
-            "phone_number": request.phone_number,
-            "code": code,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-        
-        # Try to send via Twilio
-        message = f"Votre code CodeForge AI: {code}. Valide 5 minutes."
-        sms_sent = await send_sms_via_twilio(request.phone_number, message)
-        
-        logger.info(f"SMS Code for {request.phone_number}: {code} (Twilio: {sms_sent})")
-        
-        response_data = {
-            "message": "Code SMS envoyé" if sms_sent else "Code généré (mode démo)",
-            "sms_sent": sms_sent
-        }
-        
-        # Return code in response only if Twilio is not configured (for testing)
-        if not sms_sent:
-            response_data["code"] = code  # DEMO MODE - remove when Twilio is configured
-        
-        return response_data
-    except Exception as e:
-        logger.error(f"Error sending SMS: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.post("/auth/sms/verify")
-async def verify_sms_code(request: SMSAuthRequest, response: Response):
-    """Verify SMS code and create session"""
-    try:
-        # Find valid code
-        code_doc = await db.sms_codes.find_one({
-            "phone_number": request.phone_number,
-            "code": request.code
-        }, {"_id": 0})
-        
-        if not code_doc:
-            await log_auth_error("sms_invalid_code", f"phone={request.phone_number}", request=None)
-            return JSONResponse(status_code=401, content={"detail": "Code invalide"})
-        
-        # Check expiry
-        expires_at = datetime.fromisoformat(code_doc["expires_at"])
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        
-        if expires_at < datetime.now(timezone.utc):
-            await log_auth_error("sms_code_expired", f"phone={request.phone_number}", request=None)
-            return JSONResponse(status_code=401, content={"detail": "Code expiré"})
-        
-        # Create or get user
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        existing_user = await db.users.find_one({"phone_number": request.phone_number}, {"_id": 0})
-        
-        if existing_user:
-            user_id = existing_user["user_id"]
-        else:
-            new_user = {
-                "user_id": user_id,
-                "phone_number": request.phone_number,
-                "name": f"User {request.phone_number[-4:]}",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db.users.insert_one(new_user)
-        
-        # Create session
-        session_token = f"sms_session_{uuid.uuid4().hex}"
-        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-        
-        session_doc = {
-            "session_token": session_token,
-            "user_id": user_id,
-            "auth_type": "sms",
-            "expires_at": expires_at.isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.user_sessions.insert_one(session_doc)
-        
-        # Set cookie
-        response.set_cookie(
-            key="session_token",
-            value=session_token,
-            httponly=True,
-            secure=True,
-            samesite="none",
-            max_age=7 * 24 * 60 * 60,
-            path="/"
-        )
-        
-        # Delete used code
-        await db.sms_codes.delete_one({"phone_number": request.phone_number, "code": request.code})
-        
-        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-        return user
-    
-    except Exception as e:
-        logger.error(f"Error verifying SMS: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 # ==================== AUTH ROUTES ====================
 
 @api_router.get("/auth/me")
@@ -694,7 +548,6 @@ async def send_verification_email(to_email: str, verify_url: str) -> bool:
     if ok:
         logger.info(f"✅ Verification email sent to {to_email}")
     return ok
-
 
 
 class RegisterRequest(BaseModel):
@@ -1020,303 +873,6 @@ async def register(payload: RegisterRequest, request: Request):
     return response
 
 
-class ResendRequest(BaseModel):
-    email: str
-    frontend_url: Optional[str] = None
-
-
-class MagicLinkLoginRequest(BaseModel):
-    email: str
-    frontend_url: Optional[str] = None
-
-
-@api_router.post("/auth/magic-link")
-async def magic_link_login(payload: MagicLinkLoginRequest, request: Request):
-    """Send a one-shot login link to a verified user.
-
-    Same UX as register: the original tab polls /verification-status while
-    the user clicks the link in their inbox. Always returns the same
-    neutral message to prevent email enumeration. Rate-limited 3/10 min.
-    """
-    email = normalize_email(payload.email)
-    if not email or not EMAIL_RE.match(email):
-        raise HTTPException(status_code=400, detail="Adresse email invalide")
-
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    neutral = {
-        "message": "Si un compte existe pour cet email, un lien de connexion t'a été envoyé.",
-    }
-
-    if not user or not user.get("verified"):
-        return neutral
-
-    # Rate limit: 3 magic links / 10 min / verified email
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    recent = await db.resend_attempts.count_documents({"email": email, "ts": {"$gte": cutoff}, "purpose": "magic_login"})
-    if recent >= 3:
-        raise HTTPException(status_code=429, detail="Trop de demandes. Patiente 10 minutes.")
-
-    now = datetime.now(timezone.utc)
-    token = secrets.token_urlsafe(32)
-    await db.email_verifications.delete_many({"user_id": user["user_id"], "purpose": "magic_login"})
-    await db.email_verifications.insert_one({
-        "token": token,
-        "user_id": user["user_id"],
-        "email": email,
-        "purpose": "magic_login",
-        "consumed_at": None,
-        "pending_session_token": None,
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=5)).isoformat(),
-    })
-    await db.resend_attempts.insert_one({
-        "email": email,
-        "ts": now.isoformat(),
-        "purpose": "magic_login",
-    })
-
-    frontend_base = (
-        _clean_origin(payload.frontend_url)
-        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
-        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
-    )
-    login_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
-
-    sent = await send_verification_email(email, login_url)
-    response = {
-        **neutral,
-        "email_sent": sent,
-        "verification_token": token,  # for polling cross-tab
-        "expires_in_seconds": 5 * 60,
-    }
-    if not sent:
-        response["verification_link"] = login_url
-    return response
-
-
-@api_router.post("/auth/resend-verification")
-async def resend_verification(payload: ResendRequest, request: Request):
-    """Generate a fresh magic link for an unverified account.
-
-    Rate-limited: at most 3 resends / 10 min / email. Already-verified
-    users get a friendly message instead of a link (no enumeration).
-    """
-    email = normalize_email(payload.email)
-    if not email or not EMAIL_RE.match(email):
-        raise HTTPException(status_code=400, detail="Adresse email invalide")
-
-    # Rate limit: 3 resends per 10 min
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    recent = await db.resend_attempts.count_documents({"email": email, "ts": {"$gte": cutoff}})
-    if recent >= 3:
-        raise HTTPException(status_code=429, detail="Trop de renvois. Patiente 10 minutes.")
-
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    # Neutral response if no user / already verified (no email enumeration)
-    if not user or user.get("verified"):
-        return {
-            "message": "Si un compte non confirmé existe pour cet email, un nouveau lien a été envoyé.",
-            "email_sent": False,
-        }
-
-    now = datetime.now(timezone.utc)
-    token = secrets.token_urlsafe(32)
-    await db.email_verifications.delete_many({"user_id": user["user_id"]})
-    await db.email_verifications.insert_one({
-        "token": token,
-        "user_id": user["user_id"],
-        "email": email,
-        "consumed_at": None,
-        "pending_session_token": None,
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=5)).isoformat(),
-    })
-    await db.resend_attempts.insert_one({"email": email, "ts": now.isoformat()})
-
-    def _clean_origin(u: str) -> str:
-        try:
-            from urllib.parse import urlparse
-            p = urlparse(u or "")
-            if p.scheme in ("http", "https") and p.netloc:
-                return f"{p.scheme}://{p.netloc}"
-        except Exception:
-            pass
-        return ""
-
-    frontend_base = (
-        _clean_origin(payload.frontend_url)
-        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
-        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
-    )
-    verify_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
-
-    sent = await send_verification_email(email, verify_url)
-    resp = {
-        "message": "Nouveau lien envoyé ! Tu as 5 minutes." if sent
-        else "Nouveau lien généré. L'e-mail n'a pas pu être envoyé automatiquement — utilise le lien ci-dessous.",
-        "email": email,
-        "email_sent": sent,
-        "verification_token": token,
-        "expires_in_seconds": 5 * 60,
-        # iter59: always expose the link as a copy/open fallback
-        "verification_link": verify_url,
-    }
-    return resp
-
-
-@api_router.get("/auth/verify-email")
-async def verify_email(token: str):
-    """Consume the magic link.
-
-    Marks the user as verified, stores a fresh session_token against the
-    verification row, and returns a friendly message. We do NOT set a
-    cookie here because the user may have opened this link in a different
-    tab/device from the one where they registered. The original tab is
-    polling /auth/verification-status and will pick up the session_token
-    on its next poll, then log the user in automatically.
-    """
-    if not token:
-        raise HTTPException(status_code=400, detail="Token manquant")
-
-    doc = await db.email_verifications.find_one({"token": token}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=400, detail="Lien invalide ou déjà utilisé")
-
-    expires_at = datetime.fromisoformat(doc["expires_at"])
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        # Clean up the expired row so it can't be reused accidentally
-        await db.email_verifications.delete_one({"token": token})
-        raise HTTPException(
-            status_code=400,
-            detail="La durée de validation de ce lien a expiré. Merci de réessayer à nouveau sur CodeForge AI.",
-        )
-
-    # Already consumed? Idempotent friendly response.
-    if doc.get("consumed_at"):
-        return {
-            "message": "Votre compte est désormais certifié. Vous pouvez fermer cette page et retourner sur l'application.",
-            "already_verified": True,
-        }
-
-    user_id = doc["user_id"]
-    now = datetime.now(timezone.utc)
-
-    # Email change flow: apply the pending email change instead of marking
-    # the account as verified (it already is).
-    if doc.get("purpose") == "email_change" and doc.get("pending_email"):
-        new_email = doc["pending_email"]
-        # Race-check: another account may have grabbed this email since
-        # the request was issued.
-        existing = await db.users.find_one({"email": new_email}, {"_id": 0})
-        if existing and existing.get("user_id") != user_id:
-            await db.email_verifications.delete_one({"token": token})
-            raise HTTPException(
-                status_code=409,
-                detail="Cet email a été pris par un autre compte entre-temps.",
-            )
-        await db.users.update_one(
-            {"user_id": user_id},
-            {"$set": {"email": new_email, "last_login": now.isoformat()}},
-        )
-        await db.email_verifications.update_one(
-            {"token": token},
-            {"$set": {"consumed_at": now.isoformat()}},
-        )
-        return {
-            "message": "Adresse email mise à jour. Tu peux fermer cette page.",
-            "already_verified": True,
-            "email_changed": True,
-        }
-
-    await db.users.update_one(
-        {"user_id": user_id},
-        {"$set": {"verified": True, "last_login": now.isoformat()}},
-    )
-
-    # Prepare a fresh session token that the original tab will exchange
-    # when it polls /auth/verification-status.
-    session_token = secrets.token_urlsafe(32)
-    await db.user_sessions.insert_one({
-        "session_token": session_token,
-        "user_id": user_id,
-        "auth_type": "email",
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(days=7)).isoformat(),
-    })
-
-    await db.email_verifications.update_one(
-        {"token": token},
-        {"$set": {
-            "consumed_at": now.isoformat(),
-            "pending_session_token": session_token,
-        }},
-    )
-
-    return {
-        "message": "Votre compte est désormais certifié. Vous pouvez fermer cette page et retourner sur l'application.",
-        "already_verified": False,
-    }
-
-
-@api_router.get("/auth/verification-status")
-async def verification_status(token: str, response: Response):
-    """Polled by the original registration tab every ~2 seconds.
-
-    Returns one of:
-      - {status: "pending"}  → user hasn't clicked the link yet
-      - {status: "expired"}  → link expired before being clicked
-      - {status: "verified", session_token, user}  → link consumed; the
-        original tab should now log the user in automatically. The
-        session_token is handed over exactly ONCE (the pending token is
-        cleared on the same call).
-    """
-    if not token:
-        raise HTTPException(status_code=400, detail="Token manquant")
-
-    doc = await db.email_verifications.find_one({"token": token}, {"_id": 0})
-    if not doc:
-        return {"status": "expired"}
-
-    expires_at = datetime.fromisoformat(doc["expires_at"])
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-    consumed = doc.get("consumed_at")
-    pending_token = doc.get("pending_session_token")
-
-    if consumed and pending_token:
-        # Hand the token over to the original tab and delete the row so it
-        # cannot be reused.
-        user = await db.users.find_one(
-            {"user_id": doc["user_id"]},
-            {"_id": 0, "password_hash": 0},
-        )
-        await db.email_verifications.delete_one({"token": token})
-
-        response.set_cookie(
-            key="session_token",
-            value=pending_token,
-            httponly=True,
-            secure=True,
-            samesite="none",
-            max_age=7 * 24 * 3600,
-            path="/",
-        )
-        return {
-            "status": "verified",
-            "session_token": pending_token,
-            "user": user,
-        }
-
-    if not consumed and expires_at < datetime.now(timezone.utc):
-        await db.email_verifications.delete_one({"token": token})
-        return {"status": "expired"}
-
-    return {"status": "pending"}
-
-
 @api_router.post("/auth/login")
 async def login(payload: LoginRequest, response: Response, request: Request):
     """Verify credentials and create a session (cookie + token in body)."""
@@ -1493,167 +1049,6 @@ async def login(payload: LoginRequest, response: Response, request: Request):
     return {**safe_user, "session_token": session_token}
 
 
-# ==================== PROFILE / SETTINGS ====================
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
-
-
-class ChangeEmailRequest(BaseModel):
-    new_email: str
-    current_password: str
-    frontend_url: Optional[str] = None
-
-
-class DeleteAccountRequest(BaseModel):
-    current_password: str
-
-
-@api_router.post("/auth/change-password")
-async def change_password(payload: ChangePasswordRequest, request: Request):
-    """Change password while logged in. Requires current password."""
-    user_id = await get_current_user(request)
-    if len(payload.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit faire au moins 6 caractères")
-
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    if not verify_password(payload.current_password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Mot de passe actuel incorrect")
-
-    new_hash = hash_password(payload.new_password)
-    await db.users.update_one(
-        {"user_id": user_id},
-        {"$set": {
-            "password_hash": new_hash,
-            "last_password_change": datetime.now(timezone.utc).isoformat(),
-        }},
-    )
-    # Invalidate other sessions, keep the current one
-    current_token = request.cookies.get("session_token") or (
-        request.headers.get("Authorization", "").replace("Bearer ", "") or None
-    )
-    if current_token:
-        await db.user_sessions.delete_many({
-            "user_id": user_id,
-            "session_token": {"$ne": current_token},
-        })
-    return {"message": "Mot de passe mis à jour."}
-
-
-@api_router.post("/auth/change-email")
-async def change_email(payload: ChangeEmailRequest, request: Request):
-    """Request a change of email. Sends a verification link to the NEW
-    email; the change is only applied once the user clicks the link.
-    """
-    user_id = await get_current_user(request)
-    new_email = normalize_email(payload.new_email)
-    if not new_email or not EMAIL_RE.match(new_email):
-        raise HTTPException(status_code=400, detail="Adresse email invalide")
-
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    if not verify_password(payload.current_password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
-    if new_email == user.get("email"):
-        raise HTTPException(status_code=400, detail="Cet email est déjà ton email actuel")
-    other = await db.users.find_one({"email": new_email}, {"_id": 0})
-    if other:
-        raise HTTPException(status_code=409, detail="Cet email est déjà utilisé par un autre compte")
-
-    # Reuse email_verifications collection with a 'pending_email' marker
-    now = datetime.now(timezone.utc)
-    token = secrets.token_urlsafe(32)
-    await db.email_verifications.delete_many({"user_id": user_id, "purpose": "email_change"})
-    await db.email_verifications.insert_one({
-        "token": token,
-        "user_id": user_id,
-        "email": user.get("email"),
-        "pending_email": new_email,
-        "purpose": "email_change",
-        "consumed_at": None,
-        "pending_session_token": None,
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=30)).isoformat(),
-    })
-
-    frontend_base = (
-        _clean_origin(payload.frontend_url)
-        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
-        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
-    )
-    confirm_url = f"{frontend_base}/verify-email?token={token}" if frontend_base else f"/verify-email?token={token}"
-    sent = await send_verification_email(new_email, confirm_url)
-    resp = {
-        "message": f"Email de confirmation envoyé à {new_email}." if sent
-        else "Confirmation requise (mode démo — clique le lien ci-dessous).",
-        "email_sent": sent,
-    }
-    if not sent:
-        resp["verification_link"] = confirm_url
-    return resp
-
-
-@api_router.delete("/auth/me")
-async def delete_account(payload: DeleteAccountRequest, request: Request, response: Response):
-    """Delete own account + all related data (RGPD compliant)."""
-    user_id = await get_current_user(request)
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    if not verify_password(payload.current_password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
-
-    # Cascade delete
-    await db.users.delete_one({"user_id": user_id})
-    await db.user_sessions.delete_many({"user_id": user_id})
-    await db.email_verifications.delete_many({"user_id": user_id})
-    await db.password_reset_tokens.delete_many({"user_id": user_id})
-    await db.projects.delete_many({"user_id": user_id})
-    await db.previews.delete_many({"user_id": user_id})
-    await db.chat_messages.delete_many({"user_id": user_id})
-
-    response.delete_cookie("session_token", path="/")
-    return {"message": "Compte supprimé avec succès. À bientôt."}
-
-
-@api_router.get("/auth/export")
-async def export_my_data(request: Request):
-    """RGPD: download a JSON of all data we hold about the user."""
-    user_id = await get_current_user(request)
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
-    projects = await db.projects.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
-    sessions = await db.user_sessions.find({"user_id": user_id}, {"_id": 0}).to_list(100)
-    chats = await db.chat_messages.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
-    payload = {
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "user": user,
-        "projects": projects,
-        "sessions": sessions,
-        "chat_messages": chats,
-    }
-    return JSONResponse(
-        content=payload,
-        headers={"Content-Disposition": "attachment; filename=codeforge-mes-donnees.json"},
-    )
-
-
-# ==================== PASSWORD RESET (FORGOT PASSWORD) ====================
-
-class ForgotPasswordRequest(BaseModel):
-    email: str
-    password: Optional[str] = None  # NEW flow: user supplies the new password upfront
-    frontend_url: Optional[str] = None
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    password: str
-
-
 async def send_reset_email(to_email: str, reset_url: str) -> bool:
     """Send password reset confirmation link via Resend (same provider as verification).
 
@@ -1692,8 +1087,6 @@ def _clean_origin(u: str) -> str:
     except Exception:
         pass
     return ""
-
-
 
 
 # ==================== USER FEEDBACK ====================
@@ -3701,7 +3094,6 @@ async def list_chat_models(request: Request):
     return {"online": online, "offline": offline, "context": context}
 
 
-
 class RunPythonInput(BaseModel):
     code: str
     timeout_sec: Optional[int] = 10
@@ -3734,9 +3126,6 @@ async def sandbox_reset(request: Request, payload: SessionResetInput):
     from cfaction_engine import reset_sandbox_session
     ok = reset_sandbox_session(payload.session_id)
     return {"reset": ok, "session_id": payload.session_id}
-
-
-
 
 
 @api_router.post("/chat/generate-docx")
@@ -4047,8 +3436,6 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
 # ==================== USER PREFERENCES ====================
 
 
-
-
 @api_router.post("/projects", response_model=Project, status_code=201)
 async def create_project(request: Request, input: ProjectCreate):
     """Create a new project"""
@@ -4315,8 +3702,6 @@ async def get_public_share_preview(slug: str):
     return HTMLResponse("\n".join(html_parts))
 
 
-
-
 # ==========================================================================
 # DEVICE-BOUND CRYPTOGRAPHIC IDENTITY (creator-grade access control)
 # ==========================================================================
@@ -4501,8 +3886,6 @@ async def _require_staff_signature(
     return dev
 
 
-
-
 @api_router.get("/system/site-mode")
 async def get_site_mode_public():
     """Public — anyone can read the current site mode + (in guest mode)
@@ -4611,12 +3994,9 @@ async def set_site_mode(payload: SiteModeSetIn):
     return {"mode": modes[0], "modes": modes, "guest_view": guest_view, "guest_views": guest_views}
 
 
-
-
 # ==========================================================================
 # ONE-DEVICE-AT-A-TIME — pending session approval flow
 # ==========================================================================
-
 
 
 class WebAuthnEnrollOptionsIn(BaseModel):
@@ -4624,8 +4004,6 @@ class WebAuthnEnrollOptionsIn(BaseModel):
     nonce: str
     signature: str
     origin: str           # window.location.origin
-
-
 
 
 # ==========================================================================
@@ -5886,10 +5264,6 @@ def _disambiguate_pseudos(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-
-
-
-
 # ---------------- ANNOUNCEMENTS + POLLS ----------------
 class AnnounceCreateIn(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -5968,7 +5342,6 @@ class AnnounceEditIn(BaseModel):
 # routes/polls_routes.py (slice 4b). Le router est inclus en bas de server.py.
 
 
-
 # ---------------- iter76: ANNOUNCEMENT STATES (validated/refused/orange) ----------------
 # iter91 — Modèle AnnStateIn + routes /announcements/set-state +
 # /announcements/clear-history déplacés dans routes/announcements_routes.py.
@@ -5978,8 +5351,6 @@ class AnnounceEditIn(BaseModel):
 # la route ci-dessous, mais l'ancienne au-dessus reste l'autoritative car
 # FastAPI prend la 1ʳᵉ enregistrée. Donc on patche directement la liste plus haut.
 # Pas de seconde définition ici — voir announcements_list ci-dessus modifié.
-
-
 
 
 async def _execute_due_kicks():
@@ -6183,8 +5554,6 @@ class TranslateProjectNameIn(BaseModel):
     name: str  # fallback si pas en cache
 
 
-
-
 # iter100 — Spec des vues : matrice d'accès par viewMode.
 # Source de vérité côté backend pour ce que chaque vue peut voir.
 @api_router.get("/views/spec")
@@ -6245,7 +5614,6 @@ async def get_views_spec():
             "can_post_ideas": False,
         },
     }
-
 
 
 @api_router.post("/projects/translate-name")
@@ -6563,8 +5931,6 @@ async def _log_change(category: str, summary: str, details: Optional[Dict[str, A
 
 
 # ---------------- USER pseudo update ----------------
-
-
 
 
 # Helper used by ideas/polls to verify any signature (not creator-restricted).
@@ -7309,318 +6675,6 @@ def _rp_id_from_origin(origin: str) -> str:
         return "localhost"
 
 
-class SessionRequestStatusIn(BaseModel):
-    request_id: str
-
-
-@api_router.post("/auth/forgot-password")
-async def forgot_password(payload: ForgotPasswordRequest, request: Request):
-    """Step 1 of the new "set then confirm" reset flow.
-
-    The user enters their email + a NEW password (twice, validated by the frontend).
-    We don't change the password yet — we store the new hash on a pending token,
-    then email them a confirmation link. Clicking the link applies the password.
-
-    Always returns the same neutral message to prevent email enumeration.
-    Rate-limited: 3 requests / 10 min / email.
-    """
-    email = normalize_email(payload.email)
-    if not email or not EMAIL_RE.match(email):
-        raise HTTPException(status_code=400, detail="Adresse email invalide")
-    if not payload.password or len(payload.password) < 6:
-        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 6 caractères")
-
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    recent = await db.password_resets.count_documents({"email": email, "ts": {"$gte": cutoff}})
-    if recent >= 3:
-        raise HTTPException(status_code=429, detail="Trop de demandes. Patiente 10 minutes.")
-
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    neutral = {
-        "message": "Si un compte existe pour cet email, un lien de confirmation t'a été envoyé.",
-    }
-
-    if not user or not user.get("verified"):
-        return neutral
-
-    await db.password_resets.insert_one({
-        "email": email,
-        "ts": datetime.now(timezone.utc).isoformat(),
-    })
-
-    # Generate single-use token (30 min) carrying the PENDING password hash.
-    now = datetime.now(timezone.utc)
-    token = secrets.token_urlsafe(32)
-    pending_hash = hash_password(payload.password)
-    await db.password_reset_tokens.delete_many({"user_id": user["user_id"]})
-    await db.password_reset_tokens.insert_one({
-        "token": token,
-        "user_id": user["user_id"],
-        "email": email,
-        "pending_password_hash": pending_hash,
-        "consumed_at": None,
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(minutes=30)).isoformat(),
-    })
-
-    frontend_base = (
-        _clean_origin(payload.frontend_url)
-        or _clean_origin(os.environ.get("FRONTEND_URL", ""))
-        or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", ""))
-    )
-    # GET endpoint that finalizes the change — same pattern as /verify-email.
-    confirm_url = (
-        f"{frontend_base}/api/auth/confirm-password-reset?token={token}"
-        if frontend_base
-        else f"/api/auth/confirm-password-reset?token={token}"
-    )
-
-    sent = await send_reset_email(email, confirm_url)
-    response = {**neutral, "email_sent": sent}
-    if not sent:
-        response["confirm_link"] = confirm_url
-    return response
-
-
-@api_router.get("/auth/confirm-password-reset")
-async def confirm_password_reset(request: Request, token: str):
-    """Step 2: user clicks the email link → apply the pending password.
-
-    Returns a small HTML success page that auto-redirects to /login after 3s.
-    """
-    frontend_base = _clean_origin(os.environ.get("FRONTEND_URL", "")) or _clean_origin(os.environ.get("REACT_APP_BACKEND_URL", "")) or ""
-
-    def html_page(title: str, body: str, ok: bool = True, redirect_to: str = "/login") -> HTMLResponse:
-        color = "#00FF66" if ok else "#ef4444"
-        meta = f"<meta http-equiv='refresh' content='3;url={frontend_base}{redirect_to}'>" if ok else ""
-        return HTMLResponse(content=(
-            "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
-            f"<title>{title}</title>{meta}"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'></head>"
-            "<body style='font-family:system-ui,sans-serif;background:#050505;color:#fff;"
-            "display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px'>"
-            "<div style='max-width:460px;text-align:center'>"
-            f"<h1 style='color:{color};margin:0 0 16px'>{title}</h1>"
-            f"<p style='color:#A1A1AA;line-height:1.6'>{body}</p>"
-            f"<p style='margin-top:24px'><a href='{frontend_base}{redirect_to}' "
-            f"style='background:#E4FF00;color:#050505;padding:12px 24px;border-radius:6px;"
-            f"text-decoration:none;font-weight:bold'>Aller à la connexion</a></p>"
-            "</div></body></html>"
-        ))
-
-    if not token:
-        return html_page("Lien invalide", "Le lien de confirmation est manquant.", ok=False)
-
-    doc = await db.password_reset_tokens.find_one({"token": token}, {"_id": 0})
-    if not doc:
-        return html_page("Lien invalide", "Ce lien est invalide ou a déjà été utilisé.", ok=False)
-    if doc.get("consumed_at"):
-        return html_page("Lien déjà utilisé", "Ce lien a déjà servi à confirmer un changement.", ok=False)
-
-    expires_at = datetime.fromisoformat(doc["expires_at"])
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        await db.password_reset_tokens.delete_one({"token": token})
-        return html_page("Lien expiré", "Ce lien a expiré (30 min). Refais une demande de réinitialisation.", ok=False)
-
-    pending_hash = doc.get("pending_password_hash")
-    if not pending_hash:
-        # Legacy token without pending hash (very old flow) — reject cleanly.
-        return html_page("Lien obsolète", "Refais une demande de réinitialisation depuis la page de connexion.", ok=False)
-
-    await db.users.update_one(
-        {"user_id": doc["user_id"]},
-        {"$set": {
-            "password_hash": pending_hash,
-            "last_password_change": datetime.now(timezone.utc).isoformat(),
-        }},
-    )
-    await db.password_reset_tokens.update_one(
-        {"token": token},
-        {"$set": {"consumed_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    # Defense in depth — kick all open sessions for this user.
-    await db.user_sessions.delete_many({"user_id": doc["user_id"]})
-    await db.failed_logins.delete_many({"email": doc["email"]})
-
-    return html_page(
-        "✅ Mot de passe mis à jour",
-        "Tu peux maintenant te connecter avec ton nouveau mot de passe. Redirection automatique dans 3 secondes…",
-    )
-
-
-@api_router.post("/auth/reset-password")
-async def reset_password(payload: ResetPasswordRequest):
-    """Consume reset token and set a new password."""
-    if not payload.token:
-        raise HTTPException(status_code=400, detail="Token manquant")
-    if len(payload.password) < 6:
-        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 6 caractères")
-
-    doc = await db.password_reset_tokens.find_one({"token": payload.token}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=400, detail="Lien invalide ou déjà utilisé")
-    if doc.get("consumed_at"):
-        raise HTTPException(status_code=400, detail="Ce lien a déjà été utilisé")
-
-    expires_at = datetime.fromisoformat(doc["expires_at"])
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        await db.password_reset_tokens.delete_one({"token": payload.token})
-        raise HTTPException(
-            status_code=400,
-            detail="La durée de validation de ce lien a expiré. Refais une demande de réinitialisation.",
-        )
-
-    new_hash = hash_password(payload.password)
-    await db.users.update_one(
-        {"user_id": doc["user_id"]},
-        {"$set": {"password_hash": new_hash, "last_password_change": datetime.now(timezone.utc).isoformat()}},
-    )
-    await db.password_reset_tokens.update_one(
-        {"token": payload.token},
-        {"$set": {"consumed_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    # Invalidate all existing sessions for this user (defense in depth:
-    # if an attacker had a stale session, the reset kicks them out).
-    await db.user_sessions.delete_many({"user_id": doc["user_id"]})
-    # Clear failed-login counters
-    await db.login_attempts.delete_many({"identifier": doc["email"]})
-
-    return {"message": "Mot de passe mis à jour. Tu peux te reconnecter."}
-
-@api_router.post("/auth/session-request-status")
-async def session_request_status(payload: SessionRequestStatusIn, response: Response):
-    """Polled by the requesting device until the connected device decides
-    (approve/deny) or the request expires (15 min).
-
-    Idempotent: once approved, the session token is persisted on the request
-    and returned on every subsequent poll until the requesting device clears
-    it. This avoids race conditions where two parallel polls of the same
-    approved request would have one return 'approved+token' and the other
-    return 404."""
-    now = datetime.now(timezone.utc)
-    req = await db.session_requests.find_one({"request_id": payload.request_id}, {"_id": 0})
-    if not req:
-        # Could be: deleted/expired old; OR brand new request lookup race.
-        return {"status": "expired"}
-    # Expire on read.
-    if req["status"] == "pending" and req.get("expires_at") and req["expires_at"] < now.isoformat():
-        await db.session_requests.update_one(
-            {"request_id": payload.request_id},
-            {"$set": {"status": "expired"}},
-        )
-        req["status"] = "expired"
-
-    if req["status"] in ("pending", "denied", "expired"):
-        return {"status": req["status"]}
-
-    # status == "approved" — issue/return a session token. We persist it on
-    # the request itself so concurrent or repeat polls all get the same value.
-    user = await db.users.find_one({"user_id": req["user_id"]}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
-
-    session_token = req.get("issued_session_token")
-    if not session_token:
-        session_token = secrets.token_urlsafe(32)
-        # Insert + verify it's queryable BEFORE returning, so the client's
-        # follow-up /auth/me always succeeds. Mongo writes are immediately
-        # visible to subsequent reads from the same client + DB, but we
-        # double-check here to absorb any replica lag on hosted clusters.
-        await db.user_sessions.insert_one({
-            "session_token": session_token,
-            "user_id": user["user_id"],
-            "device_key_id": req.get("requesting_key_id"),
-            "device_label": req.get("requesting_label"),
-            "auth_type": "email",
-            "created_at": now.isoformat(),
-            "last_seen_at": now.isoformat(),  # iter66
-            "expires_at": (now + timedelta(days=7)).isoformat(),
-        })
-        # Tiny read-after-write check (max 3 attempts × 50ms) — rare paranoia
-        # for hosted MongoDB clusters with secondary read preference.
-        for _ in range(3):
-            check = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0, "session_token": 1})
-            if check:
-                break
-            await asyncio.sleep(0.05)
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"last_login": now.isoformat()}})
-        await db.session_requests.update_one(
-            {"request_id": payload.request_id},
-            {"$set": {
-                "issued_session_token": session_token,
-                "consumed_at": now.isoformat(),
-                "expires_at": (now + timedelta(minutes=15)).isoformat(),
-            }},
-        )
-
-    response.set_cookie(
-        key="session_token", value=session_token,
-        httponly=True, secure=True, samesite="none",
-        max_age=7 * 24 * 3600, path="/",
-    )
-    safe_user = {k: v for k, v in user.items() if k != "password_hash"}
-    return {"status": "approved", **safe_user, "session_token": session_token}
-
-
-@api_router.get("/auth/session-pending")
-async def list_pending_session_requests(request: Request):
-    """Listed by the currently-connected user — pending requests on their
-    account from other devices.
-
-    iter83 — Fix bug "demande fantôme récurrente" : on auto-expire les
-    requests pending de plus de 90 secondes. La race condition se produisait
-    quand un device demandait l'accès puis fermait l'onglet sans approval :
-    la request restait `pending` jusqu'à `expires_at` (potentiellement
-    plusieurs minutes), apparaissant comme un prompt fantôme à chaque poll
-    sur le device connecté.
-    """
-    user_id = await get_current_user(request)
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat()
-    stale_threshold = (now - timedelta(seconds=90)).isoformat()
-    # Auto-expire stale pending requests.
-    await db.session_requests.update_many(
-        {"user_id": user_id, "status": "pending", "created_at": {"$lt": stale_threshold}},
-        {"$set": {"status": "expired", "expired_at": now_iso}},
-    )
-    rows = await db.session_requests.find(
-        {"user_id": user_id, "status": "pending", "expires_at": {"$gt": now_iso}, "created_at": {"$gte": stale_threshold}},
-        {"_id": 0},
-    ).sort("created_at", -1).to_list(length=50)
-    return {"requests": rows}
-
-
-class SessionDecideIn(BaseModel):
-    request_id: str
-    decision: str  # 'approve' | 'deny'
-
-
-@api_router.post("/auth/session-decide")
-async def decide_session_request(payload: SessionDecideIn, request: Request):
-    """Currently-connected device approves or denies a pending request."""
-    if payload.decision not in ("approve", "deny"):
-        raise HTTPException(status_code=400, detail="Décision invalide.")
-    user_id = await get_current_user(request)
-    req = await db.session_requests.find_one(
-        {"request_id": payload.request_id, "user_id": user_id, "status": "pending"},
-        {"_id": 0},
-    )
-    if not req:
-        raise HTTPException(status_code=404, detail="Demande introuvable ou déjà traitée.")
-    new_status = "approved" if payload.decision == "approve" else "denied"
-    await db.session_requests.update_one(
-        {"request_id": payload.request_id},
-        {"$set": {
-            "status": new_status,
-            "decided_at": datetime.now(timezone.utc).isoformat(),
-        }},
-    )
-    return {"status": new_status}
-
 app.include_router(api_router)
 
 # iter86 — Slice 2 du refacto : friends routes incluses depuis social_routes
@@ -7678,7 +6732,6 @@ app.include_router(
     ),
     prefix="/api",
 )
-
 
 
 # ==========================================================================
@@ -7791,6 +6844,61 @@ app.include_router(
         get_current_user=get_current_user,
         send_email=_send_email,
         clean_origin=_clean_origin,
+        logger=logger,
+    ),
+    prefix="/api",
+)
+
+# iter120 — slice 5i : /auth/* signup+verify (4 endpoints) — magic-link, resend, verify-email, verification-status
+from routes.auth_signup_verify_routes import build_auth_signup_verify_router  # noqa: E402
+app.include_router(
+    build_auth_signup_verify_router(
+        db,
+        normalize_email=normalize_email,
+        email_re=EMAIL_RE,
+        clean_origin=_clean_origin,
+        send_verification_email=send_verification_email,
+    ),
+    prefix="/api",
+)
+
+# iter120 — slice 5j : /auth/* password reset + session-request (6 endpoints)
+from routes.auth_pwreset_session_routes import build_auth_pwreset_session_router  # noqa: E402
+app.include_router(
+    build_auth_pwreset_session_router(
+        db,
+        normalize_email=normalize_email,
+        email_re=EMAIL_RE,
+        clean_origin=_clean_origin,
+        hash_password=hash_password,
+        send_reset_email=send_reset_email,
+        get_current_user=get_current_user,
+    ),
+    prefix="/api",
+)
+
+# iter120 — slice 5k : /auth/* account mgmt (4 endpoints) — change-password/email, delete-me, export
+from routes.auth_account_routes import build_auth_account_router  # noqa: E402
+app.include_router(
+    build_auth_account_router(
+        db,
+        get_current_user=get_current_user,
+        verify_password=verify_password,
+        hash_password=hash_password,
+        normalize_email=normalize_email,
+        email_re=EMAIL_RE,
+        clean_origin=_clean_origin,
+        send_verification_email=send_verification_email,
+    ),
+    prefix="/api",
+)
+
+# iter120 — slice 5l : /auth/sms/* (2 endpoints) — Twilio SMS auth
+from routes.sms_auth_routes import build_sms_auth_router  # noqa: E402
+app.include_router(
+    build_sms_auth_router(
+        db,
+        log_auth_error=log_auth_error,
         logger=logger,
     ),
     prefix="/api",

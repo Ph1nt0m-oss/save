@@ -1,0 +1,78 @@
+{
+  "summary": "iter120 backend-only validation: refactor of server.py (7892 → 6999 lines) extracting 16 heavy auth routes into 4 new route files (auth_signup_verify_routes.py, auth_pwreset_session_routes.py, auth_account_routes.py, sms_auth_routes.py). Ran the dedicated suite test_iter120_refactor_heavy_auth.py against the public preview URL.",
+  "test_results": {
+    "total": 26,
+    "passed": 25,
+    "failed": 1,
+    "note_on_failure": "TestRouteCount.test_all_extracted_routes_are_mounted FAILS only because Kubernetes ingress routes root path (/openapi.json without /api prefix) to the React frontend, not the backend. Verified locally on http://localhost:8001/openapi.json that ALL 16 expected routes ARE correctly mounted (missing set = empty). This is a test infrastructure issue, NOT a backend regression."
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "test_iter120_refactor_heavy_auth.py::TestRouteCount",
+        "issue": "Test hits {public_url}/openapi.json which is routed to frontend by ingress. Should hit backend directly or via /api alternative. All 16 routes confirmed mounted via localhost:8001/openapi.json."
+      }
+    ]
+  },
+  "validated_routes": {
+    "auth_signup_verify_routes.py": [
+      "POST /api/auth/magic-link (unknown email → 200 neutral, no token leak; bad email → 400)",
+      "POST /api/auth/resend-verification (unknown email → 200 + email_sent=false; bad email → 400)",
+      "GET /api/auth/verify-email (empty token → 400, fake token → 400)",
+      "GET /api/auth/verification-status (fake token → 200 status=expired)"
+    ],
+    "auth_pwreset_session_routes.py": [
+      "POST /api/auth/forgot-password (short pwd → 400, bad email → 400, unknown email → 200 neutral)",
+      "POST /api/auth/reset-password (empty/short/fake token → 400)",
+      "GET /api/auth/confirm-password-reset (no/fake token → 200 HTML 'Lien invalide')",
+      "POST /api/auth/session-request-status (unknown id → 200 status=expired)",
+      "GET /api/auth/session-pending (no auth → 401)",
+      "POST /api/auth/session-decide (invalid decision → 400)"
+    ],
+    "auth_account_routes.py": [
+      "POST /api/auth/change-password (no auth → 401)",
+      "POST /api/auth/change-email (no auth → 401)",
+      "DELETE /api/auth/me (no auth → 401)",
+      "GET /api/auth/export (no auth → 401)"
+    ],
+    "sms_auth_routes.py": [
+      "POST /api/auth/sms/send (demo mode → 200 + 6-digit code returned, Twilio not configured)",
+      "POST /api/auth/sms/verify (invalid code → 401; valid code → 200 creates session + user)"
+    ],
+    "remaining_in_server.py": [
+      "POST /api/auth/login (unknown email → 404 ✓)",
+      "POST /api/auth/register (missing pseudo → 400 ✓)"
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter120_refactor_heavy_auth.py",
+    "/app/test_reports/pytest/iter120_results.xml"
+  ],
+  "action_items": [
+    "Optional: Fix TestRouteCount test by hitting http://localhost:8001/openapi.json (backend internal) OR by relaxing the assertion when running behind ingress. The mounting itself is correct — purely a test infra issue.",
+    "Optional note: rate-limit on /auth/forgot-password only triggers for existing verified users (insert into db.password_resets only happens after user lookup succeeds). Spec saying '429 au 4ème appel' couldn't be reproduced for unknown emails — this is by design for privacy (avoid account-existence leak). Confirm with PM if behavior should change."
+  ],
+  "critical_code_review_comments": [
+    "server.py at 6999 lines is still very large; further extraction recommended in future iters (target <2000 lines per file per house style).",
+    "All 4 new route files follow the build_*_router(db, *, helpers...) factory pattern consistent with the other 11 routers — good.",
+    "Neutral messages for unknown email/account on magic-link, forgot-password, resend-verification correctly prevent enumeration.",
+    "SMS demo mode returns the verification code in the HTTP response — acceptable for dev/demo but ensure this is gated by an explicit ENV flag (TWILIO_CONFIGURED=false) before prod deploy. Verified the test confirms sms_sent=false in this path.",
+    "Test file test_iter120_refactor_heavy_auth.py is well-structured (classes per route file, clear naming, neutral message + status code assertions)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "96% (25/26 — 1 failure is test-infra only, all functional routes verified)",
+    "frontend": "N/A — skipped per request"
+  },
+  "test_credentials": "N/A — all flows tested anonymously / with random emails (per request, no auth user needed)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter120 refactor (server.py 7892→6999 lines, 16 heavy /auth/* routes extracted into 4 new factory-pattern route files) is fully validated. All 25 functional tests pass against the public preview URL. The one OpenAPI-count test failure is a test-side bug only (hits root /openapi.json which ingress routes to frontend); routes ARE correctly mounted (verified via localhost:8001/openapi.json — missing set empty). No regression detected on the login/register routes that stayed in server.py. Pre-existing failures noted in iter25/26/30 etc. are unrelated and were failing BEFORE this refactor (they depend on /auth/register which requires 'pseudo'). Safe to proceed."
+}
