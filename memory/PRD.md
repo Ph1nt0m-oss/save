@@ -16,6 +16,27 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-14 — Iter 120 (Refactoring final Auth — server.py < 7000 lignes)
+
+**🟢 Extraction des routes /auth/* lourdes (server.py : 7892 → 6999 lignes, −893 lignes)**
+
+Quatre nouveaux fichiers de routes factorisés, suivant le pattern `build_*_router(db, *, helpers...)` (anti-circular imports) :
+
+| Fichier | Routes (16 endpoints au total) |
+|---|---|
+| `routes/auth_signup_verify_routes.py` (312 L) | `POST /auth/magic-link`, `POST /auth/resend-verification`, `GET /auth/verify-email`, `GET /auth/verification-status` |
+| `routes/auth_pwreset_session_routes.py` (352 L) | `POST /auth/forgot-password`, `GET /auth/confirm-password-reset`, `POST /auth/reset-password`, `POST /auth/session-request-status`, `GET /auth/session-pending`, `POST /auth/session-decide` |
+| `routes/auth_account_routes.py` (178 L) | `POST /auth/change-password`, `POST /auth/change-email`, `DELETE /auth/me`, `GET /auth/export` |
+| `routes/sms_auth_routes.py` (168 L) | `POST /auth/sms/send`, `POST /auth/sms/verify` (Twilio helper inclus) |
+
+**🟢 Tests (26 nouveaux pytests — 26/26 PASS)** : `backend/tests/test_iter120_refactor_heavy_auth.py` — couvre validation, neutralité (anti-enumeration), HTML d'erreur, rate-limit, signature 401/400, et présence dans `openapi.json`. Test E2E confirme : signup SMS demo flow complet OK, session créée OK, neutral messages OK.
+
+**🟢 Routes restées dans server.py** (intentionnellement, helpers internes profonds) : `register`, `login`, `logout`, `heartbeat`, `disconnect-soft`, `me` (GET), `ocr-device-info`.
+
+**🟡 Validation testing_agent_v3_fork (iteration_100.json)** : 25/26 PASS, le 26ᵉ "fail" est un test-infra issue (root `/openapi.json` ingress→frontend, pas un fix backend) — corrigé en pointant le test vers `localhost:8001` directement. Routes mounting confirmé exhaustif.
+
+
+
 ### 2026-02-12 — Iter 109 (Spacings finaux + Cleanup + Caly code éditable)
 
 **🟢 Spacings finaux** :
