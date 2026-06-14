@@ -1,12 +1,20 @@
-"""Iteration 24 — exhaustive tests for forgot/reset-password + /health + non-regression."""
+"""Iteration 24 — exhaustive tests for forgot/reset-password + /health + non-regression.
+
+iter121: switched from /auth/register (which now requires pseudo + device-capture
++ biometric — out of scope for these tests) to direct MongoDB seeding via the
+conftest helpers `seed_verified_user` / `seed_session_for`.
+"""
 import os
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
 
+import bcrypt
 import pytest
 import requests
 from pymongo import MongoClient
+
+from conftest import seed_verified_user, seed_session_for
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 MONGO_URL = os.environ.get("MONGO_URL")
@@ -28,20 +36,15 @@ def db():
     c.close()
 
 
-def _register_and_verify(email: str, password: str = "Pass1234") -> str:
-    """Register + auto-verify a user. Returns user_id."""
-    r = requests.post(_api("/auth/register"), json={
-        "email": email, "password": password, "frontend_url": BASE_URL,
-    }, timeout=15)
-    assert r.status_code == 200, r.text
-    data = r.json()
-    # In RESEND mode, no demo link returned. Pull token from /auth/verification-status flow
-    # via direct DB or use the verification_token + GET /auth/verify-email.
-    token = data.get("verification_token")
-    assert token
-    rv = requests.get(_api("/auth/verify-email"), params={"token": token}, timeout=15)
-    assert rv.status_code == 200, rv.text
-    return data
+def _register_and_verify(email: str, password: str = "Pass1234") -> dict:
+    """Seed a verified user in MongoDB (bypasses /auth/register since
+    iter62/iter69 added mandatory device-capture + biometric fields)."""
+    e, _, uid = seed_verified_user(email=email, password=password, verified=True)
+    return {"email": e, "user_id": uid, "verification_token": None}
+
+
+# iter121: forgot-password now requires `password` (set-then-confirm flow).
+NEW_PWD = "NewPwd1234"
 
 
 # ==================== /api/health ====================
@@ -63,7 +66,7 @@ class TestHealth:
 class TestForgotPassword:
     def test_unknown_email_neutral(self):
         email = f"TEST_unknown_{uuid.uuid4().hex[:8]}@gmail.com"
-        r = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=10)
+        r = requests.post(_api("/auth/forgot-password"), json={"email": email, "password": NEW_PWD}, timeout=10)
         assert r.status_code == 200
         d = r.json()
         assert "message" in d
@@ -71,10 +74,9 @@ class TestForgotPassword:
 
     def test_unverified_email_neutral(self, db):
         email = f"TEST_unverif_{uuid.uuid4().hex[:8]}@gmail.com"
-        # Register only (no verify)
-        rr = requests.post(_api("/auth/register"), json={"email": email, "password": "Pass1234"}, timeout=10)
-        assert rr.status_code == 200
-        r = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=10)
+        # Seed an unverified user directly (iter62 register requires too many fields)
+        seed_verified_user(email=email, verified=False)
+        r = requests.post(_api("/auth/forgot-password"), json={"email": email, "password": "Pass1234"}, timeout=10)
         assert r.status_code == 200
         d = r.json()
         assert "reset_link" not in d
@@ -85,7 +87,7 @@ class TestForgotPassword:
         email = f"TEST_verif_{uuid.uuid4().hex[:8]}@gmail.com"
         _register_and_verify(email)
         r = requests.post(_api("/auth/forgot-password"), json={
-            "email": email, "frontend_url": BASE_URL,
+            "email": email, "password": NEW_PWD, "frontend_url": BASE_URL,
         }, timeout=15)
         assert r.status_code == 200
         d = r.json()
@@ -102,7 +104,7 @@ class TestForgotPassword:
         db.password_resets.delete_many({"email": _norm(email)})
 
     def test_invalid_email_format_400(self):
-        r = requests.post(_api("/auth/forgot-password"), json={"email": "notanemail"}, timeout=10)
+        r = requests.post(_api("/auth/forgot-password"), json={"email": "notanemail", "password": NEW_PWD}, timeout=10)
         assert r.status_code == 400
 
     def test_rate_limit_4th_call_429(self, db):
@@ -111,9 +113,9 @@ class TestForgotPassword:
         email = f"TEST_rate_{uuid.uuid4().hex[:8]}@gmail.com"
         _register_and_verify(email)
         for i in range(3):
-            r = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=15)
+            r = requests.post(_api("/auth/forgot-password"), json={"email": email, "password": NEW_PWD}, timeout=15)
             assert r.status_code == 200, f"call {i+1}: {r.text}"
-        r4 = requests.post(_api("/auth/forgot-password"), json={"email": email}, timeout=15)
+        r4 = requests.post(_api("/auth/forgot-password"), json={"email": email, "password": NEW_PWD}, timeout=15)
         assert r4.status_code == 429
         db.password_resets.delete_many({"email": _norm(email)})
         db.users.delete_many({"email": _norm(email)})
@@ -123,10 +125,10 @@ class TestForgotPassword:
 
 class TestResetPassword:
     def _gen_reset_token(self, email: str, db) -> str:
-        """Create user verified + reset token directly via API (uses Resend so no link)."""
+        """Seed verified user + trigger forgot-password to mint a reset token."""
         _register_and_verify(email)
         requests.post(_api("/auth/forgot-password"), json={
-            "email": email, "frontend_url": BASE_URL,
+            "email": email, "password": NEW_PWD, "frontend_url": BASE_URL,
         }, timeout=15)
         tk = db.password_reset_tokens.find_one({"email": _norm(email)})
         assert tk, "token missing"
@@ -210,7 +212,7 @@ class TestResetPassword:
         me1 = requests.get(_api("/auth/me"), headers={"Authorization": f"Bearer {sess}"}, timeout=10)
         assert me1.status_code == 200
         # request reset
-        requests.post(_api("/auth/forgot-password"), json={"email": email, "frontend_url": BASE_URL}, timeout=15)
+        requests.post(_api("/auth/forgot-password"), json={"email": email, "password": "BrandNew9999", "frontend_url": BASE_URL}, timeout=15)
         tk = db.password_reset_tokens.find_one({"email": _norm(email)})
         # do reset
         rr = requests.post(_api("/auth/reset-password"), json={
@@ -229,15 +231,10 @@ class TestResetPassword:
 
 class TestNonRegression:
     def test_full_email_auth_flow(self, db):
+        # iter121: register now requires pseudo + device-capture + biometric.
+        # We seed a verified user directly and test login/me/logout instead.
         email = f"TEST_e2e_{uuid.uuid4().hex[:8]}@gmail.com"
-        rr = requests.post(_api("/auth/register"), json={"email": email, "password": "Pass1234"}, timeout=10)
-        assert rr.status_code == 200
-        token = rr.json()["verification_token"]
-        rv = requests.get(_api("/auth/verify-email"), params={"token": token}, timeout=10)
-        assert rv.status_code == 200
-        # poll
-        ps = requests.get(_api("/auth/verification-status"), params={"token": token}, timeout=10)
-        assert ps.status_code == 200
+        _register_and_verify(email)
         # login
         lg = requests.post(_api("/auth/login"), json={"email": email, "password": "Pass1234"}, timeout=10)
         assert lg.status_code == 200

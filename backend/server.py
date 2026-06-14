@@ -5381,142 +5381,6 @@ async def _execute_due_kicks():
         logger.warning(f"scheduled-kick sweep error: {e}")
 
 
-# ---------------- EXPORT APPROVAL ----------------
-class ExportRequestIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    project_id: str
-    export_kind: str   # "apk" | "exe" | "zip+github" | "source"
-
-@api_router.post("/exports/request")
-async def exports_request(payload: ExportRequestIn):
-    """Any non-creator device — request export approval."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    if dev.get("role") == "creator":
-        return {"approved": True, "auto": True}
-    # Check for an existing pending/approved entry to avoid duplicates.
-    existing = await db.export_requests.find_one({
-        "key_id": payload.key_id,
-        "project_id": payload.project_id,
-        "export_kind": payload.export_kind,
-        "status": {"$in": ["pending", "approved"]},
-    }, {"_id": 0})
-    if existing:
-        return {"approved": existing["status"] == "approved", "status": existing["status"], "request_id": existing["request_id"]}
-    doc = {
-        "request_id": f"er_{uuid.uuid4().hex[:14]}",
-        "key_id": payload.key_id,
-        "label": dev.get("pseudo") or dev.get("label"),
-        "project_id": payload.project_id,
-        "export_kind": payload.export_kind,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.export_requests.insert_one(doc)
-    return {"approved": False, "status": "pending", "request_id": doc["request_id"]}
-
-
-@api_router.post("/exports/decide")
-async def exports_decide(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    req_id = body.get("request_id")
-    decision = body.get("decision")  # "approve" | "reject"
-    if not req_id or decision not in ("approve", "reject"):
-        raise HTTPException(status_code=400, detail="request_id + decision (approve|reject) requis.")
-    new_status = "approved" if decision == "approve" else "rejected"
-    r = await db.export_requests.update_one(
-        {"request_id": req_id, "status": "pending"},
-        {"$set": {"status": new_status, "decided_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    if not r.matched_count:
-        raise HTTPException(status_code=404, detail="Demande introuvable.")
-    return {"success": True, "status": new_status}
-
-
-@api_router.post("/exports/pending")
-async def exports_pending(payload: _CreatorSigIn):
-    """Creator-only — list pending export requests."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    rows = await db.export_requests.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(length=200)
-    return {"requests": rows}
-
-
-class ExportStatusIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    request_id: Optional[str] = None
-    project_id: Optional[str] = None
-
-
-# iter97 — Export ZIP automatique d'un projet (seul mode d'export téléchargeable
-# manuellement). Le push GitHub se fait automatiquement en arrière-plan via
-# on_commit_real dans /chat/orchestrate-stream avec enable_commit=true.
-@api_router.get("/exports/zip-project/{project_id}")
-async def export_project_zip(request: Request, project_id: str):
-    """Génère un ZIP du projet : metadata + historique chat + fichiers générés."""
-    from fastapi.responses import Response
-    import zipfile
-    import json as _json
-    import io
-
-    user_id = await get_current_user(request)
-    project = await db.projects.find_one(
-        {"project_id": project_id, "user_id": user_id}, {"_id": 0},
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Projet introuvable.")
-    messages = await db.chat_messages.find(
-        {"project_id": project_id, "user_id": user_id}, {"_id": 0},
-    ).sort("timestamp", 1).to_list(length=10000)
-    # Genere le ZIP en mémoire
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("project.json", _json.dumps(project, indent=2, default=str, ensure_ascii=False))
-        zf.writestr("messages.json", _json.dumps(messages, indent=2, default=str, ensure_ascii=False))
-        # README
-        readme = (
-            f"# {project.get('name') or 'Projet CodeForge'}\n\n"
-            f"Export généré le {datetime.now(timezone.utc).isoformat()}\n\n"
-            f"## Contenu\n"
-            f"- project.json : métadonnées du projet\n"
-            f"- messages.json : historique complet des échanges IA\n"
-            f"- {len(messages)} messages au total\n\n"
-            f"## Note\n"
-            f"Le push GitHub se fait automatiquement à chaque création via on_commit_real.\n"
-        )
-        zf.writestr("README.md", readme)
-    buf.seek(0)
-    safe_name = (project.get("name") or project_id).replace("/", "_")[:50]
-    return Response(
-        content=buf.read(),
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="codeforge_{safe_name}.zip"'},
-    )
-    request_id: Optional[str] = None
-    project_id: Optional[str] = None
-    export_kind: Optional[str] = None
-
-@api_router.post("/exports/status")
-async def exports_status(payload: ExportStatusIn):
-    """User-side polling — current status of a pending export request."""
-    await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    q = {"key_id": payload.key_id}
-    if payload.request_id:
-        q["request_id"] = payload.request_id
-    elif payload.project_id and payload.export_kind:
-        q["project_id"] = payload.project_id
-        q["export_kind"] = payload.export_kind
-    else:
-        raise HTTPException(status_code=400, detail="request_id ou (project_id+export_kind) requis.")
-    row = await db.export_requests.find_one(q, {"_id": 0}, sort=[("created_at", -1)])
-    if not row:
-        return {"status": "none"}
-    return {"status": row["status"], "request_id": row["request_id"]}
-
-
 # ---------------- AUTO-TRANSLATE (creator review) ----------------
 class TranslateIn(BaseModel):
     key_id: str
@@ -6290,212 +6154,6 @@ async def observability_video_event(payload: VideoEventIn, request: Request):
 # iter86 — PRIVATE CODE BROWSER (creator-only, read-only)
 # ==========================================================================
 
-# ==========================================================================
-# iter110 — SITE ISSUES (suivi des problèmes/erreurs du site)
-# ==========================================================================
-
-class SiteIssueIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    title: str
-    description: Optional[str] = ""
-    severity: Optional[str] = "medium"  # low | medium | high | critical
-    status: Optional[str] = "open"      # open | in_progress | resolved | wontfix
-
-
-class SiteIssueUpdateIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    issue_id: str
-    status: Optional[str] = None
-    severity: Optional[str] = None
-    description: Optional[str] = None
-
-
-@api_router.post("/site/issues/create")
-async def site_issues_create(payload: SiteIssueIn):
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    role = dev.get("role"); sk = dev.get("staff_kind")
-    if not (role == "creator" or sk == "admin"):
-        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
-    if not payload.title.strip():
-        raise HTTPException(status_code=400, detail="Titre requis.")
-    issue_id = f"iss_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
-    doc = {
-        "issue_id": issue_id,
-        "title": payload.title.strip()[:200],
-        "description": (payload.description or "").strip()[:5000],
-        "severity": payload.severity if payload.severity in ("low", "medium", "high", "critical") else "medium",
-        "status": payload.status if payload.status in ("open", "in_progress", "resolved", "wontfix") else "open",
-        "created_at": now,
-        "updated_at": now,
-        "created_by_key": payload.key_id,
-    }
-    await db.site_issues.insert_one(doc)
-    return {"success": True, "issue_id": issue_id}
-
-
-@api_router.get("/site/issues")
-async def site_issues_list(status: Optional[str] = None, limit: int = 100):
-    q = {}
-    if status:
-        q["status"] = status
-    rows = await db.site_issues.find(q, {"_id": 0, "created_by_key": 0}).sort("created_at", -1).to_list(length=min(limit, 500))
-    return {"issues": rows, "total": len(rows)}
-
-
-@api_router.post("/site/issues/update")
-async def site_issues_update(payload: SiteIssueUpdateIn):
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    role = dev.get("role"); sk = dev.get("staff_kind")
-    if not (role == "creator" or sk == "admin"):
-        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
-    updates = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    if payload.status and payload.status in ("open", "in_progress", "resolved", "wontfix"):
-        updates["status"] = payload.status
-    if payload.severity and payload.severity in ("low", "medium", "high", "critical"):
-        updates["severity"] = payload.severity
-    if payload.description is not None:
-        updates["description"] = payload.description.strip()[:5000]
-    res = await db.site_issues.update_one({"issue_id": payload.issue_id}, {"$set": updates})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Issue introuvable.")
-    return {"success": True}
-
-
-# ==========================================================================
-# iter106 — CALY CHATBOT (widget flottant) : endpoint LLM dédié
-# ==========================================================================
-
-CALY_DEFAULT_SYSTEM_PROMPT = """Tu es Caly, l'assistante d'aide à l'utilisation de CodeForge AI.
-Tu réponds aux questions des utilisateurs sur le site : créer une appli, modifier
-une création, comprendre l'inscription cryptographique (clé ECDSA par appareil,
-inscription GitHub obligatoire), les exports (ZIP, APK, EXE), le mode privé/public,
-les vues (utilisateur/modo/admin/créatrice), le profil, les amis, les bots
-communautaires, les sondages et annonces, les paramètres de langue.
-
-Règles :
-- Réponses CONCISES (max 3 phrases), en français.
-- Tutoie l'utilisateur.
-- Ne donne JAMAIS de code source, ni de tokens, ni d'informations secrètes.
-- Si tu ne sais pas, dis-le franchement et propose de contacter un modo.
-- Si l'utilisateur demande une fonctionnalité technique, redirige vers l'onglet
-  approprié (Dashboard pour créer, Profil pour la clé, etc.)."""
-
-
-class CalyAskIn(BaseModel):
-    message: str
-    history: Optional[List[Dict[str, str]]] = None  # [{role, content}]
-    session_id: Optional[str] = None
-    language: Optional[str] = "fr"
-
-
-@api_router.post("/caly/ask")
-async def caly_ask(input: CalyAskIn):
-    """LLM dédié pour Caly (gpt-4o-mini via Emergent LLM key).
-    Enrichi avec la KB éventuelle pour Caly (bot_knowledge où bot_id='caly').
-    Public — pas de signature requise (c'est un help widget)."""
-    if not (input.message or "").strip():
-        raise HTTPException(status_code=400, detail="Message vide.")
-
-    # Charge le prompt système persistant (modifiable via /private-chatbot-programming
-    # plus tard) avec fallback sur le défaut.
-    cfg = await db.bot_configs.find_one({"bot_id": "caly"}, {"_id": 0, "prompt": 1}) or {}
-    system_prompt = cfg.get("prompt") or CALY_DEFAULT_SYSTEM_PROMPT
-
-    # Enrichi avec la knowledge base Caly
-    kb_entries = await db.bot_knowledge.find(
-        {"bot_id": "caly"}, {"_id": 0, "question": 1, "answer": 1}
-    ).to_list(length=30)
-    if kb_entries:
-        kb_text = "\n\n=== BASE DE CONNAISSANCES (FAQ CodeForge) ===\n" + "\n".join(
-            f"Q: {e.get('question', '')}\nR: {e.get('answer', '')}" for e in kb_entries
-        )
-        system_prompt = system_prompt + kb_text
-
-    # Récupère l'historique récent (max 8 derniers messages) pour le contexte
-    history_text = ""
-    if input.history:
-        recent = input.history[-8:]
-        history_text = "\n".join(
-            f"{('Utilisateur' if h.get('role') == 'user' else 'Caly')} : {h.get('content', '')}"
-            for h in recent if h.get('content')
-        )
-
-    composed = (
-        f"### Historique récent :\n{history_text}\n\n### Nouveau message :\n{input.message}"
-        if history_text else input.message
-    )
-
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        api_key = os.environ.get("EMERGENT_LLM_KEY") or ""
-        if not api_key:
-            raise HTTPException(status_code=503, detail="LLM key non configurée.")
-        session_id = input.session_id or f"caly_{uuid.uuid4().hex[:12]}"
-        chat = LlmChat(api_key=api_key, session_id=session_id, system_message=system_prompt)
-        chat = chat.with_model("openai", "gpt-4o-mini")
-        reply = await chat.send_message(UserMessage(text=composed[:4000]))
-        return {
-            "reply": str(reply or "")[:2000],
-            "session_id": session_id,
-            "kb_used": len(kb_entries),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning(f"Caly ask failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Erreur Caly: {str(e)[:200]}")
-
-
-# Endpoint GET du prompt Caly + KB (pour la programming page admin)
-@api_router.get("/caly/config")
-async def caly_config_get():
-    cfg = await db.bot_configs.find_one({"bot_id": "caly"}, {"_id": 0}) or {}
-    return {
-        "bot_id": "caly",
-        "prompt": cfg.get("prompt") or CALY_DEFAULT_SYSTEM_PROMPT,
-        "is_default": not bool(cfg.get("prompt")),
-    }
-
-
-class CalyConfigSetIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    prompt: str
-
-
-@api_router.post("/caly/config")
-async def caly_config_set(payload: CalyConfigSetIn):
-    """Créa/admin only : modifie le system prompt Caly persistant."""
-    dev = await _verify_signed(payload.key_id, payload.nonce, payload.signature)
-    role = dev.get("role"); sk = dev.get("staff_kind")
-    if not (role == "creator" or sk == "admin"):
-        raise HTTPException(status_code=403, detail="Réservé créa/admin.")
-    if not payload.prompt.strip():
-        raise HTTPException(status_code=400, detail="Prompt vide.")
-    if len(payload.prompt) > 8000:
-        raise HTTPException(status_code=413, detail="Prompt trop long (> 8000 chars).")
-    await db.bot_configs.update_one(
-        {"bot_id": "caly"},
-        {"$set": {
-            "bot_id": "caly",
-            "prompt": payload.prompt.strip(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "updated_by_key": payload.key_id,
-        }},
-        upsert=True,
-    )
-    try:
-        await _log_change("model", "Prompt système Caly mis à jour", {"bytes": len(payload.prompt)})
-    except Exception:
-        pass
-    return {"success": True}
-
 
 # ==========================================================================
 # iter82 — CHAT STREAMING SSE (C5/C8) : streaming pseudo-token-par-token
@@ -6900,6 +6558,37 @@ app.include_router(
         db,
         log_auth_error=log_auth_error,
         logger=logger,
+    ),
+    prefix="/api",
+)
+
+# iter121 — slice 5m : /site/issues/* (3 endpoints) — site issue tracking
+from routes.site_issues_routes import build_site_issues_router  # noqa: E402
+app.include_router(
+    build_site_issues_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
+# iter121 — slice 5n : /caly/* (3 endpoints) — floating help assistant
+from routes.caly_routes import build_caly_router  # noqa: E402
+app.include_router(
+    build_caly_router(
+        db,
+        verify_signed=_verify_signed,
+        log_change=_log_change,
+        logger=logger,
+    ),
+    prefix="/api",
+)
+
+# iter121 — slice 5o : /exports/* (5 endpoints) — export approval flow
+from routes.exports_routes import build_exports_router  # noqa: E402
+app.include_router(
+    build_exports_router(
+        db,
+        verify_signed=_verify_signed,
+        require_creator_signature=_require_creator_signature,
+        get_current_user=get_current_user,
     ),
     prefix="/api",
 )
