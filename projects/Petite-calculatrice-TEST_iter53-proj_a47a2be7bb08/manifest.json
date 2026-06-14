@@ -1,0 +1,23 @@
+{
+  "name": "TEST_iter53",
+  "short_name": "TEST_iter53",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "description": "Petite calculatrice moderne, offline et persistante.",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='192'%20height='192'%20viewBox='0%200%20192%20192'%3E%3Crect%20width='192'%20height='192'%20rx='36'%20fill='%23050%25'/%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%2300D4FF'/%3E%3Cstop%20offset='1'%20stop-color='%23E4FF00'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20x='22'%20y='18'%20width='148'%20height='156'%20rx='28'%20fill='%230F0F13'%20stroke='rgba(255,255,255,0.10)'/%3E%3Crect%20x='36'%20y='34'%20width='120'%20height='38'%20rx='14'%20fill='rgba(0,212,255,0.12)'%20stroke='rgba(255,255,255,0.10)'/%3E%3Cpath%20d='M54%2055h52'%20stroke='url(%23g)'%20stroke-width='8'%20stroke-linecap='round'/%3E%3Cg%20fill='rgba(255,255,255,0.08)'%3E%3Crect%20x='36'%20y='84'%20width='32'%20height='26'%20rx='10'/%3E%3Crect%20x='76'%20y='84'%20width='32'%20height='26'%20rx='10'/%3E%3Crect%20x='116'%20y='84'%20width='40'%20height='26'%20rx='10'/%3E%3Crect%20x='36'%20y='116'%20width='32'%20height='26'%20rx='10'/%3E%3Crect%20x='76'%20y='116'%20width='32'%20height='26'%20rx='10'/%3E%3Crect%20x='116'%20y='116'%20width='40'%20height='26'%20rx='10'/%3E%3Crect%20x='36'%20y='148'%20width='72'%20height='26'%20rx='10'/%3E%3Crect%20x='116'%20y='148'%20width='40'%20height='26'%20rx='10'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='512'%20height='512'%20viewBox='0%200%20512%20512'%3E%3Crect%20width='512'%20height='512'%20rx='96'%20fill='%23050%25'/%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%2300D4FF'/%3E%3Cstop%20offset='1'%20stop-color='%23E4FF00'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20x='60'%20y='48'%20width='392'%20height='416'%20rx='72'%20fill='%230F0F13'%20stroke='rgba(255,255,255,0.10)'/%3E%3Crect%20x='96'%20y='92'%20width='320'%20height='96'%20rx='32'%20fill='rgba(0,212,255,0.12)'%20stroke='rgba(255,255,255,0.10)'/%3E%3Cpath%20d='M138%20142h150'%20stroke='url(%23g)'%20stroke-width='20'%20stroke-linecap='round'/%3E%3Cg%20fill='rgba(255,255,255,0.08)'%3E%3Crect%20x='96'%20y='216'%20width='96'%20height='80'%20rx='24'/%3E%3Crect%20x='216'%20y='216'%20width='96'%20height='80'%20rx='24'/%3E%3Crect%20x='336'%20y='216'%20width='80'%20height='80'%20rx='24'/%3E%3Crect%20x='96'%20y='316'%20width='96'%20height='80'%20rx='24'/%3E%3Crect%20x='216'%20y='316'%20width='96'%20height='80'%20rx='24'/%3E%3Crect%20x='336'%20y='316'%20width='80'%20height='80'%20rx='24'/%3E%3Crect%20x='96'%20y='416'%20width='216'%20height='48'%20rx='24'/%3E%3Crect%20x='336'%20y='416'%20width='80'%20height='48'%20rx='24'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
