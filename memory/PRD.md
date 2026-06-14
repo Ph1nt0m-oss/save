@@ -235,6 +235,24 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 118 (Refactoring suite — extraction routes/ideas + routes/webauthn)
+
+**🎯 Refactoring server.py (suite iter116 + iter117)** — 13 endpoints supplémentaires migrés :
+- 💡 `routes/ideas_routes.py` (186 lignes) — **7 endpoints** :
+  `/ideas/send (public anonyme ou signé), /ideas/mine, /ideas/inbox, /ideas/clear, /ideas/mark-read, /ideas/delete, /ideas/set-state`
+- 🔐 `routes/webauthn_routes.py` (225 lignes) — **6 endpoints WebAuthn** :
+  `/webauthn/enroll-begin (signup), /webauthn/register-options, /webauthn/register-verify, /webauthn/declare-theft-options, /webauthn/declare-theft-verify, /webauthn/has-enrollment`
+
+**Résultat global iter116 + iter117 + iter118** :
+- `server.py` : **9909 → 7991 lignes** (**-1918 lignes, -19.4%**)
+- **62 endpoints au total** migrés vers **7 nouveaux modules** :
+  `devices_routes` (17), `community_bots_routes` (8), `accounts_routes` (16), `private_routes` (5), `system_routes` (4), `ideas_routes` (7), `webauthn_routes` (6)
+- 0 régression : tous les endpoints HTTP testés en live (status codes corrects).
+
+**Tests** : **203/203 pytests PASS** (11 nouveaux iter118).
+
+**Objectif <7000 lignes pas atteint** : il reste ~1000 lignes à retirer. Candidat principal : routes `/auth/*` (29 endpoints) — mais l'extraction est risquée (helpers session/cookie/password très imbriqués partout dans server.py). À découper en plusieurs petits sous-blocs sur sessions dédiées dans le futur.
+
 ### 2026-02-12 — Iter 117 (Refactoring suite — extraction routes/accounts + routes/private + routes/system)
 
 **🎯 Refactoring server.py (suite iter116)** — 25 endpoints supplémentaires migrés :
