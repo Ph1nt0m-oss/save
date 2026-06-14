@@ -16,6 +16,31 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-14 — Iter 123 (Décomposition continue + chat advanced routes)
+
+**🟢 server.py : 5881 → 5224 lignes (−657, total cumulé −2668 depuis iter120 = −33.8%)**
+
+| Fichier | Routes (12 endpoints) |
+|---|---|
+| `routes/chat_advanced_routes.py` (585 L) | `POST /chat/translate-messages` (batch translate + cache), `POST /chat/suggest-enhancements` (claude-sonnet), `POST /chat/tts` (OpenAI TTS), `POST /chat/orchestrate` (planner→executor→critic), `POST /chat/orchestrate-stream` (SSE + on_commit/on_preview hooks), `POST /orchestrate/test-loop` (pytest SSE), `POST /chat/stream` (native token streaming) |
+| `routes/chat_history_routes.py` (63 L) | `GET /chat/history`, `POST /chat/attach` |
+| `routes/chat_generate_routes.py` (55 L) | `POST /chat/generate-docx`, `POST /chat/generate-pdf`, `POST /chat/generate-image` |
+
+**🟢 Tests**
+- `tests/test_iter123_decompose_chat.py` : 20/20 PASS (route mounting + unauth checks + non-régression iter119-122)
+- `tests/test_iter123_supplement.py` (CRÉÉ par testing_agent) : 18/18 PASS — couvre `/chat/stream` SSE authentifié + `/chat/history` happy-path
+
+**🟢 Validation testing_agent_v3_fork (iteration_103.json)** : **123 passed / 0 failed / 0 skipped**.
+
+**Décision intentionnelle** : `/chat/message` (le plus gros endpoint, ~555 L) reste dans `server.py` car il est trop entangled (utilise 12 helpers internes : `_build_docx/pdf/image/pptx/xlsx/plain`, `_run_python_sandbox`, `_context_limit`, etc.). Future extraction nécessitera d'abord d'extraire les helpers vers `/app/backend/services/`.
+
+**📊 Bilan final décomposition (4 iters)** :
+- Avant : `server.py` 7892 L (monolithe)
+- Après : `server.py` 5224 L + 16 fichiers de routes dans `/app/backend/routes/` (12 075 L total répartis)
+- Pattern : factory `build_*_router(db, *, helpers...)` partout, models Pydantic au niveau module (jamais `from __future__ import annotations`)
+
+
+
 ### 2026-02-14 — Iter 122 (Décomposition continue + fix test_chat_iter29)
 
 **🟢 Décomposition server.py (6688 → 5881 lignes, −807)**
