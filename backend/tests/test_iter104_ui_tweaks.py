@@ -27,17 +27,18 @@ def test_write_file_endpoint_registered():
 
 def test_write_file_signature_requires_creator():
     """Le helper de signature doit être appelé : sans signature valide → erreur."""
-    src = Path("/app/backend/server.py").read_text(encoding="utf-8")
-    # Le helper write-file doit appeler _require_creator_signature
-    idx = src.find("@api_router.post(\"/private/code/write-file\")")
+    # iter117 — Migré vers routes/private_routes.py
+    src = Path("/app/backend/routes/private_routes.py").read_text(encoding="utf-8")
+    idx = src.find("/private/code/write-file")
     assert idx > 0
     chunk = src[idx:idx + 2000]
-    assert "_require_creator_signature" in chunk
+    assert "require_creator_signature" in chunk
 
 
 def test_write_file_path_restrictions():
     """Le source doit contenir les restrictions de chemins."""
-    src = Path("/app/backend/server.py").read_text(encoding="utf-8")
+    # iter117 — Migré vers routes/private_routes.py
+    src = Path("/app/backend/routes/private_routes.py").read_text(encoding="utf-8")
     assert "_WRITE_ALLOWED_PREFIXES" in src
     assert "_WRITE_FORBIDDEN_SUFFIXES" in src
     assert "backend/" in src

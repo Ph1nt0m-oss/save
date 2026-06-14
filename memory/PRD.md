@@ -235,6 +235,26 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02-12 — Iter 117 (Refactoring suite — extraction routes/accounts + routes/private + routes/system)
+
+**🎯 Refactoring server.py (suite iter116)** — 25 endpoints supplémentaires migrés :
+- 👥 `routes/accounts_routes.py` (426 lignes) — **16 endpoints** :
+  `/accounts/list, /history, /history/clear, /rename-pseudo, /set-staff-kind, /force-visitor, /mute, /unmute, /exclude, /ban, /unban, /visit, /delete-user-project, /delete-one, /delete-all, /remove-creator`
+- 🔐 `routes/private_routes.py` (149 lignes) — **5 endpoints créa-only** :
+  `/private/changelog, /changelog/log, /code/read-file, /code/grep, /code/write-file`
+- ⚙️ `routes/system_routes.py` (112 lignes) — **4 endpoints** :
+  `/system/ollama-status, /schedule-kick, /scheduled-kicks, /cancel-scheduled-kick`
+  (`/system/site-mode` GET/PUT volontairement laissés dans server.py — helpers trop imbriqués)
+
+**Résultat global iter116 + iter117** :
+- `server.py` : **9909 → 8416 lignes** (**-1493 lignes, -15%**)
+- 49 endpoints au total migrés vers 5 nouveaux modules (`devices_routes`, `community_bots_routes`, `accounts_routes`, `private_routes`, `system_routes`)
+- Maintenabilité grandement améliorée : chaque domaine est dans son fichier dédié, factories `build_X_router(db, ...deps)` cohérentes.
+
+**Tests** : **192/192 pytests PASS** (16 nouveaux iter117). Tous les endpoints HTTP testés en live (status codes corrects + payloads identiques). 4 anciens tests mis à jour pour pointer vers les nouveaux fichiers de routes.
+
+**Objectif <7000 lignes non atteint** : restera à extraire `/system/site-mode` (impact site cache invalidation), `/ideas/*`, `/tts/*`, `/auth/*` (gros volume), `/chat/message` (très complexe). Reportable à une prochaine itération si tu confirmes l'intention.
+
 ### 2026-02-12 — Iter 116 (Session dédiée refactoring server.py — extraction routes/devices + routes/community_bots)
 
 **🎯 P1 — Refactoring server.py (RÉALISÉ)** :

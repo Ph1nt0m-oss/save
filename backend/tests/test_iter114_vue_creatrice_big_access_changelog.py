@@ -85,10 +85,12 @@ def test_changelog_panel_in_site_programming():
 
 def test_backend_changelog_endpoint_exists():
     """L'endpoint /api/private/changelog existe et requiert signature créa."""
-    assert '@api_router.post("/private/changelog")' in SERVER
-    idx = SERVER.find('@api_router.post("/private/changelog")')
-    block = SERVER[idx: idx + 2000]
-    assert "_require_creator_signature" in block
+    # iter117 — Migré vers routes/private_routes.py
+    priv = (ROOT / "backend" / "routes" / "private_routes.py").read_text()
+    assert '@router.post("/private/changelog")' in priv
+    idx = priv.find('@router.post("/private/changelog")')
+    block = priv[idx: idx + 2000]
+    assert "require_creator_signature" in block
 
 
 # ---------------------------------------------------------------------- AccountVisitView live polling

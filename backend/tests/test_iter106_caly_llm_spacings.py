@@ -30,8 +30,8 @@ def test_caly_config_endpoint_registered():
 
 
 def test_read_file_endpoint_uses_full_read():
-    """server.py call should pass full_read=True for the creator."""
-    src = Path("/app/backend/server.py").read_text(encoding="utf-8")
+    """call should pass full_read=True for the creator (migré iter117 → private_routes.py)."""
+    src = Path("/app/backend/routes/private_routes.py").read_text(encoding="utf-8")
     assert "_read_file_safe(payload.path, full_read=True)" in src
 
 

@@ -4517,20 +4517,6 @@ async def get_public_share_preview(slug: str):
     return HTMLResponse("\n".join(html_parts))
 
 
-@api_router.get("/system/ollama-status")
-async def ollama_status():
-    """Light health check on the local Ollama instance. Public — used by the
-    ModelPicker to greyout offline models when the service is unreachable."""
-    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    try:
-        async with httpx.AsyncClient(timeout=1.5) as client:
-            r = await client.get(f"{ollama_url}/api/tags")
-            if r.status_code == 200:
-                tags = r.json().get("models", []) or []
-                return {"available": True, "models": [t.get("name") for t in tags][:30]}
-    except Exception:
-        pass
-    return {"available": False, "models": []}
 
 
 # ==========================================================================
@@ -6494,430 +6480,6 @@ def _disambiguate_pseudos(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-@api_router.post("/accounts/list")
-async def accounts_list(payload: _CreatorSigIn):
-    """Creator-only — list ALL device accounts with pseudo/email/state.
-
-    iter77 — include `inactive` devices too: l'utilisatrice veut voir TOUS les
-    comptes inscrits (même ceux d'amis qui ont testé sans pousser de demande).
-    On expose `is_pending_nudge=True` pour les rôles inactive pour distinguer.
-    """
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    devices = await db.device_keys.find(
-        {}, {"_id": 0, "public_key_jwk": 0},
-    ).sort("created_at", -1).to_list(length=2000)
-    emails = list({d.get("email") for d in devices if d.get("email")})
-    users = {}
-    if emails:
-        async for u in db.users.find({"email": {"$in": emails}}, {"_id": 0, "email": 1, "pseudo": 1}):
-            users[u["email"]] = u.get("pseudo")
-    for d in devices:
-        d["pseudo"] = users.get(d.get("email")) or d.get("pseudo") or d.get("label")
-        d["muted"] = bool(d.get("muted"))
-        d["banned"] = bool(d.get("banned"))
-        d["is_inactive"] = (d.get("role") == "inactive")
-        d.setdefault("product", None)
-        d.setdefault("model", None)
-        d.setdefault("staff_kind", None)  # iter77 — 'admin'|'modo'|None
-        d.setdefault("force_visitor", bool(d.get("force_visitor", False)))
-    return {"accounts": _disambiguate_pseudos(devices)}
-
-
-@api_router.post("/accounts/rename-pseudo")
-async def accounts_rename_pseudo(payload: _TargetCreatorSigIn):
-    """Creator-only — rename a peer's pseudo (everywhere)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    new_pseudo = (getattr(payload, "new_pseudo", None) or "").strip() if hasattr(payload, "new_pseudo") else ""
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    new_pseudo = (body.get("new_pseudo") or "").strip()
-    if not (1 <= len(new_pseudo) <= 30):
-        raise HTTPException(status_code=400, detail="Pseudo invalide (3-30).")
-    # iter75: "créatrice" no longer reserved on pseudo updates either.
-    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="Compte introuvable.")
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"pseudo": new_pseudo, "label": new_pseudo}},
-    )
-    if target.get("email"):
-        await db.users.update_one(
-            {"email": target["email"]},
-            {"$set": {"pseudo": new_pseudo, "pseudo_lower": new_pseudo.lower()}},
-        )
-    await _log_account_event("rename", payload.target_key_id, new_pseudo)
-    return {"success": True, "pseudo": new_pseudo}
-
-
-@api_router.post("/accounts/mute")
-async def accounts_mute(payload: _TargetCreatorSigIn):
-    """iter79 — Mute. Ouvert à staff (admin/modo) et créatrice."""
-    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"muted": True, "muted_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    await _log_account_event("mute", payload.target_key_id, actor_key_id=payload.key_id)
-    return {"success": True}
-
-
-@api_router.post("/accounts/unmute")
-async def accounts_unmute(payload: _TargetCreatorSigIn):
-    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"muted": False}, "$unset": {"muted_at": ""}},
-    )
-    await _log_account_event("unmute", payload.target_key_id, actor_key_id=payload.key_id)
-    return {"success": True}
-
-
-# iter77 — Staff sub-roles (admin / modo) + Force Visitor mode -----------------
-class _SetStaffKindIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    target_key_id: str
-    staff_kind: Optional[str] = None  # 'admin' | 'modo' | None (clear)
-
-
-@api_router.post("/accounts/set-staff-kind")
-async def accounts_set_staff_kind(payload: _SetStaffKindIn):
-    """iter77/79 — Promote / demote a target between approved/admin/modo.
-
-    Permissions :
-    - Créatrice : peut tout définir (admin, modo, null).
-    - Admin : peut uniquement définir/retirer 'modo' (pas admin, pas créa).
-    """
-    actor = await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
-    sk = (payload.staff_kind or None)
-    if sk not in (None, "admin", "modo"):
-        raise HTTPException(status_code=400, detail="staff_kind invalide ('admin'|'modo'|null).")
-    if actor.get("role") != "creator":
-        # Admin: only allowed to set/clear 'modo'
-        actor_sk = actor.get("staff_kind")
-        if actor_sk != "admin":
-            raise HTTPException(status_code=403, detail="Seuls les admins et créatrice peuvent promouvoir.")
-        if sk == "admin":
-            raise HTTPException(status_code=403, detail="Seule la créatrice peut nommer un admin.")
-    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0, "role": 1})
-    if not target:
-        raise HTTPException(status_code=404, detail="Compte introuvable.")
-    update = {"$set": {"staff_kind": sk}} if sk else {"$unset": {"staff_kind": ""}}
-    await db.device_keys.update_one({"key_id": payload.target_key_id}, update)
-    await _log_account_event(f"staff_kind_{sk or 'clear'}", payload.target_key_id, actor_key_id=payload.key_id)
-    return {"success": True, "staff_kind": sk}
-
-
-class _ForceVisitorIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    target_key_id: str
-    force: bool = True
-
-
-@api_router.post("/accounts/force-visitor")
-async def accounts_force_visitor(payload: _ForceVisitorIn):
-    """iter77 — Mode visiteur forcé sur compte cible : lecture seule sans logout.
-
-    Idéal quand on soupçonne quelqu'un sans vouloir l'exclure ou le déconnecter.
-    Le frontend doit lire `force_visitor` depuis `/devices/verify` et bloquer
-    les écritures côté UI (canWrite=false)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="Compte introuvable.")
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"force_visitor": bool(payload.force)}},
-    )
-    await _log_account_event("force_visitor_on" if payload.force else "force_visitor_off",
-                              payload.target_key_id)
-    return {"success": True, "force_visitor": bool(payload.force)}
-
-
-@api_router.post("/accounts/exclude")
-async def accounts_exclude(payload: _TargetCreatorSigIn):
-    """iter79 — Exclusion temporaire. Ouvert au staff."""
-    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    minutes = int(body.get("duration_minutes") or 0)
-    if minutes <= 0 or minutes > 60 * 24 * 90:  # max 90 days, no infinite
-        raise HTTPException(status_code=400, detail="Durée invalide (1 min - 90 jours).")
-    until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"excluded_until": until.isoformat(), "excluded_reason": body.get("reason") or ""}},
-    )
-    # Also wipe active sessions so the user is kicked immediately.
-    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0, "email": 1})
-    if target and target.get("email"):
-        await db.user_sessions.delete_many({"email": target["email"]})
-    await _log_account_event("exclude", payload.target_key_id, extra={"until": until.isoformat(), "minutes": minutes}, actor_key_id=payload.key_id)
-    return {"success": True, "excluded_until": until.isoformat()}
-
-
-@api_router.post("/accounts/ban")
-async def accounts_ban(payload: _TargetCreatorSigIn):
-    """iter79 — Bannissement permanent. Ouvert au staff."""
-    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
-    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="Compte introuvable.")
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"banned": True, "banned_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    if target.get("email"):
-        await db.banned_emails.update_one(
-            {"email": target["email"]},
-            {"$set": {"email": target["email"], "banned_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True,
-        )
-        await db.user_sessions.delete_many({"email": target["email"]})
-    await _log_account_event("ban", payload.target_key_id, extra={"email": target.get("email")}, actor_key_id=payload.key_id)
-    return {"success": True}
-
-
-@api_router.post("/accounts/unban")
-async def accounts_unban(payload: _TargetCreatorSigIn):
-    await _require_staff_signature(payload.key_id, payload.nonce, payload.signature)
-    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
-    await db.device_keys.update_one(
-        {"key_id": payload.target_key_id},
-        {"$set": {"banned": False}, "$unset": {"banned_at": ""}},
-    )
-    if target and target.get("email"):
-        await db.banned_emails.delete_many({"email": target["email"]})
-    await _log_account_event("unban", payload.target_key_id, actor_key_id=payload.key_id)
-    return {"success": True}
-
-
-@api_router.post("/accounts/history")
-async def accounts_history(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    rows = await db.account_history.find({}, {"_id": 0}).sort("ts", -1).to_list(length=1000)
-    return {"history": rows}
-
-
-@api_router.post("/accounts/history/clear")
-async def accounts_history_clear(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    r = await db.account_history.delete_many({})
-    return {"deleted": r.deleted_count}
-
-
-@api_router.post("/accounts/visit")
-async def accounts_visit(payload: _TargetCreatorSigIn):
-    """iter80 C20 — Creator-only : voir le compte d'un user comme s'il s'agissait
-    de son propre dashboard (projets, messages, group chats). Les éléments
-    supprimés (deleted_by_user, deleted_by_creator, deleted=True) sont retournés
-    avec un flag `is_deleted: true` pour permettre au frontend d'appliquer un
-    contraste foncé. Le user lui-même ne voit pas ces éléments en vue créateur."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="Compte introuvable.")
-    user_id = None
-    if target.get("email"):
-        u = await db.users.find_one({"email": target["email"]}, {"_id": 0, "user_id": 1})
-        if u:
-            user_id = u["user_id"]
-    projects = []
-    messages = []
-    if user_id:
-        raw_projects = await db.projects.find(
-            {"user_id": user_id}, {"_id": 0, "generated_code": 0},
-        ).sort("created_at", -1).to_list(length=500)
-        for p in raw_projects:
-            p["is_deleted"] = bool(p.get("deleted_by_user") or p.get("deleted_by_creator") or p.get("deleted"))
-            projects.append(p)
-        raw_messages = await db.chat_messages.find(
-            {"user_id": user_id}, {"_id": 0},
-        ).sort("timestamp", -1).to_list(length=2000)
-        for m in raw_messages:
-            m["is_deleted"] = bool(m.get("deleted"))
-            messages.append(m)
-    # iter82 C20 — Récupération de TOUS les messages privés (DMs) impliquant
-    # cet utilisateur. Le thread_key_id est l'identifiant de l'utilisateur côté
-    # créa (pas le créa lui-même). Inclut tout : from_key_id == target ou
-    # thread_key_id == target → cela couvre les conversations avec créa, modos
-    # ET avec n'importe quel autre user (friend DM).
-    private_msgs_cursor = db.messages.find(
-        {"$or": [
-            {"thread_key_id": payload.target_key_id},
-            {"from_key_id": payload.target_key_id},
-            {"to_key_id": payload.target_key_id},
-        ]},
-        {"_id": 0},
-    ).sort("ts", -1)
-    private_msgs = await private_msgs_cursor.to_list(length=2000)
-    # iter82 — Friend requests : voir qui a demandé quoi à cet user.
-    fr_cursor = db.friend_requests.find(
-        {"$or": [{"from_key_id": payload.target_key_id}, {"to_key_id": payload.target_key_id}]},
-        {"_id": 0},
-    ).sort("created_at", -1)
-    friend_requests = await fr_cursor.to_list(length=200)
-    # iter82 — Group chats : à quels group_chats le user a-t-il posté ?
-    group_posts_cursor = db.group_messages.find(
-        {"from_key_id": payload.target_key_id},
-        {"_id": 0},
-    ).sort("ts", -1)
-    group_posts = await group_posts_cursor.to_list(length=1000)
-    return {
-        "target": {
-            "key_id": payload.target_key_id,
-            "email": target.get("email"),
-            "pseudo": target.get("pseudo") or target.get("label"),
-            "label": target.get("label"),
-            "role": target.get("role"),
-            "staff_kind": target.get("staff_kind"),
-            "force_visitor": target.get("force_visitor"),
-            "muted": target.get("muted"),
-            "banned": target.get("banned"),
-            "last_seen_at": target.get("last_seen_at"),
-            "created_at": target.get("created_at"),
-            "biometric_kind": target.get("biometric_kind") or target.get("biometric", {}).get("kind") if isinstance(target.get("biometric"), dict) else None,
-            "approved_by_kind": target.get("approved_by_kind"),
-            "approved_by_label": target.get("approved_by_label"),
-        },
-        "projects": projects,
-        "messages": list(reversed(messages)),
-        "private_messages": list(reversed(private_msgs)),
-        "friend_requests": friend_requests,
-        "group_posts": group_posts,
-    }
-
-
-@api_router.post("/accounts/delete-user-project")
-async def accounts_delete_user_project(payload: _TargetCreatorSigIn):
-    """Creator-only — delete a user's project (CGU violation / unsafe app)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    project_id = body.get("project_id")
-    if not project_id:
-        raise HTTPException(status_code=400, detail="project_id requis.")
-    r = await db.projects.update_one(
-        {"project_id": project_id},
-        {"$set": {"deleted_by_creator": True, "deleted_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    await _log_account_event("delete_project", payload.target_key_id, extra={"project_id": project_id})
-    return {"success": True, "matched": r.matched_count}
-
-
-@api_router.post("/accounts/delete-one")
-async def accounts_delete_one(payload: _TargetCreatorSigIn):
-    """Creator-only — fully delete an account (device_key + cascade)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    target_key_id = payload.target_key_id
-    if target_key_id == payload.key_id:
-        raise HTTPException(status_code=400, detail="Impossible de supprimer ton propre compte ici.")
-    target = await db.device_keys.find_one({"key_id": target_key_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="Compte introuvable.")
-    # Cascade: keep messages/projects for audit but mark the device_key gone.
-    await db.device_keys.delete_one({"key_id": target_key_id})
-    if target.get("email"):
-        await db.user_sessions.delete_many({"email": target["email"]})
-    await _log_account_event("delete_account", target_key_id, target.get("label"))
-    return {"success": True}
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-async def _email_for_device_key(key_id: str) -> Optional[str]:
-    """iter75: resolve the email tied to a device_key, healing missing
-    bindings on the fly. Legacy creator devices that pre-date iter63
-    sometimes have an empty device_keys.email even though they have an
-    active user_session — that broke creator-destructive actions like
-    /accounts/delete-all by returning 'Aucun email lié à cet appareil.'
-    even when the password was correct. Now we transparently look up the
-    active session, derive the owner's email, and persist the binding."""
-    me = await db.device_keys.find_one({"key_id": key_id}, {"_id": 0, "email": 1})
-    if me and me.get("email"):
-        return me["email"]
-    sess = await db.user_sessions.find_one(
-        {"device_key_id": key_id, "expires_at": {"$gt": _now_iso()}},
-        {"_id": 0, "user_id": 1},
-    )
-    if not sess:
-        return None
-    owner = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0, "email": 1})
-    if owner and owner.get("email"):
-        await db.device_keys.update_one({"key_id": key_id}, {"$set": {"email": owner["email"]}})
-        return owner["email"]
-    return None
-
-
-@api_router.post("/accounts/delete-all")
-async def accounts_delete_all(payload: _CreatorSigIn):
-    """Creator-only — delete EVERY other account. Self preserved.
-
-    Requires the caller's account password as a destructive-action gate
-    (same UX as remove-creator) — set ``password`` in the request body.
-    """
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    pwd = body.get("password") or ""
-    email = await _email_for_device_key(payload.key_id)
-    if not email:
-        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil. Reconnecte-toi pour le re-lier.")
-    user = await db.users.find_one({"email": email}, {"_id": 0, "password_hash": 1})
-    if not user or not user.get("password_hash"):
-        raise HTTPException(status_code=400, detail="Aucun mot de passe configuré.")
-    if not bcrypt.checkpw(pwd.encode("utf-8"), user["password_hash"].encode("utf-8")):
-        raise HTTPException(status_code=403, detail="Mot de passe incorrect.")
-    r = await db.device_keys.delete_many({"key_id": {"$ne": payload.key_id}})
-    await _log_account_event("delete_all_accounts", payload.key_id, extra={"deleted": r.deleted_count})
-    return {"success": True, "deleted": r.deleted_count}
-
-
-@api_router.post("/accounts/remove-creator")
-async def accounts_remove_creator(payload: _CreatorSigIn):
-    """Creator-only — demote a creator device back to 'approved'.
-
-    - target_key_id absent → demote SELF (the calling key_id).
-    - target_key_id present → demote that other creator device.
-
-    Both paths require the caller's own account password to confirm intent.
-    Logged in account_history + device_decisions.
-    """
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    pwd = body.get("password") or ""
-    target_key_id = body.get("target_key_id") or payload.key_id  # default = self
-    email = await _email_for_device_key(payload.key_id)
-    if not email:
-        raise HTTPException(status_code=400, detail="Aucun email lié à cet appareil. Reconnecte-toi pour le re-lier.")
-    user = await db.users.find_one({"email": email}, {"_id": 0, "password_hash": 1})
-    if not user or not user.get("password_hash"):
-        raise HTTPException(status_code=400, detail="Aucun mot de passe configuré.")
-    if not bcrypt.checkpw(pwd.encode("utf-8"), user["password_hash"].encode("utf-8")):
-        raise HTTPException(status_code=403, detail="Mot de passe incorrect.")
-    target = await db.device_keys.find_one({"key_id": target_key_id}, {"_id": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="Compte introuvable.")
-    if target.get("role") != "creator":
-        raise HTTPException(status_code=400, detail="Ce compte n'est pas créateur.")
-    await db.device_keys.update_one(
-        {"key_id": target_key_id},
-        {"$set": {"role": "approved"}},
-    )
-    is_self = target_key_id == payload.key_id
-    await _log_account_event("remove_creator_self" if is_self else "remove_creator_other",
-                              target_key_id, target.get("label"))
-    await db.device_decisions.insert_one({
-        "decision_id": f"d_{uuid.uuid4().hex[:14]}",
-        "action": "demote",
-        "actor_key_id": payload.key_id,
-        "target_key_id": target_key_id,
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "target_label": target.get("label"),
-    })
-    return {"success": True, "self": is_self}
 
 
 # ---------------- IDEAS / FEEDBACK ----------------
@@ -7202,82 +6764,6 @@ class AnnounceEditIn(BaseModel):
 # Pas de seconde définition ici — voir announcements_list ci-dessus modifié.
 
 
-# ---------------- iter76: SCHEDULED DISCONNECT ----------------
-class ScheduleKickIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
-    minutes: int = 5
-    note: str = ""
-    audience: Any = "all"  # iter77 — list ou str (groupes : all/staff/admin/modo/approved/pending/non_validated)
-
-
-@api_router.post("/system/schedule-kick")
-async def system_schedule_kick(payload: ScheduleKickIn):
-    """iter77 — La créatrice programme la déconnexion ciblée.
-
-    audience peut être :
-    - 'all' → tout le monde (sauf créatrice)
-    - 'staff' → admins + modos uniquement
-    - 'admin' / 'modo' / 'approved' / 'pending' / 'non_validated' → groupe spécifique
-    - liste mixte (cases à cocher) ex: ['admin','modo']
-    """
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    try:
-        delay = max(0, min(int(payload.minutes or 0), 24 * 60))
-    except Exception:
-        delay = 5
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    raw_aud = body.get("audience")
-    aud = raw_aud if isinstance(raw_aud, list) else [raw_aud or "all"]
-    # iter77 — accepter 'staff' (alias admin+modo)
-    if "staff" in aud:
-        aud = [g for g in aud if g != "staff"] + ["admin", "modo"]
-    valid_groups = VALID_AUDIENCE_GROUPS
-    aud = [g for g in aud if g in valid_groups] or ["all"]
-    now = datetime.now(timezone.utc)
-    execute_at = (now + timedelta(minutes=delay)).isoformat()
-    sk_id = f"sk_{uuid.uuid4().hex[:12]}"
-    await db.scheduled_kicks.insert_one({
-        "kick_id": sk_id,
-        "creator_key_id": payload.key_id,
-        "minutes": delay,
-        "audience": aud,
-        "execute_at": execute_at,
-        "executed": False,
-        "ts": now.isoformat(),
-    })
-    if (payload.note or "").strip():
-        await db.announcements.insert_one({
-            "announce_id": f"ann_{uuid.uuid4().hex[:12]}",
-            "title": (payload.note.strip())[:200],
-            "body": "",
-            "audience": aud,
-            "ts": now.isoformat(),
-            "from_scheduled_kick": sk_id,
-        })
-    return {"success": True, "kick_id": sk_id, "execute_at": execute_at, "audience": aud}
-
-
-@api_router.get("/system/scheduled-kicks")
-async def system_scheduled_kicks_list(key_id: Optional[str] = None):
-    """Liste les déconnexions programmées en cours (pour affichage côté créatrice)."""
-    rows = await db.scheduled_kicks.find(
-        {"executed": False}, {"_id": 0}
-    ).sort("execute_at", 1).to_list(length=50)
-    return {"scheduled_kicks": rows}
-
-
-@api_router.post("/system/cancel-scheduled-kick")
-async def system_cancel_scheduled_kick(payload: _CreatorSigIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    body = payload.model_dump() if hasattr(payload, "model_dump") else {}
-    kid = body.get("kick_id")
-    if not kid:
-        raise HTTPException(status_code=400, detail="kick_id requis.")
-    await db.scheduled_kicks.update_one({"kick_id": kid}, {"$set": {"executed": True, "cancelled": True}})
-    return {"success": True}
 
 
 async def _execute_due_kicks():
@@ -7844,34 +7330,6 @@ async def chat_tts(request: Request, payload: TTSIn):
         raise HTTPException(status_code=503, detail=f"TTS indisponible: {str(e)[:150]}")
 
 
-# iter92 — Endpoint changelog des modifications site/IA pour PrivateProgramming.
-# Auto-tracker les changements de MODEL_ROUTES, site_modes, etc.
-class CodeforgeChangelogIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    limit: Optional[int] = 50
-
-
-@api_router.post("/private/changelog")
-async def private_changelog(payload: CodeforgeChangelogIn):
-    """iter92 — Retourne le journal des modifications faites au site/IA
-    (ajouts/retraits modèles, changements site_mode, déploiements, etc.).
-    Réservé à la créatrice (signature ECDSA requise).
-
-    Les entries sont auto-enregistrées via `_log_change()` dans server.py et
-    aussi peuvent être insérées manuellement depuis le code via la collection
-    `codeforge_changelog` (utile quand l'utilisatrice modifie elle-même le code
-    via GitHub / téléchargement local / cmd / python).
-    """
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    limit = max(1, min(int(payload.limit or 50), 500))
-    rows = await db.codeforge_changelog.find(
-        {}, {"_id": 0}
-    ).sort("ts", -1).limit(limit).to_list(length=limit)
-    return {"changes": rows}
-
-
 async def _log_change(category: str, summary: str, details: Optional[Dict[str, Any]] = None):
     """iter92 — Helper interne : log un changement dans codeforge_changelog.
     Appeler depuis tout endpoint qui modifie l'état du site/IA.
@@ -7886,30 +7344,6 @@ async def _log_change(category: str, summary: str, details: Optional[Dict[str, A
         })
     except Exception as e:
         logger.warning(f"changelog log failed: {e}")
-
-
-# iter92 — Endpoint pour ajouter MANUELLEMENT une entrée changelog
-# (utilisé par l'utilisatrice quand elle modifie le code via GitHub/local).
-class CodeforgeManualLogIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    category: str  # 'manual' | 'code' | 'config'
-    summary: str
-    details: Optional[Dict[str, Any]] = None
-
-
-@api_router.post("/private/changelog/log")
-async def private_changelog_log(payload: CodeforgeManualLogIn):
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    cat = (payload.category or "manual").strip().lower()
-    if cat not in ("manual", "code", "config", "model", "site_mode", "deploy"):
-        cat = "manual"
-    summary = (payload.summary or "").strip()
-    if not summary:
-        raise HTTPException(status_code=400, detail="summary requis.")
-    await _log_change(cat, summary, payload.details)
-    return {"success": True}
 
 
 # ---------------- USER pseudo update ----------------
@@ -8399,115 +7833,6 @@ async def observability_video_event(payload: VideoEventIn, request: Request):
 # iter86 — PRIVATE CODE BROWSER (creator-only, read-only)
 # ==========================================================================
 
-class PrivateReadFileIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    path: str
-
-
-@api_router.post("/private/code/read-file")
-async def private_read_file(payload: PrivateReadFileIn):
-    """iter89 — Creator-only ET hors vue créa (anti-copie par-dessus l'épaule).
-    Le client doit prouver via signature + envoyer current_view_mode != 'creator'.
-    iter105 — full_read=True : la créatrice obtient le fichier ENTIER pour pouvoir l'éditer.
-    """
-    dev = await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    # Le view_mode est purement client-side donc on accepte un header optionnel.
-    # Si pas de header, on autorise (la sécurité réelle est dans le check UI).
-    from orchestrator import _read_file_safe
-    return _read_file_safe(payload.path, full_read=True)
-
-
-class PrivateGrepIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    pattern: str
-
-
-@api_router.post("/private/code/grep")
-async def private_grep(payload: PrivateGrepIn):
-    """iter89 — Creator-only (le gating fin par vue est UI-side)."""
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    from orchestrator import _grep_safe
-    return _grep_safe(payload.pattern)
-
-
-# iter104 — Write-file endpoint pour la créatrice : édition directe du code
-# du site (et IA) depuis la page /private-programming. Sécurités :
-# 1. Signature ECDSA créa obligatoire (_require_creator_signature)
-# 2. Chemins restreints (uniquement backend/, frontend/src/, orchestrator.py)
-# 3. Pas d'exécution : on écrit puis on log dans le changelog.
-# 4. Backup automatique en .bak avant écriture pour rollback rapide.
-class PrivateWriteFileIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
-    path: str
-    content: str
-
-
-_WRITE_ALLOWED_PREFIXES = (
-    "backend/", "frontend/src/", "frontend/public/", "orchestrator.py",
-)
-_WRITE_FORBIDDEN_SUFFIXES = (".env", ".git", ".pem", ".key", ".secret")
-
-
-@api_router.post("/private/code/write-file")
-async def private_write_file(payload: PrivateWriteFileIn):
-    """Edit en place d'un fichier source. Créa-only + signature.
-    Crée automatiquement un .bak du contenu précédent (rollback rapide).
-    Logge l'action dans le changelog 'code'.
-    """
-    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    rel = (payload.path or "").lstrip("/").strip()
-    if not rel:
-        raise HTTPException(status_code=400, detail="Chemin requis.")
-    if ".." in rel or rel.startswith("/"):
-        raise HTTPException(status_code=400, detail="Chemin invalide.")
-    if not any(rel.startswith(p) for p in _WRITE_ALLOWED_PREFIXES):
-        raise HTTPException(status_code=403, detail=f"Préfixe non autorisé : {rel}")
-    if any(rel.endswith(s) for s in _WRITE_FORBIDDEN_SUFFIXES):
-        raise HTTPException(status_code=403, detail=f"Extension protégée : {rel}")
-    if len(payload.content) > 2_000_000:
-        raise HTTPException(status_code=413, detail="Fichier trop gros (> 2MB).")
-
-    import pathlib
-    abs_path = pathlib.Path("/app") / rel
-    if not abs_path.parent.exists():
-        raise HTTPException(status_code=404, detail="Dossier parent inexistant.")
-    # Backup
-    backup_path = None
-    if abs_path.exists():
-        backup_path = abs_path.with_suffix(abs_path.suffix + ".bak")
-        try:
-            backup_path.write_bytes(abs_path.read_bytes())
-        except Exception as e:
-            logger.warning(f"Backup failed for {rel}: {e}")
-    try:
-        abs_path.write_text(payload.content, encoding="utf-8")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Écriture impossible : {str(e)[:200]}")
-
-    # Log dans le changelog
-    try:
-        await _log_change(
-            "code",
-            f"Édition manuelle de {rel} via /private-programming",
-            {"path": rel, "bytes": len(payload.content),
-             "backup": str(backup_path.relative_to("/app")) if backup_path else None},
-        )
-    except Exception:
-        pass
-    return {
-        "success": True,
-        "path": rel,
-        "bytes": len(payload.content),
-        "backup": str(backup_path.relative_to("/app")) if backup_path else None,
-    }
-
-
 # ==========================================================================
 # iter110 — SITE ISSUES (suivi des problèmes/erreurs du site)
 # ==========================================================================
@@ -8958,6 +8283,40 @@ app.include_router(
         get_site_mode=_get_site_mode,
         normalize_modes=_normalize_modes,
         device_matches_mode=_device_matches_mode,
+    ),
+    prefix="/api",
+)
+
+# iter117 — slice 5c : /accounts/* (16 endpoints) extraits dans routes/accounts_routes.py
+from routes.accounts_routes import build_accounts_router  # noqa: E402
+app.include_router(
+    build_accounts_router(
+        db,
+        require_creator_signature=_require_creator_signature,
+        require_staff_signature=_require_staff_signature,
+    ),
+    prefix="/api",
+)
+
+# iter117 — slice 5d : /private/* (5 endpoints) extraits dans routes/private_routes.py
+from routes.private_routes import build_private_router  # noqa: E402
+app.include_router(
+    build_private_router(
+        db,
+        require_creator_signature=_require_creator_signature,
+        log_change=_log_change,
+        logger=logger,
+    ),
+    prefix="/api",
+)
+
+# iter117 — slice 5e : /system/* (4 endpoints, hors site-mode) extraits dans routes/system_routes.py
+from routes.system_routes import build_system_router  # noqa: E402
+app.include_router(
+    build_system_router(
+        db,
+        require_creator_signature=_require_creator_signature,
+        valid_audience_groups=VALID_AUDIENCE_GROUPS,
     ),
     prefix="/api",
 )
