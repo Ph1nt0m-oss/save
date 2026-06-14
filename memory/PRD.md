@@ -16,6 +16,43 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-14 — Iter 126 (Lot 2 — Stockage Github invisible + bots tests protégés + backdrop ciblé)
+
+**🟢 #8 — Backdrop modal ciblé (ExportInReviewModal)**
+- Plus de `fixed inset-0 bg-black/92` qui bloquait toute la page.
+- Modal devient une **carte centrée top-16** (`pointer-events-none` sur le wrapper, `pointer-events-auto` sur la carte → page reste interactive).
+- CSS injecté : `body.cf-has-export-modal .cf-export-blocked { pointer-events:none; opacity:0.35; grayscale; blur }` → seules les surfaces marquées de la classe sont bloquées.
+- Surfaces bloquées dans `Dashboard.js` : grid "Que souhaitez-vous faire ?" (cards), bouton wizard guidé, ScrollArea sidebar (liste projets), bottom du sidebar (Mon profil / Changer de compte / Déconnexion).
+- **Restent accessibles** : historique (AccountsButton), bouton Visite, langue, l'icône historique export — tout ce qui ne porte pas `cf-export-blocked`.
+
+**🟢 #6 — Stockage Github invisible (services/github_storage.py)**
+- Nouvelle collection MongoDB `_internal_gh_storage` (préfixe `_` = jamais listée par les endpoints publics).
+- `stash_snapshot(db, ...)` : stocke un snapshot du projet en attendant la validation créa.
+- `transfer_on_approve(db, ...)` : appelé silencieusement depuis `/exports/decide` quand decision=approve. Deux modes :
+  - Si user a `github_token` + `github_username` dans `db.users` → création repo privé + push fichiers + **suppression** du snapshot (DÉPLACEMENT, pas copie).
+  - Sinon → fallback `mode='local'` (le ZIP download existant via `/exports/zip-project/{id}` gère le téléchargement).
+- Hook fire-and-forget dans `/exports/decide` : les erreurs sont muettes (jamais exposées dans la réponse API).
+- **Tests** : aucun endpoint public ne contient `github_storage`, `gh_storage` ou `_internal` dans son path. Vérifié via `/openapi.json`.
+
+**🟢 #7 — Bots tests protégés visibles + immuables**
+- 5 agents seeded au démarrage (lifespan) avec flag `protected: true` :
+  - Agent Sécurité, Agent Qualité, Agent Conformité, Agent Originalité, Agent Validation Export.
+- Backend (`community_bots_routes.py`) :
+  - `/community-bots/delete` : reject 403 si bot protégé & role≠creator.
+  - `/community-bots/create` (update path) : reject 403 si bot protégé & role≠creator.
+  - `/community-bots/list` : expose le flag `protected` pour le front.
+- Frontend (`PrivateChatbotProgramming.js`) : agents protégés affichés avec
+  - 🔒 icône cadenas SVG inline + badge "Agent test" amber
+  - bordure `amber-400/30` au lieu de blanche
+  - **3 boutons grisés** (✏️ Modifier / 🔍 Voir le code / 🗑️ Supprimer) avec `opacity-50 pointer-events-none`
+- La créa en mode visite garde ses pouvoirs car le panel de gestion vit ailleurs.
+
+**🟢 Tests** : `tests/test_iter126_lot2.py` (10 tests — protected agents + invisible storage + decide hook safety + regression cumulative). **114 tests cumulés PASS, 0 fail**. Lint clean.
+
+**📊 Bilan Lot 2** : 3 features critiques livrées en une session sans interruption. Pipeline GitHub invisible 100% caché de l'OpenAPI + des endpoints publics. Bots tests immuables pour TOUT LE MONDE sauf créatrice (anti-hackers).
+
+
+
 ### 2026-02-14 — Iter 125 (Lot 1 — Refonte modale export + DeviceManager + CGU)
 
 **🟢 Modal créa redesigné (`ExportApprovalNotifier.jsx`)**

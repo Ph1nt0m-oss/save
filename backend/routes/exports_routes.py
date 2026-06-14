@@ -96,6 +96,26 @@ def build_exports_router(db, *, verify_signed, require_creator_signature, get_cu
         )
         if not r.matched_count:
             raise HTTPException(status_code=404, detail="Demande introuvable.")
+
+        # iter126 — Lot 2 #6 : invisible GitHub transfer pipeline.
+        # Fire-and-forget; failures don't block the decision.
+        if decision == "approve":
+            try:
+                from services.github_storage import transfer_on_approve  # noqa: WPS433
+                req_row = await db.export_requests.find_one({"request_id": req_id}, {"_id": 0})
+                if req_row:
+                    proj = await db.projects.find_one(
+                        {"project_id": req_row.get("project_id")},
+                        {"_id": 0, "user_id": 1},
+                    )
+                    if proj:
+                        await transfer_on_approve(
+                            db, user_id=proj["user_id"], project_id=req_row["project_id"],
+                        )
+            except Exception:
+                # Silencieux : ne JAMAIS exposer l'existence du storage invisible.
+                pass
+
         return {"success": True, "status": new_status}
 
     @router.post("/exports/pending")

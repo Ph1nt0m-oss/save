@@ -709,7 +709,7 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        <ScrollArea className="flex-1 px-4">
+        <ScrollArea className="flex-1 px-4 cf-export-blocked">
           {/* Filtres rapides — catégories de projets */}
           {projects.length > 0 && (() => {
             const counts = {
@@ -888,7 +888,7 @@ export default function Dashboard() {
           </div>
         </ScrollArea>
 
-        <div className="p-4 border-t border-white/10 space-y-2">
+        <div className="p-4 border-t border-white/10 space-y-2 cf-export-blocked">
           <button
             onClick={() => navigate('/profile')}
             data-testid="sidebar-profile-btn"
@@ -1107,7 +1107,7 @@ export default function Dashboard() {
                   3. Les 4 types de tchat (Chat/Create x2)
                   4. Programmation créa (Site + IA — plus bas)
             */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="admin-prog-row">
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 cf-export-blocked" data-testid="admin-prog-row">
               {/* Programmation de Caly */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
@@ -1161,7 +1161,7 @@ export default function Dashboard() {
               whileTap={{ scale: 0.98 }}
               onClick={() => { if (requireWrite()) navigate('/wizard'); }}
               data-testid="guided-wizard-btn"
-              className="group w-full bg-gradient-to-br from-fuchsia-500/[0.08] via-purple-500/[0.05] to-cyan-500/[0.08] border-2 border-fuchsia-400/40 rounded-lg p-6 backdrop-blur-xl hover:border-fuchsia-400 hover:shadow-[0_8px_40px_rgba(232,121,249,0.3)] transition-all mb-6"
+              className="group w-full bg-gradient-to-br from-fuchsia-500/[0.08] via-purple-500/[0.05] to-cyan-500/[0.08] border-2 border-fuchsia-400/40 rounded-lg p-6 backdrop-blur-xl hover:border-fuchsia-400 hover:shadow-[0_8px_40px_rgba(232,121,249,0.3)] transition-all mb-6 cf-export-blocked"
             >
               <div className="flex items-center gap-4 text-left">
                 <div className="w-14 h-14 bg-gradient-to-br from-fuchsia-400 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
@@ -1175,7 +1175,7 @@ export default function Dashboard() {
               </div>
             </motion.button>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 cf-export-blocked">
               {/* Bouton Chat (en ligne uniquement) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
@@ -1255,7 +1255,7 @@ export default function Dashboard() {
             </div>
 
             {/* iter79 — Blocs privés créa (visibles côté UI, refusent l'accès en vue créateur) */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 cf-export-blocked">
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}

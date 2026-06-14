@@ -96,43 +96,69 @@ export default function ExportInReviewModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[125] flex items-center justify-center bg-black/92 backdrop-blur-md p-3 sm:p-6"
-      data-testid="export-review-modal"
-    >
-      <div className="w-full max-w-2xl bg-[#0A0A0A] border-2 border-[#E4FF00]/60 rounded-md p-6 sm:p-10 shadow-[0_20px_80px_rgba(228,255,0,0.3)] relative">
-        <div className="flex flex-col items-center text-center gap-4">
-          {isPending && <Loader2 className="w-14 h-14 text-[#E4FF00] animate-spin" />}
-          {isApproved && <ShieldCheck className="w-14 h-14 text-emerald-400" />}
-          {isRejected && <XCircle className="w-14 h-14 text-red-400" />}
-          <h2 className="text-2xl sm:text-3xl font-['Chivo'] font-black text-white leading-tight">
-            {isPending && t('exp_pending_title')}
-            {isApproved && t('exp_approved_title')}
-            {isRejected && t('exp_rejected_title')}
-          </h2>
-          <p className="text-base sm:text-lg text-[#E4E4E7] leading-relaxed whitespace-pre-line max-w-xl">
-            {isPending && t('exp_pending_body')}
-            {isApproved && t('exp_approved_body').replace('{kind}', displayKind)}
-            {isRejected && t('exp_rejected_body')}
-          </p>
+    <>
+      {/* iter126 — Backdrop ciblé (pas inset-0). Le modal reste centré mais
+          PAS de couche bloquante sur toute la page. La page reste
+          interactive (historique, visite, langue, etc.) sauf pour les
+          surfaces explicitement bloquées via la classe CSS
+          `cf-export-blocked` (Dashboard cards + sidebar buttons). */}
+      <style>{`
+        body.cf-has-export-modal .cf-export-blocked {
+          pointer-events: none !important;
+          opacity: 0.35 !important;
+          filter: grayscale(0.6) blur(1px);
+          user-select: none;
+        }
+      `}</style>
+      <ExportModalBodyClassToggle />
+      <div
+        className="fixed inset-x-0 top-16 z-[125] flex items-start justify-center px-3 sm:px-6 pointer-events-none"
+        data-testid="export-review-modal"
+      >
+        <div className="w-full max-w-2xl bg-[#0A0A0A] border-2 border-[#E4FF00]/60 rounded-md p-6 sm:p-10 shadow-[0_20px_80px_rgba(228,255,0,0.45)] pointer-events-auto">
+          <div className="flex flex-col items-center text-center gap-4">
+            {isPending && <Loader2 className="w-14 h-14 text-[#E4FF00] animate-spin" />}
+            {isApproved && <ShieldCheck className="w-14 h-14 text-emerald-400" />}
+            {isRejected && <XCircle className="w-14 h-14 text-red-400" />}
+            <h2 className="text-2xl sm:text-3xl font-['Chivo'] font-black text-white leading-tight">
+              {isPending && t('exp_pending_title')}
+              {isApproved && t('exp_approved_title')}
+              {isRejected && t('exp_rejected_title')}
+            </h2>
+            <p className="text-base sm:text-lg text-[#E4E4E7] leading-relaxed whitespace-pre-line max-w-xl">
+              {isPending && t('exp_pending_body')}
+              {isApproved && t('exp_approved_body').replace('{kind}', displayKind)}
+              {isRejected && t('exp_rejected_body')}
+            </p>
 
-          <div className="w-full border-t border-white/10 mt-4 pt-4 flex items-center justify-between gap-4 flex-wrap">
-            <span className="text-sm sm:text-base text-[#A1A1AA]">
-              {t('exp_confirm_read')}
-            </span>
-            <button
-              type="button"
-              onClick={handleOui}
-              disabled={sendingKey || downloading}
-              data-testid="exp-review-oui"
-              className="inline-flex items-center justify-center gap-2 px-8 py-3 bg-red-500 hover:bg-red-600 text-white rounded-sm font-['Chivo'] font-black text-base sm:text-lg tracking-wider transition disabled:opacity-60"
-            >
-              {(sendingKey || downloading) && <Loader2 className="w-4 h-4 animate-spin" />}
-              {t('exp_confirm_yes')}
-            </button>
+            <div className="w-full border-t border-white/10 mt-4 pt-4 flex items-center justify-between gap-4 flex-wrap">
+              <span className="text-sm sm:text-base text-[#A1A1AA]">
+                {t('exp_confirm_read')}
+              </span>
+              <button
+                type="button"
+                onClick={handleOui}
+                disabled={sendingKey || downloading}
+                data-testid="exp-review-oui"
+                className="inline-flex items-center justify-center gap-2 px-8 py-3 bg-red-500 hover:bg-red-600 text-white rounded-sm font-['Chivo'] font-black text-base sm:text-lg tracking-wider transition disabled:opacity-60"
+              >
+                {(sendingKey || downloading) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {t('exp_confirm_yes')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
+}
+
+// iter126 — Adds/removes `cf-has-export-modal` class on <body> so that the
+// targeted blocking CSS only applies while a review modal is open.
+function ExportModalBodyClassToggle() {
+  React.useEffect(() => {
+    document.body.classList.add('cf-has-export-modal');
+    return () => document.body.classList.remove('cf-has-export-modal');
+  }, []);
+  return null;
 }

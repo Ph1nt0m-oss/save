@@ -214,6 +214,48 @@ async def _lifespan(app):
         await db.messages.create_index("thread_key_id")
         await db.messages.create_index("ts")
         logger.info("✅ MongoDB indexes ready")
+
+        # iter126 Lot 2 #7 — Seed "agents bots de test" protégés.
+        # Visibles pour rassurer les utilisateurs sceptiques, mais codes
+        # cachés + modifications interdites (sauf créatrice).
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            test_agents = [
+                {"bot_id": "_agent_security_v1", "name": "Agent Sécurité",
+                 "description": "Analyse les créations pour détecter injections, données sensibles, code malveillant.",
+                 "kind": "security"},
+                {"bot_id": "_agent_quality_v1", "name": "Agent Qualité",
+                 "description": "Vérifie la stabilité, les performances et la qualité du code généré.",
+                 "kind": "quality"},
+                {"bot_id": "_agent_compliance_v1", "name": "Agent Conformité",
+                 "description": "Contrôle le respect des CGU et de la confidentialité (RGPD).",
+                 "kind": "compliance"},
+                {"bot_id": "_agent_originality_v1", "name": "Agent Originalité",
+                 "description": "Détecte les contenus copiés ou contrefaits avant validation.",
+                 "kind": "originality"},
+                {"bot_id": "_agent_export_validator_v1", "name": "Agent Validation Export",
+                 "description": "Décide en dernier ressort si une création peut être exportée.",
+                 "kind": "export"},
+            ]
+            for a in test_agents:
+                await db.community_bots.update_one(
+                    {"bot_id": a["bot_id"]},
+                    {"$setOnInsert": {
+                        **a,
+                        "prompt": "",
+                        "triggers": [],
+                        "is_published": True,
+                        "protected": True,  # 🔒 lock flag
+                        "creator_key_id": "__system__",
+                        "ratings": [],
+                        "ts": _dt.now(_tz.utc).isoformat(),
+                        "updated_at": None,
+                    }},
+                    upsert=True,
+                )
+            logger.info("✅ Protected test agents seeded (5 bots)")
+        except Exception as e:
+            logger.warning(f"Test agents seed warning: {e}")
     except Exception as e:
         logger.warning(f"Index creation warning: {e}")
 

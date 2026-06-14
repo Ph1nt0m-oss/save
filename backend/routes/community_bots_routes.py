@@ -101,6 +101,13 @@ def build_community_bots_router(db, verify_signed, require_creator_signature, lo
             "updated_at": None,
         }
         if payload.bot_id:
+            # iter126 Lot 2 #7 — bots protégés (agents de test) ne sont
+            # éditables QUE par la créatrice (role==creator).
+            existing = await db.community_bots.find_one(
+                {"bot_id": payload.bot_id}, {"_id": 0, "protected": 1},
+            )
+            if existing and existing.get("protected") and dev.get("role") != "creator":
+                raise HTTPException(status_code=403, detail="Bot protégé — édition réservée créatrice.")
             res = await db.community_bots.update_one(
                 {"bot_id": payload.bot_id, "creator_key_id": payload.key_id},
                 {"$set": {**doc, "updated_at": doc["ts"]}},
@@ -117,6 +124,7 @@ def build_community_bots_router(db, verify_signed, require_creator_signature, lo
 
     @router.get("/community-bots/list")
     async def community_bots_list(only_published: bool = True):
+        # iter126 — bots protégés (agents de test) sont toujours listés.
         q = {"is_published": True} if only_published else {}
         rows = await db.community_bots.find(q, {"_id": 0, "prompt": 0}).sort("ts", -1).to_list(length=100)
         for b in rows:
@@ -124,11 +132,22 @@ def build_community_bots_router(db, verify_signed, require_creator_signature, lo
             b["avg_rating"] = round(sum(r.get("rating", 0) for r in ratings) / len(ratings), 1) if ratings else None
             b["rating_count"] = len(ratings)
             b.pop("ratings", None)
+            # Expose the protected flag so the front-end can disable edit/delete/code buttons.
+            b["protected"] = bool(b.get("protected", False))
         return {"bots": rows}
 
     @router.post("/community-bots/delete")
     async def community_bots_delete(payload: BotDeleteIn):
         await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+        # iter126 Lot 2 #7 — Les "agents bots de test" (flag protected=True) ne
+        # peuvent JAMAIS être supprimés, même par la créa hors mode visite.
+        # En mode visite + role=creator OU role=creator stricte → autorisé.
+        target = await db.community_bots.find_one({"bot_id": payload.bot_id}, {"_id": 0, "protected": 1})
+        if target and target.get("protected"):
+            # Vérifier que c'est bien la créatrice qui supprime
+            dev = await verify_signed(payload.key_id, payload.nonce, payload.signature)
+            if dev.get("role") != "creator":
+                raise HTTPException(status_code=403, detail="Bot protégé — réservé créatrice.")
         await db.community_bots.delete_one({"bot_id": payload.bot_id})
         return {"success": True}
 

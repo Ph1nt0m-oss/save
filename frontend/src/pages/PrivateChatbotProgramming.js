@@ -283,25 +283,47 @@ function BotsCommunityList() {
         </div>
       ) : (
         <div className="space-y-2">
-          {bots.map((b) => (
-            <div key={b.bot_id} data-testid={`prog-bot-${b.bot_id}`}
-              className="bg-[#0F0F13] border border-white/10 rounded-sm p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-sm text-white truncate">{b.name}</h3>
-                  <p className="text-[11px] text-[#A1A1AA] mt-0.5 line-clamp-2">{b.description || '(pas de description)'}</p>
+          {bots.map((b) => {
+            // iter126 Lot 2 #7 — Les agents de test (protected=true) sont
+            // visibles avec un cadenas + boutons grisés. La créatrice en
+            // mode visite peut tout faire (l'UI dédiée vit ailleurs).
+            const locked = !!b.protected;
+            return (
+              <div key={b.bot_id} data-testid={`prog-bot-${b.bot_id}`}
+                className={`bg-[#0F0F13] border ${locked ? 'border-amber-400/30' : 'border-white/10'} rounded-sm p-3`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-sm text-white truncate inline-flex items-center gap-1.5">
+                      {locked && (
+                        <span title="Agent protégé — édition réservée créatrice" data-testid={`prog-bot-locked-${b.bot_id}`}>
+                          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 inline text-amber-400" fill="currentColor"><path d="M12 1a5 5 0 0 0-5 5v3H5v13h14V9h-2V6a5 5 0 0 0-5-5zm0 2a3 3 0 0 1 3 3v3H9V6a3 3 0 0 1 3-3z"/></svg>
+                        </span>
+                      )}
+                      {b.name}
+                    </h3>
+                    <p className="text-[11px] text-[#A1A1AA] mt-0.5 line-clamp-2">{b.description || '(pas de description)'}</p>
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-sm flex-shrink-0 ${
+                    locked ? 'bg-amber-500/15 text-amber-300'
+                    : (b.is_published ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')
+                  }`}>
+                    {locked ? 'Agent test' : (b.is_published ? 'Publié' : 'Brouillon')}
+                  </span>
                 </div>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-sm flex-shrink-0 ${
-                  b.is_published ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
-                }`}>
-                  {b.is_published ? 'Publié' : 'Brouillon'}
-                </span>
+                <div className="text-[10px] text-[#71717A] mt-2 font-mono truncate">
+                  Kind: {b.kind || 'assistance'} · Bot ID: {b.bot_id}
+                </div>
+                {locked && (
+                  // Boutons grisés (admin lock) — pas d'action, juste signal visuel
+                  <div className="mt-2 flex gap-2 opacity-50 pointer-events-none select-none" data-testid={`prog-bot-actions-locked-${b.bot_id}`}>
+                    <span className="text-[10px] px-2 py-0.5 border border-white/15 rounded-sm">✏️ Modifier</span>
+                    <span className="text-[10px] px-2 py-0.5 border border-white/15 rounded-sm">🔍 Voir le code</span>
+                    <span className="text-[10px] px-2 py-0.5 border border-white/15 rounded-sm">🗑️ Supprimer</span>
+                  </div>
+                )}
               </div>
-              <div className="text-[10px] text-[#71717A] mt-2 font-mono truncate">
-                Kind: {b.kind || 'assistance'} · Bot ID: {b.bot_id}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
