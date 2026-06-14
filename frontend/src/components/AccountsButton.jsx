@@ -225,6 +225,9 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
             <header className="px-3 py-3 border-b border-white/10 flex items-center gap-2 flex-shrink-0 flex-wrap">
               <Users className="w-4 h-4 text-[#E4FF00]" />
               <h2 className="text-sm font-['Chivo'] font-bold text-white">{t('acc_title')}</h2>
+              {/* iter125 — Bouton historique demandes d'export dismissed (créa uniquement).
+                  Cercle bleu + flèche horaire ; couleur cohérente avec le site. */}
+              <ExportRequestsHistoryButton onClose={() => setOpen(false)} t={t} />
               <button onClick={() => setOpen(false)} className="ml-auto text-[#A1A1AA] hover:text-white" aria-label="Close">
                 <X className="w-4 h-4" />
               </button>
@@ -388,5 +391,62 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
         </div>
       )}
     </>
+  );
+}
+
+
+// =============================================================================
+// iter125 — Blue history button : opens the créa export-approval queue.
+// Visible only to créa (matches the visibility of ExportApprovalNotifier).
+// Displays a badge with the count of pending DISMISSED requests so the créa
+// knows there's work waiting even after she clicked X.
+// =============================================================================
+function ExportRequestsHistoryButton({ onClose, t }) {
+  const [count, setCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const onCount = (e) => setCount(Number(e?.detail || 0));
+    window.addEventListener('cf:export-requests-count', onCount);
+    return () => window.removeEventListener('cf:export-requests-count', onCount);
+  }, []);
+
+  // Only render when there is at least one dismissed pending request waiting.
+  if (count <= 0) return null;
+
+  const handleOpen = () => {
+    // 1. Close the accounts panel (so the export modal isn't hidden behind it).
+    onClose?.();
+    // 2. Forget all dismissed IDs so every pending request can reappear via the modal.
+    try { localStorage.setItem('cf_dismissed_export_requests_v1', '[]'); } catch (_) {}
+    // 3. Tell ExportApprovalNotifier to force-open with the queue.
+    setTimeout(() => {
+      try { window.dispatchEvent(new CustomEvent('cf:open-export-requests')); } catch (_) {}
+    }, 50);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleOpen}
+      data-testid="export-history-btn"
+      aria-label={t('exp_history_badge_aria')}
+      title={t('exp_history_title')}
+      className="relative inline-flex items-center justify-center w-7 h-7 rounded-full border border-[#E4FF00]/60 bg-[#E4FF00]/10 hover:bg-[#E4FF00]/25 transition group"
+    >
+      {/* Custom SVG matching the user's mock (circle + clockwise arrow head),
+          using the site's signature yellow #E4FF00 to stay cohesive. */}
+      <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-[#E4FF00] fill-none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 12a9 9 0 1 0 3-6.7" />
+        <polyline points="3 3 3 9 9 9" />
+        <line x1="12" y1="7" x2="12" y2="12" />
+        <line x1="12" y1="12" x2="15" y2="14" />
+      </svg>
+      <span
+        data-testid="export-history-badge"
+        className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-4 text-center"
+      >
+        {count > 9 ? '9+' : count}
+      </span>
+    </button>
   );
 }

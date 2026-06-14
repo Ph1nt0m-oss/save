@@ -16,6 +16,7 @@ const FR = {
     { h: '4. Propriété intellectuelle', p: 'Le code généré par l\'IA t\'appartient et tu peux l\'utiliser librement, y compris commercialement. La marque "CodeForge AI" et son interface restent la propriété de leurs auteurs.' },
     { h: '5. Disponibilité', p: 'Le Service est fourni "tel quel", sans garantie de disponibilité 24/7. En particulier, l\'IA en ligne dépend de fournisseurs tiers dont une indisponibilité ponctuelle ne saurait engager notre responsabilité.' },
     { h: '6. Limitation de responsabilité', p: "L'éditeur ne peut être tenu responsable des dommages indirects (perte de données, manque à gagner) résultant de l'utilisation du Service." },
+    { h: '6 bis. Exports validés', p: "Lorsque ta demande d'export (ZIP, APK, EXE) est validée par la créatrice et que tu as récupéré une création conforme, la responsabilité de son usage te revient entièrement. Toute modification ultérieure — y compris transformation en outil dangereux, malveillant ou contraire à la loi — n'engage plus le Service ni la créatrice. Tu deviens seul responsable du code que tu détiens." },
     { h: '7. Résiliation', p: 'Tu peux supprimer ton compte à tout moment depuis ton profil. La suppression est irréversible et efface l\'intégralité de tes données dans les 24h.' },
     { h: '8. Modification des CGU', p: 'Les présentes CGU peuvent évoluer. Toute modification substantielle te sera notifiée par email.' },
     { h: '9. Loi applicable', p: 'Les présentes CGU sont régies par le droit français. Tout litige relèvera des tribunaux compétents.' },

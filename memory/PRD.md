@@ -16,6 +16,50 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-14 — Iter 125 (Lot 1 — Refonte modale export + DeviceManager + CGU)
+
+**🟢 Modal créa redesigné (`ExportApprovalNotifier.jsx`)**
+- 6 champs FR traduits : Pseudonyme, Type d'appareil (OCR), Nom du projet (lookup DB), Type d'export, Date FR `JJ/MM/AAAA`, Heure FR `HH:MM:SS`.
+- Affichage **"ZIP" uniquement** (suffixe `+github` masqué — push GitHub silencieux post-validation).
+- Bouton X → persiste l'ID dans `localStorage.cf_dismissed_export_requests_v1`. Le modal n'apparaît plus pour cet ID jusqu'à ce que la créa rouvre via l'icône historique.
+- Événement custom `cf:open-export-requests` pour rouvrir la queue depuis l'icône.
+
+**🟢 3 popups requester (`ExportInReviewModal.jsx`)**
+- Plus de bouton X. Confirmation explicite "Avez-vous bien lu et compris le message ? :" + bouton rouge **OUI**.
+- **Pending** : "Ta demande est en cours de validation par les agents bots de test…" — OUI = ack visuel (no-op).
+- **Rejected** : "Malheureusement, les agents bots de test ont identifié…" — OUI = envoi clé à la créa via `/devices/send-to-creator` avec `reason: 'Projet décliné'` + `request_id`.
+- **Accepted** : "Félicitations, les agents bots de test ont validé…" — OUI = déclenche `onApprovedDownload()` (ZIP via `/exports/zip-project/{id}` → blob download automatique).
+- **PAS d'auto-close** sur status `approved` (iter78 fermait après 2,5s — supprimé).
+
+**🟢 Icône historique bleue (`AccountsButton.jsx`)**
+- Composant `ExportRequestsHistoryButton` : SVG inline (cercle + flèche horaire) couleur `#E4FF00` (cohérent avec le site, pas bleu pur).
+- Badge rouge avec compteur de demandes pending dismissed.
+- Click → ferme la popup historique + reset localStorage dismissed + dispatch `cf:open-export-requests`.
+
+**🟢 1 demande par projet (`Dashboard.js`)**
+- `localStorage.cf_export_pending_pids` mémorise les request_ids pending par `project_id`.
+- Si la créa accepte/refuse → cleanup au moment du OUI. L'utilisateur peut redemander immédiatement (pas de cooldown).
+
+**🟢 DeviceManager UI (image 2 user)**
+- Pseudo affiché EN HAUT sur sa propre ligne (plus collé au type d'appareil).
+- Type d'appareil (Linux · Chrome…) DESSOUS sur sa propre ligne — plus de `#X`.
+- **Clé complète** affichée (`break-all`) — plus de truncate du `dev_xxx`.
+
+**🟢 Backend `/exports/pending` enrichi** (`routes/exports_routes.py`)
+- Lookup `device_keys` → expose `pseudo` + `device_label` (depuis `device_capture.device_name` OCR).
+- Lookup `projects` → expose `project_name`.
+
+**🟢 CGU/Confidentialité** : ajout article "6 bis. Exports validés" qui acte le transfert de responsabilité post-validation (le user devient seul responsable du code récupéré).
+
+**🟢 Tests** : `tests/test_iter125_export_modal.py` (5 tests — auth + DB join + OpenAPI). **115 tests cumulés PASS**. Lint JavaScript clean. Frontend compile OK, render OK.
+
+**🔒 Reste à faire (Lot 2 — session dédiée user)** :
+- Réduire le backdrop bloquant (overlay ciblé dashboard cards + sidebar uniquement).
+- "Stockage pour Github" invisible (déjà partiellement en place via `export_requests` status approved).
+- Faux "agents bots de test" dans Programmation des bots (decoy, créa-only manipulable).
+
+
+
 ### 2026-02-14 — Iter 124 (Finalisation totale — 4 priorités cochées)
 
 **🟢 P2 — Lifespan handlers FastAPI**

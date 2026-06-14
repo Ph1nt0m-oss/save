@@ -497,6 +497,12 @@ export default function Dashboard() {
     // Export approval gate — iter54. Non-creator devices must obtain an
     // explicit approval from the creator before exporting any APK / ZIP+GitHub
     // / EXE. Creators bypass this entirely.
+    //
+    // iter125 changes:
+    //  - 1 demande max par projet : si déjà pending → on rouvre le modal du
+    //    même request_id au lieu d'en créer un autre.
+    //  - approved: on N'AUTO-FERME PAS le modal — l'utilisateur doit cliquer OUI.
+    //  - rejected: idem (OUI envoie sa clé à la créa via Profile-style flow).
     if (device.role !== 'creator') {
       try {
         const { withCreatorProof } = await import('../lib/deviceIdentity');
@@ -506,8 +512,53 @@ export default function Dashboard() {
         });
         const r = await axios.post(`${API}/exports/request`, body);
         if (!r.data?.approved) {
-          // iter78 — affiche modal plein écran (pas juste un toast).
-          setExportReview({ kind: exportType, status: 'pending', request_id: r.data?.request_id });
+          // Persist per-project pending lock in localStorage so a refresh
+          // doesn't allow the user to spam new requests for the same project.
+          try {
+            const pids = JSON.parse(localStorage.getItem('cf_export_pending_pids') || '{}');
+            pids[project.project_id] = r.data?.request_id;
+            localStorage.setItem('cf_export_pending_pids', JSON.stringify(pids));
+          } catch (_) {}
+
+          // The download closure that will be called when the user clicks
+          // OUI on the approved popup. Re-runs the same export flow but
+          // marked as already-approved.
+          const runRealDownload = async () => {
+            // Re-issue the export call ; backend returns approved=true now.
+            try {
+              const apkBody = await withCreatorProof(API, axios, {
+                project_id: project.project_id, export_kind: exportType,
+              });
+              await axios.post(`${API}/exports/request`, apkBody);
+              // Actual download triggered below — just call the same exporter.
+              if (exportType === 'source' || exportType === 'zip+github') {
+                // ZIP download via /exports/zip-project/{id}
+                const resp = await axios.get(
+                  `${API}/exports/zip-project/${project.project_id}`,
+                  { withCredentials: true, responseType: 'blob' },
+                );
+                const url = window.URL.createObjectURL(new Blob([resp.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `codeforge_${project.name || project.project_id}.zip`;
+                document.body.appendChild(link); link.click(); link.remove();
+                window.URL.revokeObjectURL(url);
+              } else {
+                toast.message('Téléchargement APK/EXE bientôt disponible.');
+              }
+            } catch (e) {
+              toast.error(e?.response?.data?.detail || 'Erreur téléchargement');
+            }
+          };
+
+          setExportReview({
+            kind: exportType,
+            status: 'pending',
+            request_id: r.data?.request_id,
+            project_id: project.project_id,
+            onDownload: runRealDownload,
+          });
+
           // Poll for decision (max 90 polls × 4s = 6 min).
           let attempts = 0;
           let resolved = false;
@@ -519,12 +570,12 @@ export default function Dashboard() {
               if (s.data?.status === 'approved') {
                 resolved = true;
                 clearInterval(poll);
-                setExportReview({ kind: exportType, status: 'approved', request_id: r.data?.request_id });
-                setTimeout(() => setExportReview(null), 2500);
+                // iter125 — DO NOT auto-close. User must click OUI.
+                setExportReview((prev) => prev ? { ...prev, status: 'approved' } : null);
               } else if (s.data?.status === 'rejected') {
                 resolved = true;
                 clearInterval(poll);
-                setExportReview({ kind: exportType, status: 'rejected', request_id: r.data?.request_id });
+                setExportReview((prev) => prev ? { ...prev, status: 'rejected' } : null);
               } else if (attempts > 90) {
                 clearInterval(poll);
                 if (!resolved) setExportReview(null);
@@ -1431,12 +1482,35 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      {/* iter78 — Export in-review fullscreen */}
+      {/* iter125 — Export in-review : 3 états (pending/approved/rejected),
+          OUI button avec actions différenciées, plus de X.
+          - pending OUI  → ack visuel, polling continue silencieusement
+          - rejected OUI → envoie clé à la créa avec mention "Projet décliné"
+          - approved OUI → déclenche le téléchargement réel + cleanup
+          Le projet n'est PAS verrouillé (autres projets restent exportables). */}
       <ExportInReviewModal
         open={!!exportReview}
         status={exportReview?.status}
         kind={exportReview?.kind}
-        onClose={() => setExportReview(null)}
+        requestId={exportReview?.request_id}
+        onAcknowledge={() => {
+          if (exportReview?.status === 'approved' || exportReview?.status === 'rejected') {
+            // Cleanup pending lock for this project so user can re-request.
+            try {
+              const pids = JSON.parse(localStorage.getItem('cf_export_pending_pids') || '{}');
+              if (exportReview?.project_id) delete pids[exportReview.project_id];
+              localStorage.setItem('cf_export_pending_pids', JSON.stringify(pids));
+            } catch (_) {}
+          }
+          setExportReview(null);
+        }}
+        onApprovedDownload={async () => {
+          // Re-trigger the actual export flow now that creator approved.
+          // (download triggers below — we just signal the existing handler.)
+          if (exportReview?.onDownload) {
+            await exportReview.onDownload();
+          }
+        }}
       />
       {/* iter82 — Group chats panel */}
       <GroupChatsPanel open={groupsOpen} onClose={() => setGroupsOpen(false)} />

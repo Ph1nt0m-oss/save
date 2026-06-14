@@ -233,13 +233,14 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                       >
                         <Mi className="w-4 h-4 text-[#A1A1AA] mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
+                          {/* iter125 — Pseudo affiché EN HAUT, sur sa propre ligne,
+                              suivi DESSOUS du type d'appareil. Plus de #X car la combinaison
+                              pseudo + appareil suffit pour identifier. */}
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm ${meta.color}`}>
                               {t(meta.tk)}
                             </span>
-                            {/* iter80 C12 — Pseudo affiché au-dessus du label/type d'appareil */}
-                            {d.pseudo && <span className="text-sm text-white font-bold truncate">{d.pseudo}</span>}
-                            {d.label && <span className="text-xs text-[#A1A1AA] truncate">{d.label}</span>}
+                            {d.pseudo && <span className="text-sm text-white font-bold truncate" data-testid={`device-pseudo-${d.key_id}`}>{d.pseudo}</span>}
                             {/* iter80 C12 — Badge décision colorée (orange=admin, bleu=modo, jaune=créa) */}
                             {d.approved_by_kind === 'admin' && (
                               <span data-testid={`approved-by-admin-${d.key_id}`} className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/60 text-orange-300 bg-orange-400/10 rounded-sm">
@@ -257,7 +258,14 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                               </span>
                             )}
                           </div>
-                          <code className="block text-[10px] text-[#71717A] truncate mt-1">{d.key_id}</code>
+                          {/* Type d'appareil sur sa propre ligne en-dessous du pseudo */}
+                          {d.label && (
+                            <div className="text-xs text-[#A1A1AA] mt-0.5 truncate" data-testid={`device-label-${d.key_id}`}>
+                              {d.label}
+                            </div>
+                          )}
+                          {/* iter125 — clé complète (plus de truncate, break-all pour wrap propre) */}
+                          <code className="block text-[10px] text-[#71717A] mt-1 break-all" data-testid={`device-key-${d.key_id}`}>{d.key_id}</code>
                           <div className="text-[10px] text-[#71717A] mt-0.5">
                             {d.last_seen_at ? t('dm_seen').replace('{when}', new Date(d.last_seen_at).toLocaleString()) : t('dm_never_seen')}
                           </div>

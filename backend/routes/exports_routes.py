@@ -100,13 +100,51 @@ def build_exports_router(db, *, verify_signed, require_creator_signature, get_cu
 
     @router.post("/exports/pending")
     async def exports_pending(payload: _CreatorSigIn):
-        """Creator-only — list pending export requests."""
+        """Creator-only — list pending export requests.
+
+        iter125 — Enriched with `pseudo`, `device_label` (OCR-detected device
+        name), and `project_name` so the créa modal can display friendly
+        fields rather than raw IDs.
+        """
         await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
         rows = (
             await db.export_requests.find({"status": "pending"}, {"_id": 0})
             .sort("created_at", -1)
             .to_list(length=200)
         )
+
+        # Enrich: lookup pseudo + label from device_keys ; project_name from projects.
+        key_ids = list({r.get("key_id") for r in rows if r.get("key_id")})
+        proj_ids = list({r.get("project_id") for r in rows if r.get("project_id")})
+        dev_map = {}
+        if key_ids:
+            async for d in db.device_keys.find(
+                {"key_id": {"$in": key_ids}},
+                {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1, "device_capture": 1},
+            ):
+                dev_map[d["key_id"]] = d
+        proj_map = {}
+        if proj_ids:
+            async for p in db.projects.find(
+                {"project_id": {"$in": proj_ids}},
+                {"_id": 0, "project_id": 1, "name": 1},
+            ):
+                proj_map[p["project_id"]] = p
+
+        for r in rows:
+            dev = dev_map.get(r.get("key_id")) or {}
+            r["pseudo"] = dev.get("pseudo") or r.get("label") or ""
+            # device_capture is the OCR-detected device name shown everywhere
+            # (e.g. "iPhone 14 Pro" or "Linux · Chrome"). Fallback to label.
+            dc = dev.get("device_capture") or {}
+            r["device_label"] = (
+                dc.get("device_name")
+                or dc.get("model")
+                or dev.get("label")
+                or ""
+            )
+            proj = proj_map.get(r.get("project_id")) or {}
+            r["project_name"] = proj.get("name") or r.get("project_id", "")
         return {"requests": rows}
 
     @router.get("/exports/zip-project/{project_id}")
