@@ -4,13 +4,23 @@ iter121 — Adds `seed_verified_user` helper that bypasses /auth/register
 (now requires pseudo + device_capture + biometric) by inserting users
 directly into MongoDB. Used by pre-existing tests written before the
 mandatory enrollment fields were added.
+
+iter124 — sys.path bootstrap so `from services.*`/`from routes.*` work
+regardless of pytest cwd (`/app` vs `/app/backend`).
 """
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Optional, Tuple
+
+# iter124 — must be set BEFORE importing project modules
+_BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 import bcrypt
 import pytest

@@ -16,6 +16,49 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
+### 2026-02-14 — Iter 124 (Finalisation totale — 4 priorités cochées)
+
+**🟢 P2 — Lifespan handlers FastAPI**
+- `@asynccontextmanager async def _lifespan(app)` à `server.py:188`, attaché via `FastAPI(lifespan=_lifespan)`.
+- Suppression des 3 `@app.on_event` (deprecated FastAPI ≥0.110).
+- Zero `DeprecationWarning` au démarrage. Logs : `✅ MongoDB indexes ready` + `✅ Auth cleanup background task started`.
+
+**🟢 P3 — `services/file_builders.py` créé (pré-requis pour future extraction de `/chat/message`)**
+- `FileService` dataclass + `make_file_service(db, logger)` factory
+- Exposé : `sanitize_filename`, `analyze_pdf/docx/xlsx/pptx/sqlite/image_with_vision`, `build_docx/pdf/xlsx/pptx/plain/image`, `run_python_sandbox`, `GENERATED_FILES_DIR`
+- Wrappers privés dans `server.py` conservés pour rétrocompatibilité (35 call sites internes intacts).
+
+**🟢 P3 — `chat_exports_routes.py` (4 endpoints, ~400 L extraits)**
+| Endpoint | Description |
+|---|---|
+| `POST /chat/analyze-attachment` | Upload + extraction (PDF/DOCX/XLSX/PPTX/SQLite/IMG) |
+| `GET /chat/models` | Catalogue des modèles IA (UI selector) |
+| `GET /chat/export-ipynb/{pid}` | Conversation → Jupyter notebook |
+| `GET /chat/export-docx/{pid}` | Conversation → Word .docx |
+
+**🟢 P3 — Pre-commit hook anti-régression**
+- `/app/scripts/pre-commit-server-size.sh` (chmod +x, threshold 5500)
+- Bloque tout commit qui ferait grossir `server.py` au-delà du seuil
+
+**🟢 Tests**
+- `tests/test_iter124_full_decompose.py` (22 tests — unauth + 2 happy-paths authentifiés + service module + lifespan + pre-commit + 7 régressions iter119→iter123) — **22/22 PASS**
+- conftest.py sys.path bootstrap pour location-independence (pytest depuis `/app` OU `/app/backend`)
+
+**🟢 Validation testing_agent_v3_fork (iteration_104.json)** : **145/145 PASS, 0 failures, 0 skip** sur 9 suites. Le seul "minor finding" (3 tests qui demandaient cwd `/app/backend`) corrigé via `sys.path.insert` dans conftest.
+
+**📊 Bilan final décomposition (5 iters)** :
+- Avant iter120 : `server.py` 7892 L
+- **Après iter124** : `server.py` 4828 L (**−3064, −38.8%**)
+- 17 fichiers de routes factory-style + 1 service module dans l'arborescence
+- Pre-commit hook protège la régression
+
+**🟡 Volontairement skippé** (hors mandate immédiat) :
+- Migration Vite : scaffold prêt depuis iter121 (`vite.config.js`, `BuildToolchainPanel`, `docs/MIGRATION_VITE.md`). User a explicitement marqué P1 *optionnel*.
+- Centralisation models Pydantic dans `/app/backend/models/` : gain marginal, risque casser routes. Reporté.
+- Extraction `/chat/message` (555 L) : nécessite décompression du send_chat_message_impl en sous-fonctions. Différé à une session dédiée car risque iter122-style (closure binding).
+
+
+
 ### 2026-02-14 — Iter 123 (Décomposition continue + chat advanced routes)
 
 **🟢 server.py : 5881 → 5224 lignes (−657, total cumulé −2668 depuis iter120 = −33.8%)**

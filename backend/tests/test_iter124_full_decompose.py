@@ -4,10 +4,17 @@
 from __future__ import annotations
 
 import os
+import sys
 import pytest
 import requests
 from pathlib import Path
 from dotenv import load_dotenv
+
+# iter124 — Make services/* importable when pytest is invoked from /app (CI)
+# rather than from /app/backend. Otherwise the FileService tests ModuleNotFoundError.
+_BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 from conftest import seed_verified_user, seed_session_for
 
