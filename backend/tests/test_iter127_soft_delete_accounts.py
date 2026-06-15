@@ -46,15 +46,29 @@ def test_accounts_button_renders_deleted_badge_and_disables_actions():
     assert "acc-reset-view" not in src
     # Tri A→Z
     assert "localeCompare" in src
-    # Affichage : 4 lignes obligatoires (pseudo, email, type, clé complète)
+    # Affichage : 4 lignes obligatoires (pseudo, email, type d'appareil, clé partageable)
     assert "acc-pseudo-" in src
     assert "acc-email-" in src
-    assert "acc-type-" in src
+    assert "acc-device-" in src
     assert "acc-key-" in src
-    # La clé complète est rendue (pas truncate)
-    assert "{a.key_id}" in src
-    # Le helper "type de compte" existe
-    assert "accountTypeLabel" in src
+    # Type d'appareil (pas type de compte)
+    assert "deviceTypeLabel" in src
+    assert "Type d'appareil" in src
+    # Clé = share_code (PAS key_id)
+    assert "{a.share_code" in src
+
+
+def test_accounts_list_exposes_share_code():
+    """/accounts/list doit dériver share_code = base64(jwk) à partir du
+    public_key_jwk avant de pop ce dernier."""
+    src = Path("/app/backend/routes/accounts_routes.py").read_text(encoding="utf-8")
+    marker = "@router.post(\"/accounts/list\")"
+    assert marker in src
+    body = src.split(marker, 1)[1].split("@router.post", 1)[0]
+    assert "share_code" in body
+    assert "base64.b64encode" in body
+    # public_key_jwk doit être pop (pas retourné en clair)
+    assert "d.pop(\"public_key_jwk\"" in body
 
 
 def test_export_notifier_x_closes_in_forced_open_mode():

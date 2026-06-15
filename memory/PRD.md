@@ -27,12 +27,13 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - `/accounts/list` expose désormais `deleted: bool` pour chaque entrée.
 - Frontend (`AccountsButton.jsx`) : badge rouge "Compte supprimé" affiché à droite du pseudo ; toutes les actions (rename, visit, mute, block, exclude, ban, force-visitor, staff, remove-creator, supprimer) **désactivées** pour les comptes soft-deleted ; carte affichée en `opacity-70` avec bordure rouge.
 
-**🟢 Issue 3 — Affichage **strict** : 4 lignes claires (Pseudo + Email + Type de compte + Clé entière)**
-- Refonte du rendu : 4 lignes labellées au lieu de 3, chaque info précédée de son libellé ("Email :", "Type de compte :", "Clé :").
-- Pseudo affiché tel quel (plus de `#N`).
+**🟢 Issue 3 — Affichage **strict** : 4 lignes claires (Pseudo + Email + Type d'appareil + Clé partageable)**
+- Refonte du rendu : 4 lignes labellées au lieu de 3, chaque info précédée de son libellé ("Email :", "Type d'appareil :", "Clé :").
+- Pseudo affiché tel quel (plus de `#N` même si plusieurs appareils ont le même libellé).
 - Email exposé (`a.email`), `—` si absent.
-- Type de compte sous forme de **texte clair** via helper `accountTypeLabel(a)` → "Créateur" / "Approuvé" / "Admin" / "Modérateur" / "En attente" / "Bloqué" / "Inactif" / "Compte supprimé" / "Banni" / "Visiteur forcé".
-- Clé `key_id` **complète** en `<code break-all>` (texte `#A1A1AA` lisible, plus du gris foncé invisible).
+- **Type d'appareil** = `a.label` (capture inscription : "iPhone 14 Pro", "Linux · Chrome"). Pas de suffixe `#X`.
+- **Clé** = `a.share_code` (base64 du `public_key_jwk`) — la clé partageable utilisée pour les demandes d'amis et le mode public/privé. **PAS** le `key_id`.
+- Backend `/accounts/list` enrichi : dérive `share_code = base64(json(public_key_jwk))` (équivalent serveur de `exportPublicKeyShareCode()` côté front) ; `public_key_jwk` n'est plus retourné en clair (pop après usage).
 - Tri A→Z (`localeCompare 'fr'`).
 
 **🟢 Suppressions UI**

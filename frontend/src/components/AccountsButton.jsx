@@ -141,20 +141,11 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
     } finally { setRemoving(false); }
   };
 
-  // iter127 — Libellé "type de compte" lisible (créateur / approuvé / …).
-  const accountTypeLabel = (a) => {
-    if (a.deleted) return 'Compte supprimé';
-    if (a.banned) return 'Banni';
-    if (a.role === 'creator') return 'Créateur';
-    if (a.staff_kind === 'admin') return 'Admin';
-    if (a.staff_kind === 'modo') return 'Modérateur';
-    if (a.role === 'approved') return 'Approuvé';
-    if (a.role === 'pending') return 'En attente';
-    if (a.role === 'blocked') return 'Bloqué';
-    if (a.role === 'inactive' || a.is_inactive) return 'Inactif';
-    if (a.force_visitor) return 'Visiteur forcé';
-    return a.role || 'Inconnu';
-  };
+  // iter127 — Libellé "type d'appareil" : utilise le label inscrit
+  // (capture à l'inscription : "iPhone 14 Pro", "Linux · Chrome", …).
+  // Aucun suffixe `#X` ajouté même si plusieurs appareils ont le même
+  // libellé — la clé partageable les différencie.
+  const deviceTypeLabel = (a) => (a.label || a.model || a.product || '—');
 
   // iter127 — Tri A→Z par pseudo (insensible à la casse) ; filtre par
   // pseudo/email. Plus de filtre "hidden" : les comptes supprimés
@@ -232,13 +223,13 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                         <span className="text-[#52525B]">Email :</span>{' '}
                         <span className="text-[#A1A1AA]">{a.email || '—'}</span>
                       </div>
-                      <div className="text-[11px] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-type-${a.key_id}`}>
-                        <span className="text-[#52525B]">Type de compte :</span>{' '}
-                        <span className="text-white">{accountTypeLabel(a)}</span>
+                      <div className="text-[11px] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-device-${a.key_id}`}>
+                        <span className="text-[#52525B]">Type d'appareil :</span>{' '}
+                        <span className="text-white">{deviceTypeLabel(a)}</span>
                       </div>
                       <div className="text-[10px] font-['IBM_Plex_Mono']" data-testid={`acc-key-${a.key_id}`}>
                         <span className="text-[#52525B]">Clé :</span>{' '}
-                        <code className="text-[#A1A1AA] break-all">{a.key_id}</code>
+                        <code className="text-[#A1A1AA] break-all whitespace-pre-wrap">{a.share_code || '—'}</code>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 flex-wrap flex-shrink-0">

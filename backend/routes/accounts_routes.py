@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+import base64
+import json as _json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -95,8 +97,10 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
     @router.post("/accounts/list")
     async def accounts_list(payload: _CreatorSigIn):
         await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+        # iter127 — include public_key_jwk so we can derive the share_code
+        # (base64 du JWK) que la créa peut copier depuis la liste.
         devices = await db.device_keys.find(
-            {}, {"_id": 0, "public_key_jwk": 0},
+            {}, {"_id": 0},
         ).sort("created_at", -1).to_list(length=2000)
         emails = list({d.get("email") for d in devices if d.get("email")})
         users = {}
@@ -112,6 +116,18 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
             d.setdefault("product", None); d.setdefault("model", None)
             d.setdefault("staff_kind", None)
             d.setdefault("force_visitor", bool(d.get("force_visitor", False)))
+            # iter127 — share_code = base64(JSON(public_key_jwk)) — identique
+            # à `exportPublicKeyShareCode()` côté front. C'est la "clé" que
+            # l'utilisateur partage pour ses demandes d'amis / mode privé.
+            jwk = d.pop("public_key_jwk", None) or {}
+            try:
+                if jwk:
+                    raw = _json.dumps(jwk, separators=(",", ":")).encode("utf-8")
+                    d["share_code"] = base64.b64encode(raw).decode("ascii")
+                else:
+                    d["share_code"] = ""
+            except Exception:
+                d["share_code"] = ""
         return {"accounts": _disambiguate_pseudos(devices)}
 
     @router.post("/accounts/rename-pseudo")
