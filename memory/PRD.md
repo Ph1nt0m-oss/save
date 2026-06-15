@@ -87,8 +87,10 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
   Bot robot, dashboard cards (Caly + Bots prog / Wizard / Programmation site+IA).
 - UserMenu reçoit `hideEmailAndProfile={!!visiting || (viewMode && viewMode !== 'creator')}`.
 
-**🟢 CreatorToolbar** — prop `hideViewModePicker` qui masque la pilule "Créatrice"
-(le sélecteur de vue) ; activée sur Landing + Login + Dashboard (image 5 cercle bleu).
+**🟢 CreatorToolbar** — prop `hideSiteModeBadge` qui masque le badge "Créatrice"
+(le badge affichant le **mode du site**, pas le sélecteur de vue) ; activée sur
+Landing + Dashboard (image 5 cercle bleu). Le **ViewModePicker reste visible**
+pour que la créatrice puisse continuer à simuler user / modo / admin / guest.
 
 **🟢 Landing.js + Login.js** — Retrait du `<AccountsButton />` du header.
 Login.js : retrait du `MessageButton variant="icon"` (icône message exclusivement créa).

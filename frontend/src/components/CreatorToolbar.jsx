@@ -34,7 +34,7 @@ function downloadText(filename, content) {
  *  - Non-creator devices ("guests"): SiteMode read-only badge + a view-mode
  *    toggle. The History button is creator-only.
  */
-export default function CreatorToolbar({ hideViewModePicker = false } = {}) {
+export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
   const { t } = useLanguage();
   const device = useDeviceIdentity();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -149,7 +149,12 @@ export default function CreatorToolbar({ hideViewModePicker = false } = {}) {
 
   return (
     <div className="inline-flex items-center gap-2 sm:gap-8 flex-wrap" data-testid="creator-toolbar">
-      {/* iter108 — SiteModeBadge 3cm vers la gauche via gap élargi */}
+      {/* iter108 — SiteModeBadge 3cm vers la gauche via gap élargi.
+          iter128 — `hideSiteModeBadge` masque le badge "Créatrice"
+          (mode du site) partout : menu / accueil / inscription / connexion.
+          Le sélecteur de vue (ViewModePicker) reste visible — c'est ce qui
+          permet à la créatrice de simuler user / modo / admin / guest. */}
+      {!hideSiteModeBadge && (
       <SiteModeBadge
         role={device.role}
         siteMode={device.siteMode}
@@ -161,13 +166,11 @@ export default function CreatorToolbar({ hideViewModePicker = false } = {}) {
         controlledOpen={openDropdown === 'site'}
         onOpenChange={(v) => setOpenDropdown(v ? 'site' : null)}
       />
+      )}
 
       {/* iter85 — Pour la créatrice : picker pour simuler n'importe quelle vue
           (user / modo / admin / guest). Pour les non-créa : le toggle
-          original visible/locked selon guest_view.
-          iter128 — `hideViewModePicker` (passé par Dashboard/Landing) masque
-          complètement le sélecteur "Créatrice" partout. */}
-      {!hideViewModePicker && (
+          original visible/locked selon guest_view. */}
       <ViewModePicker
         role={device.role}
         viewMode={device.viewMode}
@@ -177,7 +180,6 @@ export default function CreatorToolbar({ hideViewModePicker = false } = {}) {
         controlledOpen={openDropdown === 'view'}
         onOpenChange={(v) => setOpenDropdown(v ? 'view' : null)}
       />
-      )}
 
       {/* History panel removed in iter57: the right-side panel is now
           reserved for the Messages drawer. */}

@@ -54,8 +54,8 @@ def test_dashboard_uses_view_gating():
     assert "canSeeCreatorProgsCards" in src
     # AccountsButton conditionnel
     assert "canSeeAccountsButton" in src
-    # Crown ViewModePicker masqué via prop
-    assert "hideViewModePicker" in src
+    # SiteModeBadge "Créatrice" masqué via prop
+    assert "hideSiteModeBadge" in src
     # Exports conditionnels
     assert "canSeeExports" in src
     # Megaphone conditionnel
@@ -68,8 +68,8 @@ def test_landing_removes_accounts_and_creator_picker():
     src = _read("pages/Landing.js")
     # Plus de <AccountsButton .../>
     assert "<AccountsButton" not in src
-    # CreatorToolbar avec hideViewModePicker
-    assert "hideViewModePicker" in src
+    # CreatorToolbar avec hideSiteModeBadge
+    assert "hideSiteModeBadge" in src
 
 
 def test_login_removes_accounts_and_creator_message():
@@ -93,9 +93,9 @@ def test_user_menu_supports_hide_email_and_profile():
     assert "hideEmailAndProfile" in src
 
 
-def test_creator_toolbar_supports_hide_view_mode_picker():
+def test_creator_toolbar_supports_hide_site_mode_badge():
     src = _read("components/CreatorToolbar.jsx")
-    assert "hideViewModePicker" in src
+    assert "hideSiteModeBadge" in src
 
 
 def test_account_visit_view_filters_tabs_for_limited_roles():
