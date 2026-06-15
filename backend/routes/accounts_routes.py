@@ -123,6 +123,7 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
             d["muted"] = bool(d.get("muted"))
             d["banned"] = bool(d.get("banned"))
             d["is_inactive"] = (d.get("role") == "inactive")
+            d["deleted"] = bool(d.get("deleted"))
             d.setdefault("product", None); d.setdefault("model", None)
             d.setdefault("staff_kind", None)
             d.setdefault("force_visitor", bool(d.get("force_visitor", False)))
@@ -365,7 +366,14 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
         target = await db.device_keys.find_one({"key_id": target_key_id}, {"_id": 0})
         if not target:
             raise HTTPException(status_code=404, detail="Compte introuvable.")
-        await db.device_keys.delete_one({"key_id": target_key_id})
+        # iter127 — Soft-delete : on conserve l'entrée pour qu'elle reste
+        # visible dans la liste avec le badge "Compte supprimé". Les
+        # sessions actives sont invalidées et l'email est dissocié pour
+        # éviter toute reconnexion silencieuse.
+        await db.device_keys.update_one(
+            {"key_id": target_key_id},
+            {"$set": {"deleted": True, "deleted_at": _now_iso(), "role": "inactive"}},
+        )
         if target.get("email"):
             await db.user_sessions.delete_many({"email": target["email"]})
         await _log_account_event("delete_account", target_key_id, target.get("label"))

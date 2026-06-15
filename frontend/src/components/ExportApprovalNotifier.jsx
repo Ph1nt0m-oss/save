@@ -121,13 +121,19 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
   const req = visibleQueue[0];
 
   const dismissCurrent = () => {
+    // iter127 — Quand le modal a été ouvert manuellement via l'icône
+    // historique bleue (forcedOpen=true), le bouton X ferme purement et
+    // simplement le modal sans modifier la liste des dismissed. Le
+    // créateur peut alors le rouvrir à tout moment via l'icône.
+    if (forcedOpen) {
+      setForcedOpen(false);
+      return;
+    }
     const next = new Set(dismissed);
     next.add(req.request_id);
     setDismissed(next);
     writeDismissed(next);
     broadcastPending(pending.filter((x) => next.has(x.request_id)).length);
-    // If forced-open mode, hop to next item ; else next render hides this one.
-    if (forcedOpen && visibleQueue.length <= 1) setForcedOpen(false);
   };
 
   const decide = async (decision) => {
