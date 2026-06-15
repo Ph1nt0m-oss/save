@@ -15,10 +15,10 @@ import { useLanguage } from '../contexts/LanguageContext';
  */
 const VIEW_META = {
   creator: { Icon: Crown, labelKey: 'view_creator', color: 'text-[#E4FF00]', desc: 'Comme la créatrice' },
-  user:    { Icon: User, labelKey: 'view_user', color: 'text-sky-300', desc: 'Comme un membre approved' },
+  user:    { Icon: User, labelKey: 'view_user', color: 'text-lime-300', desc: 'Comme un membre approved' },
   modo:    { Icon: Shield, labelKey: 'view_modo', color: 'text-cyan-300', desc: 'Comme un modérateur' },
   admin:   { Icon: ShieldCheck, labelKey: 'view_admin', color: 'text-orange-300', desc: 'Comme un administrateur' },
-  guest:   { Icon: EyeOff, labelKey: 'view_guest', color: 'text-amber-300', desc: 'Comme un visiteur public' },
+  guest:   { Icon: EyeOff, labelKey: 'view_guest', color: 'text-violet-300', desc: 'Comme un visiteur public' },
 };
 
 // iter87 — Toutes les vues (y compris creator) sont coches optionnelles.

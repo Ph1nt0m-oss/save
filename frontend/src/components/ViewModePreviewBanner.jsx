@@ -16,7 +16,7 @@ export default function ViewModePreviewBanner() {
   return (
     <div
       data-testid="view-mode-preview-banner"
-      className="fixed top-0 inset-x-0 z-[80] bg-amber-400/15 border-b border-amber-400/40 text-amber-200 backdrop-blur-md"
+      className="fixed top-0 inset-x-0 z-[80] bg-violet-400/15 border-b border-violet-400/40 text-violet-200 backdrop-blur-md"
     >
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 flex items-center gap-2 text-[11px] sm:text-xs font-['IBM_Plex_Sans']">
         <EyeOff className="w-3.5 h-3.5 flex-shrink-0" />
@@ -25,7 +25,7 @@ export default function ViewModePreviewBanner() {
           type="button"
           onClick={() => setStoredViewMode('creator')}
           data-testid="exit-guest-preview"
-          className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-400/40 hover:bg-amber-400/20 rounded-sm transition"
+          className="inline-flex items-center gap-1 px-2 py-0.5 border border-violet-400/40 hover:bg-violet-400/20 rounded-sm transition"
         >
           {t('vm_back_to_user')}
           <X className="w-3 h-3" />

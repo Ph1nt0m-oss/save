@@ -186,8 +186,8 @@ export default function CreatorToolbar() {
           title={inGuestView ? t('vm_back_to_user') : t('vm_preview_as_creator')}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm border transition-colors ${
             inGuestView
-              ? 'bg-amber-400/10 border-amber-400/40 text-amber-300 hover:bg-amber-400/20'
-              : 'bg-white/[0.04] border-white/10 text-[#A1A1AA] hover:text-white hover:bg-white/[0.08]'
+              ? 'bg-violet-400/10 border-violet-400/40 text-violet-300 hover:bg-violet-400/20'
+              : 'bg-lime-400/10 border-lime-400/40 text-lime-300 hover:bg-lime-400/20'
           }`}
         >
           {inGuestView ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}

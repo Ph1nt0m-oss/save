@@ -63,6 +63,15 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
   - `test_iter94_slice4c_translation_enhancement.py` — `test_endpoint_defined_in_server` pointe vers `chat_advanced_routes.py` ; `test_changelog_endpoint` pointe vers `private_routes.py` ; `test_chat_page_wires_widget` accepte le widget désactivé ; `test_xai_key_in_env` accepte aussi `EMERGENT_LLM_KEY`.
   - `test_iter106_caly_llm_spacings.py` — `test_caly_default_system_prompt_present` pointe vers `caly_routes.py`.
 
+### 2026-02-15 — Iter 127.1 (Couleurs vues utilisateur/invité)
+
+- `ViewModePicker.VIEW_META` :
+  - `user` : `text-sky-300` → `text-lime-300` (citron)
+  - `guest` : `text-amber-300` → `text-violet-300` (violet)
+- `CreatorToolbar.jsx` bouton toggle vue (non-créa) : utilise lime (état user) / violet (état invité).
+- `ViewModePreviewBanner.jsx` (bandeau preview visiteur) : passe entièrement en violet (border + bg + texte + bouton sortie).
+
+
 
 
 
