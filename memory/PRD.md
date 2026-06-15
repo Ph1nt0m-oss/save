@@ -27,23 +27,31 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - `/accounts/list` expose désormais `deleted: bool` pour chaque entrée.
 - Frontend (`AccountsButton.jsx`) : badge rouge "Compte supprimé" affiché à droite du pseudo ; toutes les actions (rename, visit, mute, block, exclude, ban, force-visitor, staff, remove-creator, supprimer) **désactivées** pour les comptes soft-deleted ; carte affichée en `opacity-70` avec bordure rouge.
 
-**🟢 Issue 3 — Affichage **strict** : Pseudo + Type d'appareil + Clé entière**
+**🟢 Issue 3 — Affichage **strict** : 4 lignes claires (Pseudo + Email + Type de compte + Clé entière)**
+- Refonte du rendu : 4 lignes labellées au lieu de 3, chaque info précédée de son libellé ("Email :", "Type de compte :", "Clé :").
 - Pseudo affiché tel quel (plus de `#N`).
-- Type d'appareil (`label`) sur sa propre ligne, sans suffixe.
-- Clé `key_id` **complète** en `<code break-all>`.
-- **Email retiré** de la ligne d'affichage (pseudo + device + key uniquement, comme demandé).
+- Email exposé (`a.email`), `—` si absent.
+- Type de compte sous forme de **texte clair** via helper `accountTypeLabel(a)` → "Créateur" / "Approuvé" / "Admin" / "Modérateur" / "En attente" / "Bloqué" / "Inactif" / "Compte supprimé" / "Banni" / "Visiteur forcé".
+- Clé `key_id` **complète** en `<code break-all>` (texte `#A1A1AA` lisible, plus du gris foncé invisible).
 - Tri A→Z (`localeCompare 'fr'`).
 
 **🟢 Suppressions UI**
 - Bouton "Tout supprimer" retiré ; bouton "Vider la vue" + état `hidden` (localStorage) retirés ; footer Accounts entièrement supprimé.
 
-**🟢 P3 — Centralisation modèles Pydantic dans `/app/backend/models/`**
-- Création du module `models/auth_signatures.py` avec `CreatorSigIn` + `TargetCreatorSigIn` (modèles auparavant dupliqués à l'identique dans 5 fichiers).
-- 5 fichiers route nettoyés : `accounts_routes.py`, `announcements_routes.py`, `exports_routes.py`, `ideas_routes.py`, `system_routes.py` → importent désormais depuis `models.auth_signatures`.
+**🟢 P3 — Centralisation modèles Pydantic (étendue)**
+- `models/auth_signatures.py` : ajout de `SignedIn` (strict, 3 champs) en plus de `CreatorSigIn` (lax) et `TargetCreatorSigIn`.
+- **9 fichiers route refactorés** (de ~30 modèles dupliqués → héritage centralisé) :
+  - `accounts_routes.py` — `_SetStaffKindIn`, `_ForceVisitorIn` héritent de `SignedIn`.
+  - `announcements_routes.py` — `AnnounceCreateIn`, `AnnounceEditIn`, `AnnStateIn` héritent de `_CreatorSigIn`.
+  - `community_bots_routes.py` — 6 modèles (`CommunityBotIn`, `BotRateIn`, `BotDeleteIn`, `BotTestIn`, `BotKnowledgeIn`, `BotKnowledgeDeleteIn`) héritent de `SignedIn`.
+  - `devices_routes.py` — `DeviceVerifyIn`, `CreatorOnlyIn`, `DecisionUndoIn`, `SendToCreatorIn` héritent de `SignedIn`.
+  - `exports_routes.py` — `ExportRequestIn`, `ExportStatusIn` héritent de `SignedIn`.
+  - `ideas_routes.py` — `IdeasClearIn` hérite de `_CreatorSigIn`, `IdeaSetStateIn` de `SignedIn`.
+  - `messages_routes.py` — 6 modèles (`MessageSendIn`, `MessagesInboxIn`, `MessagesThreadIn`, `MessagesDeleteIn`, `MessagesRenameIn`, `MessageToStaffIn`) héritent de `SignedIn`.
+  - `caly_routes.py` — `CalyConfigSetIn` hérite de `SignedIn`.
+  - `system_routes.py` — utilise `_CreatorSigIn` central.
 
-**Tests ajoutés** (8 cas, tous verts) :
-- `tests/test_iter127_soft_delete_accounts.py` (4 tests source-level)
-- `tests/test_iter127_central_models.py` (4 tests : module présent, importable, aucune redéfinition locale, imports en place)
+**Tests** : 9 tests source-level verts (4 soft-delete + 5 centralisation, dont un test qui vérifie qu'aucun fichier ne re-déclare plus le triplet `key_id/nonce/signature`). 81 tests de régression des routes passent.
 
 
 

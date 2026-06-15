@@ -18,21 +18,15 @@ import bcrypt
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from models.auth_signatures import CreatorSigIn as _CreatorSigIn, TargetCreatorSigIn as _TargetCreatorSigIn
+from models.auth_signatures import CreatorSigIn as _CreatorSigIn, SignedIn, TargetCreatorSigIn as _TargetCreatorSigIn
 
 
-class _SetStaffKindIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class _SetStaffKindIn(SignedIn):
     target_key_id: str
     staff_kind: Optional[str] = None
 
 
-class _ForceVisitorIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class _ForceVisitorIn(SignedIn):
     target_key_id: str
     force: bool = True
 

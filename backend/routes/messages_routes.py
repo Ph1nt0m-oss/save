@@ -12,49 +12,33 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Callable, Awaitable
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+
+from models.auth_signatures import SignedIn
 
 
-class MessageSendIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class MessageSendIn(SignedIn):
     content: str
     target_key_id: Optional[str] = None
 
 
-class MessagesInboxIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class MessagesInboxIn(SignedIn):
+    pass
 
 
-class MessagesThreadIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class MessagesThreadIn(SignedIn):
     thread_key_id: Optional[str] = None
 
 
-class MessagesDeleteIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class MessagesDeleteIn(SignedIn):
     thread_key_id: str
 
 
-class MessagesRenameIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class MessagesRenameIn(SignedIn):
     thread_key_id: str
     new_label: str
 
 
-class MessageToStaffIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class MessageToStaffIn(SignedIn):
     content: str
 
 

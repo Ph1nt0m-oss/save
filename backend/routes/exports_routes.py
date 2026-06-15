@@ -19,23 +19,16 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict
 
-from models.auth_signatures import CreatorSigIn as _CreatorSigIn
+from models.auth_signatures import CreatorSigIn as _CreatorSigIn, SignedIn
 
 
-class ExportRequestIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class ExportRequestIn(SignedIn):
     project_id: str
     export_kind: str   # "apk" | "exe" | "zip+github" | "source"
 
 
-class ExportStatusIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class ExportStatusIn(SignedIn):
     request_id: Optional[str] = None
     project_id: Optional[str] = None
     export_kind: Optional[str] = None

@@ -46,8 +46,15 @@ def test_accounts_button_renders_deleted_badge_and_disables_actions():
     assert "acc-reset-view" not in src
     # Tri A→Z
     assert "localeCompare" in src
-    # Clé complète (pas de slice)
+    # Affichage : 4 lignes obligatoires (pseudo, email, type, clé complète)
+    assert "acc-pseudo-" in src
+    assert "acc-email-" in src
+    assert "acc-type-" in src
+    assert "acc-key-" in src
+    # La clé complète est rendue (pas truncate)
     assert "{a.key_id}" in src
+    # Le helper "type de compte" existe
+    assert "accountTypeLabel" in src
 
 
 def test_export_notifier_x_closes_in_forced_open_mode():

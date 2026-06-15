@@ -141,6 +141,21 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
     } finally { setRemoving(false); }
   };
 
+  // iter127 — Libellé "type de compte" lisible (créateur / approuvé / …).
+  const accountTypeLabel = (a) => {
+    if (a.deleted) return 'Compte supprimé';
+    if (a.banned) return 'Banni';
+    if (a.role === 'creator') return 'Créateur';
+    if (a.staff_kind === 'admin') return 'Admin';
+    if (a.staff_kind === 'modo') return 'Modérateur';
+    if (a.role === 'approved') return 'Approuvé';
+    if (a.role === 'pending') return 'En attente';
+    if (a.role === 'blocked') return 'Bloqué';
+    if (a.role === 'inactive' || a.is_inactive) return 'Inactif';
+    if (a.force_visitor) return 'Visiteur forcé';
+    return a.role || 'Inconnu';
+  };
+
   // iter127 — Tri A→Z par pseudo (insensible à la casse) ; filtre par
   // pseudo/email. Plus de filtre "hidden" : les comptes supprimés
   // restent visibles avec le badge.
@@ -149,7 +164,8 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
       if (!filter) return true;
       const q = filter.toLowerCase();
       return ((a.pseudo || '').toLowerCase().includes(q) ||
-              (a.label || '').toLowerCase().includes(q));
+              (a.label || '').toLowerCase().includes(q) ||
+              (a.email || '').toLowerCase().includes(q));
     })
     .slice()
     .sort((x, y) => {
@@ -206,36 +222,40 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                 const actionsDisabled = isDeleted;
                 return (
                 <div key={a.key_id} data-testid={`accounts-row-${a.key_id}`} className={`bg-black/30 border rounded-sm p-2.5 ${isDeleted ? 'border-red-500/30 opacity-70' : 'border-white/10'}`}>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="min-w-0 flex-1">
-                      {/* iter127 — Pseudo exact (sans #N) sur sa propre ligne */}
+                  <div className="flex items-start gap-2 flex-wrap">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      {/* iter127 — 4 lignes claires : Pseudo · Email · Type de compte · Clé complète */}
                       <div className="text-sm text-white font-['Chivo'] font-bold truncate" data-testid={`acc-pseudo-${a.key_id}`}>
                         {a.pseudo || a.label || a.key_id.slice(0, 14)}
                       </div>
-                      {/* Type d'appareil exact (sans suffixe #X) */}
-                      {a.label && (
-                        <div className="text-[11px] text-[#A1A1AA] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-device-${a.key_id}`}>
-                          {a.label}
-                        </div>
-                      )}
-                      {/* Clé complète (break-all pour wrap propre, plus de truncate) */}
-                      <code className="block text-[10px] text-[#52525B] font-['IBM_Plex_Mono'] break-all mt-0.5" data-testid={`acc-key-${a.key_id}`}>
-                        {a.key_id}
-                      </code>
+                      <div className="text-[11px] text-[#A1A1AA] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-email-${a.key_id}`}>
+                        <span className="text-[#52525B]">Email :</span>{' '}
+                        <span className="text-[#A1A1AA]">{a.email || '—'}</span>
+                      </div>
+                      <div className="text-[11px] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-type-${a.key_id}`}>
+                        <span className="text-[#52525B]">Type de compte :</span>{' '}
+                        <span className="text-white">{accountTypeLabel(a)}</span>
+                      </div>
+                      <div className="text-[10px] font-['IBM_Plex_Mono']" data-testid={`acc-key-${a.key_id}`}>
+                        <span className="text-[#52525B]">Clé :</span>{' '}
+                        <code className="text-[#A1A1AA] break-all">{a.key_id}</code>
+                      </div>
                     </div>
-                    {isDeleted && <span data-testid={`acc-deleted-${a.key_id}`} className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">{t('acc_deleted_badge')}</span>}
-                    {isSelf && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">{t('acc_you')}</span>}
-                    {a.role === 'creator' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm inline-flex items-center gap-1"><Crown className="w-2.5 h-2.5" />creator</span>}
-                    {a.staff_kind === 'admin' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 rounded-sm inline-flex items-center gap-1"><Shield className="w-2.5 h-2.5" />admin</span>}
-                    {a.staff_kind === 'modo' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-violet-400/40 text-violet-300 bg-violet-400/10 rounded-sm inline-flex items-center gap-1"><Star className="w-2.5 h-2.5" />modo</span>}
-                    {a.role === 'approved' && !a.staff_kind && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-emerald-400/40 text-emerald-300 bg-emerald-400/10 rounded-sm">approved</span>}
-                    {a.role === 'pending' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-amber-400/40 text-amber-300 bg-amber-400/10 rounded-sm">pending</span>}
-                    {a.role === 'blocked' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-400/40 text-red-300 bg-red-400/10 rounded-sm">blocked</span>}
-                    {a.is_inactive && !isDeleted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-zinc-400/40 text-zinc-300 bg-zinc-400/10 rounded-sm">inactif</span>}
-                    {a.force_visitor && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">visiteur forcé</span>}
-                    {a.banned && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">banned</span>}
-                    {a.excluded_until && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">excluded</span>}
-                    {a.muted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-purple-400/40 text-purple-300 bg-purple-400/10 rounded-sm">muted</span>}
+                    <div className="flex items-center gap-1 flex-wrap flex-shrink-0">
+                      {isDeleted && <span data-testid={`acc-deleted-${a.key_id}`} className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">{t('acc_deleted_badge')}</span>}
+                      {isSelf && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">{t('acc_you')}</span>}
+                      {a.role === 'creator' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm inline-flex items-center gap-1"><Crown className="w-2.5 h-2.5" />creator</span>}
+                      {a.staff_kind === 'admin' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 rounded-sm inline-flex items-center gap-1"><Shield className="w-2.5 h-2.5" />admin</span>}
+                      {a.staff_kind === 'modo' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-violet-400/40 text-violet-300 bg-violet-400/10 rounded-sm inline-flex items-center gap-1"><Star className="w-2.5 h-2.5" />modo</span>}
+                      {a.role === 'approved' && !a.staff_kind && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-emerald-400/40 text-emerald-300 bg-emerald-400/10 rounded-sm">approved</span>}
+                      {a.role === 'pending' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-amber-400/40 text-amber-300 bg-amber-400/10 rounded-sm">pending</span>}
+                      {a.role === 'blocked' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-400/40 text-red-300 bg-red-400/10 rounded-sm">blocked</span>}
+                      {a.is_inactive && !isDeleted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-zinc-400/40 text-zinc-300 bg-zinc-400/10 rounded-sm">inactif</span>}
+                      {a.force_visitor && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">visiteur forcé</span>}
+                      {a.banned && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">banned</span>}
+                      {a.excluded_until && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">excluded</span>}
+                      {a.muted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-purple-400/40 text-purple-300 bg-purple-400/10 rounded-sm">muted</span>}
+                    </div>
                   </div>
                   <div className="mt-2 flex items-center gap-1 flex-wrap">
                     {!isSelf && !actionsDisabled && (

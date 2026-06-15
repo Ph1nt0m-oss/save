@@ -22,6 +22,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from models.auth_signatures import SignedIn
+
 
 class DeviceRegisterIn(BaseModel):
     public_key_jwk: Dict[str, Any]
@@ -34,22 +36,15 @@ class DeviceChallengeIn(BaseModel):
     key_id: str
 
 
-class DeviceVerifyIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class DeviceVerifyIn(SignedIn):
+    pass
 
 
-class CreatorOnlyIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class CreatorOnlyIn(SignedIn):
+    pass
 
 
-class DecisionUndoIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class DecisionUndoIn(SignedIn):
     target_key_id: str
     decision_ts: str
 
@@ -79,10 +74,8 @@ class AddByKeyIn(CreatorOnlyIn):
     role: Optional[str] = "approved"
 
 
-class SendToCreatorIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class SendToCreatorIn(SignedIn):
+    pass
 
 
 def build_devices_router(

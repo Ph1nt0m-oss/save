@@ -20,6 +20,8 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from models.auth_signatures import SignedIn
+
 
 CALY_DEFAULT_SYSTEM_PROMPT = """Tu es Caly, l'assistante d'aide à l'utilisation de CodeForge AI.
 Tu réponds aux questions des utilisateurs sur le site : créer une appli, modifier
@@ -44,10 +46,7 @@ class CalyAskIn(BaseModel):
     language: Optional[str] = "fr"
 
 
-class CalyConfigSetIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class CalyConfigSetIn(SignedIn):
     prompt: str
 
 

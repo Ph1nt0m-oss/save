@@ -13,15 +13,13 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+
+from models.auth_signatures import SignedIn
 
 
 # ----------------------------------------------------------------- Models
 
-class CommunityBotIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class CommunityBotIn(SignedIn):
     bot_id: Optional[str] = None
     name: str
     description: str
@@ -31,43 +29,28 @@ class CommunityBotIn(BaseModel):
     is_published: bool = False
 
 
-class BotRateIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class BotRateIn(SignedIn):
     bot_id: str
     rating: int  # 1-5
 
 
-class BotDeleteIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class BotDeleteIn(SignedIn):
     bot_id: str
 
 
-class BotTestIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class BotTestIn(SignedIn):
     bot_id: str
     user_message: str
 
 
-class BotKnowledgeIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class BotKnowledgeIn(SignedIn):
     bot_id: str
     question: str
     answer: str
     entry_id: Optional[str] = None
 
 
-class BotKnowledgeDeleteIn(BaseModel):
-    key_id: str
-    nonce: str
-    signature: str
+class BotKnowledgeDeleteIn(SignedIn):
     bot_id: str
     entry_id: str
 
