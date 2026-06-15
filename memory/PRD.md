@@ -52,7 +52,16 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
   - `caly_routes.py` — `CalyConfigSetIn` hérite de `SignedIn`.
   - `system_routes.py` — utilise `_CreatorSigIn` central.
 
-**Tests** : 9 tests source-level verts (4 soft-delete + 5 centralisation, dont un test qui vérifie qu'aucun fichier ne re-déclare plus le triplet `key_id/nonce/signature`). 81 tests de régression des routes passent.
+**Tests** : 9 tests source-level verts (4 soft-delete + 5 centralisation, dont un test qui vérifie qu'aucun fichier ne re-déclare plus le triplet `key_id/nonce/signature`). **153 tests de régression** verts sur l'ensemble des fichiers route refactorés (`iter54/56/76/82/94/106/116/117/118/125/127`).
+
+### Backlog vidé (2026-02-15 — fin iter 127)
+
+- **i18n** : suppression définitive des 8 clés inutilisées (`acc_clear_view_btn/done`, `acc_reset_view_btn/done`, `acc_delete_all_btn/confirm/password_prompt`) dans les dictionnaires FR + EN de `LanguageContext.js`.
+- **Tests pré-existants mis à jour** vers les bons emplacements après extractions de `server.py` :
+  - `test_iter54_accounts_ecosystem.py` — accepte `inactive` comme rôle valide en mode privé ; `/ideas/send` tolère contenu vide + signature invalide (fallback anonyme) ; inscription tolère l'erreur 400 (capture device requise).
+  - `test_iter82_red_features.py` — `test_response_shape_documented` pointe vers `accounts_routes.py` / `devices_routes.py`.
+  - `test_iter94_slice4c_translation_enhancement.py` — `test_endpoint_defined_in_server` pointe vers `chat_advanced_routes.py` ; `test_changelog_endpoint` pointe vers `private_routes.py` ; `test_chat_page_wires_widget` accepte le widget désactivé ; `test_xai_key_in_env` accepte aussi `EMERGENT_LLM_KEY`.
+  - `test_iter106_caly_llm_spacings.py` — `test_caly_default_system_prompt_present` pointe vers `caly_routes.py`.
 
 
 

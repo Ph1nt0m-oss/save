@@ -17,7 +17,8 @@ def test_caly_ask_endpoint_registered():
 
 
 def test_caly_default_system_prompt_present():
-    src = Path("/app/backend/server.py").read_text(encoding="utf-8")
+    # iter121 — CALY_DEFAULT_SYSTEM_PROMPT extrait dans caly_routes.py
+    src = Path("/app/backend/routes/caly_routes.py").read_text(encoding="utf-8")
     assert "CALY_DEFAULT_SYSTEM_PROMPT" in src
     assert "Tu es Caly" in src
 

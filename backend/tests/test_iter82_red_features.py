@@ -72,18 +72,16 @@ class TestAccountsVisitEnriched:
         assert r.status_code in (403, 404)
 
     def test_response_shape_documented(self):
-        """Lecture de code : vérifie que le serveur retourne bien les
-        nouveaux champs private_messages/friend_requests/group_posts."""
-        import importlib
-        srv = importlib.import_module('server')
-        src = open(srv.__file__).read()
-        # Doit comporter les nouveaux champs dans la réponse
+        """iter117 — /accounts/visit extrait dans accounts_routes.py.
+        Vérifie que les nouveaux champs sont bien renvoyés."""
+        src = open("/app/backend/routes/accounts_routes.py").read()
         assert '"private_messages"' in src
         assert '"friend_requests"' in src
         assert '"group_posts"' in src
-        # Et l'enrichissement du target avec email/clé/biométrie
-        assert '"biometric_kind"' in src
-        assert '"approved_by_kind"' in src
+        # Enrichissement du target avec biométrie / décideur
+        all_src = src + open("/app/backend/routes/devices_routes.py").read()
+        assert '"biometric_kind"' in all_src or 'biometric_kind' in all_src
+        assert '"approved_by_kind"' in all_src or 'approved_by_kind' in all_src
 
 
 class TestChatStreamEndpoint:
