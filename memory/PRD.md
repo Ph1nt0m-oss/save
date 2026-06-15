@@ -16,7 +16,7 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - Backup GitHub natif (fusionné avec download ZIP)
 
 
-### 2026-02-15 — Iter 127 (Soft-delete comptes + UX liste comptes + X historique export)
+### 2026-02-15 — Iter 127 (Soft-delete comptes + UX liste comptes + X historique export + centralisation modèles)
 
 **🟢 Issue 1 — Bouton X sur le modal historique d'export**
 - `ExportApprovalNotifier.dismissCurrent()` : en mode `forcedOpen` (modal ouvert via l'icône historique bleue), le X ferme désormais purement et simplement le modal (`setForcedOpen(false)`) au lieu de cycler sur la requête suivante.
@@ -27,18 +27,24 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - `/accounts/list` expose désormais `deleted: bool` pour chaque entrée.
 - Frontend (`AccountsButton.jsx`) : badge rouge "Compte supprimé" affiché à droite du pseudo ; toutes les actions (rename, visit, mute, block, exclude, ban, force-visitor, staff, remove-creator, supprimer) **désactivées** pour les comptes soft-deleted ; carte affichée en `opacity-70` avec bordure rouge.
 
-**🟢 Issue 3 — Affichage exact + tri A→Z**
-- Pseudo affiché tel quel (plus de `#N` de désambiguïsation visible).
+**🟢 Issue 3 — Affichage **strict** : Pseudo + Type d'appareil + Clé entière**
+- Pseudo affiché tel quel (plus de `#N`).
 - Type d'appareil (`label`) sur sa propre ligne, sans suffixe.
-- Clé `key_id` **complète** rendue en `<code break-all>` (plus de `.slice(0, 24)…`).
-- Tri alphabétique A→Z (`localeCompare 'fr'`, insensible à la casse) appliqué après filtrage.
+- Clé `key_id` **complète** en `<code break-all>`.
+- **Email retiré** de la ligne d'affichage (pseudo + device + key uniquement, comme demandé).
+- Tri A→Z (`localeCompare 'fr'`).
 
 **🟢 Suppressions UI**
-- Bouton "Tout supprimer" retiré (l'utilisateur ne souhaite plus de hard-delete global).
-- Bouton "Vider la vue" et son état `hidden` (localStorage `codeforge_accounts_hidden`) retirés.
-- Footer du panel Accounts entièrement supprimé.
+- Bouton "Tout supprimer" retiré ; bouton "Vider la vue" + état `hidden` (localStorage) retirés ; footer Accounts entièrement supprimé.
 
-**Tests ajoutés** : `tests/test_iter127_soft_delete_accounts.py` (4 cas, tous verts).
+**🟢 P3 — Centralisation modèles Pydantic dans `/app/backend/models/`**
+- Création du module `models/auth_signatures.py` avec `CreatorSigIn` + `TargetCreatorSigIn` (modèles auparavant dupliqués à l'identique dans 5 fichiers).
+- 5 fichiers route nettoyés : `accounts_routes.py`, `announcements_routes.py`, `exports_routes.py`, `ideas_routes.py`, `system_routes.py` → importent désormais depuis `models.auth_signatures`.
+
+**Tests ajoutés** (8 cas, tous verts) :
+- `tests/test_iter127_soft_delete_accounts.py` (4 tests source-level)
+- `tests/test_iter127_central_models.py` (4 tests : module présent, importable, aucune redéfinition locale, imports en place)
+
 
 
 

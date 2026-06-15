@@ -20,6 +20,8 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from models.auth_signatures import CreatorSigIn as _CreatorSigIn
+
 
 class ScheduleKickIn(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -29,13 +31,6 @@ class ScheduleKickIn(BaseModel):
     minutes: int = 5
     note: str = ""
     audience: Any = "all"
-
-
-class _CreatorSigIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
 
 
 def build_system_router(db, *, require_creator_signature, valid_audience_groups):

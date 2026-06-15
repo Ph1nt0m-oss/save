@@ -18,16 +18,7 @@ import bcrypt
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-
-class _CreatorSigIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
-
-
-class _TargetCreatorSigIn(_CreatorSigIn):
-    target_key_id: str
+from models.auth_signatures import CreatorSigIn as _CreatorSigIn, TargetCreatorSigIn as _TargetCreatorSigIn
 
 
 class _SetStaffKindIn(BaseModel):

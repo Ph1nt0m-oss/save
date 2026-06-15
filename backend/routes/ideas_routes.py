@@ -20,6 +20,8 @@ import bcrypt
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
+from models.auth_signatures import CreatorSigIn as _CreatorSigIn
+
 
 class IdeasSendIn(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -28,13 +30,6 @@ class IdeasSendIn(BaseModel):
     signature: Optional[str] = None
     content: str = ""
     kind: str = "idea"
-
-
-class _CreatorSigIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
 
 
 class IdeasClearIn(BaseModel):

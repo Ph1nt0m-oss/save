@@ -149,8 +149,7 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
       if (!filter) return true;
       const q = filter.toLowerCase();
       return ((a.pseudo || '').toLowerCase().includes(q) ||
-              (a.label || '').toLowerCase().includes(q) ||
-              (a.email || '').toLowerCase().includes(q));
+              (a.label || '').toLowerCase().includes(q));
     })
     .slice()
     .sort((x, y) => {
@@ -211,7 +210,7 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                     <div className="min-w-0 flex-1">
                       {/* iter127 — Pseudo exact (sans #N) sur sa propre ligne */}
                       <div className="text-sm text-white font-['Chivo'] font-bold truncate" data-testid={`acc-pseudo-${a.key_id}`}>
-                        {a.pseudo || a.label || a.email || a.key_id.slice(0, 14)}
+                        {a.pseudo || a.label || a.key_id.slice(0, 14)}
                       </div>
                       {/* Type d'appareil exact (sans suffixe #X) */}
                       {a.label && (
@@ -226,7 +225,6 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                     </div>
                     {isDeleted && <span data-testid={`acc-deleted-${a.key_id}`} className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">{t('acc_deleted_badge')}</span>}
                     {isSelf && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">{t('acc_you')}</span>}
-                    {a.email && <span className="text-[10px] text-[#71717A] truncate font-['IBM_Plex_Mono']">{a.email}</span>}
                     {a.role === 'creator' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm inline-flex items-center gap-1"><Crown className="w-2.5 h-2.5" />creator</span>}
                     {a.staff_kind === 'admin' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 rounded-sm inline-flex items-center gap-1"><Shield className="w-2.5 h-2.5" />admin</span>}
                     {a.staff_kind === 'modo' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-violet-400/40 text-violet-300 bg-violet-400/10 rounded-sm inline-flex items-center gap-1"><Star className="w-2.5 h-2.5" />modo</span>}

@@ -21,6 +21,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict
 
+from models.auth_signatures import CreatorSigIn as _CreatorSigIn
+
 
 class ExportRequestIn(BaseModel):
     key_id: str
@@ -28,14 +30,6 @@ class ExportRequestIn(BaseModel):
     signature: str
     project_id: str
     export_kind: str   # "apk" | "exe" | "zip+github" | "source"
-
-
-class _CreatorSigIn(BaseModel):
-    """Local mirror of server.py _CreatorSigIn — allows pass-through fields."""
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
 
 
 class ExportStatusIn(BaseModel):

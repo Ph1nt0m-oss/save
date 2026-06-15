@@ -14,6 +14,8 @@ from typing import Any, List, Optional, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from models.auth_signatures import CreatorSigIn as _CreatorSigIn
+
 
 VALID_AUDIENCE_GROUPS = {"all", "approved", "creator", "admin", "modo", "pending", "non_validated"}
 
@@ -46,13 +48,6 @@ class AnnStateIn(BaseModel):
     signature: str
     announce_id: str
     state: str  # validated / refused / orange / reset
-
-
-class _CreatorSigIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    key_id: str
-    nonce: str
-    signature: str
 
 
 class _AnnounceDeleteIn(_CreatorSigIn):
