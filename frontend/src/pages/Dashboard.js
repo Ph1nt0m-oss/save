@@ -945,7 +945,7 @@ export default function Dashboard() {
                 <LanguageToggle placement="bottom" />
               </span>
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
-                <AccountsButton onVisitAccount={(a) => setVisiting(a)} />
+                {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => setVisiting(a)} />}
                 <button
                   onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}
                   data-testid="open-groups-btn"
@@ -978,8 +978,8 @@ export default function Dashboard() {
 
             {/* RIGHT — iter106 : élargi pour visibilité totale des labels */}
             <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
-              <AnnounceButton />
-              <Button
+              {viewSpec.canSeeMegaphone && <AnnounceButton />}
+              {viewSpec.canSeeExports && <Button
                 onClick={() => exportProject('apk')}
                 size="sm"
                 variant="outline"
@@ -989,9 +989,9 @@ export default function Dashboard() {
               >
                 <Smartphone className="w-4 h-4 lg:mr-1" />
                 <span className="hidden lg:inline">APK</span>
-              </Button>
+              </Button>}
 
-              <Button
+              {viewSpec.canSeeExports && <Button
                 onClick={() => exportProject('exe')}
                 size="sm"
                 variant="outline"
@@ -1001,9 +1001,9 @@ export default function Dashboard() {
               >
                 <Monitor className="w-4 h-4 lg:mr-1" />
                 <span className="hidden lg:inline">EXE</span>
-              </Button>
+              </Button>}
 
-              <Button
+              {viewSpec.canSeeExports && <Button
                 onClick={() => exportProject('source')}
                 size="sm"
                 variant="outline"
@@ -1013,17 +1013,18 @@ export default function Dashboard() {
               >
                 <Download className="w-4 h-4 lg:mr-1" />
                 <span className="hidden lg:inline">ZIP</span>
-              </Button>
+              </Button>}
 
               <div className="ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
-                {/* iter112 — Header serré (gap-6). Le ml-12 maintient ~3cm entre ZIP et SiteModeBadge.
-                    La distance Comptes → ViewModePicker dépend du viewport (au zoom 67% sur écran 1920px,
-                    elle approche les 15cm souhaités via la largeur naturelle title + APK/EXE/ZIP). */}
-                <CreatorToolbar />
-                {viewSpec.viewSpec?.see_idea_box !== false && <IdeasButton />}
+                {/* iter128 — Crown ViewModePicker masqué partout (image 5 bleue).
+                    Le bouton existait dans CreatorToolbar ; on continue de monter
+                    le toolbar pour les autres outils (theft, langue, etc.) mais
+                    le sélecteur de vue n'apparaît plus dans le header. */}
+                <CreatorToolbar hideViewModePicker />
+                {viewSpec.viewSpec?.see_idea_box !== false && viewSpec.canSeeIdeasLightbulb && <IdeasButton />}
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}
                 {/* iter101 — Bouton Bots Community : visible selon viewSpec */}
-                {viewSpec.canSeeBotsAdmin && (
+                {viewSpec.canSeeRobotBots && viewSpec.canSeeBotsAdmin && (
                   <button
                     onClick={() => setShowBotsAdmin(true)}
                     data-testid="header-bots-admin-btn"
@@ -1035,7 +1036,9 @@ export default function Dashboard() {
                 )}
                 <MessageButton variant="icon" />
                 <NotificationBell />
-                <UserMenu user={user} onLogout={handleLogout} />
+                {/* iter128 — Email + "Mon profil" masqués si on visite un autre
+                    compte OU si on simule une vue (creator → user/modo/...). */}
+                <UserMenu user={user} onLogout={handleLogout} hideEmailAndProfile={!!visiting || (!!device.viewMode && device.viewMode !== 'creator')} />
               </div>
             </div>
           </div>
@@ -1100,13 +1103,10 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* iter113 — Programme admin : Programmation de Caly + Programmations des bots
-                JUSTE AU-DESSUS de "Création accompagnée" pour clarifier la hiérarchie :
-                  1. Programme admin (Caly + Bots)
-                  2. Création accompagnée
-                  3. Les 4 types de tchat (Chat/Create x2)
-                  4. Programmation créa (Site + IA — plus bas)
-            */}
+            {/* iter128 — Cards "Programmation de Caly" + "Programmation des bots"
+                masquées pour user/guest. Visibles pour modo/admin (lecture seule
+                côté pages cibles) et créatrice. */}
+            {viewSpec.canSeeAdminProgsCards && (
             <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 cf-export-blocked" data-testid="admin-prog-row">
               {/* Programmation de Caly */}
               <motion.button
@@ -1154,8 +1154,10 @@ export default function Dashboard() {
                 </div>
               </motion.button>
             </div>
+            )}
 
             {/* iter78 — Assistant Guidé remis sur demande utilisatrice (création 100% accompagnée IA) */}
+            {viewSpec.canSeeQuickWizard && (
             <motion.button
               whileHover={{ y: -2, scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
@@ -1174,6 +1176,7 @@ export default function Dashboard() {
                 <Sparkles className="w-5 h-5 text-fuchsia-300 group-hover:rotate-12 transition-transform" />
               </div>
             </motion.button>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 cf-export-blocked">
               {/* Bouton Chat (en ligne uniquement) */}
@@ -1255,6 +1258,7 @@ export default function Dashboard() {
             </div>
 
             {/* iter79 — Blocs privés créa (visibles côté UI, refusent l'accès en vue créateur) */}
+            {viewSpec.canSeeCreatorProgsCards && (
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 cf-export-blocked">
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
@@ -1296,6 +1300,7 @@ export default function Dashboard() {
               {/* iter113 — Les 2 tuiles Caly + Bots ont été DÉPLACÉES juste au-dessus
                   de "Création accompagnée" pour éviter la confusion avec Programmation créa. */}
             </div>
+            )}
           </div>
         </div>
       </div>

@@ -107,13 +107,23 @@ export default function AccountVisitView({ target, onClose }) {
   const staffKind = data?.target?.staff_kind;
   const role = data?.target?.role;
 
+  // iter128 — Filtrage des onglets selon le rôle de la cible visitée.
+  //   - Invité/visiteur (guest) ou non-approved : pas d'amis ni groupes
+  //     privés (pas pertinent), pas de "Caly" code… L'onglet "Annonces"
+  //     n'existe pas ici en tant qu'onglet ; il s'agissait du bouton
+  //     megaphone (déjà filtré en amont). On masque MP privés + Amis +
+  //     Groupes si la cible n'a pas d'accès écriture (cf. image 4).
+  const targetRole = data?.target?.role;
+  const targetIsLimited = ['guest', 'inactive', 'pending'].includes(targetRole);
   const tabs = [
     { id: 'info', label: 'Infos compte', icon: Eye },
     { id: 'projects', label: 'Projets', icon: FolderOpen, count: projects.length },
     { id: 'chat', label: 'Chat IA', icon: MessageSquare, count: messages.length },
-    { id: 'private', label: 'MP privés', icon: Mail, count: privateMsgs.length },
-    { id: 'groups', label: 'Groupes', icon: Users, count: groupPosts.length },
-    { id: 'friends', label: 'Amis', icon: UserPlus, count: friendReqs.length },
+    ...(targetIsLimited ? [] : [
+      { id: 'private', label: 'MP privés', icon: Mail, count: privateMsgs.length },
+      { id: 'groups', label: 'Groupes', icon: Users, count: groupPosts.length },
+      { id: 'friends', label: 'Amis', icon: UserPlus, count: friendReqs.length },
+    ]),
   ];
 
   return (

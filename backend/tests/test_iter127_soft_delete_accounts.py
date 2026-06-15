@@ -53,7 +53,7 @@ def test_accounts_button_renders_deleted_badge_and_disables_actions():
     assert "acc-key-" in src
     # Type d'appareil (pas type de compte)
     assert "deviceTypeLabel" in src
-    assert "Type d'appareil" in src
+    assert "Type d&apos;appareil" in src
     # Clé = share_code (PAS key_id)
     assert "{a.share_code" in src
 

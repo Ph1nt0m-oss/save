@@ -571,16 +571,14 @@ export default function Login() {
       <div className="fixed inset-0 noise-bg"></div>
       <div className="fixed inset-0 grid-bg opacity-20"></div>
 
-      {/* Top toolbar — always visible on Login: theft, accounts (creator-only),
-          message to creator, copy device key. */}
+      {/* Top toolbar — always visible on Login: theft, message to creator,
+          copy device key. iter128 — AccountsButton retiré ici (image 5). */}
       <div className="fixed top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
         <div className="flex items-center gap-2 pointer-events-auto">
           <TheftButton variant="labelled" />
-          <AccountsButton />
         </div>
         <div className="flex items-center gap-2 pointer-events-auto">
           <DeviceKeyCopyButton />
-          <MessageButton variant="icon" />
         </div>
       </div>
 

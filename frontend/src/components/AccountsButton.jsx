@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Users, X, Search, MessageCircle, Edit3, Ban, ShieldCheck, BellOff, Bell, Clock, Skull, ShieldOff, Eye, EyeOff, Crown, Trash2, Shield, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import useViewSpec from '../hooks/useViewSpec';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -29,7 +30,16 @@ const EXCLUDE_DURATIONS = [
 export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
   const device = useDeviceIdentity();
   const { t } = useLanguage();
+  const vs = useViewSpec();
   const isCreator = device.role === 'creator' && (!device.viewMode || device.viewMode === 'creator');
+  // iter128 — Visibilité du bouton + des actions par rôle effectif.
+  const canSeePanel = vs.canSeeAccountsButton;
+  const canVisit = vs.canVisitAccountFromList;          // toujours false désormais
+  const canRename = vs.canRenameFromAccountsPanel;
+  const canForceVisitor = vs.canForceVisitorFromAccountsPanel;
+  const canExclude = vs.canExcludeFromAccountsPanel;
+  const canBan = vs.canBanFromAccountsPanel;
+  const canDelete = vs.canDeleteFromAccountsPanel;
   const [open, setOpen] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [filter, setFilter] = useState('');
@@ -52,7 +62,7 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
     if (open) load();
   }, [open, load]);
 
-  if (!isCreator) return null;
+  if (!canSeePanel) return null;
 
   const doAction = async (endpoint, target_key_id, extra = {}) => {
     try {
@@ -224,7 +234,7 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                         <span className="text-[#A1A1AA]">{a.email || '—'}</span>
                       </div>
                       <div className="text-[11px] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-device-${a.key_id}`}>
-                        <span className="text-[#52525B]">Type d'appareil :</span>{' '}
+                        <span className="text-[#52525B]">Type d&apos;appareil :</span>{' '}
                         <span className="text-white">{deviceTypeLabel(a)}</span>
                       </div>
                       <div className="text-[10px] font-['IBM_Plex_Mono']" data-testid={`acc-key-${a.key_id}`}>
@@ -249,13 +259,13 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-1 flex-wrap">
-                    {!isSelf && !actionsDisabled && (
+                    {!isSelf && !actionsDisabled && canVisit && (
                       <button title="Visiter le compte" data-testid={`acc-visit-${a.key_id}`} onClick={() => { setOpen(false); onVisitAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Eye className="w-3.5 h-3.5" /></button>
                     )}
                     {!isSelf && onMessageAccount && !actionsDisabled && (
                       <button title="Message" data-testid={`acc-message-${a.key_id}`} onClick={() => { setOpen(false); onMessageAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#00D4FF]/40 text-[#A1A1AA] hover:text-[#00D4FF] rounded-sm transition"><MessageCircle className="w-3.5 h-3.5" /></button>
                     )}
-                    {!actionsDisabled && (
+                    {!actionsDisabled && canRename && (
                       <button title={t('acc_action_rename')} data-testid={`acc-rename-${a.key_id}`} onClick={() => renameContact(a)} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Edit3 className="w-3.5 h-3.5" /></button>
                     )}
                     {!isSelf && a.role === 'approved' && !actionsDisabled && (
@@ -264,7 +274,7 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                         <button title={a.staff_kind === 'modo' ? 'Retirer modo' : 'Mettre modo'} data-testid={`acc-modo-${a.key_id}`} onClick={() => setStaffKind(a, a.staff_kind === 'modo' ? null : 'modo')} className={`p-1.5 border rounded-sm transition ${a.staff_kind === 'modo' ? 'border-violet-400/60 text-violet-300 bg-violet-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-violet-400/40 hover:text-violet-300'}`}><Star className="w-3.5 h-3.5" /></button>
                       </>
                     )}
-                    {!isSelf && a.role !== 'creator' && !actionsDisabled && (
+                    {!isSelf && a.role !== 'creator' && !actionsDisabled && canForceVisitor && (
                       <button title={a.force_visitor ? 'Retirer mode visiteur' : 'Forcer mode visiteur'} data-testid={`acc-visitor-${a.key_id}`} onClick={() => setForceVisitor(a, !a.force_visitor)} className={`p-1.5 border rounded-sm transition ${a.force_visitor ? 'border-orange-400/60 text-orange-300 bg-orange-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-orange-400/40 hover:text-orange-300'}`}><EyeOff className="w-3.5 h-3.5" /></button>
                     )}
                     {!isSelf && !actionsDisabled && (a.muted ? (
@@ -277,15 +287,15 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                     ) : (
                       <button title={t('acc_action_block')} data-testid={`acc-block-${a.key_id}`} onClick={() => doAction('/devices/block', a.key_id)} className="p-1.5 border border-white/15 hover:border-red-400/40 text-[#A1A1AA] hover:text-red-400 rounded-sm transition"><Ban className="w-3.5 h-3.5" /></button>
                     ))}
-                    {!isSelf && !actionsDisabled && (
+                    {!isSelf && !actionsDisabled && canExclude && (
                       <button title={t('acc_action_exclude')} onClick={() => setExcluding({ a })} data-testid={`acc-exclude-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-orange-400/40 text-[#A1A1AA] hover:text-orange-300 rounded-sm transition"><Clock className="w-3.5 h-3.5" /></button>
                     )}
-                    {!isSelf && !actionsDisabled && (a.banned ? (
+                    {!isSelf && !actionsDisabled && canBan && (a.banned ? (
                       <button title={t('acc_action_unban')} data-testid={`acc-unban-${a.key_id}`} onClick={() => doAction('/accounts/unban', a.key_id)} className="p-1.5 border border-emerald-400/40 text-emerald-300 rounded-sm"><ShieldOff className="w-3.5 h-3.5" /></button>
                     ) : (
                       <button title={t('acc_action_ban')} onClick={() => ban(a)} data-testid={`acc-ban-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-red-500/60 text-[#A1A1AA] hover:text-red-300 rounded-sm transition"><Skull className="w-3.5 h-3.5" /></button>
                     ))}
-                    {a.role === 'creator' && !actionsDisabled && (
+                    {a.role === 'creator' && !actionsDisabled && isCreator && (
                       <button
                         title={isSelf ? t('acc_remove_creator_btn') : t('acc_remove_creator_other_btn')}
                         onClick={() => removeCreatorMode(a)}
@@ -296,7 +306,7 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                         <ShieldOff className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {!isSelf && !isDeleted && (
+                    {!isSelf && !isDeleted && canDelete && (
                       <button
                         title={t('acc_delete_btn')}
                         onClick={() => deleteOne(a)}

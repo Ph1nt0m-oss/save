@@ -63,7 +63,7 @@ export default function Landing() {
               {t('l_navDiscover')}
             </button>
             <TheftButton variant="labelled" />
-            <AccountsButton />
+            {/* iter128 — AccountsButton retiré de Landing/Login/Signup (image 5 cercles verts). */}
           </div>
 
           <div className="justify-self-center flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -72,7 +72,7 @@ export default function Landing() {
           </div>
 
           <div className="justify-self-end min-w-0 flex items-center gap-2">
-            <CreatorToolbar />
+            <CreatorToolbar hideViewModePicker />
             <MessageButton variant="icon" />
             <LanguageToggle placement="bottom" />
           </div>

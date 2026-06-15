@@ -34,7 +34,7 @@ function downloadText(filename, content) {
  *  - Non-creator devices ("guests"): SiteMode read-only badge + a view-mode
  *    toggle. The History button is creator-only.
  */
-export default function CreatorToolbar() {
+export default function CreatorToolbar({ hideViewModePicker = false } = {}) {
   const { t } = useLanguage();
   const device = useDeviceIdentity();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -164,7 +164,10 @@ export default function CreatorToolbar() {
 
       {/* iter85 — Pour la créatrice : picker pour simuler n'importe quelle vue
           (user / modo / admin / guest). Pour les non-créa : le toggle
-          original visible/locked selon guest_view. */}
+          original visible/locked selon guest_view.
+          iter128 — `hideViewModePicker` (passé par Dashboard/Landing) masque
+          complètement le sélecteur "Créatrice" partout. */}
+      {!hideViewModePicker && (
       <ViewModePicker
         role={device.role}
         viewMode={device.viewMode}
@@ -174,6 +177,7 @@ export default function CreatorToolbar() {
         controlledOpen={openDropdown === 'view'}
         onOpenChange={(v) => setOpenDropdown(v ? 'view' : null)}
       />
+      )}
 
       {/* History panel removed in iter57: the right-side panel is now
           reserved for the Messages drawer. */}

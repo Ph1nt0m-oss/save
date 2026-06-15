@@ -7,6 +7,7 @@
  * l'utilisateur bloque puis guide étape par étape.
  */
 import React, { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircleQuestion, X, Send, Loader2, Sparkles } from 'lucide-react';
@@ -37,6 +38,9 @@ const QUICK_CHOICES = [
 
 export default function CalyChatbot() {
   const { t } = useLanguage();
+  // iter128 — Masquer la bulle Caly sur landing/login/signup (image 5).
+  // Elle reste visible sur le dashboard et toutes les routes "internes".
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -55,6 +59,10 @@ export default function CalyChatbot() {
     }
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [open, messages.length]);
+
+  // iter128 — Early-return APRÈS tous les hooks pour respecter Rules of Hooks.
+  const HIDDEN_ON = ['/', '/login', '/signup', '/sms-login', '/verify-email', '/reset-password', '/theft-confirm'];
+  if (HIDDEN_ON.includes(location.pathname)) return null;
 
   const send = async (text) => {
     const userMsg = (text || input).trim();

@@ -71,6 +71,49 @@ en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-lign
 - `CreatorToolbar.jsx` bouton toggle vue (non-créa) : utilise lime (état user) / violet (état invité).
 - `ViewModePreviewBanner.jsx` (bandeau preview visiteur) : passe entièrement en violet (border + bg + texte + bouton sortie).
 
+### 2026-02-15 — Iter 128 (Visibilité par rôle/vue : 5 images utilisatrice)
+
+**🟢 Hook `useViewSpec` étendu** — Centralisation des règles de visibilité :
+- `canSeeAccountsButton`, `canSeeMegaphone`, `canSeeExports`, `canSeeIdeasLightbulb`,
+  `canSeeRobotBots`, `canSeeAdminProgsCards`, `canSeeQuickWizard`,
+  `canSeeCreatorProgsCards`, `canEditTestBots`, `canViewTestBotsCode`,
+  `canVisitAccountFromList` (toujours false), `canRenameFromAccountsPanel`,
+  `canForceVisitorFromAccountsPanel`, `canExcludeFromAccountsPanel`,
+  `canBanFromAccountsPanel`, `canDeleteFromAccountsPanel`,
+  `canLocalRenameMuteInProfile`.
+
+**🟢 Dashboard.js** — gating de chaque outil par viewSpec :
+- AccountsButton, AnnounceButton (megaphone), APK/EXE/ZIP, IdeasButton (lightbulb),
+  Bot robot, dashboard cards (Caly + Bots prog / Wizard / Programmation site+IA).
+- UserMenu reçoit `hideEmailAndProfile={!!visiting || (viewMode && viewMode !== 'creator')}`.
+
+**🟢 CreatorToolbar** — prop `hideViewModePicker` qui masque la pilule "Créatrice"
+(le sélecteur de vue) ; activée sur Landing + Login + Dashboard (image 5 cercle bleu).
+
+**🟢 Landing.js + Login.js** — Retrait du `<AccountsButton />` du header.
+Login.js : retrait du `MessageButton variant="icon"` (icône message exclusivement créa).
+
+**🟢 CalyChatbot** — Masqué sur `/`, `/login`, `/signup`, `/sms-login`, `/verify-email`,
+`/reset-password`, `/theft-confirm` via `useLocation` (early-return après hooks).
+
+**🟢 UserMenu** — Prop `hideEmailAndProfile` qui :
+- masque l'email affiché à côté de l'avatar (header top right),
+- remplace le nom dans le dropdown par "Vue simulée",
+- masque l'item "Mon profil".
+
+**🟢 AccountVisitView** — Filtre les onglets "MP privés / Groupes / Amis" si la
+cible est `guest` / `inactive` / `pending` (image 4).
+
+**🟢 AccountsButton** — Gating des actions par rôle effectif :
+- Visite : retirée pour TOUTES les vues.
+- Renommer, Forcer-visiteur, Exclure, Bannir, Supprimer : admin + créa
+  uniquement (modo voit seulement mute + block).
+- Le bouton lui-même est totalement masqué pour user + guest.
+
+**Tests** : 9 nouveaux tests `test_iter128_view_visibility.py` + 183/183 régression
+sur l'ensemble des fichiers backlog précédents.
+
+
 
 
 

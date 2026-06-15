@@ -34,6 +34,17 @@ export default function useViewSpec() {
 
   // Override : programming et secret_key_access toujours basés sur role physique
   const isPhysicallyCreator = device?.role === 'creator';
+
+  // iter128 — Buckets de visibilité demandés par l'utilisatrice :
+  // - user + guest : aucun outil créa, juste le contenu public.
+  // - modo + admin : lecture seule sur les programmations + accès aux comptes
+  //   sans les actions "lourdes" (visite, rename, force-visiteur, exclude,
+  //   ban, delete) selon le palier.
+  // - creator : tout, sauf le contenu des programmations en mode simulation.
+  const isStaffOrCreator = ['modo', 'admin', 'creator'].includes(effectiveView);
+  const isInvitedOrUser = ['user', 'guest'].includes(effectiveView);
+  const isAdminOrCreator = ['admin', 'creator'].includes(effectiveView);
+
   return {
     spec,
     viewSpec,
@@ -46,5 +57,25 @@ export default function useViewSpec() {
     canSeeOtherAccountsActions: viewSpec.see_other_accounts_actions || false,
     visibleChats: viewSpec.chats_visible || [],
     hiddenChats: viewSpec.chats_hidden || [],
+    // iter128 — granularité demandée
+    canSeeAccountsButton: isStaffOrCreator,
+    canSeeMegaphone: isStaffOrCreator,
+    canSeeExports: effectiveView === 'creator',
+    canSeeIdeasLightbulb: isStaffOrCreator,
+    canSeeRobotBots: isStaffOrCreator,
+    canSeeAdminProgsCards: isStaffOrCreator,        // Caly + Bots prog cards
+    canSeeQuickWizard: isStaffOrCreator,            // "Création rapide accompagnée"
+    canSeeCreatorProgsCards: effectiveView === 'creator', // Programmation site/IA
+    canEditTestBots: isPhysicallyCreator,           // create/edit/delete bots
+    canViewTestBotsCode: isPhysicallyCreator,       // contenu code masqué sinon
+    // Comptes panel : matrice d'actions par rôle effectif
+    canVisitAccountFromList: false,                 // retiré pour TOUTES les vues
+    canRenameFromAccountsPanel: isAdminOrCreator,   // admin + créa uniquement
+    canForceVisitorFromAccountsPanel: isAdminOrCreator,
+    canExcludeFromAccountsPanel: isAdminOrCreator,
+    canBanFromAccountsPanel: isAdminOrCreator,
+    canDeleteFromAccountsPanel: isAdminOrCreator,
+    // Profile (actions locales — créa seulement) : rename+mute local
+    canLocalRenameMuteInProfile: isPhysicallyCreator,
   };
 }

@@ -41,7 +41,7 @@ function initials(name) {
     .toUpperCase();
 }
 
-export default function UserMenu({ user, onLogout }) {
+export default function UserMenu({ user, onLogout, hideEmailAndProfile = false }) {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [stats, setStats] = useState(null);
@@ -74,10 +74,14 @@ export default function UserMenu({ user, onLogout }) {
               {(user?.email || '?').charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          {/* Email-only, no first/last name. Visible from md upward. */}
+          {/* Email-only, no first/last name. Visible from md upward.
+              iter128 — Masqué en mode "vue simulée" (creator simulant) ou lors
+              de visite d'un autre compte : hideEmailAndProfile=true. */}
+          {!hideEmailAndProfile && (
           <span className="text-sm font-['IBM_Plex_Sans'] text-white max-w-[180px] lg:max-w-[260px] truncate hidden md:inline">
             {user?.email || '—'}
           </span>
+          )}
         </button>
       </DropdownMenuTrigger>
 
@@ -96,11 +100,13 @@ export default function UserMenu({ user, onLogout }) {
             </Avatar>
             <div className="min-w-0">
               <div className="font-['Chivo'] font-bold text-white truncate">
-                {user?.name || 'Utilisateur'}
+                {hideEmailAndProfile ? 'Vue simulée' : (user?.name || 'Utilisateur')}
               </div>
+              {!hideEmailAndProfile && (
               <div className="text-xs text-[#A1A1AA] truncate font-['IBM_Plex_Mono']">
                 {user?.email || user?.phone_number || ''}
               </div>
+              )}
             </div>
           </div>
         </DropdownMenuLabel>
@@ -145,6 +151,7 @@ export default function UserMenu({ user, onLogout }) {
 
         <DropdownMenuSeparator className="bg-white/10" />
 
+        {!hideEmailAndProfile && (
         <DropdownMenuItem
           onClick={() => navigate('/profile')}
           data-testid="user-menu-profile"
@@ -153,6 +160,7 @@ export default function UserMenu({ user, onLogout }) {
           <Settings className="w-4 h-4 mr-2" />
           {t('um_profile')}
         </DropdownMenuItem>
+        )}
 
         <DropdownMenuItem
           onClick={() => setDeviceManagerOpen(true)}
