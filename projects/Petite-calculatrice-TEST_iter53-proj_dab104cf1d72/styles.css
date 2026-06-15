@@ -1,0 +1,122 @@
+:root{
+  --bg:#050505;
+  --card:#0F0F13;
+  --primary:#E4FF00;
+  --secondary:#00FF66;
+  --accent:#00D4FF;
+  --border:rgba(255,255,255,0.1);
+}
+
+*{box-sizing:border-box;}
+
+/* Boutons calculatrice */
+.calc-btn{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:56px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  font-weight:600;
+  letter-spacing:0.01em;
+  user-select:none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .12s ease, background-color .18s ease, box-shadow .18s ease, border-color .18s ease, filter .18s ease;
+}
+
+@media (min-width:640px){
+  .calc-btn{height:60px; border-radius:18px;}
+}
+
+.calc-btn:active{transform:scale(0.985);}
+
+.calc-btn-num{
+  background:rgba(255,255,255,0.04);
+  color:#fff;
+}
+.calc-btn-num:hover{background:rgba(255,255,255,0.07);}
+
+.calc-btn-muted{
+  background:rgba(255,255,255,0.03);
+  color:#D4D4D8;
+}
+.calc-btn-muted:hover{background:rgba(255,255,255,0.06);}
+
+.calc-btn-op{
+  background:rgba(0,212,255,0.08);
+  color:#E6FBFF;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+}
+.calc-btn-op:hover{
+  background:rgba(0,212,255,0.12);
+}
+
+.calc-btn-eq{
+  background:rgba(228,255,0,0.16);
+  color:#111;
+  border-color: rgba(228,255,0,0.35);
+  box-shadow: 0 0 24px rgba(228,255,0,0.18);
+}
+.calc-btn-eq:hover{
+  background:rgba(228,255,0,0.22);
+  box-shadow: 0 0 30px rgba(228,255,0,0.24);
+}
+
+.calc-btn-wide{
+  grid-column: span 2 / span 2;
+}
+
+.calc-btn-active{
+  filter: brightness(1.08);
+  box-shadow: 0 0 0 3px rgba(228,255,0,0.12);
+}
+
+/* Toast */
+.toast{
+  position:absolute;
+  left:50%;
+  bottom:14px;
+  transform: translateX(-50%);
+  pointer-events:none;
+  z-index:50;
+  opacity:0;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.toast-open{
+  opacity:1;
+  transform: translateX(-50%) translateY(-2px);
+}
+.toast-closed{
+  opacity:0;
+  transform: translateX(-50%) translateY(6px);
+}
+.toast-inner{
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,0.12);
+  background: rgba(15,15,19,0.85);
+  backdrop-filter: blur(10px);
+  color:#E4E4E7;
+  font-size:12px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.5);
+}
+
+/* Scrollbar discret */
+.calc-scroll::-webkit-scrollbar{width:10px;}
+.calc-scroll::-webkit-scrollbar-track{background:transparent;}
+.calc-scroll::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,0.12);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+.calc-scroll::-webkit-scrollbar-thumb:hover{background: rgba(255,255,255,0.18); border: 3px solid transparent; background-clip: content-box;}
+
+/* Animation subtile d'apparition (évite les placeholders) */
+@keyframes popIn{
+  from{opacity:0; transform: translateY(6px) scale(0.99);}
+  to{opacity:1; transform: translateY(0) scale(1);}
+}
+
+#root{animation: popIn .28s ease both;}
