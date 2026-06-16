@@ -28,6 +28,7 @@ import TheftButton from '../components/TheftButton';
 import IdeasButton from '../components/IdeasButton';
 import AnnounceButton from '../components/AnnounceButton';
 import AccountsButton from '../components/AccountsButton';
+import { setStoredViewMode } from '../hooks/useDeviceIdentity';
 import AccountVisitView from '../components/AccountVisitView';
 import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
@@ -945,7 +946,26 @@ export default function Dashboard() {
                 <LanguageToggle placement="bottom" />
               </span>
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
-                {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => setVisiting(a)} />}
+                {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => {
+                  // iter128.4 — Visiter le compte = SIMULER la vue de la cible
+                  // (image 2). Pour les rôles user/guest/modo, on bascule le
+                  // viewMode et la dashboard se ré-affiche filtrée comme cet
+                  // utilisateur la verrait. Pour admin/créa, on garde le
+                  // modal infos brutes (cible sensible).
+                  const effRole = a?.staff_kind === 'admin' ? 'admin'
+                                : a?.staff_kind === 'modo' ? 'modo'
+                                : a?.role === 'creator' ? 'creator'
+                                : a?.role === 'inactive' ? 'guest'
+                                : a?.role === 'pending' ? 'guest'
+                                : a?.role === 'approved' ? 'user'
+                                : 'user';
+                  if (effRole === 'creator' || effRole === 'admin') {
+                    setVisiting(a);
+                  } else {
+                    // Bascule simulation = image 2 (bannière + dashboard filtré)
+                    setStoredViewMode(effRole);
+                  }
+                }} />}
                 <button
                   onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}
                   data-testid="open-groups-btn"

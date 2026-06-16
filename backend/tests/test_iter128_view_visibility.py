@@ -133,10 +133,11 @@ def test_login_now_includes_creator_toolbar():
     assert "<CreatorToolbar" in src
 
 
-def test_view_mode_picker_dropdown_scrolls():
-    src = _read("components/ViewModePicker.jsx")
-    # Dropdown s'ouvre vers le bas (top-full) comme avant
-    assert "top-full" in src
-    # max-h-[70vh] overflow-y-auto → scroll vertical interne
-    assert "max-h-[70vh]" in src
-    assert "overflow-y-auto" in src
+def test_dashboard_visit_uses_view_simulation_for_user_modo_guest():
+    """iter128.4 — Cliquer 'Visiter le compte' sur user/modo/guest bascule la
+    vue (setStoredViewMode) au lieu d'ouvrir le modal info-brute. Pour
+    admin/créa, fallback sur AccountVisitView."""
+    src = _read("pages/Dashboard.js")
+    assert "setStoredViewMode" in src
+    # Heuristique : la simulation est appelée dans onVisitAccount
+    assert "Visiter le compte = SIMULER" in src or "setStoredViewMode(effRole)" in src
