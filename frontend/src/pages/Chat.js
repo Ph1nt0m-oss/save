@@ -13,6 +13,7 @@ import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
 import OfflineAIInstaller from '../components/OfflineAIInstaller';
 import LivePreviewPanel from '../components/LivePreviewPanel';
+import CreatorChatPersonaBar, { useCreatorChatPersona } from '../components/CreatorChatPersonaBar';
 import MessageTTSButton from '../components/MessageTTSButton';
 import TypewriterEffect from '../components/TypewriterEffect';
 import { useTranslatedMessages } from '../hooks/useTranslatedMessages';
@@ -60,6 +61,10 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // iter128.6 — Persona créa-only (3 personas + toggles IA répond / visible).
+  // Par défaut : id='ai', aiReplies=true, visible=true → comportement inchangé
+  // pour tous les rôles non-créa et même créa tant qu'elle ne touche pas la barre.
+  const [creatorPersona, setCreatorPersona] = useCreatorChatPersona();
   const [historyLoading, setHistoryLoading] = useState(false);
   const [pinning, setPinning] = useState(false);
   // Pending attachments for the NEXT message (analyzed by the backend).
@@ -283,6 +288,10 @@ export default function Chat() {
           model: selectedModel,
           project_id: project?.project_id,
           attachments: opts.attachments || [],
+          // iter128.6 — Persona override créa-only. Non-créa : champ ignoré
+          // côté back. Si la créa ne touche RIEN, persona.id='ai' + aiReplies=true
+          // → comportement IA standard, aucun impact.
+          persona_override: creatorPersona,
         }),
       });
       if (!resp.ok || !resp.body) {
@@ -618,6 +627,10 @@ export default function Chat() {
         </ScrollArea>
 
         <form onSubmit={sendMessage}>
+          {/* iter128.6 — Barre persona créa, visible uniquement pour la créa
+              physique (le composant filtre lui-même). Aucun impact si non
+              affichée. */}
+          <CreatorChatPersonaBar value={creatorPersona} onChange={setCreatorPersona} className="mb-2" />
           {!canWrite && (
             <div
               data-testid="chat-readonly-banner"

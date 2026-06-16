@@ -77,3 +77,22 @@ def test_persona_overrides_ignored_for_non_creator():
     """Si non-créa envoie persona_override, le code l'ignore."""
     src = _read("routes/messages_routes.py", base=BACK)
     assert "persona = (payload.persona_override or {}) if is_creator_sender else {}" in src
+
+
+def test_chat_stream_accepts_persona_override():
+    """iter128.6 — /chat/stream accepte persona_override et bypass l'IA
+    si la créa demande explicitement aiReplies=False."""
+    src = _read("routes/chat_advanced_routes.py", base=BACK)
+    assert "persona_override" in src
+    assert "aiReplies" in src
+    assert "creator_persona_silence" in src
+    # La logique vérifie le rôle créateur
+    assert 'user_doc.get("role") == "creator"' in src
+
+
+def test_chat_js_wires_persona_bar():
+    src = _read("pages/Chat.js")
+    assert "CreatorChatPersonaBar" in src
+    assert "useCreatorChatPersona" in src
+    assert "persona_override: creatorPersona" in src
+    # Comportement par défaut : id='ai', aiReplies=true → aucun impact

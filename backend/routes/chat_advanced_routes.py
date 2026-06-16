@@ -67,6 +67,11 @@ class ChatStreamIn(BaseModel):
     language: Optional[str] = "fr"
     model: Optional[str] = None
     attachments: Optional[List[Dict[str, Any]]] = None
+    # iter128.6 — Persona créa-only. Si `aiReplies` est explicitement False
+    # ET que l'appelant est la créatrice physique, on bypass la génération
+    # IA (la créa veut parler à la place / interrompre). Champ ignoré pour
+    # tout autre rôle. Cf. CreatorChatPersonaBar.jsx.
+    persona_override: Optional[Dict[str, Any]] = None
 
 
 def build_chat_advanced_router(
@@ -450,6 +455,22 @@ def build_chat_advanced_router(
         user_id = await get_current_user(request)
         has_attachments = bool(input.attachments)
         is_offline = (input.mode or "online").lower() == "offline"
+
+        # iter128.6 — Si la créatrice a explicitement DÉSACTIVÉ la réponse IA
+        # (aiReplies=False), on bypass la génération : seul son message
+        # passe (ou rien si message vide). La validation "appelant=créa" se
+        # fait via session côté get_current_user + le rôle role==creator
+        # (autres rôles : champ ignoré). Comportement par défaut : aucun
+        # changement (aiReplies=True implicite).
+        po = input.persona_override or {}
+        if po and po.get("aiReplies") is False:
+            user_doc = await db.users.find_one({"id": user_id}) or {}
+            if user_doc.get("role") == "creator":
+                async def silent_gen():
+                    import json as _j
+                    yield "data: " + _j.dumps({"done": True, "skipped": True, "reason": "creator_persona_silence"}) + "\n\n"
+                return StreamingResponse(silent_gen(), media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
         # Fallback : modes complexes → réutilise send_chat_message + pseudo-stream.
         if has_attachments or is_offline:
