@@ -43,6 +43,11 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
   // iter113 — Un seul dropdown ouvert à la fois (SiteMode ou ViewMode) pour
   // éviter la superposition visuelle observée par l'utilisatrice.
   const [openDropdown, setOpenDropdown] = useState(null);  // null | 'site' | 'view'
+  // iter128.1 — Le badge "Type de site" n'est rendu QUE si l'appareil est
+  // physiquement créa ET n'est pas en mode "simulation de vue" (y compris
+  // 'creator' coché). hideSiteModeBadge=true peut le forcer caché ailleurs.
+  const showSiteModeBadge =
+    !hideSiteModeBadge && device.role === 'creator' && !device.viewMode;
 
   const loadDecisions = async () => {
     setLoadingHist(true);
@@ -149,12 +154,9 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
 
   return (
     <div className="inline-flex items-center gap-2 sm:gap-8 flex-wrap" data-testid="creator-toolbar">
-      {/* iter108 — SiteModeBadge 3cm vers la gauche via gap élargi.
-          iter128 — `hideSiteModeBadge` masque le badge "Créatrice"
-          (mode du site) partout : menu / accueil / inscription / connexion.
-          Le sélecteur de vue (ViewModePicker) reste visible — c'est ce qui
-          permet à la créatrice de simuler user / modo / admin / guest. */}
-      {!hideSiteModeBadge && (
+      {/* iter128.1 — SiteModeBadge visible UNIQUEMENT pour créa physique
+          ET hors simulation de vue (showSiteModeBadge le centralise). */}
+      {showSiteModeBadge && (
       <SiteModeBadge
         role={device.role}
         siteMode={device.siteMode}

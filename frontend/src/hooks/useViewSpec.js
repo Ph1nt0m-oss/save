@@ -68,8 +68,10 @@ export default function useViewSpec() {
     canSeeCreatorProgsCards: effectiveView === 'creator', // Programmation site/IA
     canEditTestBots: isPhysicallyCreator,           // create/edit/delete bots
     canViewTestBotsCode: isPhysicallyCreator,       // contenu code masqué sinon
-    // Comptes panel : matrice d'actions par rôle effectif
-    canVisitAccountFromList: false,                 // retiré pour TOUTES les vues
+    // iter128.1 — Le bouton "Visiter le compte" est restauré pour les
+    // APPAREILS CRÉATEUR uniquement (signature ECDSA), pas pour les vues
+    // simulées admin/modo/etc.
+    canVisitAccountFromList: isPhysicallyCreator,
     canRenameFromAccountsPanel: isAdminOrCreator,   // admin + créa uniquement
     canForceVisitorFromAccountsPanel: isAdminOrCreator,
     canExcludeFromAccountsPanel: isAdminOrCreator,

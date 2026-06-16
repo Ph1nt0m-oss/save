@@ -1016,10 +1016,10 @@ export default function Dashboard() {
               </Button>}
 
               <div className="ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
-                {/* iter128 — SiteModeBadge "Créatrice" masqué partout (image 5 bleu).
-                    Le sélecteur de vue (ViewModePicker) reste visible — c'est
-                    ce qui permet à la créatrice de simuler user/modo/admin/guest. */}
-                <CreatorToolbar hideSiteModeBadge />
+                {/* iter128.1 — CreatorToolbar gère désormais lui-même la
+                    visibilité du SiteModeBadge : créa physique + hors
+                    simulation de vue. Aucune prop nécessaire ici. */}
+                <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && viewSpec.canSeeIdeasLightbulb && <IdeasButton />}
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}
                 {/* iter101 — Bouton Bots Community : visible selon viewSpec */}

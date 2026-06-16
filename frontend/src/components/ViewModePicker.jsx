@@ -96,7 +96,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
       {open && (
         <div
           data-testid="view-mode-picker-dropdown"
-          className="absolute right-0 mt-1.5 w-72 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.6)] z-50 py-1"
+          className="absolute right-0 bottom-full mb-1.5 w-72 max-h-[70vh] overflow-y-auto bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_-10px_40px_rgba(0,0,0,0.6)] z-50 py-1"
         >
           <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-[#71717A] border-b border-white/10">
             Simuler une vue (1 à la fois)

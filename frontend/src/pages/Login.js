@@ -572,13 +572,16 @@ export default function Login() {
       <div className="fixed inset-0 grid-bg opacity-20"></div>
 
       {/* Top toolbar — always visible on Login: theft, message to creator,
-          copy device key. iter128 — AccountsButton retiré ici (image 5). */}
+          copy device key. iter128 — AccountsButton retiré ici (image 5).
+          iter128.1 — CreatorToolbar ajouté côté droit pour ré-afficher le
+          SiteModeBadge à la créa physique (le composant filtre lui-même). */}
       <div className="fixed top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
         <div className="flex items-center gap-2 pointer-events-auto">
           <TheftButton variant="labelled" />
         </div>
         <div className="flex items-center gap-2 pointer-events-auto">
           <DeviceKeyCopyButton />
+          <CreatorToolbar />
         </div>
       </div>
 

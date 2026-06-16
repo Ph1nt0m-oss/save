@@ -72,7 +72,7 @@ export default function Landing() {
           </div>
 
           <div className="justify-self-end min-w-0 flex items-center gap-2">
-            <CreatorToolbar hideSiteModeBadge />
+            <CreatorToolbar />
             <MessageButton variant="icon" />
             <LanguageToggle placement="bottom" />
           </div>

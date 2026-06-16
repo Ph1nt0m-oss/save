@@ -54,8 +54,6 @@ def test_dashboard_uses_view_gating():
     assert "canSeeCreatorProgsCards" in src
     # AccountsButton conditionnel
     assert "canSeeAccountsButton" in src
-    # SiteModeBadge "Créatrice" masqué via prop
-    assert "hideSiteModeBadge" in src
     # Exports conditionnels
     assert "canSeeExports" in src
     # Megaphone conditionnel
@@ -68,8 +66,8 @@ def test_landing_removes_accounts_and_creator_picker():
     src = _read("pages/Landing.js")
     # Plus de <AccountsButton .../>
     assert "<AccountsButton" not in src
-    # CreatorToolbar avec hideSiteModeBadge
-    assert "hideSiteModeBadge" in src
+    # CreatorToolbar présent (gère lui-même la visibilité du SiteModeBadge)
+    assert "<CreatorToolbar" in src
 
 
 def test_login_removes_accounts_and_creator_message():
@@ -105,7 +103,7 @@ def test_account_visit_view_filters_tabs_for_limited_roles():
 
 def test_accounts_button_gates_actions_by_role():
     src = _read("components/AccountsButton.jsx")
-    # Visit retiré pour TOUS les rôles
+    # Visit restauré pour la créa physique (via canVisitAccountFromList)
     assert "canVisit = vs.canVisitAccountFromList" in src
     # Action gating
     assert "canRename" in src
@@ -113,3 +111,32 @@ def test_accounts_button_gates_actions_by_role():
     assert "canExclude" in src
     assert "canBan" in src
     assert "canDelete" in src
+
+
+def test_useviewspec_visit_restored_for_creator():
+    src = _read("hooks/useViewSpec.js")
+    # iter128.1 — canVisitAccountFromList: isPhysicallyCreator
+    assert "canVisitAccountFromList: isPhysicallyCreator" in src
+
+
+def test_creator_toolbar_shows_badge_for_creator_only():
+    src = _read("components/CreatorToolbar.jsx")
+    # iter128.1 — showSiteModeBadge calculé en interne
+    assert "showSiteModeBadge" in src
+    assert "device.role === 'creator'" in src
+    assert "!device.viewMode" in src
+
+
+def test_login_now_includes_creator_toolbar():
+    src = _read("pages/Login.js")
+    # CreatorToolbar restauré pour la créa (rend SiteModeBadge en interne)
+    assert "<CreatorToolbar" in src
+
+
+def test_view_mode_picker_dropdown_scrolls_and_opens_upward():
+    src = _read("components/ViewModePicker.jsx")
+    # bottom-full au lieu de mt-1.5 → dropdown ouvre vers le haut
+    assert "bottom-full" in src
+    # max-h-[70vh] overflow-y-auto → scroll vertical interne
+    assert "max-h-[70vh]" in src
+    assert "overflow-y-auto" in src

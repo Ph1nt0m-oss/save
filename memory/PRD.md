@@ -115,6 +115,23 @@ cible est `guest` / `inactive` / `pending` (image 4).
 **Tests** : 9 nouveaux tests `test_iter128_view_visibility.py` + 183/183 régression
 sur l'ensemble des fichiers backlog précédents.
 
+### 2026-02-15 — Iter 128.1 (Correctifs SiteModeBadge + ViewModePicker + Visite créa)
+
+**🟢 SiteModeBadge restauré pour la créa physique** (image du Login/Dashboard/Landing) :
+- `CreatorToolbar` calcule désormais `showSiteModeBadge = device.role === 'creator' && !device.viewMode` en interne.
+- Plus de prop `hideSiteModeBadge` côté pages (Dashboard, Landing) ; chaque page monte juste `<CreatorToolbar />`.
+- Login.js : ajout de `<CreatorToolbar />` (gauche du Theft) pour que la créa voie son badge sur la page de connexion.
+
+**🟢 ViewModePicker** :
+- Dropdown s'ouvre désormais **vers le haut** (`bottom-full mb-1.5`) pour ne pas être coupé par le bord d'écran quand le picker est en bas.
+- `max-h-[70vh] overflow-y-auto` ajouté → défilement vertical interne si beaucoup de vues simulables.
+
+**🟢 Visite des autres comptes — restaurée pour la créa physique** :
+- `useViewSpec.canVisitAccountFromList = isPhysicallyCreator` (auparavant `false` pour tous).
+- Le bouton "Visiter le compte" (œil) réapparaît dans la liste Comptes uniquement pour l'appareil créateur ECDSA, jamais en simulation.
+
+**Tests** : 13 tests `test_iter128_view_visibility.py` (4 nouveaux pour ces correctifs) + 104/104 régression.
+
 
 
 
