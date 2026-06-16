@@ -962,8 +962,11 @@ export default function Dashboard() {
                   if (effRole === 'creator' || effRole === 'admin') {
                     setVisiting(a);
                   } else {
-                    // Bascule simulation = image 2 (bannière + dashboard filtré)
-                    setStoredViewMode(effRole);
+                    // Bascule simulation = image 2 (bannière + dashboard filtré).
+                    // iter128.5 — On passe le pseudo cible pour que la bannière
+                    // affiche "Tu vois actuellement le compte de {pseudo}".
+                    const targetPseudo = a?.pseudo || a?.label || (a?.key_id || '').slice(0, 14);
+                    setStoredViewMode(effRole, { visitTargetPseudo: targetPseudo });
                   }
                 }} />}
                 <button

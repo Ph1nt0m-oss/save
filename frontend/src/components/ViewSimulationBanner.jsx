@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Eye, X } from 'lucide-react';
-import { setStoredViewMode } from '../hooks/useDeviceIdentity';
+import { setStoredViewMode, readVisitTarget } from '../hooks/useDeviceIdentity';
 
 const LABELS = {
   user: 'utilisateur',
@@ -11,9 +11,20 @@ const LABELS = {
 
 /**
  * iter86 — Bandeau persistant en haut quand la créatrice simule une vue.
- * Évite d'oublier qu'on est en simulation. Click sur la croix = revert.
+ * iter128.5 — Si la simulation a été déclenchée via "Visiter le compte"
+ *   (visitTargetPseudo en localStorage), on affiche le pseudo cible au
+ *   lieu du rôle générique.
  */
 export default function ViewSimulationBanner({ role, viewMode }) {
+  const [visitTarget, setVisitTarget] = useState(readVisitTarget());
+
+  // Réactualise quand setStoredViewMode broadcaste un changement.
+  useEffect(() => {
+    const sync = () => setVisitTarget(readVisitTarget());
+    window.addEventListener('codeforge:view-mode-changed', sync);
+    return () => window.removeEventListener('codeforge:view-mode-changed', sync);
+  }, []);
+
   if (role !== 'creator') return null;
   if (!viewMode || viewMode === 'creator') return null;
 
@@ -25,7 +36,11 @@ export default function ViewSimulationBanner({ role, viewMode }) {
       <Eye className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
       <span className="text-amber-200 font-bold uppercase tracking-widest">Simulation</span>
       <span className="text-amber-100">
-        Tu vois actuellement l&apos;app comme un <strong>{LABELS[viewMode] || viewMode}</strong>.
+        {visitTarget ? (
+          <>Tu vois actuellement le compte de <strong>{visitTarget}</strong>.</>
+        ) : (
+          <>Tu vois actuellement l&apos;app comme un <strong>{LABELS[viewMode] || viewMode}</strong>.</>
+        )}
       </span>
       <button
         type="button"

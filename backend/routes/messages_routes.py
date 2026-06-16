@@ -19,6 +19,10 @@ from models.auth_signatures import SignedIn
 class MessageSendIn(SignedIn):
     content: str
     target_key_id: Optional[str] = None
+    # iter128.5 — Persona override créa-only. Le backend valide via la
+    # signature ECDSA que l'appelant est bien la créatrice avant
+    # d'appliquer les overrides ; ignoré pour tout autre rôle.
+    persona_override: Optional[dict] = None  # {id, customPseudo, customAvatar, aiReplies, visible}
 
 
 class MessagesInboxIn(SignedIn):
@@ -102,6 +106,14 @@ def build_messages_router(
         now = datetime.now(timezone.utc)
         msg_id = f"msg_{uuid.uuid4().hex[:16]}"
         sender_label = sender.get("label") or sender.get("pseudo") or None
+        # iter128.5 — Persona override créa : seul un sender créateur peut
+        # spécifier un pseudo/avatar customs et un flag de visibilité.
+        persona = (payload.persona_override or {}) if is_creator_sender else {}
+        custom_pseudo = (persona.get("customPseudo") or "").strip() or None
+        custom_avatar = (persona.get("customAvatar") or "").strip() or None
+        persona_id = persona.get("id") or None  # 'ai' | 'owner' | 'creator'
+        visible_to_target = persona.get("visible", True) if persona else True
+        ai_replies = persona.get("aiReplies", True) if persona else True
         await db.messages.insert_one({
             "message_id": msg_id,
             "thread_key_id": thread_key_id,
@@ -111,7 +123,15 @@ def build_messages_router(
             "sender_label": sender_label,
             "ts": now.isoformat(),
             "read_by_creator": bool(is_creator_sender),
-            "read_by_user": not bool(is_creator_sender),
+            "read_by_user": not bool(is_creator_sender) and bool(visible_to_target),
+            # iter128.5 — Métadonnées persona (uniquement si créa). Permettront
+            # au front de rendre le message avec l'icône/pseudo customs et de
+            # masquer les messages "fantômes" du fil côté cible.
+            "persona_id": persona_id,
+            "persona_pseudo": custom_pseudo,
+            "persona_avatar": custom_avatar,
+            "visible_to_target": bool(visible_to_target),
+            "ai_replies": bool(ai_replies),
         })
         await db.device_keys.update_one(
             {"key_id": payload.key_id},

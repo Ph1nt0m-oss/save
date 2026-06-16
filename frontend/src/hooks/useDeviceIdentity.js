@@ -8,6 +8,11 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 // guest, user, modo, admin or creator would see it.
 // iter87 — Si AUCUNE case n'est cochée, viewMode = null (mode écriture).
 const VIEW_MODE_KEY = 'codeforge_view_mode';
+// iter128.5 — Quand la créatrice clique "Visiter le compte" depuis la liste
+// Comptes, on stocke en plus le pseudo de la cible visitée pour que la
+// bannière SIMULATION affiche "Tu vois actuellement le compte de XXX"
+// plutôt que "comme un visiteur".
+const VISIT_TARGET_KEY = 'codeforge_visit_target_pseudo';
 const VALID_VIEW_MODES = ['creator', 'user', 'modo', 'admin', 'guest'];
 function readViewMode() {
   try {
@@ -15,18 +20,30 @@ function readViewMode() {
     return VALID_VIEW_MODES.includes(v) ? v : null;
   } catch (_) { return null; }
 }
-export function setStoredViewMode(mode) {
+function readVisitTarget() {
+  try { return localStorage.getItem(VISIT_TARGET_KEY) || null; }
+  catch (_) { return null; }
+}
+export function setStoredViewMode(mode, opts = {}) {
   try {
     if (mode === null || mode === undefined || mode === '') {
       localStorage.removeItem(VIEW_MODE_KEY);
+      localStorage.removeItem(VISIT_TARGET_KEY);
     } else {
       const safe = VALID_VIEW_MODES.includes(mode) ? mode : null;
       if (safe) localStorage.setItem(VIEW_MODE_KEY, safe);
       else localStorage.removeItem(VIEW_MODE_KEY);
+      // Pseudo de visite optionnel : effacé si non fourni (= simulation manuelle).
+      if (opts.visitTargetPseudo) {
+        localStorage.setItem(VISIT_TARGET_KEY, opts.visitTargetPseudo);
+      } else {
+        localStorage.removeItem(VISIT_TARGET_KEY);
+      }
     }
   } catch (_) { /* silent */ }
   try { window.dispatchEvent(new Event('codeforge:view-mode-changed')); } catch (_) { /* silent */ }
 }
+export { readVisitTarget };
 
 /**
  * useDeviceIdentity — ensures a device key exists, attests it on mount,
