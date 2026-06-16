@@ -134,9 +134,9 @@ export default function AccountVisitView({ target, onClose }) {
           <ArrowLeft className="w-4 h-4" />
           <span>{t('visit_back')}</span>
         </button>
-        <span className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/60 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm inline-flex items-center gap-1">
-          <Eye className="w-3 h-3" /> Mode visite (invisible aux admins)
-        </span>
+        {/* iter128.3 — Badge "Mode visite (invisible aux admins)" retiré :
+            seule la créa physique peut visiter, donc le rappel est superflu
+            (image 4). */}
         <h1 className="text-sm font-['Chivo'] font-bold text-white truncate">
           {t('visit_title').replace('{pseudo}', targetPseudo)}
         </h1>

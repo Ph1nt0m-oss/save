@@ -64,7 +64,7 @@ export default function useViewSpec() {
     canSeeIdeasLightbulb: isStaffOrCreator,
     canSeeRobotBots: isStaffOrCreator,
     canSeeAdminProgsCards: isStaffOrCreator,        // Caly + Bots prog cards
-    canSeeQuickWizard: isStaffOrCreator,            // "Création rapide accompagnée"
+    canSeeQuickWizard: true,                        // iter128.3 — Création rapide accompagnée visible pour TOUS (image 3 cercle vert)
     canSeeCreatorProgsCards: effectiveView === 'creator', // Programmation site/IA
     canEditTestBots: isPhysicallyCreator,           // create/edit/delete bots
     canViewTestBotsCode: isPhysicallyCreator,       // contenu code masqué sinon
