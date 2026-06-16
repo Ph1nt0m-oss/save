@@ -133,10 +133,10 @@ def test_login_now_includes_creator_toolbar():
     assert "<CreatorToolbar" in src
 
 
-def test_view_mode_picker_dropdown_scrolls_and_opens_upward():
+def test_view_mode_picker_dropdown_scrolls():
     src = _read("components/ViewModePicker.jsx")
-    # bottom-full au lieu de mt-1.5 → dropdown ouvre vers le haut
-    assert "bottom-full" in src
+    # Dropdown s'ouvre vers le bas (top-full) comme avant
+    assert "top-full" in src
     # max-h-[70vh] overflow-y-auto → scroll vertical interne
     assert "max-h-[70vh]" in src
     assert "overflow-y-auto" in src
