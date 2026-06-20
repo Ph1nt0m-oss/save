@@ -25,7 +25,7 @@ const VIEW_META = {
 // Si AUCUNE n'est cochée → mode "écriture" (pas en simulation).
 const ORDER = ['creator', 'user', 'modo', 'admin', 'guest'];
 
-export default function ViewModePicker({ role, viewMode, guestView, guestViews, controlledOpen = undefined, onOpenChange }) {
+export default function ViewModePicker({ role, viewMode, guestView, guestViews, canSimulateViews = true, viewSimulationConstraint = null, controlledOpen = undefined, onOpenChange }) {
   const { t } = useLanguage();
   const [internalOpen, setInternalOpen] = useState(false);
   // iter113 — Coordination dropdown : si controlledOpen est fourni par le
@@ -53,6 +53,12 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
 
   // Cacher le picker si: pas créa ET aucune vue forcée (rien à choisir).
   if (!isCreator && forced.length === 0) return null;
+
+  // iter128.8 — Si le backend a déterminé que ce device ne peut PAS
+  // simuler de vue (combinaison site_modes × rôle interdite), on bloque
+  // toutes les options sauf si une vue forcée existe (priorité créatrice).
+  const blockedBySiteRules = !isCreator && !canSimulateViews && forced.length === 0;
+  if (blockedBySiteRules) return null;
 
   // iter115 — Modèle simplifié : viewMode est exactement la valeur active.
   //   - viewMode === null/undefined → AUCUNE vue active (aucune case cochée)

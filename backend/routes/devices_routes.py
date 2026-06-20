@@ -222,6 +222,42 @@ def build_devices_router(
         gv_list = sm_doc.get("guest_views")
         if not isinstance(gv_list, list) or not gv_list:
             gv_list = [sm_doc.get("guest_view")] if sm_doc.get("guest_view") else []
+
+        # iter128.8 — Règles dynamiques de simulation de vue selon
+        # combinaison site_modes × rôle device :
+        #
+        #   • Public + Invité   → les non-approuvés NE PEUVENT PAS basculer
+        #                          en simulation (lecture seule forcée
+        #                          pour eux ; régulation du nombre d'invités).
+        #   • Public + Privé + Staff → personne (sauf créa) ne peut se
+        #                          mettre en mode lecture seule.
+        #   • Créatrice uniquement → les autres peuvent passer en invité
+        #                          SSI la case "guest" est cochée.
+        #   • Public + Privé    → libre choix (les invités sont forcés).
+        #
+        # La créa physique n'est jamais bridée : `can_simulate=True` toujours.
+        is_creator_dev = (role == "creator")
+        is_staff_dev = (dev.get("staff_kind") in ("admin", "modo"))
+        is_approved_dev = (role == "approved")
+        is_non_approved = role not in ("approved", "creator")
+
+        can_simulate_views = True
+        view_simulation_constraint = None  # info pour le front
+        if not is_creator_dev:
+            modes_set = set(site_modes_list)
+            if "public" in modes_set and "guest" in modes_set and is_non_approved:
+                can_simulate_views = False
+                view_simulation_constraint = "public_guest_blocks_non_approved"
+            elif "public" in modes_set and "private" in modes_set and "staff" in modes_set:
+                # Tout le monde sauf créa : pas de bascule lecture seule
+                can_simulate_views = False
+                view_simulation_constraint = "triple_mode_blocks_all"
+            elif modes_set == {"creator"}:
+                # Créatrice uniquement → autres peuvent passer invité SSI coché
+                if "guest" not in (gv_list or []):
+                    can_simulate_views = False
+                    view_simulation_constraint = "creator_only_guest_not_enabled"
+
         return {
             "verified": True, "role": role, "effective_role": effective_role,
             "can_access": can_access,
@@ -233,6 +269,9 @@ def build_devices_router(
             "excluded_until": excluded_until,
             "force_visitor": bool(dev.get("force_visitor", False)),
             "staff_kind": dev.get("staff_kind"),
+            # iter128.8 — Nouveau gating dynamique
+            "can_simulate_views": can_simulate_views,
+            "view_simulation_constraint": view_simulation_constraint,
         }
 
     @router.post("/devices/list")

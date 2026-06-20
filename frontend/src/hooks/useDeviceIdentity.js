@@ -99,6 +99,8 @@ export default function useDeviceIdentity() {
         kickReason: result.kick_reason || null,
         forceVisitor: !!result.force_visitor,  // iter77
         staffKind: result.staff_kind || null,  // iter77
+        canSimulateViews: result.can_simulate_views !== false,                // iter128.8
+        viewSimulationConstraint: result.view_simulation_constraint || null,   // iter128.8
         pendingCount,
         viewMode: readViewMode(),
         error: null,

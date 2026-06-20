@@ -179,6 +179,8 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
         siteMode={device.siteMode}
         guestView={device.guestView}
         guestViews={device.guestViews}
+        canSimulateViews={device.canSimulateViews}
+        viewSimulationConstraint={device.viewSimulationConstraint}
         controlledOpen={openDropdown === 'view'}
         onOpenChange={(v) => setOpenDropdown(v ? 'view' : null)}
       />
