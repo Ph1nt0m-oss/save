@@ -212,7 +212,7 @@ export default function IdeasButton() {
         <Lightbulb className="w-4 h-4" />
         {isStaff && unread > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-amber-400 text-[#050505] text-[9px] font-bold rounded-full inline-flex items-center justify-center px-1">
-            {unread > 99 ? '99+' : unread}
+            {unread}
           </span>
         )}
       </button>

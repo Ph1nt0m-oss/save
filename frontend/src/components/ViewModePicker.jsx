@@ -107,11 +107,15 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
             // iter115 — Toggle universel : active = case correspond exactement à viewMode.
             const active = m === viewMode;
             // iter115 — Dimming : vues NON actives sont grisées si une vue est active (sauf 'creator' jamais dimmed).
-            const dimmedByForced = hasForcedConstraint && m !== 'creator' && !forced.includes(m);
+            // iter128.7 — Si une vue forcée existe ET la créa est sur place,
+            // la "Vue Créatrice" doit elle aussi être bloquée puisqu'elle
+            // contournerait la contrainte forcée (image 3 : forcée vers admin
+            // → créa désactivée).
+            const dimmedByForced = hasForcedConstraint && !forced.includes(m);
             const dimmed = isCreator
-              ? (isActive && !active && m !== 'creator')
+              ? (isActive && !active && !forced.includes(m))
               : dimmedByForced;
-            const disabled = dimmedByForced;  // visiteur ne peut pas cocher les vues non-forcées
+            const disabled = dimmedByForced;
             return (
               <button
                 key={m}

@@ -54,7 +54,7 @@ export default function MessageButton({ variant = 'icon' }) {
           <MessageCircle className="w-4 h-4" />
           {unread > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-[#E4FF00] text-[#050505] text-[9px] font-bold rounded-full inline-flex items-center justify-center px-1">
-              {unread > 99 ? '99+' : unread}
+              {unread}
             </span>
           )}
         </button>
@@ -105,7 +105,7 @@ export default function MessageButton({ variant = 'icon' }) {
         <MessageCircle className="w-5 h-5" />
         {unread > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full inline-flex items-center justify-center px-1">
-            {unread > 99 ? '99+' : unread}
+            {unread}
           </span>
         )}
       </button>

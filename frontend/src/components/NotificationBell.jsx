@@ -36,7 +36,7 @@ export default function NotificationBell({ className = '' }) {
             data-testid="notification-bell-count"
             className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-['Chivo'] font-bold text-white bg-red-500 rounded-full border border-[#050505]"
           >
-            {count > 99 ? '99+' : count}
+            {count > 99 ? `${count}` : count}
           </span>
         )}
       </button>
