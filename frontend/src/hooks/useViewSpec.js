@@ -61,8 +61,8 @@ export default function useViewSpec() {
     canSeeAccountsButton: isStaffOrCreator,
     canSeeMegaphone: isStaffOrCreator,
     canSeeExports: effectiveView === 'creator',
-    canSeeIdeasLightbulb: isStaffOrCreator,
-    canSeeRobotBots: isStaffOrCreator,
+    canSeeIdeasLightbulb: isPhysicallyCreator,  // iter128.9 — Créa physique uniquement (image entourée)
+    canSeeRobotBots: isPhysicallyCreator,       // iter128.9 — Créa physique uniquement
     canSeeAdminProgsCards: isStaffOrCreator,        // Caly + Bots prog cards
     canSeeQuickWizard: true,                        // iter128.3 — Création rapide accompagnée visible pour TOUS (image 3 cercle vert)
     canSeeCreatorProgsCards: effectiveView === 'creator', // Programmation site/IA
