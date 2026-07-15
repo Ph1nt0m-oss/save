@@ -121,10 +121,10 @@ def test_useviewspec_visit_restored_for_creator():
 
 def test_creator_toolbar_shows_badge_for_creator_only():
     src = _read("components/CreatorToolbar.jsx")
-    # iter128.1 — showSiteModeBadge calculé en interne
+    # iter128.11 — showSiteModeBadge calculé en interne, visible pour créa
+    # physique même en simulation (retiré `!device.viewMode`).
     assert "showSiteModeBadge" in src
     assert "device.role === 'creator'" in src
-    assert "!device.viewMode" in src
 
 
 def test_login_now_includes_creator_toolbar():

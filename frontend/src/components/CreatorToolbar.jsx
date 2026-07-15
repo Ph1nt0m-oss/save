@@ -43,11 +43,12 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
   // iter113 — Un seul dropdown ouvert à la fois (SiteMode ou ViewMode) pour
   // éviter la superposition visuelle observée par l'utilisatrice.
   const [openDropdown, setOpenDropdown] = useState(null);  // null | 'site' | 'view'
-  // iter128.1 — Le badge "Type de site" n'est rendu QUE si l'appareil est
-  // physiquement créa ET n'est pas en mode "simulation de vue" (y compris
-  // 'creator' coché). hideSiteModeBadge=true peut le forcer caché ailleurs.
+  // iter128.11 — SiteModeBadge visible pour créa PHYSIQUE (signature ECDSA)
+  // même en simulation de vue. La créa peut ainsi continuer à changer le
+  // mode du site tout en simulant une vue. hideSiteModeBadge=true peut
+  // le forcer caché ailleurs (jamais utilisé actuellement).
   const showSiteModeBadge =
-    !hideSiteModeBadge && device.role === 'creator' && !device.viewMode;
+    !hideSiteModeBadge && device.role === 'creator';
 
   const loadDecisions = async () => {
     setLoadingHist(true);
