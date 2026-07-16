@@ -4848,6 +4848,20 @@ app.include_router(pwa_router, prefix="/api/pwa", tags=["PWA"])
 # Include Desktop routes under /api/desktop
 app.include_router(desktop_router, prefix="/api/desktop", tags=["Desktop"])
 
+# iter131 — /workspace/* : téléchargement des fichiers créés par Forge dans un projet
+from routes.workspace_routes import build_workspace_router  # noqa: E402
+app.include_router(
+    build_workspace_router(db, get_current_user=get_current_user),
+    prefix="/api",
+)
+
+# iter131 — /private/integrations/* : slots UI Stripe / Google / ChatGPT (Créa-only)
+from routes.integrations_routes import build_integrations_router  # noqa: E402
+app.include_router(
+    build_integrations_router(db, require_creator_signature=_require_creator_signature),
+    prefix="/api",
+)
+
 
 # iter124 — Background helpers consommés par _lifespan() (déclaré en haut du fichier).
 # Documents store ISO strings (not Mongo Date) so we can't use a TTL index — we sweep manually.

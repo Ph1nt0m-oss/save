@@ -200,6 +200,44 @@ export default function Chat() {
     await sendText(text || '(pièce jointe)', { attachments: pendingAtts });
   };
 
+  // iter131 — Détecter si Forge a créé des fichiers workspace pour ce projet.
+  const [workspaceCount, setWorkspaceCount] = useState(0);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  useEffect(() => {
+    const pid = project?.project_id;
+    if (!pid) { setWorkspaceCount(0); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await axios.get(`${API}/workspace/list/${pid}`, { withCredentials: true });
+        if (!cancelled) setWorkspaceCount(r.data?.count || 0);
+      } catch { if (!cancelled) setWorkspaceCount(0); }
+    })();
+    return () => { cancelled = true; };
+  }, [project?.project_id, messages.length]);
+
+  const downloadWorkspace = async () => {
+    const pid = project?.project_id;
+    if (!pid) return;
+    setWorkspaceBusy(true);
+    try {
+      const r = await axios.get(`${API}/workspace/download/${pid}`, {
+        withCredentials: true, responseType: 'blob',
+      });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `forge-workspace-${pid.slice(0, 12)}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`${workspaceCount} fichier(s) Forge téléchargé(s).`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Téléchargement impossible.');
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
   // Pin the current chat to the sidebar by creating a "chat" project linked to this user.
   // The history is automatically tied via project_id on subsequent messages.
   const pinChatToSidebar = async () => {
@@ -233,10 +271,21 @@ export default function Chat() {
   const sendText = async (userMessage, opts = {}) => {
     if (!userMessage || isLoading) return;
     setIsLoading(true);
+    // iter131 — Créa persona : attache l'identité choisie sur le message user
+    // (avatar/pseudo custom + flag "fantôme" si visible=false).
+    const isCreatorSelfPosing =
+      device.role === 'creator' &&
+      (!device.viewMode || device.viewMode === 'creator') &&
+      creatorPersona && creatorPersona.id && creatorPersona.id !== 'ai';
     setMessages(prev => [...prev, {
       role: 'user',
       content: userMessage,
       isVoice: !!opts.isVoice,
+      persona_id: isCreatorSelfPosing ? creatorPersona.id : null,
+      persona_pseudo: isCreatorSelfPosing ? (creatorPersona.customPseudo || null) : null,
+      persona_avatar: isCreatorSelfPosing ? (creatorPersona.customAvatar || null) : null,
+      visible_to_target: creatorPersona ? creatorPersona.visible !== false : true,
+      _just_sent_user: true,
       timestamp: new Date()
     }]);
 
@@ -342,6 +391,26 @@ export default function Chat() {
           if (evt.done) {
             autoPid = evt.project_id || null;
             downloadInfo = evt.download || null;
+            if (evt.skipped) {
+              // iter131 — La créa a intercepté (aiReplies=false) : on retire
+              // le placeholder assistant et on rend le message user avec les
+              // métadonnées persona côté client (le backend a déjà persisté).
+              setMessages(prev => prev.filter(m => m._streaming_id !== placeholderId).map(m => {
+                if (m._just_sent_user) {
+                  return {
+                    ...m,
+                    _just_sent_user: false,
+                    persona_id: evt.persona?.id || m.persona_id,
+                    persona_pseudo: evt.persona?.pseudo || m.persona_pseudo,
+                    persona_avatar: evt.persona?.avatar || m.persona_avatar,
+                    visible_to_target: evt.persona?.visible !== false,
+                    message_id: evt.user_message_id || m.message_id,
+                  };
+                }
+                return m;
+              }));
+              break;
+            }
             setMessages(prev => prev.map(m =>
               m._streaming_id === placeholderId
                 ? {
@@ -460,6 +529,19 @@ export default function Chat() {
             </Button>
           )}
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+            {/* iter131 — Téléchargement des fichiers créés par Forge dans le workspace */}
+            {project?.project_id && workspaceCount > 0 && (
+              <button
+                onClick={downloadWorkspace}
+                disabled={workspaceBusy}
+                data-testid="chat-download-workspace-btn"
+                title={`Télécharger ${workspaceCount} fichier(s) créé(s) par Forge`}
+                className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-sm border border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+              >
+                {workspaceBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span className="hidden md:inline">Forge ({workspaceCount})</span>
+              </button>
+            )}
             <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
             {mode === 'offline' && !ollamaAvailable && (
               <button
@@ -627,8 +709,30 @@ export default function Chat() {
                       })()}
                     </div>
                   </div>
+                  {isUser && msg.persona_id && msg.persona_id !== 'ai' && (
+                    <span
+                      data-testid="msg-persona-badge"
+                      className="text-[10px] uppercase tracking-widest border rounded-sm px-1.5 py-0.5 self-center"
+                      style={{
+                        color: msg.persona_id === 'creator' ? '#E4FF00' : '#6EE7B7',
+                        borderColor: msg.persona_id === 'creator' ? 'rgba(228,255,0,0.4)' : 'rgba(110,231,183,0.4)',
+                        backgroundColor: msg.persona_id === 'creator' ? 'rgba(228,255,0,0.08)' : 'rgba(110,231,183,0.08)',
+                      }}
+                      title={msg.persona_pseudo ? `Persona créa : ${msg.persona_pseudo}` : `Persona créa : ${msg.persona_id}`}
+                    >
+                      {msg.persona_pseudo || (msg.persona_id === 'creator' ? 'Créa' : 'Compte')}
+                      {msg.visible_to_target === false && ' · fantôme'}
+                    </span>
+                  )}
                   {isUser && (
-                    user?.picture ? (
+                    (msg.persona_avatar) ? (
+                      <img
+                        src={msg.persona_avatar} alt="persona"
+                        data-testid="chat-avatar-user-persona"
+                        className="flex-shrink-0 w-9 h-9 rounded-full border border-white/15 object-cover"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
+                    ) : user?.picture ? (
                       <img
                         src={user.picture} alt={user.name || user.email || 'Toi'}
                         data-testid="chat-avatar-user"

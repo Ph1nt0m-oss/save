@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -1315,6 +1315,38 @@ export default function Dashboard() {
                   <div>
                     <h3 className="text-lg font-['Chivo'] font-bold text-white">Programmation des IA</h3>
                     <p className="text-xs text-[#A1A1AA]">Architecture, prompts, modules de vérification</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* iter131 — Mes IA (Registre des agents) + Intégrations tierces */}
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/private/agent-registry')}
+                data-testid="creator-agent-registry-btn"
+                className="group bg-gradient-to-br from-violet-500/[0.06] to-fuchsia-500/[0.06] border border-violet-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-violet-400 hover:shadow-[0_8px_30px_rgba(167,139,250,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-violet-500/20 border border-violet-400/40 rounded-full flex items-center justify-center"><Brain className="w-6 h-6 text-violet-300" /></div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Mes IA</h3>
+                    <p className="text-xs text-[#A1A1AA]">Fiches d'identité des 13 agents du site</p>
+                  </div>
+                </div>
+              </motion.button>
+              <motion.button
+                whileHover={{ y: -2, scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/private/integrations')}
+                data-testid="creator-integrations-btn"
+                className="group bg-gradient-to-br from-emerald-500/[0.06] to-teal-500/[0.06] border border-emerald-400/30 rounded-lg p-6 backdrop-blur-xl hover:border-emerald-400 hover:shadow-[0_8px_30px_rgba(52,211,153,0.2)] transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-400/40 rounded-full flex items-center justify-center"><Plug className="w-6 h-6 text-emerald-300" /></div>
+                  <div>
+                    <h3 className="text-lg font-['Chivo'] font-bold text-white">Intégrations tierces</h3>
+                    <p className="text-xs text-[#A1A1AA]">Stripe · Google · ChatGPT (version gratuite)</p>
                   </div>
                 </div>
               </motion.button>

@@ -456,21 +456,61 @@ def build_chat_advanced_router(
         has_attachments = bool(input.attachments)
         is_offline = (input.mode or "online").lower() == "offline"
 
-        # iter128.6 — Si la créatrice a explicitement DÉSACTIVÉ la réponse IA
-        # (aiReplies=False), on bypass la génération : seul son message
-        # passe (ou rien si message vide). La validation "appelant=créa" se
-        # fait via session côté get_current_user + le rôle role==creator
-        # (autres rôles : champ ignoré). Comportement par défaut : aucun
-        # changement (aiReplies=True implicite).
+        # iter131 — Persona créa : on résout d'abord si l'appelant est bien la
+        # créatrice ; sinon on ignore les overrides. Métadonnées persistées
+        # sur le message utilisateur pour rendu (pseudo/avatar customs + ghost).
         po = input.persona_override or {}
-        if po and po.get("aiReplies") is False:
-            user_doc = await db.users.find_one({"id": user_id}) or {}
-            if user_doc.get("role") == "creator":
-                async def silent_gen():
-                    import json as _j
-                    yield "data: " + _j.dumps({"done": True, "skipped": True, "reason": "creator_persona_silence"}) + "\n\n"
-                return StreamingResponse(silent_gen(), media_type="text/event-stream",
-                    headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
+        user_doc = await db.users.find_one({"id": user_id}) or {}
+        is_creator = user_doc.get("role") == "creator"
+        persona_active = bool(po) and is_creator
+        persona_id = (po.get("id") if persona_active else None) or None
+        persona_pseudo = ((po.get("customPseudo") or "").strip() if persona_active else "") or None
+        persona_avatar = ((po.get("customAvatar") or "").strip() if persona_active else "") or None
+        persona_visible = bool(po.get("visible", True)) if persona_active else True
+        persona_ai_replies = bool(po.get("aiReplies", True)) if persona_active else True
+
+        if persona_active and persona_ai_replies is False:
+            # La créa intervient manuellement : on PERSISTE quand même son
+            # message (avec métadonnées persona) puis on renvoie un stream
+            # vide (done skipped=True) — pas de génération IA.
+            manual_msg_id = f"msg_{uuid.uuid4().hex[:16]}"
+            pid_manual = input.project_id
+            if not pid_manual:
+                short = (input.message or "Nouveau chat").strip().replace("\n", " ")
+                short = short[:40] + ("…" if len(short) > 40 else "")
+                new_proj = {
+                    "project_id": f"proj_{uuid.uuid4().hex[:12]}", "user_id": user_id,
+                    "name": short or "Nouveau chat", "description": "",
+                    "project_type": "chat", "ai_mode": "online",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await db.projects.insert_one(new_proj)
+                pid_manual = new_proj["project_id"]
+            try:
+                await db.chat_messages.insert_one({
+                    "message_id": manual_msg_id,
+                    "user_id": user_id, "project_id": pid_manual,
+                    "role": "user", "content": input.message, "mode": input.mode,
+                    "persona_id": persona_id, "persona_pseudo": persona_pseudo,
+                    "persona_avatar": persona_avatar, "visible_to_target": persona_visible,
+                    "ai_replies": False, "creator_manual": True,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as e:
+                logger.warning(f"chat/stream manual persist failed: {e}")
+
+            async def silent_gen():
+                import json as _j
+                yield "data: " + _j.dumps({
+                    "done": True, "skipped": True,
+                    "reason": "creator_persona_silence",
+                    "user_message_id": manual_msg_id,
+                    "project_id": pid_manual,
+                    "persona": {"id": persona_id, "pseudo": persona_pseudo,
+                                "avatar": persona_avatar, "visible": persona_visible},
+                }) + "\n\n"
+            return StreamingResponse(silent_gen(), media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
         # Fallback : modes complexes → réutilise send_chat_message + pseudo-stream.
         if has_attachments or is_offline:
@@ -538,6 +578,10 @@ def build_chat_advanced_router(
             "message_id": f"msg_{uuid.uuid4().hex[:16]}",
             "user_id": user_id, "project_id": project_id_eff,
             "role": "user", "content": input.message, "mode": input.mode,
+            # iter131 — Persona créa (id, pseudo custom, avatar, visible).
+            "persona_id": persona_id, "persona_pseudo": persona_pseudo,
+            "persona_avatar": persona_avatar, "visible_to_target": persona_visible,
+            "ai_replies": persona_ai_replies,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await db.chat_messages.insert_one(user_msg_doc)

@@ -17,6 +17,8 @@ import Legal from './pages/Legal';
 import Discover from './pages/Discover';
 import PrivateProgramming from './pages/PrivateProgramming';
 import PrivateChatbotProgramming from './pages/PrivateChatbotProgramming';
+import PrivateAgentRegistry from './pages/PrivateAgentRegistry';
+import PrivateIntegrations from './pages/PrivateIntegrations';
 // iter112 — SiteIssues abandonné (les codes d'erreurs sont trop hétérogènes
 // à répertorier). Route /private/site-issues redirige désormais vers la
 // programmation des bots/chatbots.
@@ -188,6 +190,16 @@ function AppRouter() {
         <Route
           path="/private/site-issues"
           element={<Navigate to="/private/bots-programming" replace />}
+        />
+        {/* iter131 — Registre des IA (Mes IA) : accessible créa+admin+modo */}
+        <Route
+          path="/private/agent-registry"
+          element={<ProtectedRoute><PrivateAgentRegistry /></ProtectedRoute>}
+        />
+        {/* iter131 — Intégrations tierces (Stripe/Google/ChatGPT) créa-only */}
+        <Route
+          path="/private/integrations"
+          element={<ProtectedRoute><PrivateIntegrations /></ProtectedRoute>}
         />
         <Route 
           path="/profile" 

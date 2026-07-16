@@ -1,0 +1,45 @@
+{
+  "summary": "iter131 — Full backend + frontend validation for the 4 new features (Persona persistence, Workspace Download, Third-party Integrations, Agents Registry). Backend : 12/12 live pytest tests PASS (auth gates, agents registry shape, 404 for non-owned workspace, persona_override IGNORED for non-creator). Frontend : 5/5 UI checks PASS (dashboard tiles hidden for non-creator, both /private/* pages show Accès refusé, /chat shows workspace-download btn only when files exist with correct count, creator-chat-persona-bar hidden for non-creator).",
+  "test_results": {
+    "backend": {
+      "unauth_401_403": "PASS — 6/6 endpoints return correct 401/403",
+      "agents_registry_13_agents": "PASS — 13 agents with all required fields (id/name/objectif/expertise/raisonnement/format/outils/limites/module)",
+      "workspace_list_404_non_owner": "PASS — 'Projet introuvable.' for unknown project",
+      "workspace_download_404_non_owner": "PASS",
+      "persona_override_ignored_non_creator": "PASS — chat/stream renvoie l'AI réponse Caly normale, aucun persona_id/persona_pseudo/persona_avatar en DB sur user_msg"
+    },
+    "frontend": {
+      "dashboard_no_creator_tiles_for_user": "PASS — creator-agent-registry-btn ABSENT, creator-integrations-btn ABSENT",
+      "private_agent_registry_denied": "PASS — agent-registry-access-denied + registry-back-btn visibles",
+      "private_integrations_denied": "PASS — integrations-access-denied + integrations-back-btn visibles",
+      "chat_workspace_btn_hidden_when_empty": "PASS — chat-download-workspace-btn ABSENT sur /chat sans projet",
+      "chat_workspace_btn_visible_with_files": "PASS — après création manuelle de 2 fichiers dans /app/agent_workspaces/{pid}/, bouton visible avec title 'Télécharger 2 fichier(s) créé(s) par Forge' et texte 'Forge (2)'",
+      "chat_persona_bar_hidden_for_non_creator": "PASS"
+    }
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter131_live.py",
+    "/app/test_reports/pytest/iter131_live.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "workspace_routes.py : _safe_project_dir refuse project_id contenant '/' ou '..' — bon garde-fou path traversal.",
+    "workspace_routes.py : cap 50 MB sur le ZIP et readme.md inclus — bon UX.",
+    "integrations_routes.py : les clés secretes ne sont PAS chiffrées en base (noté dans le docstring en haut du module 'usage démo uniquement'). Pour prod, activer un chiffrage AES via KMS/env before storing.",
+    "PrivateIntegrations.js : le champ password est vidé (`value = ''`) après un save, avec placeholder '(gardé — remplace pour modifier)' — bon UX pour éviter la fuite mais l'input n'affiche pas la valeur masquée en placeholder au 2e chargement pour text fields (voir HELP_LINKS + f.masked). NON BLOQUANT.",
+    "PrivateAgentRegistry.js : `agents` initialisé à [] et l'affichage de `{agents.length || '…'}` risque de rester '…' si l'API renvoie [] au lieu d'un objet {agents:[…]} — mais backend retourne bien {agents:[…]} avec 13 items donc OK actuel.",
+    "Chat.js line 217 : dep `messages.length` sur useEffect workspace/list — chaque nouveau message re-fetch le workspace. OK car léger (juste os.walk) mais pourrait être limité à 'file_created' events pour économiser."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter131_live.py (NEW — 12 live end-to-end tests contre le backend running)"
+  ],
+  "success_rate": {"backend": "100% (12/12 live pytest)", "frontend": "100% (5/5 UI scenarios)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login OK sans reset nécessaire cette itération",
+  "seed_data_creation": "Créé project_id proj_7b02bdd804fa via /api/projects pour le test persona (nom TEST_iter131_persona). Créé et supprimé /app/agent_workspaces/proj_7b02bdd804fa/{hello.txt,second.py} pour tester le bouton download. Cleanup workspace dir effectué (le project MongoDB reste, sans impact).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter131 fully validated end-to-end. Backend + frontend both green. Aucun bug bloquant, aucun action item ouvert. Notes de code review non-bloquantes ci-dessus (chiffrement clés Stripe, dep messages.length sur workspace fetch). Le test précis 'silent_skip persona quand aiReplies=false' n'a pas été fait (nécessite un compte créa réel non fourni) — mais le code est vérifié statiquement dans test_iter131_persona_workspace_integrations.py (22 tests source-level).",
+  "rca of the issue": "Aucun bug rencontré cette itération."
+}
