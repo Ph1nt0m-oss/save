@@ -1,6 +1,39 @@
 # CodeForge AI — Product Requirements
 
 
+## iter132 (Feb 2026) — Chiffrement AES-GCM + Import Workspace + Registre Compact
+**Status : COMPLETED (100% tests PASS)**
+
+### 🔒 Chiffrement AES-GCM
+- Nouveau module `/app/backend/utils/crypto_box.py` : AES-GCM 256-bit, préfixe magique `aesgcm.v1.<b64(iv+ct)>`, IV aléatoire par appel, rétro-compat legacy plaintext transparente.
+- Clé maître : env `INTEGRATIONS_SECRET_KEY` (base64url 32 octets) sinon fallback stable dérivé de `SECRET_KEY` (démo).
+- `integrations_routes.py` : `encrypt_secret` sur save, `_plain` (via `decrypt_secret`) sur test/status ; nouveaux champs `encrypted` (par field) et `encrypted_at_rest` (par intégration).
+- Save intelligent : champ vide côté client = pas modifié (préserve secret existant chiffré).
+
+### 📦 Import Workspace
+- Nouveau endpoint `POST /api/workspace/import/{project_id}` (multipart `file`) — extrait un ZIP dans le workspace projet après effacement de l'ancien contenu.
+- Sécurité : ownership check, cap 50 MB total, 10 MB par fichier, path traversal bloqué (rejet `..`, chemins absolus, sortie du `base_abs`), HTTP 413 si dépassement.
+- Frontend `Chat.js` : bouton `chat-import-workspace-btn` (cyan) toujours visible sur un projet + input caché `chat-import-workspace-input` (accept=`.zip`).
+
+### 🎛️ Registre IA — Mode Compact
+- `PrivateAgentRegistry.js` : toggle `registry-density-full` / `registry-density-compact` persisté en `localStorage['agent_registry_density']`.
+- Compact : grid 4 colonnes XL (lg:3 / sm:2), padding réduit, description tronquée (line-clamp-2), 3 outils max + counter `+N`, module en font-mono en bas — 13 agents visibles d'un coup d'œil.
+
+### Tests
+- 18 pytest source-level iter132 → 100% PASS.
+- Cumul iter129+130+131+132 : **70/70 PASS**.
+- Testing_agent_v3 iter132 : **16/16 backend live + 7/7 frontend E2E + 40/40 source = 100% PASS**, 0 issues.
+
+### Fichiers nouveaux
+- `/app/backend/utils/crypto_box.py`
+- `/app/backend/utils/__init__.py`
+- `/app/backend/tests/test_iter132_crypto_import_density.py`
+
+### Notes prod
+- Pour prod Stripe live : définir `INTEGRATIONS_SECRET_KEY` explicite en env (base64url 32 octets) — ne pas laisser dériver de SECRET_KEY (rotation SECRET_KEY invaliderait les secrets).
+- Envisager un job de rotation périodique / re-chiffrement.
+
+
 ## iter131 (Feb 2026) — Personas Créa + Workspace Download + Intégrations + Registre IA
 **Status : COMPLETED (100% tests PASS)**
 
