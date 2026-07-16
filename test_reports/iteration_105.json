@@ -1,0 +1,77 @@
+{
+  "summary": "iter129 FRONTEND validation — multi-agents dans le chat principal. ALL 6 user-facing scenarios PASS end-to-end : login readonly workaround OK, navigation /login → /dashboard → /chat OK, Router routes correctement les 3 agents (Caly/Forge/Archi), badges msg-agent-badge affichent le bon nom, activity log SSE en direct pour Forge/Archi avec tous les kinds d'événement attendus (status/status_done/plan_ready/file_created/code_executed/validation), aucun log pour Caly (conversation pure), toggle collapse/expand fonctionne, expand d'un file_created charge diff avec onglets diff-tab-diff/après, backend renvoie contenu structuré complet ([État]/[Actions réalisées]/[Fichiers/Ressources utilisées]/[Résultat]/[Prochaines étapes] pour Forge, [État]/[Objectifs]/[Plan]/[Priorités]/[Prochaines étapes] pour Archi), et le reload persiste agent_events + agent_id + badge. Backend SSE re-validé au curl : /api/chat/stream renvoie evt.agent → evt.event → evt.delta → evt.done (avec agent_events[] et content structuré 1156 chars). /api/agents/registry renvoie la liste des agents (Router, Caly Chat, etc.).",
+  "test_results": {
+    "test_1_caly_conversational": "PASS — 'Salut, ça va ?' → badge 'Caly', 0 activity-log, réponse streamée",
+    "test_2_forge_dev_task": "PASS — 'Crée un module Python factorielle + test' → badge 'Forge', activity-log visible avec 11 events dont plan_ready, file_created (factorial.py +23/-0), code_executed, validation (score 95/100)",
+    "test_3_toggle_activity_log": "PASS — agent-activity-toggle collapse/expand",
+    "test_4_expand_file_created": "PASS — clic sur ligne file_created charge details via /orchestrate/event/{id}/details, diff-tab-diff visible, diff rendu avec ligne +/- surlignées",
+    "test_5_archi_planner": "PASS — 'Planifie la roadmap de mon projet de blog' → badge 'Archi', 4 events (2×status + 2×status_done : 'Analyse des objectifs' + 'Structuration du plan'), réponse contient [État]/[Objectifs]/[Plan] (5 phases P0-P2)/[Priorités]/[Prochaines étapes]",
+    "test_6_reload_persistence": "PASS — après page reload, 1 activity-log + 1 badge Archi + 4 events restaurés depuis chat_messages.agent_events",
+    "backend_smoke": "PASS — POST /api/chat/stream renvoie SSE {agent}/{event}/{delta}/{done}, GET /api/agents/registry retourne la liste des agents"
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Chat.js message rendering (probable src/components/MessageContent.jsx)",
+        "issue": "React warning répété plusieurs centaines de fois pendant le streaming : 'Encountered two children with the same key' + 'In HTML, <p> cannot contain a nested <div>/<pre>' (erreur d'hydratation potentielle). Le rendu final fonctionne visuellement mais React se plaint. À investiguer côté markdown/code-block renderer.",
+        "selector": "console warning (pas d'impact visible bloquant)",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Chat.js — loading placeholder",
+        "issue": "Après un reload, on voit temporairement le texte brut 'chatLoadingHistory' (clé i18n non traduite) au lieu du label français.",
+        "selector": "texte 'chatLoadingHistory' visible ~1s",
+        "priority": "LOW"
+      },
+      {
+        "component": "Chat.js — bouton d'envoi du chat",
+        "issue": "Le bouton Send/submit (line 722-734) n'a pas de data-testid. Idéalement 'chat-send-btn'. Aussi : la touche Enter dans la textarea n'envoie pas (comportement multiline normal), mais utile de le documenter pour tests.",
+        "selector": "form button[type=\"submit\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Chat — bulle IA quand UI est en anglais",
+        "issues": ["Auto-traduction agressive : le contenu de Forge en français ([État]/[Actions réalisées]/...) apparaît traduit et parfois tronqué à '[Status]' seul dans la bulle si la locale UI = EN. Le backend renvoie pourtant 1156 caractères de contenu structuré complet en français. À vérifier : côté MessageContent + auto-translate, la troncature du contenu structuré français quand la locale UI diffère de la langue de la réponse. NON BLOQUANT — le test avec locale FR devrait afficher le texte complet."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_105.json"
+  ],
+  "action_items": [
+    "MEDIUM : Corriger le warning React 'Encountered two children with the same key' pendant le streaming (probable dans le map d'events ou de messages où key n'est pas unique — vérifier AgentActivityLog line 56-63 et le map des messages dans Chat.js).",
+    "MEDIUM : Corriger l'erreur d'hydratation '<p> cannot contain <div>/<pre>' — probablement dans MessageContent.jsx qui rend du markdown avec des <pre>/<code> à l'intérieur d'un <p>. Utiliser un renderer qui produit du <div> comme wrapper.",
+    "LOW : Ajouter la clé i18n 'chatLoadingHistory' dans les fichiers de traduction FR/EN.",
+    "LOW : Ajouter data-testid='chat-send-btn' au bouton submit du formulaire chat pour faciliter les tests.",
+    "LOW/à investiguer : quand la locale UI est EN, la traduction auto du contenu Forge en français semble aggressivement raccourcir la sortie ([Status] seul visible). Le backend fournit pourtant du contenu correct. Vérifier le flux de traduction (Traduit automatiquement) sur les messages ayant un contenu markdown structuré."
+  ],
+  "critical_code_review_comments": [
+    "AgentActivityLog.jsx (263 L) est bien découpé : KIND_META, ActivityRow, DiffView, ActivityDetails — bonne séparation des concerns. Utilisation correcte de useState pour expand + loading + details. axios GET /orchestrate/event/{id}/details avec withCredentials OK.",
+    "Chat.js gère bien les 3 canaux SSE distincts (evt.agent, evt.event, evt.delta, evt.done). La logique setMessages(prev => prev.map(...)) sur _streaming_id est correcte. Persistance de agent_events + agent_id via evt.done.",
+    "PROBLÈME KEY DUPLIQUÉES : dans AgentActivityLog.jsx line 58 `key={evt.event_id || idx}` — si le backend renvoie plusieurs 'status' events SANS event_id (ils sont éphémères et n'ont pas d'ID stable), on retombe sur `idx` mais idx peut coïncider quand les événements arrivent partiellement. Recommander : `key={evt.event_id || \\`${evt.kind}-${idx}\\``}` ou `key={\\`${idx}-${evt.kind}\\`}` pour être plus déterministe.",
+    "Erreur d'hydratation <p> → <div>/<pre> vient probablement de MessageContent.jsx : quand le markdown contient un bloc code (```python), react-markdown produit un <pre> mais s'il est enveloppé dans un <p> (via un rendu remark-gfm mal configuré), on a le warning. Vérifier la configuration components={{p: ..., pre: ...}} de ReactMarkdown.",
+    "Bouton submit du chat sans data-testid — cosmétique mais gêne les tests E2E. Ajouter data-testid='chat-send-btn' au Button line 722-734 de Chat.js.",
+    "SUCCÈS notable : la conversion async du toggle (line 86-98 AgentActivityLog.jsx) gère bien willOpen + loading + details caching (setDetails seulement au premier open). Bon design.",
+    "SUCCÈS notable : reload persistence fonctionne — les agent_events sont bien renvoyés par /api/chat/history et re-mappés dans les messages, permettant de restaurer le journal complet sans re-jouer la SSE."
+  ],
+  "updated_files": [
+    "Aucun code applicatif modifié. Seul le password du user de test a été resynchronisé côté MongoDB (bcrypt Pass1234) car /api/auth/login retournait 401 'Mot de passe incorrect' au début du test (le hash en DB ne matchait plus le password documenté dans test_credentials.md). Pas de changement de schéma."
+  ],
+  "success_rate": {
+    "backend": "100% (SSE + registry + event details tous OK)",
+    "frontend": "100% des 6 scénarios utilisateur PASS. 3 warnings React non bloquants + 1 miss i18n mineur détectés."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — password resynchronisé au début du test via bcrypt direct sur MongoDB (idem procédure iter111 documentée dans test_credentials.md). Login OK après reset.",
+  "seed_data_creation": "Aucun seed persistant. Le user de test a créé 2-3 projets/messages via les envois SSE de test (proj_621b5e560fed…). Pas de cleanup nécessaire — historique de chat normal.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter129 validée end-to-end côté UI. Les 3 agents (Caly/Forge/Archi) fonctionnent, l'activity log SSE en direct s'affiche pour Forge/Archi et pas pour Caly, l'expand file_created charge le diff, la persistance après reload marche. IMPORTANT : le password du user de test test_dash_1777658375@gmail.com a été resynchronisé à Pass1234 au début de cette itération (bcrypt direct MongoDB) car il ne matchait plus. Si un futur agent retrouve 'Mot de passe incorrect', utiliser la même procédure. Bugs mineurs restants : (1) warning React 'duplicate key' pendant streaming — probablement AgentActivityLog line 58, (2) erreur d'hydratation <p><pre></pre></p> probablement dans MessageContent.jsx, (3) traduction auto agressive tronque parfois le contenu Forge structuré quand locale UI ≠ langue du contenu. Aucun bug bloquant.",
+  "rca of the issue": "Blocage initial de login (401 'Mot de passe incorrect') : le hash bcrypt en base pour test_dash_1777658375@gmail.com ne correspondait plus à Pass1234 documenté. RCA : soit un test précédent a changé le mot de passe (last_password_change en base = 2026-07-16T17:11:32 = maintenant, avant reset), soit le hash a dérivé. Mitigation : reset direct via bcrypt en MongoDB (identique à la procédure iter111 documentée dans test_credentials.md). Aucun bug de code — la doc de test_credentials.md prévoit cette procédure. Pas de brute-force lockout (429) rencontré car j'ai fait 2 tentatives max avant reset."
+}

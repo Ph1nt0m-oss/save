@@ -501,7 +501,9 @@ def build_chat_advanced_router(
             return StreamingResponse(fallback_gen(), media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
-        # ---------- NATIVE STREAMING PATH (online, no attachments) ----------
+        # ---------- iter129 : PIPELINE MULTI-AGENTS (online, no attachments) ----------
+        # Router → agent spécialisé (Caly chat / Forge dev / Archi planner).
+        # Chaque agent stream ses événements d'exécution + sa réponse finale.
         project_id_eff = input.project_id
         auto_created = False
         if not project_id_eff:
@@ -520,6 +522,18 @@ def build_chat_advanced_router(
             project_id_eff = new_proj["project_id"]
             auto_created = True
 
+        # Mémoire conversationnelle : historique récent AVANT insertion du
+        # message courant (les agents reçoivent le contexte).
+        recent_history = []
+        try:
+            recent_history = await db.chat_messages.find(
+                {"user_id": user_id, "project_id": project_id_eff},
+                {"_id": 0, "role": 1, "content": 1},
+            ).sort("timestamp", -1).limit(14).to_list(length=14)
+            recent_history = list(reversed(recent_history))
+        except Exception:
+            recent_history = []
+
         user_msg_doc = {
             "message_id": f"msg_{uuid.uuid4().hex[:16]}",
             "user_id": user_id, "project_id": project_id_eff,
@@ -528,64 +542,59 @@ def build_chat_advanced_router(
         }
         await db.chat_messages.insert_one(user_msg_doc)
 
-        user_language = (input.language or "fr").lower()
-        language_names = {
-            "fr": "français", "en": "English", "es": "español", "pt": "português",
-            "de": "Deutsch", "nl": "Nederlands", "ru": "русский",
-            "zh": "中文（简体）", "zh-tw": "中文（繁體）",
-            "hi": "हिन्दी", "ja": "日本語",
-        }
-        lang_label = language_names.get(user_language, "français")
-        system_prompt = (
-            f"Tu es Caly, un assistant conversationnel chaleureux et direct. "
-            f"Réponds dans la langue de l'utilisateur : **{lang_label}**. "
-            f"Sois vif, concret, et donne une vraie réponse plutôt qu'un mode d'emploi. "
-            f"Ne propose JAMAIS de créer une application/site/script sauf si l'utilisateur le demande explicitement."
-        )
-
-        requested = (input.model or "").strip().lower()
-        if requested.startswith("claude") or "anthropic" in requested:
-            provider, model_id = "anthropic", "claude-sonnet-4-5-20250929"
-        elif requested.startswith("gemini"):
-            provider, model_id = "gemini", "gemini-3-flash-preview"
-        else:
-            provider, model_id = "openai", "gpt-4o-mini"
-
         msg_id_final = f"msg_{uuid.uuid4().hex[:16]}"
+        session_id = f"chat_stream_{project_id_eff}"
 
-        async def native_stream_gen():
-            from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+        def _compact_evt(evt):
+            keep = ("event_id", "kind", "summary", "ts", "path", "query",
+                    "lines_added", "lines_removed")
+            return {k: evt[k] for k in keep if evt.get(k) is not None}
+
+        async def agent_stream_gen():
+            from agents import run_pipeline
             full_text = ""
             idx = 0
-            try:
-                chat = LlmChat(
-                    api_key=os.environ.get("EMERGENT_LLM_KEY"),
-                    session_id=f"chat_stream_{project_id_eff}",
-                    system_message=system_prompt,
-                ).with_model(provider, model_id)
+            agent_info = None
+            agent_events = []
 
-                async for event in chat.stream_message(UserMessage(text=input.message)):
-                    if isinstance(event, TextDelta):
-                        delta = event.content or ""
-                        if not delta:
-                            continue
-                        full_text += delta
-                        yield f"data: {json.dumps({'delta': delta, 'index': idx})}\n\n"
+            async def persist(evt):
+                await _persist_event(evt, user_id=user_id, session_id=session_id,
+                                     project_id=project_id_eff)
+
+            try:
+                async for item in run_pipeline(
+                    input.message, session_id=session_id,
+                    language=(input.language or "fr").lower(),
+                    project_id=project_id_eff, history=recent_history,
+                    model_pref=input.model, emit=persist,
+                ):
+                    if "delta" in item:
+                        full_text += item["delta"]
+                        yield f"data: {json.dumps({'delta': item['delta'], 'index': idx}, ensure_ascii=False)}\n\n"
                         idx += 1
-                    elif isinstance(event, StreamDone):
-                        break
+                    elif "event" in item:
+                        compact = _compact_evt(item["event"])
+                        agent_events.append(compact)
+                        yield f"data: {json.dumps({'event': compact}, ensure_ascii=False)}\n\n"
+                    elif "agent" in item:
+                        agent_info = item["agent"]
+                        yield f"data: {json.dumps({'agent': agent_info}, ensure_ascii=False)}\n\n"
             except Exception as e:
-                logger.warning(f"chat/stream native streaming failed: {e}; fallback message")
+                logger.warning(f"chat/stream agent pipeline failed: {e}; fallback message")
                 fallback_text = "Désolée, le service de chat est momentanément indisponible. Réessaie dans un instant."
-                full_text = full_text or fallback_text
-                yield f"data: {json.dumps({'delta': fallback_text if not idx else '', 'index': idx})}\n\n"
+                if not full_text:
+                    full_text = fallback_text
+                    yield f"data: {json.dumps({'delta': fallback_text, 'index': idx})}\n\n"
 
             try:
                 await db.chat_messages.insert_one({
                     "message_id": msg_id_final,
                     "user_id": user_id, "project_id": project_id_eff,
                     "role": "assistant", "content": full_text,
-                    "mode": input.mode, "model_id": model_id, "ai_source": provider,
+                    "mode": input.mode,
+                    "agent_id": (agent_info or {}).get("id"),
+                    "agent_name": (agent_info or {}).get("name"),
+                    "agent_events": agent_events,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             except Exception as e:
@@ -595,12 +604,23 @@ def build_chat_advanced_router(
                 "done": True,
                 "message_id": msg_id_final,
                 "content": full_text,
+                "agent": agent_info,
+                "agent_events": agent_events,
                 "project_id": project_id_eff if auto_created else None,
-            }) + "\n\n"
+            }, ensure_ascii=False) + "\n\n"
 
-        return StreamingResponse(native_stream_gen(), media_type="text/event-stream", headers={
+        return StreamingResponse(agent_stream_gen(), media_type="text/event-stream", headers={
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
         })
+
+    # ============================== /agents/registry ====================================
+
+    @router.get("/agents/registry")
+    async def agents_registry(request: Request):
+        """iter129 — Fiches d'identité de toutes les IA du site (transparence)."""
+        await get_current_user(request)
+        from agents import AGENT_REGISTRY
+        return {"agents": list(AGENT_REGISTRY.values())}
 
     return router

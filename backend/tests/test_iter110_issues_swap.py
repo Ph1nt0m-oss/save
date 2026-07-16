@@ -23,12 +23,13 @@ def test_site_issues_endpoints_registered():
 
 
 def test_site_issues_create_endpoint_signature_required():
-    """POST /site/issues/create needs signature — validated via route + source check."""
-    src = Path("/app/backend/server.py").read_text(encoding="utf-8")
-    idx = src.find('@api_router.post("/site/issues/create")')
+    """POST /site/issues/create needs signature — validated via route + source check.
+    iter129 — endpoint extrait de server.py vers routes/site_issues_routes.py."""
+    src = Path("/app/backend/routes/site_issues_routes.py").read_text(encoding="utf-8")
+    idx = src.find('@router.post("/site/issues/create")')
     assert idx > 0
     chunk = src[idx:idx + 1500]
-    assert "_verify_signed" in chunk
+    assert "verify_signed" in chunk
     assert "creator" in chunk and "admin" in chunk
 
 

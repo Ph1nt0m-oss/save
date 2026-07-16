@@ -11,6 +11,7 @@ import AttachMenu from '../components/AttachMenu';
 import MessageContent from '../components/MessageContent';
 import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
+import AgentActivityLog from '../components/AgentActivityLog';
 import OfflineAIInstaller from '../components/OfflineAIInstaller';
 import LivePreviewPanel from '../components/LivePreviewPanel';
 import CreatorChatPersonaBar, { useCreatorChatPersona } from '../components/CreatorChatPersonaBar';
@@ -322,6 +323,22 @@ export default function Chat() {
                 : m
             ));
           }
+          // iter129 — Décision du Router : quel agent spécialisé répond.
+          if (evt.agent) {
+            setMessages(prev => prev.map(m =>
+              m._streaming_id === placeholderId
+                ? { ...m, agent_id: evt.agent.id, agent_name: evt.agent.name }
+                : m
+            ));
+          }
+          // iter129 — Événement du journal d'activité (moteur d'exécution visible).
+          if (evt.event) {
+            setMessages(prev => prev.map(m =>
+              m._streaming_id === placeholderId
+                ? { ...m, agent_events: [...(m.agent_events || []), evt.event] }
+                : m
+            ));
+          }
           if (evt.done) {
             autoPid = evt.project_id || null;
             downloadInfo = evt.download || null;
@@ -331,6 +348,10 @@ export default function Chat() {
                     ...m,
                     content: evt.content || m.content,
                     download: downloadInfo,
+                    message_id: evt.message_id || m.message_id,
+                    agent_id: evt.agent?.id || m.agent_id,
+                    agent_name: evt.agent?.name || m.agent_name,
+                    agent_events: evt.agent_events?.length ? evt.agent_events : m.agent_events,
                     _streaming: false,
                     _just_arrived: false,  // SSE déjà animé naturellement
                   }
@@ -519,6 +540,14 @@ export default function Chat() {
                     <span style={{ fontSize: 0, lineHeight: 0, opacity: 0 }} aria-hidden="true" data-copy-prefix>
                       {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
                     </span>
+                    {/* iter129 — Journal d'activité de l'agent (moteur d'exécution visible) */}
+                    {!isUser && (msg.agent_events?.length > 0 || (msg._streaming && msg.agent_id && msg.agent_id !== 'chat')) && (
+                      <AgentActivityLog
+                        events={msg.agent_events || []}
+                        running={!!msg._streaming}
+                        agentName={msg.agent_name}
+                      />
+                    )}
                     {/* iter98 — TypewriterEffect pour les messages IA récents (skip pour Emergent qui rend code par code). */}
                     {!isUser && msg._just_arrived && !(msg.ai_source || '').includes('emergent') ? (
                       <div data-testid="chat-typewriter">
@@ -560,6 +589,16 @@ export default function Chat() {
                       {/* iter95 — Voice mode TTS sur chaque message IA */}
                       {!isUser && (
                         <MessageTTSButton text={displayContent} />
+                      )}
+                      {/* iter129 — Badge de l'agent spécialisé ayant répondu */}
+                      {!isUser && msg.agent_name && (
+                        <span
+                          data-testid="msg-agent-badge"
+                          title={`Agent spécialisé : ${msg.agent_name}`}
+                          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-[#E4FF00]/80 border border-[#E4FF00]/25 rounded-sm px-1.5 py-0.5"
+                        >
+                          {msg.agent_name}
+                        </span>
                       )}
                       {!isUser && msg.ai_source && (() => {
                         const src = msg.ai_source || '';

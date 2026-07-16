@@ -43,8 +43,9 @@ class TestEnhancementLLMAnalyzer:
         assert r.status_code == 401
 
     def test_endpoint_defined(self):
-        src = open("/app/backend/server.py").read()
-        assert "@api_router.post(\"/chat/suggest-enhancements\")" in src
+        # iter123 — endpoint extrait vers routes/chat_advanced_routes.py
+        src = open("/app/backend/routes/chat_advanced_routes.py").read()
+        assert "@router.post(\"/chat/suggest-enhancements\")" in src
         assert "EnhancementAnalyzeIn" in src
         assert "claude-sonnet-4-5" in src
 
@@ -65,8 +66,9 @@ class TestVoiceTTS:
         assert r.status_code == 401
 
     def test_endpoint_defined(self):
-        src = open("/app/backend/server.py").read()
-        assert "@api_router.post(\"/chat/tts\")" in src
+        # iter123 — endpoint extrait vers routes/chat_advanced_routes.py
+        src = open("/app/backend/routes/chat_advanced_routes.py").read()
+        assert "@router.post(\"/chat/tts\")" in src
         assert "TTSIn" in src
         assert "alloy" in src
         assert "audio_base64" in src
