@@ -8,9 +8,8 @@
  */
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircleQuestion, X, Send, Loader2, Sparkles } from 'lucide-react';
+import { MessageCircleQuestion, X, Send, Loader2, Sparkles, Check } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -68,24 +67,49 @@ export default function CalyChatbot() {
     const userMsg = (text || input).trim();
     if (!userMsg || loading) return;
     setInput('');
-    setMessages((m) => [...m, { role: 'user', content: userMsg }]);
     setLoading(true);
+    const history = messages.map((m) => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content || '',
+    }));
+    // iter130 — Caly en mode agent : étapes opérationnelles visibles
+    // (analyse, recherche FAQ réelle) puis réponse streamée token par token.
+    const placeholderKey = `caly_${Date.now()}`;
+    setMessages((m) => [...m,
+      { role: 'user', content: userMsg },
+      { role: 'caly', content: '', _steps: [], _streaming: true, _key: placeholderKey },
+    ]);
+    const patch = (fn) => setMessages((m) => m.map((x) => (x._key === placeholderKey ? fn(x) : x)));
     try {
-      // iter106 — Endpoint dédié /caly/ask (LLM gpt-4o-mini + KB)
-      const history = messages.map((m) => ({
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content || '',
-      }));
-      const r = await axios.post(`${API}/caly/ask`, {
-        message: userMsg,
-        history,
-        session_id: sessionId,
-        language: 'fr',
-      }, { withCredentials: true });
-      const aiText = r?.data?.reply || 'Désolée, je n\'ai pas compris. Tu peux reformuler ?';
-      setMessages((m) => [...m, { role: 'caly', content: aiText }]);
+      const resp = await fetch(`${API}/caly/ask-stream`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg, history, session_id: sessionId, language: 'fr' }),
+      });
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const line = part.split('\n').find((l) => l.startsWith('data:'));
+          if (!line) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(5).trim()); } catch { continue; }
+          if (evt.event) patch((x) => ({ ...x, _steps: [...(x._steps || []), evt.event] }));
+          if (evt.delta) patch((x) => ({ ...x, content: (x.content || '') + evt.delta }));
+          if (evt.done) patch((x) => ({ ...x, content: evt.reply || x.content, _streaming: false }));
+        }
+      }
+      patch((x) => ({ ...x, _streaming: false }));
     } catch {
-      setMessages((m) => [...m, { role: 'caly', content: 'Connexion impossible. Réessaie dans un moment.' }]);
+      patch((x) => ({ ...x, content: 'Connexion impossible. Réessaie dans un moment.', _streaming: false }));
     } finally {
       setLoading(false);
     }
@@ -151,13 +175,35 @@ export default function CalyChatbot() {
 
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
                 {messages.map((m, i) => (
-                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={m._key || i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[85%] p-3 rounded-lg ${
                       m.role === 'user'
                         ? 'bg-[#E4FF00]/10 border border-[#E4FF00]/30 text-white'
                         : 'bg-[#0F0F13] border border-violet-400/20 text-[#E4E4E7]'
                     }`}>
-                      <p className="text-xs whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                      {/* iter130 — Étapes opérationnelles de Caly (mode agent) */}
+                      {m._steps?.length > 0 && (
+                        <div className="mb-2 space-y-1" data-testid="caly-steps">
+                          {m._steps.map((s, si) => {
+                            const isLast = si === m._steps.length - 1;
+                            const spinning = m._streaming && isLast && !m.content;
+                            return (
+                              <div key={si} className="flex items-center gap-1.5 text-[10px] text-violet-200/90" data-testid={`caly-step-${s.kind}`}>
+                                {spinning
+                                  ? <Loader2 className="w-2.5 h-2.5 animate-spin flex-shrink-0" />
+                                  : <Check className="w-2.5 h-2.5 text-emerald-300 flex-shrink-0" />}
+                                <span className="truncate">{s.summary}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <p className="text-xs whitespace-pre-wrap leading-relaxed">
+                        {m.content}
+                        {m._streaming && m.content && (
+                          <span className="inline-block w-1.5 h-3 bg-violet-300 animate-pulse ml-0.5 align-middle" />
+                        )}
+                      </p>
                       {m.choices && (
                         <div className="flex flex-col gap-1.5 mt-2.5">
                           {m.choices.map((c) => (
@@ -175,7 +221,7 @@ export default function CalyChatbot() {
                     </div>
                   </div>
                 ))}
-                {loading && (
+                {loading && !messages[messages.length - 1]?._streaming && !messages[messages.length - 1]?._steps?.length && (
                   <div className="flex justify-start">
                     <div className="bg-[#0F0F13] border border-violet-400/20 p-3 rounded-lg flex items-center gap-2">
                       <Loader2 className="w-3 h-3 animate-spin text-violet-300" />

@@ -24,6 +24,7 @@ export default function SiteLockedOverlay({ siteMode, role, kickReason, onRetry,
   let reason = kickReason;
   if (!reason) {
     if (role === 'blocked') reason = 'kick_blocked';
+    else if (siteMode === 'none' && role !== 'creator') reason = 'kick_closed';
     else if (siteMode === 'creator' && role !== 'creator') reason = 'kick_creator_only';
     else if (siteMode === 'private' && !['creator', 'approved'].includes(role)) reason = 'kick_private';
   }

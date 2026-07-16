@@ -29,3 +29,21 @@
 - `site_config.modes` laissé sur `['public']` (il avait été mis sur `['creator']` par des tests live antérieurs). À reconfigurer via le futur multi-select « Qui peut voir actuellement ».
 - Le mot de passe du user de test a été resynchronisé (Pass1234) par le testing agent.
 - Suite pytest complète : ~97 échecs PRÉEXISTANTS (tests live/stale des iters 22-62 dépendant d'états DB/SMTP), non liés à iter129.
+
+## iter130 — "Qui peut voir actuellement" + Caly en mode agent (2026-07-16)
+
+### P0 — Multi-select « Qui peut voir actuellement » (badge Créa)
+- Backend (`server.py`) : `VALID_SITE_MODES` += `none` (Personne) et `all` (Tous). `_normalize_modes` : exclusivité (none > all > reste). `_device_matches_mode` : `all` → tout le monde (sauf banni/révoqué) ; `none` → créa physique uniquement (pour pouvoir rouvrir).
+- Backend (`devices_routes.py`) : nouveau `kick_reason: "kick_closed"` quand modes=['none'].
+- Frontend (`SiteModeBadge.jsx`) : 8 options dans l'ordre demandé — Personne, Privé, Public, Invité, Modo, Admin, Créa, Tous. Personne/Tous exclusifs (cocher = remplace tout ; décocher = retour public). 'staff' retiré de l'UI (admin+modo le couvrent, backend compat conservée). Header « Qui peut voir actuellement ? ».
+- Frontend (`SiteLockedOverlay.jsx` + `LanguageContext.js`) : écran « Site fermé » (kick_closed_title/body fr+en). `useDeviceIdentity.js` : canWrite gère 'all' (tous écrivent) et 'none' (créa seule).
+- Tests : `tests/test_iter130_who_can_view.py` (10 tests) + E2E screenshot : visiteur anonyme voit « Site closed » quand modes=['none'] ; restauré à ['public'] ensuite.
+
+### 2a-suite — Caly (assistante flottante) en mode agent
+- Backend (`caly_routes.py`) : nouveau `POST /caly/ask-stream` (SSE) — étapes visibles (« Analyse de ta question… », « Recherche dans la FAQ CodeForge… ✓ N fiche(s) pertinente(s) » avec VRAI match mots-clés sur la KB) puis réponse streamée token par token (via agents.common.stream_llm). `/caly/ask` conservé (compat). Non-fusion : Caly garde son prompt/rôle, aucun outil code.
+- Frontend (`CalyChatbot.jsx`) : consommation SSE, mini-journal d'étapes (`caly-steps`) dans la bulle avec check/spinner, curseur clignotant pendant le stream.
+- Tests : `tests/test_iter130b_caly_agent.py` (6 tests) + E2E screenshot (login → Dashboard → bulle Caly → étapes + réponse OK).
+
+### État
+- `site_config.modes` = ['public'] (état de fonctionnement normal).
+- Tests iter129+130 : 30/30 passed.

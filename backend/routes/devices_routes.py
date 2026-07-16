@@ -204,7 +204,9 @@ def build_devices_router(
             modes_active = normalize_modes(site_mode)
             if not device_matches_mode(dev, modes_active):
                 can_access = False
-                if "creator" in modes_active:
+                if "none" in modes_active:
+                    kick_reason = "kick_closed"
+                elif "creator" in modes_active:
                     kick_reason = "kick_creator_only"
                 elif "admin" in modes_active or "modo" in modes_active or "staff" in modes_active:
                     kick_reason = "kick_staff_only"

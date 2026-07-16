@@ -12,12 +12,15 @@ Helpers injectés (anti-circular imports) :
 """
 from __future__ import annotations
 
+import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from models.auth_signatures import SignedIn
@@ -107,6 +110,84 @@ def build_caly_router(db, *, verify_signed, log_change, logger):
         except Exception as e:
             logger.warning(f"Caly ask failed: {e}")
             raise HTTPException(status_code=500, detail=f"Erreur Caly: {str(e)[:200]}")
+
+    # ---------- iter130 — Caly en MODE AGENT (étapes visibles + streaming) ----------
+    # Caly reste l'assistante d'aide au site (aucune fusion avec Forge) : ses
+    # étapes opérationnelles sont les SIENNES — analyse de la question,
+    # recherche réelle dans la FAQ/KB, puis réponse streamée token par token.
+
+    @router.post("/caly/ask-stream")
+    async def caly_ask_stream(input: CalyAskIn):
+        if not (input.message or "").strip():
+            raise HTTPException(status_code=400, detail="Message vide.")
+
+        cfg = await db.bot_configs.find_one({"bot_id": "caly"}, {"_id": 0, "prompt": 1}) or {}
+        system_prompt = cfg.get("prompt") or CALY_DEFAULT_SYSTEM_PROMPT
+
+        kb_entries = await db.bot_knowledge.find(
+            {"bot_id": "caly"}, {"_id": 0, "question": 1, "answer": 1}
+        ).to_list(length=30)
+
+        # Recherche RÉELLE dans la KB : fiches dont question/réponse matchent
+        # les mots significatifs du message. Fallback : toutes les fiches.
+        q_words = re.findall(r"\w{4,}", (input.message or "").lower())
+        matched = [
+            e for e in kb_entries
+            if any(w in f"{e.get('question', '')} {e.get('answer', '')}".lower() for w in q_words)
+        ] if q_words else []
+        used_entries = matched or kb_entries
+        if used_entries:
+            kb_text = "\n\n=== BASE DE CONNAISSANCES (FAQ CodeForge) ===\n" + "\n".join(
+                f"Q: {e.get('question', '')}\nR: {e.get('answer', '')}" for e in used_entries
+            )
+            system_prompt = system_prompt + kb_text
+
+        history_text = ""
+        if input.history:
+            recent = input.history[-8:]
+            history_text = "\n".join(
+                f"{('Utilisateur' if h.get('role') == 'user' else 'Caly')} : {h.get('content', '')}"
+                for h in recent if h.get('content')
+            )
+        composed = (
+            f"### Historique récent :\n{history_text}\n\n### Nouveau message :\n{input.message}"
+            if history_text else input.message
+        )
+        session_id = input.session_id or f"caly_{uuid.uuid4().hex[:12]}"
+
+        def sse(obj):
+            return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+        async def gen():
+            yield sse({"event": {"kind": "status", "summary": "Analyse de ta question…"}})
+            if kb_entries:
+                yield sse({"event": {
+                    "kind": "search_done",
+                    "summary": f"Recherche dans la FAQ CodeForge… ✓ {len(matched)} fiche(s) pertinente(s)"
+                    if matched else f"Recherche dans la FAQ CodeForge… ({len(kb_entries)} fiches consultées)",
+                }})
+            yield sse({"event": {"kind": "status", "summary": "Rédaction de la réponse…"}})
+            full = ""
+            try:
+                from agents.common import stream_llm
+                async for delta in stream_llm(
+                    system_prompt, composed[:4000],
+                    session_id=session_id, provider="openai", model_id="gpt-4o-mini",
+                ):
+                    full += delta
+                    yield sse({"delta": delta})
+            except Exception as e:
+                logger.warning(f"Caly ask-stream failed: {e}")
+                if not full:
+                    full = "Désolée, je n'arrive pas à répondre pour l'instant. Réessaie dans un moment."
+                    yield sse({"delta": full})
+            yield sse({"done": True, "reply": full[:2000], "session_id": session_id,
+                       "kb_used": len(used_entries)})
+
+        return StreamingResponse(gen(), media_type="text/event-stream", headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        })
 
     @router.get("/caly/config")
     async def caly_config_get():

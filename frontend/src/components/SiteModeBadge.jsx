@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Globe, Lock, Crown, EyeOff, Check, ChevronDown, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Globe, Lock, Crown, EyeOff, Check, ChevronDown, ShieldAlert, ShieldCheck, Ban, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -8,16 +8,12 @@ import { useLanguage } from '../contexts/LanguageContext';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
- * iter83 C11 — Site-mode multi-checkbox.
+ * iter130 — "Qui peut voir actuellement ?" (multi-sélection).
  *
- * Avant : un seul mode (public | private | creator | guest).
- * Maintenant : N modes simultanés. La créatrice coche les audiences à laisser
- * entrer (ex: public + staff). Le backend gère le gating via le helper
+ * La créa coche explicitement qui peut voir le site parmi 8 audiences :
+ * Personne (site fermé), Privé, Public, Invité, Modo, Admin, Créa, Tous.
+ * 'Personne' et 'Tous' sont exclusifs. Le backend gère le gating via
  * `_device_matches_mode` (au moins UN mode actif doit matcher).
- *
- * Ajouts iter83 : 'staff' (admin+modo), 'admin' (admins seuls), 'modo'
- * (modos seuls). Les 3 nouvelles audiences sont identifiées par l'icône
- * Shield/ShieldCheck/ShieldAlert.
  */
 export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, guestView, guestViews, onChange, className = '', controlledOpen = undefined, onOpenChange }) {
   const { t } = useLanguage();
@@ -32,14 +28,18 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
   };
   const [saving, setSaving] = useState(false);
 
+  // iter130 — Onglet Créa "Qui peut voir actuellement". Les 8 audiences
+  // demandées, dans l'ordre : Personne, Privé, Public, Invité, Modo, Admin,
+  // Créa, Tous. 'none' (Personne) et 'all' (Tous) sont exclusifs.
   const MODES = [
-    { id: 'public',  icon: Globe,       labelKey: 'sm_public',  hintKey: 'sm_public_hint'  },
+    { id: 'none',    icon: Ban,         label: 'Personne', hint: 'Site fermé — personne ne peut voir le site (sauf toi)', exclusive: true },
     { id: 'private', icon: Lock,        labelKey: 'sm_private', hintKey: 'sm_private_hint' },
-    { id: 'creator', icon: Crown,       labelKey: 'sm_creator', hintKey: 'sm_creator_hint' },
+    { id: 'public',  icon: Globe,       labelKey: 'sm_public',  hintKey: 'sm_public_hint'  },
     { id: 'guest',   icon: EyeOff,      labelKey: 'sm_guest',   hintKey: 'sm_guest_hint'   },
-    { id: 'staff',   icon: Shield,      label: 'Staff',         hint: 'Admins + Modos uniquement' },
-    { id: 'admin',   icon: ShieldCheck, label: 'Admins',        hint: 'Admins uniquement' },
-    { id: 'modo',    icon: ShieldAlert, label: 'Modos',         hint: 'Modos uniquement' },
+    { id: 'modo',    icon: ShieldAlert, label: 'Modo',          hint: 'Modos uniquement' },
+    { id: 'admin',   icon: ShieldCheck, label: 'Admin',         hint: 'Admins uniquement' },
+    { id: 'creator', icon: Crown,       labelKey: 'sm_creator', hintKey: 'sm_creator_hint' },
+    { id: 'all',     icon: Users,       label: 'Tous',          hint: 'Tout le monde peut voir le site', exclusive: true },
   ];
 
   // Source de vérité : siteModes (array) ; fallback à siteMode (legacy str)
@@ -54,7 +54,7 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
   const isCreator = role === 'creator';
 
   const display = activeModes.length === 1
-    ? (MODES.find((m) => m.id === activeModes[0]) || MODES[0])
+    ? (MODES.find((m) => m.id === activeModes[0]) || { icon: Globe, label: activeModes[0] })
     : null;
   const DisplayIcon = display ? display.icon : Globe;
   const displayLabel = display
@@ -63,13 +63,20 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
 
   const toggleMode = async (modeId) => {
     if (!isCreator || saving) return;
-    let next = [...activeModes];
-    if (next.includes(modeId)) {
-      next = next.filter((m) => m !== modeId);
+    let next;
+    // iter130 — 'none' (Personne) et 'all' (Tous) sont exclusifs : les cocher
+    // remplace toute la sélection ; les décocher revient à 'public'.
+    if (modeId === 'none' || modeId === 'all') {
+      next = activeModes.includes(modeId) ? ['public'] : [modeId];
     } else {
-      next.push(modeId);
+      next = activeModes.filter((m) => m !== 'none' && m !== 'all');
+      if (next.includes(modeId)) {
+        next = next.filter((m) => m !== modeId);
+      } else {
+        next.push(modeId);
+      }
+      if (next.length === 0) next = ['public']; // Au moins 1 mode
     }
-    if (next.length === 0) next = ['public']; // Au moins 1 mode
     setSaving(true);
     try {
       const body = await withCreatorProof(API, axios, {
@@ -139,7 +146,7 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
           className="absolute right-0 mt-1.5 w-72 bg-[#0A0A0A] border border-white/15 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.6)] z-50 py-1 max-h-[480px] overflow-y-auto"
         >
           <div className="px-3 py-2 text-[10px] uppercase tracking-widest text-[#71717A] border-b border-white/10">
-            Audiences actives (multi-sélection)
+            Qui peut voir actuellement ? (multi-sélection)
           </div>
           {MODES.map((m) => {
             const Mi = m.icon;

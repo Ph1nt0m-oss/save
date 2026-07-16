@@ -174,7 +174,7 @@ export default function useDeviceIdentity() {
     } else {
       canWrite = true;
     }
-  } else if (state.siteMode === 'public') {
+  } else if (state.siteMode === 'public' || state.siteMode === 'all') {
     canWrite = true;
   } else if (state.siteMode === 'guest') {
     // Site en mode visite uniquement : la créa garde TOUJOURS l'écriture

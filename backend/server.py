@@ -3044,7 +3044,7 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
 from device_auth import compute_key_id, new_nonce, verify_signature  # noqa: E402
 
 
-VALID_SITE_MODES = {"public", "private", "creator", "guest", "staff", "admin", "modo"}
+VALID_SITE_MODES = {"public", "private", "creator", "guest", "staff", "admin", "modo", "none", "all"}
 VALID_DEVICE_ROLES = {"creator", "approved", "pending", "revoked"}
 
 
@@ -3060,6 +3060,12 @@ def _normalize_modes(mode_value) -> List[str]:
     else:
         modes = []
     modes = [m for m in modes if m in VALID_SITE_MODES]
+    # iter130 — "Qui peut voir actuellement" : 'none' (Personne) et 'all'
+    # (Tous) sont EXCLUSIFS : ils remplacent toute autre sélection.
+    if "none" in modes:
+        return ["none"]
+    if "all" in modes:
+        return ["all"]
     return modes or ["public"]
 
 
@@ -3092,7 +3098,15 @@ def _device_matches_mode(dev: Dict[str, Any], modes: List[str]) -> bool:
     is_staff_only = (is_admin or is_modo) and role not in ("creator",)
     is_approved_clean = role == "approved" and not is_admin and not is_modo
     for m in modes:
-        if m == "public":
+        if m == "all":
+            # iter130 — Tous : tout le monde peut voir le site.
+            return True
+        elif m == "none":
+            # iter130 — Personne : site fermé. Seule la créa physique garde
+            # l'accès (sinon elle ne pourrait plus revenir en arrière).
+            if is_creator:
+                return True
+        elif m == "public":
             # public seul = visiteurs + clés publiques NON-staff
             if not is_staff_only:
                 return True
