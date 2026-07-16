@@ -44,6 +44,10 @@ export function useTranslatedMessages(messages, options = {}) {
       const mid = m.message_id || m.id;
       const content = m.content || '';
       if (!mid || !content) continue;
+      // iter129 — Les sorties structurées d'agents (Forge/Archi) ne sont pas
+      // traduites : la traduction batch ligne-par-ligne tronque leur format
+      // multiligne [État]/[Plan]/etc. On garde l'original.
+      if (m.agent_events?.length) continue;
       if (cacheBucket[mid]) {
         map[mid] = cacheBucket[mid];
       } else {

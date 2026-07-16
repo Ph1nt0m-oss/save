@@ -154,6 +154,7 @@ const translations = {
 
  // Chat (Pin to sidebar + empty state)
  chatPinBtn: 'Épingler dans la barre',
+ chatLoadingHistory: 'Chargement de la conversation…',
  chatPinned: 'Discussion épinglée dans la barre latérale.',
  chatAlreadyPinned: 'Cette discussion est déjà épinglée.',
  chatPinEmpty: 'Discute d\'abord avant d\'épingler.',
@@ -894,6 +895,7 @@ pseudo_changed: 'Pseudo mis à jour.',
 
  // Chat (Pin to sidebar + empty state)
  chatPinBtn: 'Pin to sidebar',
+ chatLoadingHistory: 'Loading conversation…',
  chatPinned: 'Chat pinned to the sidebar.',
  chatAlreadyPinned: 'This chat is already pinned.',
  chatPinEmpty: 'Send a message before pinning.',

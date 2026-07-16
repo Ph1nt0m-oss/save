@@ -55,7 +55,7 @@ export default function AgentActivityLog({ events = [], running = false, agentNa
         <div className="border-t border-white/10 px-1.5 py-1.5 space-y-1">
           {events.map((evt, idx) => (
             <ActivityRow
-              key={evt.event_id || idx}
+              key={evt.event_id || `${evt.kind}-${idx}`}
               evt={evt}
               isLast={idx === events.length - 1}
               running={running}

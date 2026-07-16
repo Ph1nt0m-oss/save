@@ -215,7 +215,7 @@ export default function MessageContent({ content, isUser = false, replSessionId 
             }
             return <CodeBlock language={lang} code={raw} replSessionId={replSessionId} />;
           },
-          p({ children }) { return <p className="my-2">{children}</p>; },
+          p({ children }) { return <div className="my-2">{children}</div>; },
           ul({ children }) { return <ul className="my-2 ml-5 list-disc space-y-1">{children}</ul>; },
           ol({ children }) { return <ol className="my-2 ml-5 list-decimal space-y-1">{children}</ol>; },
           h1({ children }) { return <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>; },

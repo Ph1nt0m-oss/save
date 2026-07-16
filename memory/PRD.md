@@ -2023,3 +2023,8 @@ Voir `/app/memory/test_credentials.md`.
     deviceIdentity.js            # ECDSA WebCrypto + attestation flow
     webauthnClient.js            # WebAuthn create/get with b64url framing
 ```
+
+## iter129 — Système multi-agents spécialisés (2026-07-16)
+Voir `/app/memory/CHANGELOG.md` (nouvelles itérations documentées là-bas désormais).
+Résumé : package `/app/backend/agents/` (Router → Caly/Forge/Archi, fiches d'identité de 13 IA, workspace sandbox par projet avec diffs), `/chat/stream` rebranché sur le pipeline avec journal d'activité SSE visible (`AgentActivityLog.jsx`), format de réponse standardisé [État]/[Actions]/[Fichiers]/[Résultat]/[Prochaines étapes]. Testé : pytest 14/14 + testing agent 6/6 scénarios UI.
+Prochain (2b) : appliquer le comportement agent à Caly (assistant flottant) + onglet Créa « Qui peut voir actuellement » (P0 précédent).

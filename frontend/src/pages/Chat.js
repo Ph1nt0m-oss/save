@@ -518,7 +518,7 @@ export default function Chat() {
               const displayContent = msg.displayed_content || msg.content;
               return (
                 <motion.div
-                  key={msg.message_id || msg.id || `msg-${msg.timestamp || idx}`}
+                  key={msg.message_id || msg.id || msg._streaming_id || `msg-${idx}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className={`flex items-start gap-2 sm:gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
@@ -723,6 +723,7 @@ export default function Chat() {
               type="submit"
               disabled={isLoading || !input.trim() || !canWrite}
               size="lg"
+              data-testid="chat-send-btn"
               className="px-4 sm:px-8 flex-shrink-0"
               style={{ backgroundColor: modeColor, color: '#050505' }}
             >
