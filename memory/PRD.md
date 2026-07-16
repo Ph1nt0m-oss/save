@@ -1,5 +1,53 @@
 # CodeForge AI — Product Requirements
 
+
+## iter131 (Feb 2026) — Personas Créa + Workspace Download + Intégrations + Registre IA
+**Status : COMPLETED (100% tests PASS)**
+
+### 🔴 P0 — Personas Créa finalisé
+- `/api/chat/stream` : persistance du message user avec métadonnées persona (`persona_id`, `persona_pseudo`, `persona_avatar`, `visible_to_target`, `ai_replies`).
+- Silent-mode `aiReplies=false` : persiste le message avant retour `done:true skipped:true` (avant iter131, le message était perdu). Renvoie `user_message_id` + `persona{}` dans l'event silent.
+- Frontend `Chat.js` : badge `msg-persona-badge` (couleur jaune "Créa" / vert autres) + avatar custom `chat-avatar-user-persona`. Mention "fantôme" si `visible_to_target=false`.
+- Sécurité : `persona_override` est ignoré si `user.role != 'creator'`.
+
+### 🟡 P1 — Téléchargement Workspace
+- Nouveau module `/app/backend/routes/workspace_routes.py` :
+  - `GET /api/workspace/list/{project_id}` : liste fichiers Forge + taille.
+  - `GET /api/workspace/download/{project_id}` : ZIP téléchargeable (cap 50 MB + README auto).
+- Ownership check via `db.projects.find_one({project_id, user_id})`.
+- Path traversal bloqué (`_safe_project_dir` refuse `/` et `..`).
+- Frontend Chat.js : bouton `chat-download-workspace-btn` visible uniquement quand `workspaceCount>0`.
+
+### 🟢 P2 — Intégrations Tierces (version gratuite)
+- Nouveau module `/app/backend/routes/integrations_routes.py` :
+  - `POST /api/private/integrations/status` : renvoie état de {Stripe, Google, ChatGPT} (masking auto des secrets).
+  - `POST /api/private/integrations/save` : upsert dans `db.site_integrations`.
+  - `POST /api/private/integrations/test` : validation syntaxique (aucun appel externe payant).
+- Statuts : `connected` / `configured` / `disconnected` + badge "env ✓" si variable env présente.
+- Nouvelle page `/private/integrations` (créa-only) avec 3 cartes + liens vers dashboards externes.
+
+### 🔵 P3 — Registre Des IA (Mes IA)
+- Nouvelle page `/private/agent-registry` (créa + admin + modo) fetchant `/api/agents/registry`.
+- Affiche fiche complète des 13 agents : objectif, utilisateur, expertise, raisonnement, format, outils, limites, module.
+- Rappel visuel : "Règle absolue — interdiction de fusion des personnalités".
+
+### Dashboard
+- Nouvelles tuiles créa-only : `creator-agent-registry-btn` (violet) + `creator-integrations-btn` (émeraude).
+
+### Tests
+- 22 pytest source-level (test_iter131_persona_workspace_integrations.py) — 100% PASS.
+- Suite iter129 + iter130 + iter131 combinée : 52/52 PASS.
+- Testing_agent_v3 : 12/12 backend live + 5/5 frontend E2E — 100% PASS.
+
+### Fichiers nouveaux
+- `/app/backend/routes/workspace_routes.py`
+- `/app/backend/routes/integrations_routes.py`
+- `/app/frontend/src/pages/PrivateAgentRegistry.js`
+- `/app/frontend/src/pages/PrivateIntegrations.js`
+
+### Notes
+- Version gratuite : les clés d'intégration sont stockées non chiffrées (marqué "usage démo uniquement" dans docstring). Pour prod, activer AES-GCM avec clé env dédiée.
+
 ## Original problem statement
 Plateforme zero-code permettant à des non-développeurs de décrire une application
 en langage naturel et d'obtenir le code source (Web/PWA/Desktop). Mode hors-ligne
