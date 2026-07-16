@@ -19,6 +19,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from utils.crypto_box import encrypt_secret, decrypt_secret, is_encrypted
+
 
 SUPPORTED_INTEGRATIONS = {
     "stripe": {
@@ -76,6 +78,13 @@ def _mask(v: str) -> str:
     return f"{v[:3]}{'•' * (len(v) - 6)}{v[-3:]}"
 
 
+def _plain(v: str) -> str:
+    """Retourne le clair depuis un champ potentiellement chiffré."""
+    if not v:
+        return ""
+    return decrypt_secret(v) if is_encrypted(v) else str(v)
+
+
 def build_integrations_router(db, *, require_creator_signature):
     router = APIRouter()
 
@@ -93,10 +102,12 @@ def build_integrations_router(db, *, require_creator_signature):
             values = cfg.get("values") or {}
             fields = []
             for f in spec["fields"]:
-                v = values.get(f["key"], "")
+                raw = values.get(f["key"], "")
+                plain = _plain(raw)
                 fields.append({
-                    **f, "has_value": bool(v),
-                    "masked": _mask(v) if v and f["type"] == "password" else (v[:30] if v else ""),
+                    **f, "has_value": bool(plain),
+                    "masked": _mask(plain) if plain and f["type"] == "password" else (plain[:30] if plain else ""),
+                    "encrypted": is_encrypted(raw) if raw else False,
                 })
             # Statut auto : détection env ou config MongoDB.
             env_present = bool(os.environ.get(spec.get("env_hint") or ""))
@@ -107,6 +118,7 @@ def build_integrations_router(db, *, require_creator_signature):
                 "id": iid, "name": spec["name"], "description": spec["description"],
                 "fields": fields, "enabled": enabled, "status": status,
                 "env_present": env_present, "env_hint": spec.get("env_hint"),
+                "encrypted_at_rest": all(f.get("encrypted") for f in fields if f.get("has_value")),
                 "updated_at": cfg.get("updated_at"),
             })
         return {"integrations": out}
@@ -117,8 +129,20 @@ def build_integrations_router(db, *, require_creator_signature):
         spec = SUPPORTED_INTEGRATIONS.get(payload.integration_id)
         if not spec:
             raise HTTPException(status_code=404, detail="Intégration inconnue.")
-        allowed_keys = {f["key"] for f in spec["fields"]}
-        clean_values = {k: str(v)[:500] for k, v in (payload.values or {}).items() if k in allowed_keys}
+        # Récupère la config existante pour NE PAS effacer les champs non modifiés.
+        existing = await db.site_integrations.find_one({"integration_id": payload.integration_id}, {"_id": 0}) or {}
+        existing_values = existing.get("values") or {}
+        allowed_fields = {f["key"]: f for f in spec["fields"]}
+        clean_values = dict(existing_values)  # start from existing (déjà chiffrés)
+        for k, v in (payload.values or {}).items():
+            if k not in allowed_fields:
+                continue
+            v = str(v)[:500]
+            if not v:
+                # Champ vide côté client = pas modifié (on garde l'existant).
+                continue
+            # Chiffre systématiquement (secrets et non-secrets — coût négligeable).
+            clean_values[k] = encrypt_secret(v)
         doc = {
             "integration_id": payload.integration_id,
             "values": clean_values,
@@ -130,7 +154,7 @@ def build_integrations_router(db, *, require_creator_signature):
             {"$set": doc},
             upsert=True,
         )
-        return {"saved": True, "integration_id": payload.integration_id}
+        return {"saved": True, "integration_id": payload.integration_id, "encrypted": True}
 
     @router.post("/private/integrations/test")
     async def integrations_test(payload: IntegrationTestIn):
@@ -140,7 +164,8 @@ def build_integrations_router(db, *, require_creator_signature):
         if not spec:
             raise HTTPException(status_code=404, detail="Intégration inconnue.")
         cfg = await db.site_integrations.find_one({"integration_id": iid}, {"_id": 0}) or {}
-        values = cfg.get("values") or {}
+        raw_values = cfg.get("values") or {}
+        values = {k: _plain(v) for k, v in raw_values.items()}
 
         # Version gratuite : vérifications syntaxiques + présence d'env.
         if iid == "stripe":

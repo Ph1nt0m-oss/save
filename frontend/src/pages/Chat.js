@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, X, BookOpen, RotateCcw, Lock, Brain, Cpu, Languages } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, Sparkles, Pin, Download, Upload, X, BookOpen, RotateCcw, Lock, Brain, Cpu, Languages } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -235,6 +235,36 @@ export default function Chat() {
       toast.error(e.response?.data?.detail || 'Téléchargement impossible.');
     } finally {
       setWorkspaceBusy(false);
+    }
+  };
+
+  // iter132 — Import workspace : ré-upload d'un ZIP Forge modifié.
+  const workspaceImportInputRef = useRef(null);
+  const importWorkspace = async (file) => {
+    const pid = project?.project_id;
+    if (!pid || !file) return;
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      toast.error('Sélectionne un fichier .zip');
+      return;
+    }
+    setWorkspaceBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await axios.post(`${API}/workspace/import/${pid}`, fd, {
+        withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(`${r.data?.files || 0} fichier(s) importé(s) dans le workspace Forge.`);
+      // Refresh count
+      try {
+        const rl = await axios.get(`${API}/workspace/list/${pid}`, { withCredentials: true });
+        setWorkspaceCount(rl.data?.count || 0);
+      } catch { /* ignore */ }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Import impossible.');
+    } finally {
+      setWorkspaceBusy(false);
+      if (workspaceImportInputRef.current) workspaceImportInputRef.current.value = '';
     }
   };
 
@@ -529,7 +559,7 @@ export default function Chat() {
             </Button>
           )}
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
-            {/* iter131 — Téléchargement des fichiers créés par Forge dans le workspace */}
+            {/* iter131/132 — Téléchargement + Ré-import des fichiers créés par Forge */}
             {project?.project_id && workspaceCount > 0 && (
               <button
                 onClick={downloadWorkspace}
@@ -541,6 +571,28 @@ export default function Chat() {
                 {workspaceBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                 <span className="hidden md:inline">Forge ({workspaceCount})</span>
               </button>
+            )}
+            {project?.project_id && (
+              <>
+                <input
+                  ref={workspaceImportInputRef}
+                  type="file"
+                  accept=".zip,application/zip"
+                  className="hidden"
+                  data-testid="chat-import-workspace-input"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) importWorkspace(f); }}
+                />
+                <button
+                  onClick={() => workspaceImportInputRef.current?.click()}
+                  disabled={workspaceBusy}
+                  data-testid="chat-import-workspace-btn"
+                  title="Ré-importer un ZIP Forge modifié dans ce projet"
+                  className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-sm border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                >
+                  {workspaceBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  <span className="hidden md:inline">Importer</span>
+                </button>
+              </>
             )}
             <ModelPicker mode={mode} value={selectedModel} onChange={setSelectedModel} />
             {mode === 'offline' && !ollamaAvailable && (

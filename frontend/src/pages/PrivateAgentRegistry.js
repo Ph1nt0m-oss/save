@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Bot, Wrench, Ban, Layers, Sparkles, Cpu } from 'lucide-react';
+import { ArrowLeft, Bot, Wrench, Ban, Layers, Sparkles, Cpu, LayoutGrid, Rows3 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
@@ -36,6 +36,11 @@ export default function PrivateAgentRegistry() {
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [density, setDensity] = useState(() => localStorage.getItem('agent_registry_density') || 'full'); // 'full' | 'compact'
+
+  useEffect(() => {
+    try { localStorage.setItem('agent_registry_density', density); } catch { /* ignore */ }
+  }, [density]);
 
   const allowed = device.role === 'creator' || device.staffKind === 'admin' || device.staffKind === 'modo';
 
@@ -89,6 +94,28 @@ export default function PrivateAgentRegistry() {
           <Sparkles className="hidden sm:block w-12 h-12 text-[#E4FF00]/40" />
         </div>
 
+        {/* iter132 — Toggle densité : plein vs compact (comparer les 13 agents d'un coup) */}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-[10px] uppercase tracking-widest text-[#71717A]">Affichage</span>
+          <div className="inline-flex border border-white/15 rounded-sm overflow-hidden">
+            <button
+              data-testid="registry-density-full"
+              onClick={() => setDensity('full')}
+              className={`px-2 py-1 text-xs inline-flex items-center gap-1 ${density === 'full' ? 'bg-[#E4FF00] text-[#050505]' : 'text-[#A1A1AA] hover:bg-white/5'}`}
+            >
+              <Rows3 className="w-3 h-3" /> Complet
+            </button>
+            <button
+              data-testid="registry-density-compact"
+              onClick={() => setDensity('compact')}
+              className={`px-2 py-1 text-xs inline-flex items-center gap-1 ${density === 'compact' ? 'bg-[#E4FF00] text-[#050505]' : 'text-[#A1A1AA] hover:bg-white/5'}`}
+            >
+              <LayoutGrid className="w-3 h-3" /> Compact
+            </button>
+          </div>
+          <span className="text-[10px] text-[#71717A] ml-2">{agents.length || 0} agents</span>
+        </div>
+
         {loading && (
           <div data-testid="registry-loading" className="text-center py-16">
             <div className="inline-block w-8 h-8 border-2 border-[#E4FF00] border-t-transparent rounded-full animate-spin"></div>
@@ -103,45 +130,62 @@ export default function PrivateAgentRegistry() {
         )}
 
         {!loading && !error && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={density === 'compact'
+            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2'
+            : 'grid grid-cols-1 md:grid-cols-2 gap-4'}>
             {agents.map((a) => {
               const color = KIND_COLOR[a.id] || 'text-white border-white/20';
+              const isCompact = density === 'compact';
               return (
                 <div
                   key={a.id}
                   data-testid={`agent-card-${a.id}`}
-                  className={`border rounded-sm bg-[#0F0F13] p-5 hover:bg-[#141419] transition-colors ${color.split(' ')[1]}`}
+                  className={`border rounded-sm bg-[#0F0F13] hover:bg-[#141419] transition-colors ${color.split(' ')[1]} ${isCompact ? 'p-2.5' : 'p-5'}`}
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Bot className={`w-5 h-5 ${color.split(' ')[0]}`} />
-                      <h2 className={`text-lg font-['Chivo'] font-bold ${color.split(' ')[0]}`}>{a.name}</h2>
+                  <div className={`flex items-start justify-between ${isCompact ? 'mb-1.5' : 'mb-3'}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Bot className={`flex-shrink-0 ${isCompact ? 'w-4 h-4' : 'w-5 h-5'} ${color.split(' ')[0]}`} />
+                      <h2 className={`${isCompact ? 'text-sm' : 'text-lg'} font-['Chivo'] font-bold truncate ${color.split(' ')[0]}`}>{a.name}</h2>
                     </div>
-                    <code className="text-[10px] text-[#71717A] font-mono">{a.id}</code>
+                    <code className="text-[9px] text-[#71717A] font-mono flex-shrink-0 ml-1">{a.id}</code>
                   </div>
 
-                  <p className="text-sm text-white/90 mb-3">{a.objectif}</p>
+                  <p className={`${isCompact ? 'text-[11px] leading-snug line-clamp-2' : 'text-sm'} text-white/90 ${isCompact ? 'mb-1' : 'mb-3'}`}>{a.objectif}</p>
 
-                  <div className="space-y-2 text-xs">
-                    <Row label="Utilisateur cible" value={a.utilisateur} />
-                    <Row label="Expertise" value={a.expertise} />
-                    <Row label="Raisonnement" value={a.raisonnement} />
-                    <Row label="Format" value={a.format} muted mono />
-                    {Array.isArray(a.outils) && a.outils.length > 0 && (
-                      <div>
-                        <span className="text-[#71717A] uppercase tracking-widest text-[10px]">Outils</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {a.outils.map((t, i) => (
-                            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-white/10 rounded-sm text-[10px] text-[#D4D4D8]">
-                              <Wrench className="w-2.5 h-2.5" /> {t}
-                            </span>
-                          ))}
+                  {isCompact ? (
+                    <div className="flex flex-wrap items-center gap-1 text-[9px] text-[#A1A1AA]">
+                      {Array.isArray(a.outils) && a.outils.slice(0, 3).map((t, i) => (
+                        <span key={i} className="inline-flex items-center gap-0.5 px-1 py-0.5 border border-white/10 rounded-sm text-[9px] text-[#D4D4D8]">
+                          <Wrench className="w-2 h-2" /> {t}
+                        </span>
+                      ))}
+                      {Array.isArray(a.outils) && a.outils.length > 3 && (
+                        <span className="text-[9px] text-[#71717A]">+{a.outils.length - 3}</span>
+                      )}
+                      <span className="text-[9px] text-[#71717A] ml-auto font-mono truncate max-w-[60%]">{a.module}</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-xs">
+                      <Row label="Utilisateur cible" value={a.utilisateur} />
+                      <Row label="Expertise" value={a.expertise} />
+                      <Row label="Raisonnement" value={a.raisonnement} />
+                      <Row label="Format" value={a.format} muted mono />
+                      {Array.isArray(a.outils) && a.outils.length > 0 && (
+                        <div>
+                          <span className="text-[#71717A] uppercase tracking-widest text-[10px]">Outils</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {a.outils.map((t, i) => (
+                              <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-white/10 rounded-sm text-[10px] text-[#D4D4D8]">
+                                <Wrench className="w-2.5 h-2.5" /> {t}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    <Row label="Limites" value={a.limites} muted />
-                    <Row label="Module" value={a.module} mono muted />
-                  </div>
+                      )}
+                      <Row label="Limites" value={a.limites} muted />
+                      <Row label="Module" value={a.module} mono muted />
+                    </div>
+                  )}
                 </div>
               );
             })}

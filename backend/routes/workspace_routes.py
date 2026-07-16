@@ -14,7 +14,7 @@ import io
 import zipfile
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse, JSONResponse
 
 from agents.tools import WORKSPACE_ROOT
@@ -95,5 +95,77 @@ def build_workspace_router(db, *, get_current_user):
             media_type="application/zip",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+    @router.post("/workspace/import/{project_id}")
+    async def workspace_import(request: Request, project_id: str, file: UploadFile = File(...)):
+        """iter132 — Ré-upload d'un ZIP Forge modifié.
+
+        Le ZIP est extrait dans le workspace du projet (après effacement).
+        Sécurité : ownership requis, path traversal bloqué, cap 50 MB.
+        """
+        await _ensure_owner(request, project_id)
+        base = _safe_project_dir(project_id)
+        if not base:
+            raise HTTPException(status_code=400, detail="Identifiant projet invalide.")
+
+        # Lit le fichier en mémoire (cap 50 MB).
+        MAX = 50 * 1024 * 1024
+        data = await file.read(MAX + 1)
+        if len(data) > MAX:
+            raise HTTPException(status_code=413, detail="ZIP trop volumineux (max 50 MB).")
+        if not data:
+            raise HTTPException(status_code=400, detail="Fichier vide.")
+
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(data))
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="Fichier ZIP invalide.")
+
+        # Vérifie qu'aucun membre n'utilise de path traversal.
+        safe_members = []
+        for m in zf.infolist():
+            if m.is_dir():
+                continue
+            name = m.filename.replace("\\", "/")
+            if name.startswith("/") or ".." in name.split("/"):
+                continue
+            if m.file_size > 10 * 1024 * 1024:  # 10 MB par fichier max
+                continue
+            safe_members.append(m)
+
+        if not safe_members:
+            raise HTTPException(status_code=400, detail="Aucun fichier valide dans le ZIP.")
+
+        # Efface l'ancien workspace puis extrait proprement.
+        os.makedirs(base, exist_ok=True)
+        for root, _dirs, names in os.walk(base):
+            for n in names:
+                try:
+                    os.remove(os.path.join(root, n))
+                except OSError:
+                    pass
+
+        extracted = 0
+        total_bytes = 0
+        for m in safe_members:
+            try:
+                target = os.path.join(base, m.filename.replace("\\", "/"))
+                # Résout et vérifie que target reste sous `base`.
+                target_abs = os.path.realpath(target)
+                base_abs = os.path.realpath(base)
+                if not target_abs.startswith(base_abs + os.sep) and target_abs != base_abs:
+                    continue
+                os.makedirs(os.path.dirname(target_abs), exist_ok=True)
+                if m.filename.endswith("/"):
+                    continue
+                with zf.open(m) as src, open(target_abs, "wb") as dst:
+                    payload = src.read()
+                    dst.write(payload)
+                    total_bytes += len(payload)
+                    extracted += 1
+            except Exception:
+                continue
+
+        return {"imported": True, "files": extracted, "bytes": total_bytes, "project_id": project_id}
 
     return router
