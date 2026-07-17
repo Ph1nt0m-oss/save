@@ -53,20 +53,23 @@ class TestWhoCanVisitFrontend:
         assert (FRONT / "components/WhoCanVisitBadge.jsx").is_file()
 
     def test_six_modes_only(self):
-        src = _rf("components/WhoCanVisitBadge.jsx")
+        # iter136 — Les 6 checkboxes ont été DÉPLACÉES vers WhoCanViewBadge.
+        # Ici on vérifie dans le nouveau composant.
+        src = _rf("components/WhoCanViewBadge.jsx")
         for mid in ("'private'", "'public'", "'guest'", "'modo'", "'admin'", "'creator'"):
             assert f"id: {mid}" in src, f"{mid} missing"
         assert "'none'" not in src
         assert "'all'" not in src
 
     def test_free_forced_toggles(self):
+        # Radios restent dans WhoCanVisitBadge (simplifié).
         src = _rf("components/WhoCanVisitBadge.jsx")
         assert 'data-testid="who-visit-forcing-free"' in src
         assert 'data-testid="who-visit-forcing-forced"' in src
 
     def test_min_one_selection_required(self):
-        src = _rf("components/WhoCanVisitBadge.jsx")
-        # Bouton du dernier mode actif désactivé.
+        # iter136 — Verrou déplacé dans WhoCanViewBadge.
+        src = _rf("components/WhoCanViewBadge.jsx")
         assert "isLastActive = isActive && active.length === 1" in src
 
     def test_mounted_in_creator_toolbar(self):

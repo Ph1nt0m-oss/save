@@ -3,6 +3,7 @@ import axios from 'axios';
 import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw, Undo2, ShieldOff, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import SiteModeBadge from './SiteModeBadge';
+import WhoCanViewBadge from './WhoCanViewBadge';
 import WhoCanVisitBadge from './WhoCanVisitBadge';
 import ViewModePicker from './ViewModePicker';
 import useDeviceIdentity, { setStoredViewMode } from '../hooks/useDeviceIdentity';
@@ -172,17 +173,28 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
       />
       )}
 
-      {/* iter134 — Onglet "Qui peut visiter ?" — entre le type de site et le
-          type de vue. Multi-sélection des 6 clés + toggle Libre/Forcé.
-          Visible uniquement pour la créa physique.
-          iter135 — Reçoit siteModes pour désactiver "Vue forcée" si 'guest'
-          est coché dans le TYPE DE SITE (règle métier utilisateur). */}
+      {/* iter136 — Onglet "Qui peut voir ?" — placé ENTRE le type de site et
+          le mode de choix de vue, sur demande utilisateur. 6 clés multi-select
+          (privé, public, guest, modo, admin, créa dans cet ordre exact).
+          Minimum 1 case cochée. */}
+      {showSiteModeBadge && (
+      <WhoCanViewBadge
+        role={device.role}
+        visitModes={device.visitModes}
+        viewForcing={device.viewForcing}
+        onChange={() => device.refresh()}
+        controlledOpen={openDropdown === 'whoview'}
+        onOpenChange={(v) => setOpenDropdown(v ? 'whoview' : null)}
+      />
+      )}
+
+      {/* iter134/136 — "Mode de choix de vue" SIMPLIFIÉ : uniquement le radio
+          Libre / Forcée. Les vues autorisées sont maintenant dans WhoCanViewBadge. */}
       {showSiteModeBadge && (
       <WhoCanVisitBadge
         role={device.role}
         visitModes={device.visitModes}
         viewForcing={device.viewForcing}
-        siteModes={device.siteModes}
         onChange={() => device.refresh()}
         controlledOpen={openDropdown === 'visit'}
         onOpenChange={(v) => setOpenDropdown(v ? 'visit' : null)}

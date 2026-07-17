@@ -1,6 +1,45 @@
 # CodeForge AI — Product Requirements
 
 
+## iter136 (Feb 2026) — Split "Qui peut voir" ↔ "Mode de choix de vue" + nettoyage guest rules
+**Status : COMPLETED (100% tests PASS)**
+
+### 1. Nouveau composant `WhoCanViewBadge`
+- Nouvel onglet créa placé entre `SiteModeBadge` et `WhoCanVisitBadge` dans `CreatorToolbar`.
+- 6 checkboxes dans l'ordre exact demandé : **privé, public, guest, modo, admin, créa**.
+- Multi-sélection avec minimum 1 case (dernière cochée verrouillée + toast).
+- Écrit exclusivement `visit_modes` sur `PUT /api/system/who-can-visit`.
+- Coloration jaune #E4FF00 sur cases actives quand `view_forcing='forced'` (cohérence design), fuchsia sinon.
+- Test-ids : `who-can-view-toggle`, `who-can-view-dropdown`, `who-view-option-<id>`, `who-view-locked-<id>`.
+
+### 2. `WhoCanVisitBadge` simplifié — uniquement Libre/Forcé
+- Retirés : les 6 checkboxes (déplacés vers WhoCanViewBadge) + la prop `siteModes` + toute la logique `guestInSiteMode` + le bandeau `who-visit-guest-blocks-forced`.
+- Il ne reste que les 2 radios `Libre choix` / `Vue forcée par la créa` + un rappel indiquant que les vues se configurent dans l'onglet voisin.
+- Écrit exclusivement `view_forcing` sur `PUT /api/system/who-can-visit`.
+
+### 3. `SiteModeBadge` — bloc "Vue forcée pour les visiteurs" retiré
+- Toute la section `guest-view-options` (avec les checkboxes user/modo/admin/creator sous "guest") a été supprimée.
+- La fonction `toggleGuestView` supprimée.
+- Le SiteModeBadge se concentre désormais uniquement sur le TYPE DE SITE.
+
+### 4. Backend
+- `PUT /api/system/who-can-visit` : `visit_modes` et `view_forcing` sont désormais **optionnels et indépendants**. Chaque composant écrit uniquement son champ, sans casser l'autre.
+- 400 si aucun champ fourni.
+- **Ancienne règle retirée** : "guest dans siteModes → view_forcing=free forcé". Les deux configs sont désormais totalement découplées (comme demandé par l'utilisateur).
+- `PUT /api/system/site-mode` ne touche plus jamais à `view_forcing`.
+
+### Tests
+- 12 nouveaux pytests iter136 → 100% PASS.
+- Cumul iter129-136 : **135/135 PASS** (tests iter134/135 rénovés pour refléter le refactor sans régression fonctionnelle).
+
+### Fichiers nouveaux
+- `/app/frontend/src/components/WhoCanViewBadge.jsx`
+- `/app/backend/tests/test_iter136_split_who_view_visit.py`
+
+### Ordre final des onglets créa (image 1 → droite)
+`SiteModeBadge` (type de site) → **`WhoCanViewBadge` (qui peut voir)** → `WhoCanVisitBadge` (mode de choix de vue) → `ViewModePicker` (simulation)
+
+
 ## iter135 (Feb 2026) — Verrou dernière case + Coloration jaune forcée + Guest bloque forcée
 **Status : COMPLETED (100% tests PASS)**
 

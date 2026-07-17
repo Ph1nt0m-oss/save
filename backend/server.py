@@ -3277,8 +3277,8 @@ async def get_site_mode_public():
 
 
 class WhoCanVisitIn(BaseModel):
-    visit_modes: List[str]
-    view_forcing: str  # 'free' | 'forced'
+    visit_modes: Optional[List[str]] = None  # iter136 — optionnel : preserve si None
+    view_forcing: Optional[str] = None       # iter136 — optionnel : 'free' | 'forced'
     key_id: str
     nonce: str
     signature: str
@@ -3286,51 +3286,52 @@ class WhoCanVisitIn(BaseModel):
 
 @api_router.put("/system/who-can-visit")
 async def set_who_can_visit(payload: WhoCanVisitIn):
-    """iter134 — Créa uniquement. Configure quelles vues sont autorisées pour
-    les visiteurs et si l'utilisateur peut librement choisir sa vue ou si la
-    créa lui impose (view_forcing='forced' → l'utilisateur ne peut pas
-    sélectionner une vue en dehors de visit_modes)."""
+    """iter134/136 — Créa uniquement. Configure quelles vues sont autorisées
+    (visit_modes) et si l'utilisateur choisit librement ou si la créa force
+    (view_forcing='forced'). iter136 : les 2 champs sont **indépendants et
+    optionnels** — permet à `WhoCanViewBadge` (visit_modes seuls) et
+    `WhoCanVisitBadge` (view_forcing seul) d'écrire sans se marcher dessus.
+    """
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    if payload.view_forcing not in ("free", "forced"):
-        raise HTTPException(status_code=400, detail="view_forcing doit être 'free' ou 'forced'.")
-    modes = [m for m in (payload.visit_modes or []) if m in VALID_SITE_MODES]
-    # Dédoublonnage stable.
-    seen = set()
-    out = []
-    for m in modes:
-        if m not in seen:
-            seen.add(m)
-            out.append(m)
-    if not out:
-        raise HTTPException(status_code=400, detail="Au moins un mode de visite doit être sélectionné.")
-    # iter135 — Règle métier : si "Invité" (guest) est actif dans le type de site
-    # (siteModes), le mode "Vue forcée" est automatiquement désactivé.
-    site_doc = await db.site_config.find_one(
-        {"_id": "site_mode"}, {"_id": 0, "modes": 1, "mode": 1},
-    ) or {}
-    active_site_modes = site_doc.get("modes") or ([site_doc.get("mode")] if site_doc.get("mode") else [])
-    final_forcing = payload.view_forcing
-    if "guest" in active_site_modes and final_forcing == "forced":
-        final_forcing = "free"
-    await db.site_config.update_one(
-        {"_id": "site_mode"},
-        {"$set": {
-            "visit_modes": out,
-            "view_forcing": final_forcing,
-            "who_can_visit_updated_at": datetime.now(timezone.utc).isoformat(),
-        }},
-        upsert=True,
-    )
+    if payload.visit_modes is None and payload.view_forcing is None:
+        raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour.")
+
+    update = {"who_can_visit_updated_at": datetime.now(timezone.utc).isoformat()}
+
+    if payload.visit_modes is not None:
+        modes = [m for m in payload.visit_modes if m in VALID_SITE_MODES]
+        seen = set()
+        out = []
+        for m in modes:
+            if m not in seen:
+                seen.add(m)
+                out.append(m)
+        if not out:
+            raise HTTPException(status_code=400, detail="Au moins un mode de visite doit être sélectionné.")
+        update["visit_modes"] = out
+
+    if payload.view_forcing is not None:
+        if payload.view_forcing not in ("free", "forced"):
+            raise HTTPException(status_code=400, detail="view_forcing doit être 'free' ou 'forced'.")
+        update["view_forcing"] = payload.view_forcing
+
+    await db.site_config.update_one({"_id": "site_mode"}, {"$set": update}, upsert=True)
     _invalidate_site_mode_cache()
     try:
         await _log_change(
             "who_can_visit",
-            f"Qui peut visiter → {', '.join(out)} ({final_forcing})",
-            {"visit_modes": out, "view_forcing": final_forcing},
+            f"Qui peut voir/visiter → {update}",
+            {k: v for k, v in update.items() if k != "who_can_visit_updated_at"},
         )
     except Exception:
         pass
-    return {"ok": True, "visit_modes": out, "view_forcing": final_forcing}
+    # Renvoie l'état complet pour le front.
+    cur = await db.site_config.find_one({"_id": "site_mode"}, {"_id": 0, "visit_modes": 1, "view_forcing": 1}) or {}
+    return {
+        "ok": True,
+        "visit_modes": cur.get("visit_modes") or ["public"],
+        "view_forcing": cur.get("view_forcing") or "free",
+    }
 
 
 class SiteModeSetIn(BaseModel):
@@ -3394,17 +3395,8 @@ async def set_site_mode(payload: SiteModeSetIn):
         }},
         upsert=True,
     )
-    # iter135 — Si "Invité" est coché dans le type de site, on désactive
-    # automatiquement le mode "Vue forcée" côté WhoCanVisit (règle métier).
-    if is_guest_mode:
-        current = await db.site_config.find_one(
-            {"_id": "site_mode"}, {"_id": 0, "view_forcing": 1},
-        ) or {}
-        if current.get("view_forcing") == "forced":
-            await db.site_config.update_one(
-                {"_id": "site_mode"},
-                {"$set": {"view_forcing": "free"}},
-            )
+    # iter136 — Ancienne règle "guest en site type désactive vue forcée" RETIRÉE.
+    # Les deux configs sont désormais totalement indépendantes.
     _invalidate_site_mode_cache()
 
     # iter92 — Auto-log dans le changelog créatrice

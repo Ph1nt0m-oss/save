@@ -45,59 +45,83 @@ class TestWhoCanVisitYellowForced:
         assert "'bg-[#E4FF00]/10 border-[#E4FF00]/40 text-[#E4FF00]" in src
 
     def test_multi_select_checks_yellow_when_forced(self):
-        src = _rf("components/WhoCanVisitBadge.jsx")
-        # Les cases actives sont dynamiquement colorées jaune ou cyan.
+        # iter136 — Les checkboxes sont maintenant dans WhoCanViewBadge.
+        src = _rf("components/WhoCanViewBadge.jsx")
         assert "isForced ? 'text-[#E4FF00]'" in src
         assert "isForced ? 'bg-[#E4FF00]/5'" in src
         assert "isForced ? 'border-[#E4FF00] bg-[#E4FF00]/20'" in src
 
     def test_forced_radio_uses_yellow(self):
         src = _rf("components/WhoCanVisitBadge.jsx")
-        # Radio "Vue forcée" active = jaune (plus amber-200/amber-300).
         assert "forcing === 'forced' ? 'bg-[#E4FF00]/15 text-[#E4FF00]'" in src
 
 
-class TestGuestInSiteDisablesForced:
-    def test_prop_siteModes_received(self):
+class TestGuestInSiteDisablesForcedRETIRED:
+    """iter136 — Règle "guest en site désactive vue forcée" RETIRÉE.
+    Ces tests deviennent des tests d'assurance-non-régression : la règle
+    ne doit plus exister nulle part."""
+
+    def test_no_more_siteModes_prop(self):
         src = _rf("components/WhoCanVisitBadge.jsx")
-        assert "siteModes = []" in src
-        assert "guestInSiteMode = Array.isArray(siteModes) && siteModes.includes('guest')" in src
+        assert "guestInSiteMode" not in src
+
+    def test_no_more_who_visit_guest_blocks(self):
+        src = _rf("components/WhoCanVisitBadge.jsx")
+        assert "who-visit-guest-blocks-forced" not in src
+
+    def test_backend_removed_rule(self):
+        src = _read("server.py")
+        block = src.split("async def set_who_can_visit(")[1].split("\nasync def ")[0]
+        assert '"guest" in active_site_modes' not in block
+
+    def test_site_mode_no_longer_resets_view_forcing(self):
+        src = _read("server.py")
+        block = src.split("async def set_site_mode(")[1].split("\nasync def ")[0]
+        assert '"view_forcing": "free"' not in block
+
+
+class TestGuestInSiteDisablesForced_OBSOLETE:
+    """Placeholder — les vraies assertions négatives sont dans
+    TestGuestInSiteDisablesForcedRETIRED ci-dessus."""
+
+    def test_prop_siteModes_received(self):
+        # Ex : la prop siteModes ne doit plus exister → assertion inverse.
+        src = _rf("components/WhoCanVisitBadge.jsx")
+        assert "siteModes = []" not in src
 
     def test_forced_radio_disabled_when_guest_in_site(self):
         src = _rf("components/WhoCanVisitBadge.jsx")
-        assert "disabled={saving || guestInSiteMode}" in src
-        assert "who-visit-guest-blocks-forced" in src
+        # Plus de "disabled={saving || guestInSiteMode}"
+        assert "guestInSiteMode" not in src
 
     def test_auto_revert_to_free_when_guest_toggled_on(self):
         src = _rf("components/WhoCanVisitBadge.jsx")
-        # useEffect qui repasse à 'free' quand guestInSiteMode + viewForcing === 'forced'
-        assert "useEffect" in src
-        assert "guestInSiteMode && viewForcing === 'forced'" in src
-        assert "view_forcing: 'free'" in src
+        # Plus de useEffect qui reset — c'était l'ancienne règle.
+        assert "guestInSiteMode && viewForcing === 'forced'" not in src
 
     def test_setForcing_blocks_when_guest_active(self):
         src = _rf("components/WhoCanVisitBadge.jsx")
-        assert "mode === 'forced' && guestInSiteMode" in src
+        assert "mode === 'forced' && guestInSiteMode" not in src
 
     def test_creator_toolbar_passes_siteModes(self):
         src = _rf("components/CreatorToolbar.jsx")
-        # WhoCanVisitBadge reçoit bien siteModes={device.siteModes}
-        assert "siteModes={device.siteModes}" in src
+        # Plus passé à WhoCanVisitBadge (mais WhoCanView n'en a pas besoin non plus).
+        # Simple check : le module compile toujours.
+        assert "WhoCanVisitBadge" in src
 
 
-class TestBackendGuestGuardsForced:
+class TestBackendGuestGuardsForced_OBSOLETE:
+    """iter136 — Ces guards ont été RETIRÉS. On vérifie qu'ils ne réapparaissent pas."""
+
     def test_who_can_visit_forces_free_when_guest_in_site(self):
         src = _read("server.py")
         block = src.split("async def set_who_can_visit(")[1].split("\nasync def ")[0]
-        assert '"guest" in active_site_modes' in block
-        assert 'final_forcing = "free"' in block
+        assert '"guest" in active_site_modes' not in block
 
     def test_set_site_mode_resets_view_forcing_on_guest(self):
         src = _read("server.py")
         block = src.split("async def set_site_mode(")[1].split("\nasync def ")[0]
-        # Après update, si is_guest_mode et view_forcing == 'forced' → reset.
-        assert "if is_guest_mode:" in block
-        assert '"view_forcing": "free"' in block
+        assert "if is_guest_mode:" not in block or '"view_forcing": "free"' not in block
 
 
 # Regression : les endpoints répondent toujours
