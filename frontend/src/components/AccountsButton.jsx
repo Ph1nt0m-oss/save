@@ -439,8 +439,10 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
 // Visible only to créa (matches the visibility of ExportApprovalNotifier).
 // Displays a badge with the count of pending DISMISSED requests so the créa
 // knows there's work waiting even after she clicked X.
+// iter134 — Exporté nommé pour pouvoir être monté directement dans le header
+// du Dashboard (entre l'ampoule et le bouton bot), sur demande utilisateur.
 // =============================================================================
-function ExportRequestsHistoryButton({ onClose, t }) {
+export function ExportRequestsHistoryButton({ onClose, t }) {
   const [count, setCount] = React.useState(0);
 
   React.useEffect(() => {

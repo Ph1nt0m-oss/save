@@ -196,7 +196,20 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
         </div>
         <button
           type="button"
-          onClick={() => { onOpenAccount?.({ key_id: req.key_id, project_id: req.project_id }); }}
+          onClick={() => {
+            // iter134 — Ouvrir le compte cible = même bascule que
+            // AccountsButton.onVisitAccount → simulation dashboard (photo 2),
+            // JAMAIS le modal "Infos brutes". La créa peut refermer via la
+            // barre de simulation et revenir à ses tâches.
+            onOpenAccount?.({
+              key_id: req.key_id,
+              project_id: req.project_id,
+              pseudo: req.pseudo,
+              device_label: req.device_label,
+              role: req.target_role,
+              staff_kind: req.target_staff_kind,
+            });
+          }}
           data-testid="exp-review-open"
           className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 border border-[#E4FF00]/40 text-[#E4FF00] hover:bg-[#E4FF00]/10 rounded-sm font-['Chivo'] font-bold text-xs transition"
         >

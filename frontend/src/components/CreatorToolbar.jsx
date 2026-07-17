@@ -3,6 +3,7 @@ import axios from 'axios';
 import { History, Eye, EyeOff, X, Download, Trash2, RefreshCw, Undo2, ShieldOff, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import SiteModeBadge from './SiteModeBadge';
+import WhoCanVisitBadge from './WhoCanVisitBadge';
 import ViewModePicker from './ViewModePicker';
 import useDeviceIdentity, { setStoredViewMode } from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
@@ -171,6 +172,20 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
       />
       )}
 
+      {/* iter134 — Onglet "Qui peut visiter ?" — entre le type de site et le
+          type de vue. Multi-sélection des 6 clés + toggle Libre/Forcé.
+          Visible uniquement pour la créa physique. */}
+      {showSiteModeBadge && (
+      <WhoCanVisitBadge
+        role={device.role}
+        visitModes={device.visitModes}
+        viewForcing={device.viewForcing}
+        onChange={() => device.refresh()}
+        controlledOpen={openDropdown === 'visit'}
+        onOpenChange={(v) => setOpenDropdown(v ? 'visit' : null)}
+      />
+      )}
+
       {/* iter85 — Pour la créatrice : picker pour simuler n'importe quelle vue
           (user / modo / admin / guest). Pour les non-créa : le toggle
           original visible/locked selon guest_view. */}
@@ -182,6 +197,8 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
         guestViews={device.guestViews}
         canSimulateViews={device.canSimulateViews}
         viewSimulationConstraint={device.viewSimulationConstraint}
+        visitModes={device.visitModes}
+        viewForcing={device.viewForcing}
         controlledOpen={openDropdown === 'view'}
         onOpenChange={(v) => setOpenDropdown(v ? 'view' : null)}
       />

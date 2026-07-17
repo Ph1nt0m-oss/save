@@ -27,7 +27,7 @@ import MessageButton from '../components/MessageButton';
 import TheftButton from '../components/TheftButton';
 import IdeasButton from '../components/IdeasButton';
 import AnnounceButton from '../components/AnnounceButton';
-import AccountsButton from '../components/AccountsButton';
+import AccountsButton, { ExportRequestsHistoryButton } from '../components/AccountsButton';
 import { setStoredViewMode } from '../hooks/useDeviceIdentity';
 import AccountVisitView from '../components/AccountVisitView';
 import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
@@ -672,7 +672,23 @@ export default function Dashboard() {
       <BotsAdminPanel open={showBotsAdmin} onClose={() => setShowBotsAdmin(false)} />
       <div className="flex-1 flex overflow-hidden">
       <SiteLockedOverlay siteMode={device.siteMode} role={device.role} kickReason={device.kickReason} onRetry={() => device.refresh()} />
-      <ExportApprovalNotifier onOpenAccount={(o) => setVisiting({ key_id: o.key_id })} />
+      <ExportApprovalNotifier onOpenAccount={(o) => {
+        // iter134 — Visite depuis demande d'export = SIMULATION identique au
+        // clic sur AccountsButton.onVisitAccount. Plus jamais de modal
+        // "Infos brutes". On déduit le rôle effectif depuis les infos passées.
+        const effRole = o?.staff_kind === 'admin' ? 'admin'
+                      : o?.staff_kind === 'modo' ? 'modo'
+                      : o?.role === 'creator' ? 'creator'
+                      : o?.role === 'inactive' || o?.role === 'pending' ? 'guest'
+                      : o?.role === 'approved' ? 'user'
+                      : 'user';
+        if (effRole === 'creator') return;
+        const targetPseudo = o?.pseudo || o?.device_label || (o?.key_id || '').slice(0, 14);
+        setStoredViewMode(effRole, {
+          visitTargetPseudo: targetPseudo,
+          visitTargetKeyId: o?.key_id || null,
+        });
+      }} />
       {visiting && <AccountVisitView target={visiting} onClose={() => setVisiting(null)} />}
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* iter67: on mobile, the sidebar becomes a fixed overlay drawer with
@@ -1042,6 +1058,10 @@ export default function Dashboard() {
                     simulation de vue. Aucune prop nécessaire ici. */}
                 <CreatorToolbar />
                 {viewSpec.viewSpec?.see_idea_box !== false && viewSpec.canSeeIdeasLightbulb && <IdeasButton />}
+                {/* iter134 — Demandes d'export : bouton dédié dans le header
+                    (avant : uniquement dans AccountsButton). Le composant se
+                    masque automatiquement si count=0. */}
+                <ExportRequestsHistoryButton t={t} />
                 {/* iter105 — CalyChatbot retiré d'ici : il est désormais un widget flottant bottom-right global, monté dans App.js. */}
                 {/* iter101 — Bouton Bots Community : visible selon viewSpec */}
                 {viewSpec.canSeeRobotBots && viewSpec.canSeeBotsAdmin && (

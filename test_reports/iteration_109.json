@@ -1,0 +1,71 @@
+{
+  "summary": "iter134 fully validated: 20/20 source-level pytest PASS + 9/9 live backend pytest PASS. Backend: PUT /api/system/who-can-visit exists in server.py (L3287), is creator-signed (require_creator_signature), validates view_forcing ∈ {'free','forced'} + rejects empty visit_modes with 400, and returns 401/403 for fake signatures on the live URL. GET /api/system/site-mode returns 200 with new keys visit_modes=['public'] (default) + view_forcing='free' (default) alongside legacy mode/modes. Regression: /api/private/integrations/status, /api/staff-decisions/list, /api/exports/pending, /api/workspace/list/{id} all still routed (no 404s from ingress). Frontend source-level: WhoCanVisitBadge.jsx exists with all 6 mode ids (private/public/guest/modo/admin/creator), the free/forced toggles have the correct data-testids (who-visit-forcing-free/-forced), min-1-selection constraint enforced (isLastActive check), mounted in CreatorToolbar between SiteMode and ViewMode. ExportRequestsHistoryButton is a named export from AccountsButton.jsx L443, imported+mounted in Dashboard.js header, auto-hides when count<=0. Dashboard.js onOpenAccount no longer uses setVisiting({key_id}) — instead uses setStoredViewMode + visitTargetKeyId (simulation flow). ExportApprovalNotifier passes target_role + target_staff_kind. Backend exports_routes.py adds r['target_role']=dev.get('role') + r['target_staff_kind']=dev.get('staff_kind'). Frontend UI E2E was intentionally limited to a load smoke-test — site is currently in 'creator' mode so test_dash non-créa hits the 'Site temporarily private' overlay (expected per review; no bypass attempted).",
+  "test_results": {
+    "backend_source_level": {
+      "PUT_/system/who-can-visit_declared": "PASS",
+      "PUT_requires_creator_signature": "PASS",
+      "PUT_validates_view_forcing_and_non_empty_visit_modes": "PASS",
+      "GET_/system/site-mode_returns_visit_modes+view_forcing": "PASS",
+      "/devices/verify_returns_new_fields": "PASS",
+      "server.py VALID_SITE_MODES_no_none_no_all": "PASS",
+      "_normalize_modes_stable": "PASS",
+      "exports_routes_adds_target_role+target_staff_kind": "PASS"
+    },
+    "backend_live": {
+      "GET /api/system/site-mode returns 200 + visit_modes + view_forcing": "PASS (['public'], 'free')",
+      "GET /api/system/site-mode regression mode+modes present, no none/all": "PASS",
+      "PUT /api/system/who-can-visit without body → 422 (Pydantic)": "PASS",
+      "PUT /api/system/who-can-visit with fake sig in body → 403": "PASS",
+      "GET /api/workspace/list/{id} routed (not 404)": "PASS",
+      "GET /api/private/integrations/status routed": "PASS",
+      "GET /api/staff-decisions/list routed": "PASS",
+      "POST /api/exports/pending routed": "PASS",
+      "GET /login reachable (200)": "PASS"
+    },
+    "frontend_source_level": {
+      "WhoCanVisitBadge.jsx exists": "PASS",
+      "6 mode ids only (private/public/guest/modo/admin/creator)": "PASS",
+      "free/forced data-testids present": "PASS",
+      "min-1-selection enforced (isLastActive)": "PASS",
+      "Mounted in CreatorToolbar with import": "PASS",
+      "useDeviceIdentity exposes visitModes + viewForcing": "PASS",
+      "ViewModePicker respects visitModes+viewForcing+allowedFromWhoCanVisit": "PASS",
+      "ExportRequestsHistoryButton named export from AccountsButton": "PASS",
+      "Dashboard.js imports named + mounts <ExportRequestsHistoryButton t={t} />": "PASS",
+      "AccountsButton auto-hides via 'if (count <= 0) return null;'": "PASS",
+      "Dashboard.js no longer uses setVisiting({key_id}) for export flow": "PASS",
+      "Dashboard.js export flow uses setStoredViewMode + visitTargetKeyId": "PASS",
+      "ExportApprovalNotifier passes target_role + target_staff_kind": "PASS"
+    },
+    "frontend_e2e_ui": "SMOKE ONLY — /login loads (root+body OK, no console error), 'Site temporarily private' overlay displayed because site is in creator mode and test_dash device is not approved (documented as expected in review). Full E2E of WhoCanVisitBadge/ExportRequestsHistoryButton not possible without créa access — restricted to source-level per review instructions."
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter134_who_can_visit.py",
+    "/app/backend/tests/test_iter134_live.py",
+    "/app/test_reports/pytest/pytest_results_iter134.xml",
+    "/app/test_reports/pytest/pytest_results_iter134_live.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L3279 WhoCanVisitIn — accepts view_forcing as free-form str then re-validates in the handler (raises 400). Consider Literal['free','forced'] for automatic 422 at the schema layer (currently missing/invalid view_forcing → 422 from Pydantic OR 400 from handler depending on presence, mildly inconsistent).",
+    "server.py L3296 — silently filters unknown modes from payload.visit_modes without warning. If the créa sends {'visit_modes': ['bogus','public']} they will get {'visit_modes':['public']} back with no indication that 'bogus' was dropped. Minor UX; consider 400 on unknown mode instead of silent drop.",
+    "server.py — no rate-limit or audit-trail check that prevents a créa from locking themselves out (e.g., view_forcing='forced' + visit_modes=['private'] on a non-private device). Not blocking (créa always has bypass) but worth documenting.",
+    "WhoCanVisitBadge.jsx — minimum-1-selection is enforced by disabling the last-active toggle. Good. Consider adding a visible tooltip/hint explaining why it's disabled (currently only the disabled state, no aria-label).",
+    "Dashboard.js — export→visit flow now correctly uses setStoredViewMode + visitTargetKeyId. LGTM. Just make sure the storage helpers persist across a full page reload if the créa refreshes mid-visit (readVisitTargetKeyId is already wired in useDeviceIdentity per iter133)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter134_live.py (NEW — 9 live tests for site-mode fields, creator gating, regression endpoints, login page reachability)"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20 source-level + 9/9 live = 29/29)",
+    "frontend": "100% source-level (13/13); E2E UI smoke-only intentionally per review instructions"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (unused for UI E2E — site in creator mode blocks non-approved devices via 'Site temporarily private' overlay; this is expected)",
+  "seed_data_creation": "None — all live PUT tests used invalid signatures rejected before any DB write.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter134 fully green (29/29 pytest PASS). New endpoint PUT /api/system/who-can-visit is créa-signed and working. GET /api/system/site-mode now always returns visit_modes + view_forcing (defaults ['public'] + 'free'). Frontend UI WhoCanVisitBadge + ExportRequestsHistoryButton are mounted in Dashboard/CreatorToolbar with all required data-testids. Export→visit flow correctly uses simulation (setStoredViewMode) instead of the old AccountVisitView. Site remains in 'creator' mode → full E2E UI on the public URL is blocked by the private-overlay for non-approved devices. To perform full E2E next iteration, either (a) switch site-mode to 'public' via créa signature, or (b) pre-approve test_dash's device via db insertion. Backend URL: https://no-code-builder-25.preview.emergentagent.com.",
+  "rca_of_the_issue": "No app bug encountered. Two initial live-test failures were in the test script itself: (1) I initially sent creator signature via HTTP headers, but the endpoint reads them from the JSON body (Pydantic model requires key_id/nonce/signature in body) → fixed by putting fake sig in body → correct 403; (2) /api/workspace/list is /workspace/list/{project_id} (path param required), not a top-level GET → fixed by using nonexistent id."
+}

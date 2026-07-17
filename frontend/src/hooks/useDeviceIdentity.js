@@ -112,6 +112,8 @@ export default function useDeviceIdentity() {
         staffKind: result.staff_kind || null,  // iter77
         canSimulateViews: result.can_simulate_views !== false,                // iter128.8
         viewSimulationConstraint: result.view_simulation_constraint || null,   // iter128.8
+        visitModes: Array.isArray(result.visit_modes) && result.visit_modes.length ? result.visit_modes : ['public'], // iter134
+        viewForcing: (result.view_forcing === 'forced' ? 'forced' : 'free'),   // iter134
         pendingCount,
         viewMode: readViewMode(),
         error: null,

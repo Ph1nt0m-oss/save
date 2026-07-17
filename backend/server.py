@@ -3242,9 +3242,14 @@ async def get_site_mode_public():
     the optional view-forcing setting set by the creator.
 
     iter83 C11 — Renvoie maintenant aussi `modes` (liste). `mode` reste pour
-    compat ascendante = première entrée de la liste."""
+    compat ascendante = première entrée de la liste.
+    iter134 — Renvoie aussi `visit_modes` (liste de 6 clés) et `view_forcing`
+    ('free' | 'forced') pour l'onglet créa "Qui peut visiter".
+    """
     doc = await db.site_config.find_one(
-        {"_id": "site_mode"}, {"_id": 0, "mode": 1, "guest_view": 1, "guest_views": 1, "modes": 1},
+        {"_id": "site_mode"},
+        {"_id": 0, "mode": 1, "guest_view": 1, "guest_views": 1, "modes": 1,
+         "visit_modes": 1, "view_forcing": 1},
     )
     raw = doc or {}
     modes = _normalize_modes(raw.get("modes") if isinstance(raw.get("modes"), list) and raw.get("modes") else raw.get("mode"))
@@ -3252,12 +3257,71 @@ async def get_site_mode_public():
     gv_list = raw.get("guest_views")
     if not isinstance(gv_list, list) or not gv_list:
         gv_list = [raw.get("guest_view")] if raw.get("guest_view") else []
+    # iter134 — visit_modes & view_forcing (avec défauts sûrs).
+    visit_modes = raw.get("visit_modes")
+    if not isinstance(visit_modes, list) or not visit_modes:
+        visit_modes = ["public"]  # défaut : tout le monde peut visiter
+    else:
+        visit_modes = [m for m in visit_modes if m in VALID_SITE_MODES] or ["public"]
+    view_forcing = raw.get("view_forcing")
+    if view_forcing not in ("free", "forced"):
+        view_forcing = "free"
     return {
         "mode": modes[0],
         "modes": modes,
         "guest_view": gv_list[0] if gv_list else None,  # legacy
         "guest_views": gv_list,
+        "visit_modes": visit_modes,
+        "view_forcing": view_forcing,
     }
+
+
+class WhoCanVisitIn(BaseModel):
+    visit_modes: List[str]
+    view_forcing: str  # 'free' | 'forced'
+    key_id: str
+    nonce: str
+    signature: str
+
+
+@api_router.put("/system/who-can-visit")
+async def set_who_can_visit(payload: WhoCanVisitIn):
+    """iter134 — Créa uniquement. Configure quelles vues sont autorisées pour
+    les visiteurs et si l'utilisateur peut librement choisir sa vue ou si la
+    créa lui impose (view_forcing='forced' → l'utilisateur ne peut pas
+    sélectionner une vue en dehors de visit_modes)."""
+    await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+    if payload.view_forcing not in ("free", "forced"):
+        raise HTTPException(status_code=400, detail="view_forcing doit être 'free' ou 'forced'.")
+    modes = [m for m in (payload.visit_modes or []) if m in VALID_SITE_MODES]
+    # Dédoublonnage stable.
+    seen = set()
+    out = []
+    for m in modes:
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    if not out:
+        raise HTTPException(status_code=400, detail="Au moins un mode de visite doit être sélectionné.")
+    await db.site_config.update_one(
+        {"_id": "site_mode"},
+        {"$set": {
+            "visit_modes": out,
+            "view_forcing": payload.view_forcing,
+            "who_can_visit_updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    _invalidate_site_mode_cache()
+    try:
+        await _log_change(
+            "who_can_visit",
+            f"Qui peut visiter → {', '.join(out)} ({payload.view_forcing})",
+            {"visit_modes": out, "view_forcing": payload.view_forcing},
+        )
+    except Exception:
+        pass
+    return {"ok": True, "visit_modes": out, "view_forcing": payload.view_forcing}
 
 
 class SiteModeSetIn(BaseModel):

@@ -25,7 +25,7 @@ const VIEW_META = {
 // Si AUCUNE n'est cochée → mode "écriture" (pas en simulation).
 const ORDER = ['creator', 'user', 'modo', 'admin', 'guest'];
 
-export default function ViewModePicker({ role, viewMode, guestView, guestViews, canSimulateViews = true, viewSimulationConstraint = null, controlledOpen = undefined, onOpenChange }) {
+export default function ViewModePicker({ role, viewMode, guestView, guestViews, canSimulateViews = true, viewSimulationConstraint = null, visitModes = null, viewForcing = 'free', controlledOpen = undefined, onOpenChange }) {
   const { t } = useLanguage();
   const [internalOpen, setInternalOpen] = useState(false);
   // iter113 — Coordination dropdown : si controlledOpen est fourni par le
@@ -43,9 +43,21 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
   // - Visiteurs non-créa : peuvent choisir UNIQUEMENT parmi les vues forcées
   //   par la créa via guest_views. Si aucune vue forcée → free (libre choix).
   const isCreator = role === 'creator';
-  const forced = Array.isArray(guestViews) && guestViews.length > 0
+  const forcedFromGuest = Array.isArray(guestViews) && guestViews.length > 0
     ? guestViews
     : (guestView ? [guestView] : []);
+
+  // iter134 — "Qui peut visiter" en mode 'forced' : les utilisateurs non-créa
+  // sont restreints aux visit_modes cochés par la créa. Fusion avec guestViews
+  // (guestViews prime si en mode 'guest' actif).
+  const allowedFromWhoCanVisit = viewForcing === 'forced' && Array.isArray(visitModes) && visitModes.length
+    ? visitModes.filter((m) => ['user', 'modo', 'admin', 'guest', 'creator'].includes(
+        m === 'private' ? 'user' : m === 'public' ? null : m,
+      )).map((m) => (m === 'private' ? 'user' : m))
+    : [];
+  const forced = !isCreator
+    ? (forcedFromGuest.length ? forcedFromGuest : allowedFromWhoCanVisit)
+    : forcedFromGuest;
   // iter107 — Quand des vues sont forcées, le picker est contraint à ce sous-ensemble
   // pour tout le monde (créa incluse, pour cohérence). La créa garde l'option 'creator'
   // pour revenir au mode écriture.

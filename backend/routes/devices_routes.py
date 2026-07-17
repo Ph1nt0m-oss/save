@@ -219,11 +219,19 @@ def build_devices_router(
 
         site_modes_list = normalize_modes(site_mode)
         sm_doc = await db.site_config.find_one(
-            {"_id": "site_mode"}, {"_id": 0, "guest_view": 1, "guest_views": 1}
+            {"_id": "site_mode"},
+            {"_id": 0, "guest_view": 1, "guest_views": 1, "visit_modes": 1, "view_forcing": 1},
         ) or {}
         gv_list = sm_doc.get("guest_views")
         if not isinstance(gv_list, list) or not gv_list:
             gv_list = [sm_doc.get("guest_view")] if sm_doc.get("guest_view") else []
+        # iter134 — "Qui peut visiter" : visit_modes + view_forcing
+        visit_modes = sm_doc.get("visit_modes")
+        if not isinstance(visit_modes, list) or not visit_modes:
+            visit_modes = ["public"]
+        view_forcing = sm_doc.get("view_forcing")
+        if view_forcing not in ("free", "forced"):
+            view_forcing = "free"
 
         # iter128.8 — Règles dynamiques de simulation de vue selon
         # combinaison site_modes × rôle device :
@@ -274,6 +282,9 @@ def build_devices_router(
             # iter128.8 — Nouveau gating dynamique
             "can_simulate_views": can_simulate_views,
             "view_simulation_constraint": view_simulation_constraint,
+            # iter134 — Onglet créa "Qui peut visiter"
+            "visit_modes": visit_modes,
+            "view_forcing": view_forcing,
         }
 
     @router.post("/devices/list")

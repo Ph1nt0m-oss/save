@@ -127,7 +127,7 @@ def build_exports_router(db, *, verify_signed, require_creator_signature, get_cu
         if key_ids:
             async for d in db.device_keys.find(
                 {"key_id": {"$in": key_ids}},
-                {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1, "device_capture": 1},
+                {"_id": 0, "key_id": 1, "pseudo": 1, "label": 1, "device_capture": 1, "role": 1, "staff_kind": 1},
             ):
                 dev_map[d["key_id"]] = d
         proj_map = {}
@@ -152,6 +152,10 @@ def build_exports_router(db, *, verify_signed, require_creator_signature, get_cu
             )
             proj = proj_map.get(r.get("project_id")) or {}
             r["project_name"] = proj.get("name") or r.get("project_id", "")
+            # iter134 — Rôle du device cible pour permettre à la créa de
+            # basculer en simulation identique à AccountsButton.onVisitAccount.
+            r["target_role"] = dev.get("role")
+            r["target_staff_kind"] = dev.get("staff_kind")
         return {"requests": rows}
 
     @router.get("/exports/zip-project/{project_id}")
