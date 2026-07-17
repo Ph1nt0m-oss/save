@@ -107,7 +107,6 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
         className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm bg-[#E4FF00]/10 border border-[#E4FF00]/40 text-[#E4FF00] hover:bg-[#E4FF00]/20 transition-colors"
         data-testid="site-mode-toggle"
       >
-        <Crown className="w-3.5 h-3.5" />
         {DisplayIcon && <DisplayIcon className="w-3.5 h-3.5" />}
         <span>{displayLabel}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />

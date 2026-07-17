@@ -1,0 +1,56 @@
+{
+  "summary": "iter138 hotfix validated: SiteModeBadge no longer references Crown/Lock/Globe/EyeOff/ShieldAlert/ShieldCheck/User in its body (confirmed via source scan + ESLint). Only imports Check, ChevronDown, ShieldQuestion from lucide-react. Backend GET /api/system/site-mode returns 200 with all 7 required fields (mode, modes, guest_view, guest_views, visit_modes, view_forcing, forced_views). All 3 protected endpoints route correctly (/staff-decisions/list, /workspace/list, /private/integrations/status). Frontend /login page loads with 0 uncaught JS errors and 0 'Crown is not defined' errors. Full dashboard E2E blocked because the credentials in /app/memory/test_credentials.md (test_dash_1777658375@gmail.com / Pass1234) return 401 'Mot de passe incorrect' — credential drift, not related to iter138. ESLint clean on all 4 refactor files + siteModeKeys.js. IMPORTANT: while auditing, found a latent bug in ViewModePicker.jsx line 84 identical in pattern to the Crown one — see critical_code_review_comments.",
+  "test_results": {
+    "backend_pytest": "4/4 PASS (site-mode 200 with all fields, staff-decisions 401/403/405, workspace/list routed, private/integrations/status routes with 401/403 on POST)",
+    "frontend_source_level": {
+      "SiteModeBadge.jsx imports only {Check, ChevronDown, ShieldQuestion}": "PASS",
+      "No Crown/Lock/Globe/EyeOff/ShieldAlert/ShieldCheck/User referenced in SiteModeBadge.jsx body": "PASS (grep confirmed)",
+      "siteModeKeys.js exports 7 SITE_MODE_KEYS with icons imported internally": "PASS",
+      "ESLint on 4 refactor files + siteModeKeys.js": "PASS (0 issues)"
+    },
+    "frontend_runtime": {
+      "/login page loads": "PASS",
+      "No 'Crown is not defined' console entries": "PASS (0)",
+      "No uncaught pageerrors": "PASS (0)",
+      "Only console errors observed": "2× 401 from /api/auth/me (expected — non-authed user polling)",
+      "Dashboard E2E after login": "SKIPPED — credentials rejected (401 Mot de passe incorrect)"
+    }
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter138_hotfix.py",
+    "/app/test_reports/pytest/iter138_hotfix.xml"
+  ],
+  "action_items": [
+    "HIGH PRIORITY (latent duplicate of iter138 bug): /app/frontend/src/components/ViewModePicker.jsx line 84 → `const CIcon = current ? current.Icon : Eye;` references `Eye` which is NOT imported (only `EyeOff` is imported at line 2). Currently unreachable because `current` is always truthy (fallback VIEW_META.creator), BUT if a user's stored viewMode key drifts to an unknown value (e.g. old localStorage from prior iteration), VIEW_META[viewMode] would return undefined, `isActive` stays true, and the same 'Eye is not defined' runtime crash would fire — exactly the class of bug the iter138 hotfix just addressed. Fix suggestion: either (a) import `Eye` from lucide-react, or (b) replace `Eye` with a safe fallback like `current?.Icon || VIEW_META.creator.Icon`, or (c) guard the render by defaulting viewMode to null when VIEW_META[viewMode] is undefined.",
+    "Resync test_dash_1777658375@gmail.com password to Pass1234 (login API currently returns 401 'Mot de passe incorrect'; blocks any live dashboard E2E). Since test user is not a créa anyway, this doesn't affect iter138 verification, but next agents will hit the same wall."
+  ],
+  "critical_code_review_comments": [
+    "ViewModePicker.jsx L84: identical pattern to iter138 Crown bug — `Eye` referenced but not imported. Dead code today, but a corrupted localStorage viewMode key would resurrect it as a runtime crash. Recommend adding an import or a defensive fallback (see action_items).",
+    "SiteModeBadge.jsx: iter138 fix is clean and minimal. Only 3 icons imported now (Check, ChevronDown, ShieldQuestion); everything else comes through SITE_MODE_KEYS.icon. No regression detected.",
+    "siteModeKeys.js: single source of truth is well-structured (id/icon/label/hint). All 7 keys in the required order. Good.",
+    "WhoCanViewBadge.jsx & WhoCanVisitBadge.jsx: both correctly consume SITE_MODE_KEYS and expose their data-testids. No leftover icon imports.",
+    "Suggest adding a lightweight unit test that mounts <SiteModeBadge role='creator' /> in Jest/RTL to catch this class of bug (undefined icon reference) at CI-time rather than at browser-mount-time — since ESLint's no-undef didn't flag Eye/Crown when reachable-only-under-runtime-conditions."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter138_hotfix.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4)",
+    "frontend": "Source-level 100%; runtime smoke-test PASS (0 crown errors, 0 pageerrors); full dashboard E2E blocked by credential drift (unrelated to iter138)"
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 → currently 401 'Mot de passe incorrect' on live API. Needs resync.",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter138 hotfix (Crown removed from SiteModeBadge.jsx) is fully validated source-level + confirmed by /login smoke test showing 0 uncaught JS errors. Backend site-mode endpoint returns all 7 required fields. For full dashboard E2E, first resync the test_dash password (backend returns 401), then note that SiteModeBadge only renders for creator-role devices anyway — so a non-créa test account will always see no SiteModeBadge in the toolbar (this is by design, not a bug). To E2E-test SiteModeBadge itself in the browser, pre-approve the test device as créa (physical creator via ECDSA signature) OR use the seeded creator key. ALSO IMPORTANT: I found a latent copy of the same bug in ViewModePicker.jsx L84 (`Eye` referenced, not imported) — see action_items[0]. Main agent should fix that in a follow-up.",
+  "rca_of_the_issue": "iter138 Crown bug RCA: during the refactor toward SITE_MODE_KEYS as single source of truth, the Crown named import was removed from SiteModeBadge.jsx (correct), but one JSX residual `<Crown>` remained in the main button render. This slipped past ESLint because ESLint no-undef requires the identifier be reachable — and the branch WAS reachable in the render path. When any créa opened /dashboard, the render tried to instantiate <Crown> → ReferenceError. Main agent's fix (remove the residual `<Crown>` line, keep only `{DisplayIcon && <DisplayIcon…/>}`) is correct and minimal. The DisplayIcon path pulls its icon dynamically from SITE_MODE_KEYS which imports Crown internally at siteModeKeys.js line 10 — so Crown is still used, just at the right layer. VERIFIED SAFE."
+}
