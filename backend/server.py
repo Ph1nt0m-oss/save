@@ -3044,7 +3044,7 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
 from device_auth import compute_key_id, new_nonce, verify_signature  # noqa: E402
 
 
-VALID_SITE_MODES = {"public", "private", "creator", "guest", "staff", "admin", "modo"}
+VALID_SITE_MODES = {"public", "private", "creator", "guest", "staff", "admin", "modo", "user"}
 VALID_DEVICE_ROLES = {"creator", "approved", "pending", "revoked"}
 
 
@@ -3128,6 +3128,11 @@ def _device_matches_mode(dev: Dict[str, Any], modes: List[str]) -> bool:
                 return True
         elif m == "modo":
             if is_creator or is_modo:
+                return True
+        elif m == "user":
+            # iter138 — 'user' = appareils non-approuvés MAIS possédant un
+            # compte validé (role='pending'). N'inclut PAS le staff pur.
+            if is_creator or role == "pending" or is_approved_clean or is_admin or is_modo:
                 return True
     return False
 
@@ -3266,9 +3271,9 @@ async def get_site_mode_public():
     view_forcing = raw.get("view_forcing")
     if view_forcing not in ("free", "forced"):
         view_forcing = "free"
-    # iter137 — forced_views : liste des vues restreintes en mode 'forced'.
+    # iter137/138 — forced_views : liste des vues restreintes en mode 'forced'.
     fv_raw = raw.get("forced_views")
-    valid_v = {"user", "modo", "admin", "creator", "guest"}
+    valid_v = {"user", "modo", "admin", "creator", "guest", "private", "public"}
     forced_views = [v for v in fv_raw if v in valid_v] if isinstance(fv_raw, list) else []
     return {
         "mode": modes[0],
@@ -3323,7 +3328,11 @@ async def set_who_can_visit(payload: WhoCanVisitIn):
         update["view_forcing"] = payload.view_forcing
 
     if payload.forced_views is not None:
-        valid_views = {"user", "modo", "admin", "creator", "guest"}
+        # iter138 — Vocabulaire élargi aux 7 clés (privé/public/invité/user/
+        # modo/admin/créa) pour cohérence avec les 4 onglets créa. Le
+        # ViewModePicker mappe les clés non-vues vers leur équivalent view :
+        #   private → user, public → guest (côté frontend).
+        valid_views = {"user", "modo", "admin", "creator", "guest", "private", "public"}
         fv = [v for v in payload.forced_views if v in valid_views]
         # Dédoublonnage stable en préservant l'ordre.
         seen_v = set()

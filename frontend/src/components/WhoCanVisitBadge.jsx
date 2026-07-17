@@ -13,21 +13,17 @@
  */
 import React, { useState } from 'react';
 import axios from 'axios';
-import { ChevronDown, UserCog, Radio, Check, Crown, User, Shield, ShieldCheck, EyeOff, ShieldQuestion } from 'lucide-react';
+import { ChevronDown, UserCog, Radio, Check, ShieldQuestion } from 'lucide-react';
+import { SITE_MODE_KEYS } from '../lib/siteModeKeys';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { toast } from 'sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// Les 5 vues réelles de l'application. Ordre : créa d'abord (privilège
-// maximum), puis user/modo/admin, puis guest (lecture seule).
-const VIEW_KEYS = [
-  { id: 'creator', icon: Crown,       label: 'Vue créatrice', hint: 'Vue de la créatrice (accès total)' },
-  { id: 'user',    icon: User,        label: 'Vue utilisateur', hint: 'Vue standard (membre approved)' },
-  { id: 'modo',    icon: Shield,      label: 'Vue modérateur',  hint: 'Vue avec outils de modération' },
-  { id: 'admin',   icon: ShieldCheck, label: 'Vue admin',       hint: 'Vue administrateur' },
-  { id: 'guest',   icon: EyeOff,      label: 'Vue invité',      hint: 'Lecture seule (visiteur public)' },
-];
+// iter138 — Même liste partagée que les 3 autres onglets (privé, public,
+// invité, utilisateurs, modo, admin, créa). La sémantique en mode 'Vue
+// forcée' : la créa coche les vues autorisées pour le visiteur.
+const VIEW_KEYS = SITE_MODE_KEYS;
 
 export default function WhoCanVisitBadge({
   role, viewForcing = 'free', visitModes = [], forcedViews = [],
@@ -69,7 +65,7 @@ export default function WhoCanVisitBadge({
     if (mode === 'forced' && activeForced.length === 0) {
       savePayload(
         { view_forcing: 'forced', forced_views: ['user'] },
-        'Vue forcée activée (vue utilisateur par défaut)',
+        'Vue forcée activée (Utilisateurs par défaut)',
       );
     } else {
       savePayload(

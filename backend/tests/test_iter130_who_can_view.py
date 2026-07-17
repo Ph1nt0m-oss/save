@@ -64,13 +64,16 @@ def test_device_matches_regular_still_works():
     assert _device_matches_mode(VISITOR, ["private"]) is False
 
 
-def test_frontend_multi_select_six_options_only():
-    """iter133 : SiteModeBadge n'affiche plus que 6 clés."""
+def test_frontend_multi_select_seven_options():
+    """iter138 : SiteModeBadge affiche 7 clés (+ user)."""
     badge = Path("/app/frontend/src/components/SiteModeBadge.jsx").read_text(encoding="utf-8")
-    for mode_id in ("'private'", "'public'", "'guest'", "'modo'", "'admin'", "'creator'"):
-        assert f"id: {mode_id}" in badge
-    assert "id: 'none'" not in badge
-    assert "id: 'all'" not in badge
+    # SITE_MODE_KEYS partagée depuis lib/siteModeKeys.js
+    assert "SITE_MODE_KEYS" in badge
+    keys = Path("/app/frontend/src/lib/siteModeKeys.js").read_text(encoding="utf-8")
+    for mode_id in ("'private'", "'public'", "'guest'", "'user'", "'modo'", "'admin'", "'creator'"):
+        assert f"id: {mode_id}" in keys, f"missing {mode_id}"
+    assert "id: 'none'" not in keys
+    assert "id: 'all'" not in keys
 
 
 def test_frontend_toggle_no_exclusivity_logic():

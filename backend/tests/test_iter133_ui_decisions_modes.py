@@ -29,14 +29,14 @@ class TestSiteModesReduced:
         assert 'if m == "all":' not in src
         assert 'elif m == "none":' not in src
 
-    def test_frontend_MODES_has_only_6_entries(self):
-        src = _rf("components/SiteModeBadge.jsx")
-        # Recherche des IDs
-        for mid in ("'private'", "'public'", "'guest'", "'modo'", "'admin'", "'creator'"):
-            assert mid in src, f"{mid} missing"
+    def test_frontend_MODES_has_seven_entries(self):
+        """iter138 : la constante partagée SITE_MODE_KEYS a 7 entrées (+ 'user')."""
+        keys = _rf("lib/siteModeKeys.js")
+        for mid in ("'private'", "'public'", "'guest'", "'user'", "'modo'", "'admin'", "'creator'"):
+            assert mid in keys, f"{mid} missing"
         # 'none' / 'all' retirés
-        assert "id: 'none'" not in src
-        assert "id: 'all'" not in src
+        assert "id: 'none'" not in keys
+        assert "id: 'all'" not in keys
 
 
 class TestViewModePickerNoDimming:

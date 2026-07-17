@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Globe, Lock, Crown, EyeOff, Check, ChevronDown, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
+import { Check, ChevronDown, ShieldQuestion } from 'lucide-react';
+import { SITE_MODE_KEYS } from '../lib/siteModeKeys';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -28,25 +29,10 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
   };
   const [saving, setSaving] = useState(false);
 
-  // iter133 — Multi-sélection réduite à 6 clés (Personne/Tous retirés).
-  // Les 6 clés restantes correspondent EXACTEMENT aux rôles/statuts CodeForge :
-  //   - 'private' → Site fermé : uniquement appareils approuvés (rôle=approved) + staff.
-  //   - 'public'  → Ouvert : tout le monde peut lire/écrire (inclut anonymes).
-  //   - 'guest'   → Visite : lecture seule pour appareils non approuvés (rôle=inactive|pending).
-  //   - 'modo'    → Modérateurs uniquement (staff_kind='modo').
-  //   - 'admin'   → Administrateurs uniquement (staff_kind='admin').
-  //   - 'creator' → Créatrice uniquement (rôle='creator').
-  // La créa peut multi-cocher : au moins UNE clé doit matcher côté backend
-  // (voir server.py _device_matches_mode). Prochain iter : nouvel onglet
-  // "Qui peut visiter ?" avec les mêmes clés (multi-sélection obligatoire).
-  const MODES = [
-    { id: 'private', icon: Lock,        labelKey: 'sm_private', hintKey: 'sm_private_hint' },
-    { id: 'public',  icon: Globe,       labelKey: 'sm_public',  hintKey: 'sm_public_hint'  },
-    { id: 'guest',   icon: EyeOff,      labelKey: 'sm_guest',   hintKey: 'sm_guest_hint'   },
-    { id: 'modo',    icon: ShieldAlert, label: 'Modo',          hint: 'Modos uniquement' },
-    { id: 'admin',   icon: ShieldCheck, label: 'Admin',         hint: 'Admins uniquement' },
-    { id: 'creator', icon: Crown,       labelKey: 'sm_creator', hintKey: 'sm_creator_hint' },
-  ];
+  // iter138 — Source de vérité : SITE_MODE_KEYS (7 clés partagées entre les
+  // 4 onglets créa). Ordre imposé : privé, public, invité, utilisateurs,
+  // modo, admin, créa. Labels & descriptions identiques partout.
+  const MODES = SITE_MODE_KEYS;
 
   // Source de vérité : siteModes (array) ; fallback à siteMode (legacy str)
   const activeModes = Array.isArray(siteModes) && siteModes.length > 0
@@ -60,11 +46,11 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
   const isCreator = role === 'creator';
 
   const display = activeModes.length === 1
-    ? (MODES.find((m) => m.id === activeModes[0]) || { icon: Globe, label: activeModes[0] })
+    ? (MODES.find((m) => m.id === activeModes[0]) || null)
     : null;
-  const DisplayIcon = display ? display.icon : Globe;
+  const DisplayIcon = display ? display.icon : null;
   const displayLabel = display
-    ? (display.labelKey ? t(display.labelKey) : display.label)
+    ? display.label
     : `${activeModes.length} audiences`;
 
   const toggleMode = async (modeId) => {
@@ -122,7 +108,7 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
         data-testid="site-mode-toggle"
       >
         <Crown className="w-3.5 h-3.5" />
-        <DisplayIcon className="w-3.5 h-3.5" />
+        {DisplayIcon && <DisplayIcon className="w-3.5 h-3.5" />}
         <span>{displayLabel}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -159,7 +145,7 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
                 <Mi className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="font-['Chivo'] font-bold inline-flex items-center gap-1">
-                    {m.labelKey ? t(m.labelKey) : m.label}
+                    {m.label}
                     {isLastActive && (
                       <span
                         data-testid={`site-mode-locked-${m.id}`}
@@ -170,7 +156,7 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
                       </span>
                     )}
                   </div>
-                  <div className="text-[10px] text-[#A1A1AA]">{m.hintKey ? t(m.hintKey) : m.hint}</div>
+                  <div className="text-[10px] text-[#A1A1AA]">{m.hint}</div>
                 </div>
               </button>
             );

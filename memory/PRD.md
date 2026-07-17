@@ -1,6 +1,36 @@
 # CodeForge AI — Product Requirements
 
 
+## iter138 (Feb 2026) — Source unique 7 clés + Ajout "Utilisateurs" + Cohérence 4 onglets
+**Status : COMPLETED (100% tests PASS)**
+
+### Ajouts
+1. **Nouvelle clé `user` ("Utilisateurs")** ajoutée à `VALID_SITE_MODES` — description : *"Appareils non approuvés mais possédant un compte validé"* (mappe sur `role='pending'` + fallback approved/staff).
+2. **Description "Invité" mise à jour** : *"Lecture seule pour les appareils ne disposant pas de compte"* (au lieu de "non sélectionnés").
+3. **Source unique partagée** `/app/frontend/src/lib/siteModeKeys.js` — 7 clés dans l'ordre exact utilisateur :
+   `privé, public, invité, utilisateurs, modo, admin, créa`.
+
+### Diffusion aux 4 onglets créa
+- `SiteModeBadge` : consomme `SITE_MODE_KEYS` (remplace le tableau MODES local + labelKey/hintKey i18n).
+- `WhoCanViewBadge` : `VIEW_KEYS = SITE_MODE_KEYS` (identique visuel).
+- `WhoCanVisitBadge` : `VIEW_KEYS = SITE_MODE_KEYS` (le sélecteur "Vues autorisées en mode forcé" affiche les 7 items).
+- `ViewModePicker` : les 5 vues réelles conservées mais labels/descriptions alignés (Créa/Utilisateurs/Modo/Admin/Invité + hints identiques).
+
+### Backend
+- `_device_matches_mode` : nouvelle branche `elif m == "user"` matchant `role=='pending'` + fallback approved/staff.
+- `set_who_can_visit` : `valid_views` élargi à **7 clés** `{private, public, guest, user, modo, admin, creator}`.
+- `get_site_mode_public` + `/devices/verify` : filtre `forced_views` sur ces 7 clés.
+
+### Tests
+- 16 nouveaux pytests iter138 → 100% PASS.
+- Tests iter130/133/134/136/137 mis à jour pour refléter les 7 clés au lieu des 6.
+- Cumul iter129-138 : **167/167 PASS**, aucune régression.
+
+### Fichiers nouveaux
+- `/app/frontend/src/lib/siteModeKeys.js` (source unique)
+- `/app/backend/tests/test_iter138_shared_keys_and_user.py`
+
+
 ## iter137 (Feb 2026) — Sélecteur de vues restreintes en mode "Vue forcée"
 **Status : COMPLETED (100% tests PASS)**
 

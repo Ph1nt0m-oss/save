@@ -232,9 +232,9 @@ def build_devices_router(
         view_forcing = sm_doc.get("view_forcing")
         if view_forcing not in ("free", "forced"):
             view_forcing = "free"
-        # iter137 — forced_views (vues restreintes en mode 'forced')
+        # iter137/138 — forced_views (vues restreintes en mode 'forced'), 7 clés
         fv = sm_doc.get("forced_views")
-        forced_views = [v for v in fv if v in {"user", "modo", "admin", "creator", "guest"}] if isinstance(fv, list) else []
+        forced_views = [v for v in fv if v in {"user", "modo", "admin", "creator", "guest", "private", "public"}] if isinstance(fv, list) else []
 
         # iter128.8 — Règles dynamiques de simulation de vue selon
         # combinaison site_modes × rôle device :

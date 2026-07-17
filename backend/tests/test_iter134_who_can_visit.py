@@ -52,14 +52,13 @@ class TestWhoCanVisitFrontend:
     def test_component_exists(self):
         assert (FRONT / "components/WhoCanVisitBadge.jsx").is_file()
 
-    def test_six_modes_only(self):
-        # iter136 — Les 6 checkboxes ont été DÉPLACÉES vers WhoCanViewBadge.
-        # Ici on vérifie dans le nouveau composant.
+    def test_seven_modes(self):
+        # iter136/138 — Les 6 checkboxes → 7 (+ user). Testés dans WhoCanViewBadge.
         src = _rf("components/WhoCanViewBadge.jsx")
-        for mid in ("'private'", "'public'", "'guest'", "'modo'", "'admin'", "'creator'"):
-            assert f"id: {mid}" in src, f"{mid} missing"
-        assert "'none'" not in src
-        assert "'all'" not in src
+        assert "SITE_MODE_KEYS" in src
+        keys = _rf("lib/siteModeKeys.js")
+        for mid in ("'private'", "'public'", "'guest'", "'user'", "'modo'", "'admin'", "'creator'"):
+            assert f"id: {mid}" in keys, f"{mid} missing"
 
     def test_free_forced_toggles(self):
         # Radios restent dans WhoCanVisitBadge (simplifié).

@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
-import { ChevronDown, Crown, User, Shield, ShieldCheck, EyeOff, Eye, Check } from 'lucide-react';
+import { ChevronDown, Crown, User, ShieldAlert, ShieldCheck, EyeOff, Check } from 'lucide-react';
 import { setStoredViewMode } from '../hooks/useDeviceIdentity';
-import { useLanguage } from '../contexts/LanguageContext';
 
 /**
- * iter86 — ViewModePicker (refonte : cases à cocher décochables)
+ * iter86/138 — ViewModePicker (cases à cocher décochables)
  *
  * Bug user iter85 : "j'arrive pas à décocher" → bloquée en vue modo.
  * Fix : remplace le dropdown radio par 5 cases à cocher, UNE seule active
  * à la fois. Cliquer sur la case active = la décocher = retour vue créa
  * ('creator' par défaut). Cliquer sur une autre case = bascule sur celle-là.
  *
+ * iter138 — Labels & descriptions alignés sur `lib/siteModeKeys.js` pour
+ * cohérence visuelle avec les 3 autres onglets créa (SiteMode, WhoCanView,
+ * WhoCanVisit). Les 5 vues réelles restent (créa/user/modo/admin/guest).
+ *
  * Visible uniquement pour les devices créatrice (early return sinon).
  */
 const VIEW_META = {
-  creator: { Icon: Crown, labelKey: 'view_creator', color: 'text-[#E4FF00]', desc: 'Comme la créatrice' },
-  user:    { Icon: User, labelKey: 'view_user', color: 'text-lime-300', desc: 'Comme un membre approved' },
-  modo:    { Icon: Shield, labelKey: 'view_modo', color: 'text-cyan-300', desc: 'Comme un modérateur' },
-  admin:   { Icon: ShieldCheck, labelKey: 'view_admin', color: 'text-orange-300', desc: 'Comme un administrateur' },
-  guest:   { Icon: EyeOff, labelKey: 'view_guest', color: 'text-violet-300', desc: 'Comme un visiteur public' },
+  creator: { Icon: Crown,       label: 'Créa',         color: 'text-[#E4FF00]',  desc: 'Seuls les appareils créateurs' },
+  user:    { Icon: User,        label: 'Utilisateurs', color: 'text-lime-300',   desc: 'Appareils non approuvés mais possédant un compte validé' },
+  modo:    { Icon: ShieldAlert, label: 'Modo',         color: 'text-cyan-300',   desc: 'Modos uniquement' },
+  admin:   { Icon: ShieldCheck, label: 'Admin',        color: 'text-orange-300', desc: 'Admins uniquement' },
+  guest:   { Icon: EyeOff,      label: 'Invité',       color: 'text-violet-300', desc: 'Lecture seule pour les appareils ne disposant pas de compte' },
 };
 
 // iter87 — Toutes les vues (y compris creator) sont coches optionnelles.
@@ -26,7 +29,6 @@ const VIEW_META = {
 const ORDER = ['creator', 'user', 'modo', 'admin', 'guest'];
 
 export default function ViewModePicker({ role, viewMode, guestView, guestViews, canSimulateViews = true, viewSimulationConstraint = null, visitModes = null, viewForcing = 'free', forcedViews = null, controlledOpen = undefined, onOpenChange }) {
-  const { t } = useLanguage();
   const [internalOpen, setInternalOpen] = useState(false);
   // iter113 — Coordination dropdown : si controlledOpen est fourni par le
   // parent, un seul dropdown ouvert à la fois dans la toolbar.
@@ -107,7 +109,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
         }`}
       >
         <CIcon className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{isActive ? t(current.labelKey) : 'Aucune vue active'}</span>
+        <span className="hidden sm:inline">{isActive ? current.label : 'Aucune vue active'}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -158,7 +160,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
                 </span>
                 <Mi className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${dimmed ? 'opacity-50' : ''} ${meta.color}`} />
                 <div className="flex-1 min-w-0">
-                  <div className="font-['Chivo'] font-bold">{t(meta.labelKey)}</div>
+                  <div className="font-['Chivo'] font-bold">{meta.label}</div>
                   <div className="text-[10px] text-[#A1A1AA]">{meta.desc}</div>
                   {isCreator && m === 'guest' && forced.length > 0 && (
                     <div className="text-[10px] text-amber-300 mt-0.5">

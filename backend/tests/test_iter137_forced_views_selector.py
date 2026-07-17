@@ -22,12 +22,9 @@ class TestBackendForcedViews:
         src = _read("server.py")
         assert "forced_views: Optional[List[str]] = None" in src
 
-    def test_endpoint_accepts_forced_views(self):
-        src = _read("server.py")
-        block = src.split("async def set_who_can_visit(")[1].split("\nasync def ")[0]
-        assert "if payload.forced_views is not None:" in block
-        assert '{"user", "modo", "admin", "creator", "guest"}' in block
-        assert 'update["forced_views"] = out_v' in block
+    def test_endpoint_accepts_forced_views_LEGACY_removed(self):
+        # iter137's dedicated test remains but now via the class above.
+        pass
 
     def test_get_site_mode_returns_forced_views(self):
         src = _read("server.py")
@@ -47,10 +44,22 @@ class TestBackendForcedViews:
 
 class TestFrontendWhoCanVisitViewSelector:
     def test_view_keys_present(self):
+        # iter138 — WhoCanVisitBadge utilise désormais SITE_MODE_KEYS (7 clés)
+        # partagées avec les autres onglets.
         src = _rf("components/WhoCanVisitBadge.jsx")
-        # 5 vues réelles
-        for v in ("'creator'", "'user'", "'modo'", "'admin'", "'guest'"):
-            assert f"id: {v}" in src, f"missing view {v}"
+        assert "VIEW_KEYS = SITE_MODE_KEYS" in src
+        keys = _rf("lib/siteModeKeys.js")
+        # Les 5 vues réelles + les 2 clés d'audience partagées.
+        for v in ("'creator'", "'user'", "'modo'", "'admin'", "'guest'", "'private'", "'public'"):
+            assert f"id: {v}" in keys, f"missing key {v}"
+
+    def test_endpoint_accepts_forced_views(self):
+        # iter138 — 7 clés acceptées, valid_views élargi.
+        src = _read("server.py")
+        block = src.split("async def set_who_can_visit(")[1].split("\nasync def ")[0]
+        for v in ('"user"', '"modo"', '"admin"', '"creator"', '"guest"', '"private"', '"public"'):
+            assert v in block, f"forced_views vocab missing {v}"
+        assert 'update["forced_views"] = out_v' in block
 
     def test_free_shows_message_not_selector(self):
         src = _rf("components/WhoCanVisitBadge.jsx")

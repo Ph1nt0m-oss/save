@@ -21,16 +21,15 @@ class TestNewWhoCanViewComponent:
     def test_component_exists(self):
         assert (FRONT / "components/WhoCanViewBadge.jsx").is_file()
 
-    def test_six_keys_in_exact_order(self):
+    def test_seven_keys_in_exact_order(self):
+        # iter138 — SITE_MODE_KEYS (7 clés) sont maintenant importées depuis
+        # /lib/siteModeKeys.js. WhoCanViewBadge fait `VIEW_KEYS = SITE_MODE_KEYS`.
         src = _rf("components/WhoCanViewBadge.jsx")
-        # Ordre imposé par utilisateur : private, public, guest, modo, admin, creator
-        order = ["'private'", "'public'", "'guest'", "'modo'", "'admin'", "'creator'"]
-        # Extrait la section VIEW_KEYS
-        idx = src.find("const VIEW_KEYS")
-        assert idx != -1
-        block = src[idx:idx + 1200]
-        positions = [block.find(f"id: {k}") for k in order]
-        # Toutes trouvées et strictement croissantes.
+        assert "VIEW_KEYS = SITE_MODE_KEYS" in src
+        keys = _rf("lib/siteModeKeys.js")
+        # Ordre : private, public, guest, user, modo, admin, creator
+        order = ["'private'", "'public'", "'guest'", "'user'", "'modo'", "'admin'", "'creator'"]
+        positions = [keys.find(f"id: {k}") for k in order]
         assert all(p != -1 for p in positions)
         assert positions == sorted(positions)
 

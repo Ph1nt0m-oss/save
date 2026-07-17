@@ -11,21 +11,15 @@
  */
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Eye, Check, ChevronDown, Lock, Globe, EyeOff, ShieldAlert, ShieldCheck, Crown, ShieldQuestion } from 'lucide-react';
+import { Eye, Check, ChevronDown, ShieldQuestion } from 'lucide-react';
+import { SITE_MODE_KEYS } from '../lib/siteModeKeys';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { toast } from 'sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// Ordre imposé par l'utilisateur : privé, public, guest, modo, admin, créa.
-const VIEW_KEYS = [
-  { id: 'private', icon: Lock,        label: 'Privé',    hint: 'Clés validées uniquement' },
-  { id: 'public',  icon: Globe,       label: 'Public',   hint: 'Ouvert à tous' },
-  { id: 'guest',   icon: EyeOff,      label: 'Guest',    hint: 'Lecture seule (non approuvés)' },
-  { id: 'modo',    icon: ShieldAlert, label: 'Modo',     hint: 'Modérateurs uniquement' },
-  { id: 'admin',   icon: ShieldCheck, label: 'Admin',    hint: 'Administrateurs uniquement' },
-  { id: 'creator', icon: Crown,       label: 'Créa',     hint: 'Créatrice uniquement' },
-];
+// iter138 — Source unique partagée. Voir /app/frontend/src/lib/siteModeKeys.js
+const VIEW_KEYS = SITE_MODE_KEYS;
 
 export default function WhoCanViewBadge({
   role, visitModes = ['public'], viewForcing = 'free',
