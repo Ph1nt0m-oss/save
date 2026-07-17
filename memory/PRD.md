@@ -1,6 +1,45 @@
 # CodeForge AI — Product Requirements
 
 
+## iter133 (Feb 2026) — 4 corrections UX + décisions temporaires + réduction modes
+**Status : COMPLETED (100% tests PASS)**
+
+### 1. Estompage retiré (ViewModePicker)
+- `components/ViewModePicker.jsx` : `dimmed = dimmedByForced` uniquement. Les autres vues gardent leur couleur pleine quand une simulation est active.
+
+### 2. Visite compte → toujours simulation (jamais modal)
+- `pages/Dashboard.js` : `AccountsButton.onVisitAccount` route TOUJOURS vers `setStoredViewMode()`. Seule exception : créa qui se visite elle-même = no-op.
+- `hooks/useDeviceIdentity.js` : + support `visitTargetKeyId` (localStorage `codeforge_visit_target_keyid`) + export `readVisitTargetKeyId`.
+- Le modal `AccountVisitView` reste dispo uniquement pour les demandes d'export sensibles (ExportApprovalNotifier).
+
+### 3. Décisions temporaires modo/admin
+- `routes/accounts_routes.py` : `_log_account_event` insère dans `db.staff_decisions` (status='pending') pour les 10 events trackés (staff_kind_admin/modo/clear, mute/unmute, exclude, ban/unban, force_visitor_on/off, rename_pseudo) quand l'acteur n'est PAS créa. Le target reçoit le flag `pending_creator_review=true`.
+- Nouveau module `routes/staff_decisions_routes.py` : 3 endpoints créa-only.
+  - `POST /api/staff-decisions/list` → liste pending.
+  - `POST /api/staff-decisions/validate` → status=validated.
+  - `POST /api/staff-decisions/revert` → rollback + status=reverted (rollback couvre les 10 events).
+- Frontend `AccountsButton.jsx` : badge amber `⏳ Validation temporaire` par compte + panneau créa toggle `⏳ N à valider` avec boutons Valider/Annuler par décision.
+
+### 4. Site modes réduits à 6 clés
+- `server.py` : `VALID_SITE_MODES = {public, private, creator, guest, staff, admin, modo}` (retiré `none`, `all`). `_normalize_modes` remappe le legacy 'none'/'all' → 'public' (rétro-compat safe).
+- `_device_matches_mode` : branches `all`/`none` retirées.
+- Frontend `SiteModeBadge.jsx` : MODES = 6 (private, public, guest, modo, admin, creator). Toggle sans exclusivité.
+
+### Correspondance des 6 clés (préparation prochain iter — "Qui peut visiter ?")
+| Clé | Signification | Match backend |
+|---|---|---|
+| `private` | Site fermé, uniquement appareils approuvés (role='approved') + staff + créa | role ∈ {creator, approved, admin, modo} |
+| `public` | Ouvert à tous, même anonymes | tout le monde |
+| `guest` | Lecture seule pour appareils non approuvés (pending/inactive) | role ∈ {pending, inactive} |
+| `modo` | Modérateurs uniquement | staff_kind='modo' |
+| `admin` | Admins uniquement | staff_kind='admin' |
+| `creator` | Créatrice uniquement | role='creator' |
+
+### Tests
+- 79 pytests source-level iter130-133 → 100% PASS.
+- testing_agent_v3 iter133 : **9/9 backend live + 65/65 source-level = 74/74 (100%)**, 0 issues.
+
+
 ## iter132 (Feb 2026) — Chiffrement AES-GCM + Import Workspace + Registre Compact
 **Status : COMPLETED (100% tests PASS)**
 
