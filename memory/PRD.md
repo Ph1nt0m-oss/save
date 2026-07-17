@@ -1,6 +1,46 @@
 # CodeForge AI — Product Requirements
 
 
+## iter134 (Feb 2026) — Onglet "Qui peut visiter" + Export badge en header + Fix visite export
+**Status : COMPLETED (100% tests PASS)**
+
+### 1. Onglet créa "Qui peut visiter ?" (WhoCanVisitBadge)
+- Nouveau composant `components/WhoCanVisitBadge.jsx` monté dans `CreatorToolbar` entre SiteMode et ViewMode.
+- 2 radios exclusifs en haut : **Libre choix** (défaut) / **Vue forcée par la créa**.
+- Multi-select des 6 clés (`private, public, guest, modo, admin, creator`), MINIMUM 1 (dernière case cochée désactivée pour empêcher tout-décoché).
+- Backend : nouveau `PUT /api/system/who-can-visit` (créa-signé) + `GET /api/system/site-mode` étendu (visit_modes + view_forcing) + `GET /api/devices/verify` expose les mêmes champs.
+- ViewModePicker : en mode `forced`, les non-créa sont contraints aux `visit_modes` cochés (fusion avec `guestViews` — guestViews prime si mode guest actif).
+
+### 2. Bouton demandes d'export dans le header
+- `ExportRequestsHistoryButton` maintenant exporté **nommé** depuis `AccountsButton.jsx`.
+- Monté dans le header de `Dashboard.js` entre `IdeasButton` (ampoule) et le bouton bots (`header-bots-admin-btn`).
+- Auto-masqué si `count=0` — comportement inchangé pour non-créa.
+
+### 3. Fix visite depuis demande d'export
+- `Dashboard.js` : `<ExportApprovalNotifier onOpenAccount>` route désormais via `setStoredViewMode()` + `visitTargetPseudo` + `visitTargetKeyId` (photo 2), plus jamais via `setVisiting({key_id})` (photo 3).
+- Le rôle effectif est déduit depuis les nouveaux champs `target_role` + `target_staff_kind` retournés par `/api/exports/pending` (enrich device_keys avec role + staff_kind).
+- `ExportApprovalNotifier.jsx` : callback `onOpenAccount` passe `pseudo`, `device_label`, `target_role`, `target_staff_kind`.
+
+### Tests
+- 20 pytests source-level iter134 → 100% PASS.
+- Cumul iter129-134 : 99/99 PASS.
+- testing_agent_v3 iter134 : **20/20 backend source + 9/9 backend live + 13/13 frontend = 42/42 (100%)**, 0 issues.
+
+### Fichiers nouveaux
+- `/app/frontend/src/components/WhoCanVisitBadge.jsx`
+- `/app/backend/tests/test_iter134_who_can_visit.py`
+
+### Rappel des 6 clés (comme confirmé par l'utilisateur)
+| Clé | Signification |
+|---|---|
+| `private` | Clés validées uniquement |
+| `public` | Ouvert à tous |
+| `guest` | Lecture seule (non-approuvés) |
+| `modo` | Modérateurs uniquement |
+| `admin` | Administrateurs uniquement |
+| `creator` | Créatrice uniquement |
+
+
 ## iter133 (Feb 2026) — 4 corrections UX + décisions temporaires + réduction modes
 **Status : COMPLETED (100% tests PASS)**
 
