@@ -25,7 +25,7 @@ const VIEW_META = {
 // Si AUCUNE n'est cochée → mode "écriture" (pas en simulation).
 const ORDER = ['creator', 'user', 'modo', 'admin', 'guest'];
 
-export default function ViewModePicker({ role, viewMode, guestView, guestViews, canSimulateViews = true, viewSimulationConstraint = null, visitModes = null, viewForcing = 'free', controlledOpen = undefined, onOpenChange }) {
+export default function ViewModePicker({ role, viewMode, guestView, guestViews, canSimulateViews = true, viewSimulationConstraint = null, visitModes = null, viewForcing = 'free', forcedViews = null, controlledOpen = undefined, onOpenChange }) {
   const { t } = useLanguage();
   const [internalOpen, setInternalOpen] = useState(false);
   // iter113 — Coordination dropdown : si controlledOpen est fourni par le
@@ -47,21 +47,20 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
     ? guestViews
     : (guestView ? [guestView] : []);
 
-  // iter134 — "Qui peut visiter" en mode 'forced' : les utilisateurs non-créa
-  // sont restreints aux visit_modes cochés par la créa. Fusion avec guestViews
-  // (guestViews prime si en mode 'guest' actif).
-  const allowedFromWhoCanVisit = viewForcing === 'forced' && Array.isArray(visitModes) && visitModes.length
-    ? visitModes.filter((m) => ['user', 'modo', 'admin', 'guest', 'creator'].includes(
-        m === 'private' ? 'user' : m === 'public' ? null : m,
-      )).map((m) => (m === 'private' ? 'user' : m))
-    : [];
+  // iter137 — En mode 'forced', on utilise directement forcedViews (liste
+  // des vues user/modo/admin/creator/guest choisies par la créa dans
+  // WhoCanVisitBadge). Plus de mapping fragile depuis visit_modes.
+  const isForcedMode = viewForcing === 'forced';
+  const allowedForcedViews = isForcedMode && Array.isArray(forcedViews) ? forcedViews : [];
   const forced = !isCreator
-    ? (forcedFromGuest.length ? forcedFromGuest : allowedFromWhoCanVisit)
+    ? (forcedFromGuest.length ? forcedFromGuest : allowedForcedViews)
     : forcedFromGuest;
   // iter107 — Quand des vues sont forcées, le picker est contraint à ce sous-ensemble
   // pour tout le monde (créa incluse, pour cohérence). La créa garde l'option 'creator'
   // pour revenir au mode écriture.
   const hasForcedConstraint = forced.length > 0;
+  // eslint-disable-next-line no-unused-vars
+  const _visitModesRef = visitModes; // kept for API stability
 
   // Cacher le picker si: pas créa ET aucune vue forcée (rien à choisir).
   if (!isCreator && forced.length === 0) return null;

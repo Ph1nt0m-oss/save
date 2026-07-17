@@ -188,13 +188,15 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
       />
       )}
 
-      {/* iter134/136 — "Mode de choix de vue" SIMPLIFIÉ : uniquement le radio
-          Libre / Forcée. Les vues autorisées sont maintenant dans WhoCanViewBadge. */}
+      {/* iter134/136/137 — "Mode de choix de vue" : radio Libre / Vue forcée +
+          multi-select des 5 vues restreintes (créa/user/modo/admin/guest)
+          lorsque Vue forcée est active. */}
       {showSiteModeBadge && (
       <WhoCanVisitBadge
         role={device.role}
         visitModes={device.visitModes}
         viewForcing={device.viewForcing}
+        forcedViews={device.forcedViews}
         onChange={() => device.refresh()}
         controlledOpen={openDropdown === 'visit'}
         onOpenChange={(v) => setOpenDropdown(v ? 'visit' : null)}
@@ -214,6 +216,7 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
         viewSimulationConstraint={device.viewSimulationConstraint}
         visitModes={device.visitModes}
         viewForcing={device.viewForcing}
+        forcedViews={device.forcedViews}
         controlledOpen={openDropdown === 'view'}
         onOpenChange={(v) => setOpenDropdown(v ? 'view' : null)}
       />

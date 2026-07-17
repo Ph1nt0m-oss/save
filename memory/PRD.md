@@ -1,6 +1,33 @@
 # CodeForge AI — Product Requirements
 
 
+## iter137 (Feb 2026) — Sélecteur de vues restreintes en mode "Vue forcée"
+**Status : COMPLETED (100% tests PASS)**
+
+### Contenu
+- **Onglet "Mode de choix de vue"** (`WhoCanVisitBadge`) enrichi :
+  - **Libre choix** → message explicatif "l'utilisateur choisit parmi les 5 vues".
+  - **Vue forcée** → multi-select des 5 vues réelles (**créa, user, modo, admin, guest**) qui restreint le choix du visiteur.
+- Nouveau champ backend `forced_views: List[str]` dans `site_config` :
+  - Optionnel sur `PUT /api/system/who-can-visit`.
+  - Exposé dans `GET /api/system/site-mode` + `POST /api/devices/verify`.
+  - Valeurs autorisées : `{user, modo, admin, creator, guest}`.
+- **Auto-init** : activer "Vue forcée" avec 0 vue → présélectionne `['user']` (évite état bloquant).
+- **Verrou min-1** : impossible de tout décocher en mode forcé (toast + bouton disabled + badge "verrouillé").
+- `useDeviceIdentity` expose `forcedViews`.
+- `ViewModePicker` utilise désormais `forcedViews` **directement** — l'ancien mapping fragile audience→view (`allowedFromWhoCanVisit`) est retiré.
+
+### Tests
+- 16 nouveaux pytests iter137 → 100% PASS.
+- Cumul iter129-137 : **151/151 PASS**.
+
+### Comportement final des 4 onglets créa (gauche → droite)
+1. `SiteModeBadge` — type de site (multi-select 6 clés, verrou min-1).
+2. `WhoCanViewBadge` — Qui peut voir (audiences : privé/public/guest/modo/admin/créa).
+3. `WhoCanVisitBadge` — Mode de choix de vue : Libre (message) ou Vue forcée + sélecteur des 5 vues.
+4. `ViewModePicker` — Simulation créa / vue du visiteur.
+
+
 ## iter136 (Feb 2026) — Split "Qui peut voir" ↔ "Mode de choix de vue" + nettoyage guest rules
 **Status : COMPLETED (100% tests PASS)**
 

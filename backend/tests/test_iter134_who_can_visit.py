@@ -83,10 +83,11 @@ class TestWhoCanVisitFrontend:
         assert "viewForcing:" in src
 
     def test_view_mode_picker_respects_forced(self):
+        # iter137 : ViewModePicker utilise désormais forcedViews directement.
         src = _rf("components/ViewModePicker.jsx")
-        assert "visitModes" in src
+        assert "forcedViews" in src
         assert "viewForcing" in src
-        assert "allowedFromWhoCanVisit" in src
+        assert "allowedForcedViews" in src
 
 
 class TestExportRequestsInHeader:

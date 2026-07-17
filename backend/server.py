@@ -3249,7 +3249,7 @@ async def get_site_mode_public():
     doc = await db.site_config.find_one(
         {"_id": "site_mode"},
         {"_id": 0, "mode": 1, "guest_view": 1, "guest_views": 1, "modes": 1,
-         "visit_modes": 1, "view_forcing": 1},
+         "visit_modes": 1, "view_forcing": 1, "forced_views": 1},
     )
     raw = doc or {}
     modes = _normalize_modes(raw.get("modes") if isinstance(raw.get("modes"), list) and raw.get("modes") else raw.get("mode"))
@@ -3266,6 +3266,10 @@ async def get_site_mode_public():
     view_forcing = raw.get("view_forcing")
     if view_forcing not in ("free", "forced"):
         view_forcing = "free"
+    # iter137 — forced_views : liste des vues restreintes en mode 'forced'.
+    fv_raw = raw.get("forced_views")
+    valid_v = {"user", "modo", "admin", "creator", "guest"}
+    forced_views = [v for v in fv_raw if v in valid_v] if isinstance(fv_raw, list) else []
     return {
         "mode": modes[0],
         "modes": modes,
@@ -3273,12 +3277,14 @@ async def get_site_mode_public():
         "guest_views": gv_list,
         "visit_modes": visit_modes,
         "view_forcing": view_forcing,
+        "forced_views": forced_views,
     }
 
 
 class WhoCanVisitIn(BaseModel):
     visit_modes: Optional[List[str]] = None  # iter136 — optionnel : preserve si None
     view_forcing: Optional[str] = None       # iter136 — optionnel : 'free' | 'forced'
+    forced_views: Optional[List[str]] = None  # iter137 — vues restreintes en mode 'forced'
     key_id: str
     nonce: str
     signature: str
@@ -3286,14 +3292,15 @@ class WhoCanVisitIn(BaseModel):
 
 @api_router.put("/system/who-can-visit")
 async def set_who_can_visit(payload: WhoCanVisitIn):
-    """iter134/136 — Créa uniquement. Configure quelles vues sont autorisées
-    (visit_modes) et si l'utilisateur choisit librement ou si la créa force
-    (view_forcing='forced'). iter136 : les 2 champs sont **indépendants et
-    optionnels** — permet à `WhoCanViewBadge` (visit_modes seuls) et
-    `WhoCanVisitBadge` (view_forcing seul) d'écrire sans se marcher dessus.
+    """iter134/136/137 — Créa uniquement.
+    Configure 3 champs indépendants et optionnels dans site_config :
+      - visit_modes  : audiences autorisées (WhoCanViewBadge)
+      - view_forcing : 'free' ou 'forced' (WhoCanVisitBadge radio)
+      - forced_views : liste des vues (user/modo/admin/creator/guest)
+                       que la créa autorise en mode 'forced' (iter137).
     """
     await _require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-    if payload.visit_modes is None and payload.view_forcing is None:
+    if payload.visit_modes is None and payload.view_forcing is None and payload.forced_views is None:
         raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour.")
 
     update = {"who_can_visit_updated_at": datetime.now(timezone.utc).isoformat()}
@@ -3315,6 +3322,18 @@ async def set_who_can_visit(payload: WhoCanVisitIn):
             raise HTTPException(status_code=400, detail="view_forcing doit être 'free' ou 'forced'.")
         update["view_forcing"] = payload.view_forcing
 
+    if payload.forced_views is not None:
+        valid_views = {"user", "modo", "admin", "creator", "guest"}
+        fv = [v for v in payload.forced_views if v in valid_views]
+        # Dédoublonnage stable en préservant l'ordre.
+        seen_v = set()
+        out_v = []
+        for v in fv:
+            if v not in seen_v:
+                seen_v.add(v)
+                out_v.append(v)
+        update["forced_views"] = out_v
+
     await db.site_config.update_one({"_id": "site_mode"}, {"$set": update}, upsert=True)
     _invalidate_site_mode_cache()
     try:
@@ -3326,11 +3345,15 @@ async def set_who_can_visit(payload: WhoCanVisitIn):
     except Exception:
         pass
     # Renvoie l'état complet pour le front.
-    cur = await db.site_config.find_one({"_id": "site_mode"}, {"_id": 0, "visit_modes": 1, "view_forcing": 1}) or {}
+    cur = await db.site_config.find_one(
+        {"_id": "site_mode"},
+        {"_id": 0, "visit_modes": 1, "view_forcing": 1, "forced_views": 1},
+    ) or {}
     return {
         "ok": True,
         "visit_modes": cur.get("visit_modes") or ["public"],
         "view_forcing": cur.get("view_forcing") or "free",
+        "forced_views": cur.get("forced_views") or [],
     }
 
 

@@ -106,7 +106,9 @@ class TestBackendIndependentFields:
         block = src.split("async def set_who_can_visit(")[1].split("\nasync def ")[0]
         assert "if payload.visit_modes is not None:" in block
         assert "if payload.view_forcing is not None:" in block
-        assert "if payload.visit_modes is None and payload.view_forcing is None:" in block
+        # iter137 : 3ème champ optionnel forced_views.
+        assert "if payload.forced_views is not None:" in block
+        assert "if payload.visit_modes is None and payload.view_forcing is None and payload.forced_views is None:" in block
 
     def test_guest_forcing_rule_removed(self):
         src = _read("server.py")

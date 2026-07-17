@@ -220,7 +220,7 @@ def build_devices_router(
         site_modes_list = normalize_modes(site_mode)
         sm_doc = await db.site_config.find_one(
             {"_id": "site_mode"},
-            {"_id": 0, "guest_view": 1, "guest_views": 1, "visit_modes": 1, "view_forcing": 1},
+            {"_id": 0, "guest_view": 1, "guest_views": 1, "visit_modes": 1, "view_forcing": 1, "forced_views": 1},
         ) or {}
         gv_list = sm_doc.get("guest_views")
         if not isinstance(gv_list, list) or not gv_list:
@@ -232,6 +232,9 @@ def build_devices_router(
         view_forcing = sm_doc.get("view_forcing")
         if view_forcing not in ("free", "forced"):
             view_forcing = "free"
+        # iter137 — forced_views (vues restreintes en mode 'forced')
+        fv = sm_doc.get("forced_views")
+        forced_views = [v for v in fv if v in {"user", "modo", "admin", "creator", "guest"}] if isinstance(fv, list) else []
 
         # iter128.8 — Règles dynamiques de simulation de vue selon
         # combinaison site_modes × rôle device :
@@ -285,6 +288,8 @@ def build_devices_router(
             # iter134 — Onglet créa "Qui peut visiter"
             "visit_modes": visit_modes,
             "view_forcing": view_forcing,
+            # iter137 — Vues restreintes en mode forcé
+            "forced_views": forced_views,
         }
 
     @router.post("/devices/list")
