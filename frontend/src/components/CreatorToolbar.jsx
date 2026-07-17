@@ -174,12 +174,15 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
 
       {/* iter134 — Onglet "Qui peut visiter ?" — entre le type de site et le
           type de vue. Multi-sélection des 6 clés + toggle Libre/Forcé.
-          Visible uniquement pour la créa physique. */}
+          Visible uniquement pour la créa physique.
+          iter135 — Reçoit siteModes pour désactiver "Vue forcée" si 'guest'
+          est coché dans le TYPE DE SITE (règle métier utilisateur). */}
       {showSiteModeBadge && (
       <WhoCanVisitBadge
         role={device.role}
         visitModes={device.visitModes}
         viewForcing={device.viewForcing}
+        siteModes={device.siteModes}
         onChange={() => device.refresh()}
         controlledOpen={openDropdown === 'visit'}
         onOpenChange={(v) => setOpenDropdown(v ? 'visit' : null)}

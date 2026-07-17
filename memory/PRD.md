@@ -1,6 +1,31 @@
 # CodeForge AI — Product Requirements
 
 
+## iter135 (Feb 2026) — Verrou dernière case + Coloration jaune forcée + Guest bloque forcée
+**Status : COMPLETED (100% tests PASS)**
+
+### 1. SiteMode : verrou sur la dernière case cochée
+- `SiteModeBadge.jsx` : `toggleMode` renvoie un toast erreur si tentative de décocher la seule case active (au lieu du fallback silencieux vers 'public').
+- Bouton disabled + badge amber "verrouillé" avec icône `ShieldQuestion` sur la case verrouillée.
+- Test-ids : `site-mode-locked-<mode_id>`.
+
+### 2. WhoCanVisit : coloration jaune #E4FF00 quand "Vue forcée"
+- Bouton principal + radio "Vue forcée" + toutes les cases actives passent en jaune #E4FF00 quand `view_forcing='forced'` (cyan par défaut en mode libre).
+- Feedback visuel immédiat : la créa voit d'un coup d'œil si elle impose une vue.
+
+### 3. Guest dans TYPE DE SITE désactive "Vue forcée"
+- **Règle métier (spécifique utilisateur)** : quand `guest` est coché dans `siteModes`, le radio "Vue forcée par la créa" est **désactivé** avec bandeau explicatif amber (test-id `who-visit-guest-blocks-forced`).
+- Auto-correction frontend : `useEffect` repasse silencieusement à `free` si l'état devient incohérent.
+- Auto-correction backend :
+  - `PUT /system/who-can-visit` force `view_forcing='free'` si `guest` est dans `site_modes`.
+  - `PUT /system/site-mode` remet `view_forcing='free'` si `guest` est ajouté aux modes actifs.
+- **N'affecte PAS** le fait de cocher 'guest' dans les vues autorisées (Mode de choix de vue) — comme demandé.
+
+### Tests
+- 15 pytest source-level iter135 → 100% PASS.
+- Cumul iter129-135 : 114/114 PASS.
+
+
 ## iter134 (Feb 2026) — Onglet "Qui peut visiter" + Export badge en header + Fix visite export
 **Status : COMPLETED (100% tests PASS)**
 

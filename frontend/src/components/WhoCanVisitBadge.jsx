@@ -14,9 +14,9 @@
  *   who-visit-forcing-forced          → radio "Vue forcée par la créa"
  *   who-visit-option-<id>             → checkbox par clé (private/public/guest/modo/admin/creator)
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Eye, Check, ChevronDown, Lock, Globe, EyeOff, ShieldAlert, ShieldCheck, Crown, UserCog } from 'lucide-react';
+import { Eye, Check, ChevronDown, Lock, Globe, EyeOff, ShieldAlert, ShieldCheck, Crown, UserCog, Info } from 'lucide-react';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { toast } from 'sonner';
 
@@ -33,6 +33,7 @@ const VISIT_MODES = [
 
 export default function WhoCanVisitBadge({
   role, visitModes = ['public'], viewForcing = 'free',
+  siteModes = [],
   onChange, className = '',
   controlledOpen, onOpenChange,
 } = {}) {
@@ -47,7 +48,29 @@ export default function WhoCanVisitBadge({
 
   const isCreator = role === 'creator';
   const active = Array.isArray(visitModes) && visitModes.length ? visitModes : ['public'];
-  const forcing = viewForcing === 'forced' ? 'forced' : 'free';
+  // iter135 — Si "Invité" (guest) est coché dans le TYPE DE SITE (siteModes),
+  // le mode "Vue forcée par la créa" est INTERDIT (règle métier utilisateur).
+  // Note : ce blocage ne concerne PAS le fait de cocher 'guest' dans les
+  // vues autorisées (mode de choix de vue) — uniquement le siteModes.
+  const guestInSiteMode = Array.isArray(siteModes) && siteModes.includes('guest');
+  const forcing = guestInSiteMode ? 'free' : (viewForcing === 'forced' ? 'forced' : 'free');
+
+  // iter135 — Auto-correction : si le backend a 'forced' mais que 'guest'
+  // vient d'être coché en site type, on repasse à 'free' silencieusement.
+  useEffect(() => {
+    if (guestInSiteMode && viewForcing === 'forced' && isCreator) {
+      (async () => {
+        try {
+          const body = await withCreatorProof(API, axios, {
+            visit_modes: active, view_forcing: 'free',
+          });
+          await axios.put(`${API}/system/who-can-visit`, body);
+          onChange?.(active, 'free');
+        } catch (_e) { /* silent */ }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestInSiteMode]);
 
   const save = async (nextModes, nextForcing) => {
     if (!isCreator || saving) return;
@@ -78,6 +101,10 @@ export default function WhoCanVisitBadge({
 
   const setForcing = (mode) => {
     if (mode === forcing) return;
+    if (mode === 'forced' && guestInSiteMode) {
+      toast.warning('Décoche d\'abord "Invité" dans le type de site pour activer la vue forcée.');
+      return;
+    }
     save(active, mode);
   };
 
@@ -95,12 +122,16 @@ export default function WhoCanVisitBadge({
         disabled={saving}
         data-testid="who-can-visit-toggle"
         title="Qui peut visiter le site & mode de choix de vue"
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm bg-cyan-500/10 border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/20 transition-colors"
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm border transition-colors ${
+          forcing === 'forced'
+            ? 'bg-[#E4FF00]/10 border-[#E4FF00]/40 text-[#E4FF00] hover:bg-[#E4FF00]/20'
+            : 'bg-cyan-500/10 border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/20'
+        }`}
       >
         <UserCog className="w-3.5 h-3.5" />
         <Eye className="w-3.5 h-3.5" />
         <span>{displayLabel}</span>
-        {forcing === 'forced' && <span className="text-[9px] text-amber-300 uppercase tracking-widest">forcé</span>}
+        {forcing === 'forced' && <span className="text-[9px] uppercase tracking-widest">forcé</span>}
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -112,6 +143,15 @@ export default function WhoCanVisitBadge({
           {/* Radios en haut : Libre choix / Vue forcée */}
           <div className="px-3 py-2 border-b border-white/10">
             <div className="text-[10px] uppercase tracking-widest text-[#71717A] mb-2">Mode de choix de vue</div>
+            {guestInSiteMode && (
+              <div
+                data-testid="who-visit-guest-blocks-forced"
+                className="mb-2 flex items-start gap-1.5 text-[10px] text-amber-200/90 border border-amber-400/30 bg-amber-400/10 rounded-sm px-2 py-1.5"
+              >
+                <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                <span>Mode "Vue forcée" indisponible : "Invité" est coché dans le type de site. Décoche-le d'abord pour l'activer.</span>
+              </div>
+            )}
             <div className="space-y-1">
               <button
                 type="button"
@@ -135,16 +175,21 @@ export default function WhoCanVisitBadge({
               <button
                 type="button"
                 onClick={() => setForcing('forced')}
-                disabled={saving}
+                disabled={saving || guestInSiteMode}
                 data-testid="who-visit-forcing-forced"
+                title={guestInSiteMode ? 'Décoche "Invité" dans le type de site pour activer la vue forcée' : undefined}
                 className={`w-full text-left px-2 py-1.5 rounded-sm text-xs flex items-start gap-2 transition ${
-                  forcing === 'forced' ? 'bg-amber-500/15 text-amber-200' : 'text-white hover:bg-white/[0.05]'
+                  guestInSiteMode
+                    ? 'text-white/40 cursor-not-allowed'
+                    : (forcing === 'forced' ? 'bg-[#E4FF00]/15 text-[#E4FF00]' : 'text-white hover:bg-white/[0.05]')
                 }`}
               >
                 <span className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 border rounded-full flex items-center justify-center ${
-                  forcing === 'forced' ? 'border-amber-300 bg-amber-300/25' : 'border-white/30'
+                  forcing === 'forced' && !guestInSiteMode
+                    ? 'border-[#E4FF00] bg-[#E4FF00]/25'
+                    : 'border-white/30'
                 }`}>
-                  {forcing === 'forced' && <span className="w-1.5 h-1.5 rounded-full bg-amber-300" />}
+                  {forcing === 'forced' && !guestInSiteMode && <span className="w-1.5 h-1.5 rounded-full bg-[#E4FF00]" />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="font-['Chivo'] font-bold">Vue forcée par la créa</div>
@@ -162,6 +207,13 @@ export default function WhoCanVisitBadge({
             const Mi = m.icon;
             const isActive = active.includes(m.id);
             const isLastActive = isActive && active.length === 1;
+            // iter135 — Coloration jaune #E4FF00 quand "Vue forcée" est active,
+            // sinon cyan par défaut. Les cases actives suivent le mode courant.
+            const isForced = forcing === 'forced';
+            const activeText = isForced ? 'text-[#E4FF00]' : 'text-cyan-300';
+            const activeBg = isForced ? 'bg-[#E4FF00]/5' : 'bg-cyan-500/5';
+            const activeBorder = isForced ? 'border-[#E4FF00] bg-[#E4FF00]/20' : 'border-cyan-300 bg-cyan-300/20';
+            const activeCheck = isForced ? 'text-[#E4FF00]' : 'text-cyan-300';
             return (
               <button
                 key={m.id}
@@ -171,13 +223,13 @@ export default function WhoCanVisitBadge({
                 data-testid={`who-visit-option-${m.id}`}
                 title={isLastActive ? 'Au moins une vue doit rester cochée' : m.hint}
                 className={`w-full text-left px-3 py-2 text-xs hover:bg-white/[0.05] flex items-start gap-2 ${
-                  isActive ? 'text-cyan-300 bg-cyan-500/5' : 'text-white'
+                  isActive ? `${activeText} ${activeBg}` : 'text-white'
                 } ${isLastActive ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
                 <span className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 border rounded-sm flex items-center justify-center ${
-                  isActive ? 'border-cyan-300 bg-cyan-300/20' : 'border-white/30'
+                  isActive ? activeBorder : 'border-white/30'
                 }`}>
-                  {isActive && <Check className="w-2.5 h-2.5 text-cyan-300" />}
+                  {isActive && <Check className={`w-2.5 h-2.5 ${activeCheck}`} />}
                 </span>
                 <Mi className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">

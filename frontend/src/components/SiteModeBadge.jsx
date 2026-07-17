@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Globe, Lock, Crown, EyeOff, Check, ChevronDown, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Globe, Lock, Crown, EyeOff, Check, ChevronDown, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -72,11 +72,17 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
     // iter133 — Multi-sélection pure : au moins 1 clé requise, aucune exclusivité.
     let next = activeModes.filter((m) => m !== 'none' && m !== 'all');
     if (next.includes(modeId)) {
+      // iter135 — Bloc de désélection quand une seule case reste cochée
+      // (interdiction complète avec toast explicatif au lieu du fallback silencieux).
+      if (next.length === 1) {
+        toast.error('Impossible de tout décocher : au moins un type de site doit rester coché.');
+        return;
+      }
       next = next.filter((m) => m !== modeId);
     } else {
       next.push(modeId);
     }
-    if (next.length === 0) next = ['public']; // fallback : au moins 1 mode
+    if (next.length === 0) next = ['public']; // filet de sécurité (ne devrait plus arriver)
     setSaving(true);
     try {
       const body = await withCreatorProof(API, axios, {
@@ -151,16 +157,19 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
           {MODES.map((m) => {
             const Mi = m.icon;
             const active = activeModes.includes(m.id);
+            // iter135 — Verrou : la seule case cochée ne peut pas être décochée.
+            const isLastActive = active && activeModes.length === 1;
             return (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => toggleMode(m.id)}
-                disabled={saving}
+                disabled={saving || isLastActive}
                 data-testid={`site-mode-option-${m.id}`}
+                title={isLastActive ? 'Impossible de décocher : au moins un type de site doit rester actif' : undefined}
                 className={`w-full text-left px-3 py-2 text-xs hover:bg-white/[0.05] flex items-start gap-2 ${
                   active ? 'text-[#E4FF00] bg-[#E4FF00]/5' : 'text-white'
-                }`}
+                } ${isLastActive ? 'cursor-not-allowed opacity-95' : ''}`}
               >
                 <span className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 border rounded-sm flex items-center justify-center ${
                   active ? 'border-[#E4FF00] bg-[#E4FF00]/20' : 'border-white/30'
@@ -169,7 +178,18 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
                 </span>
                 <Mi className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="font-['Chivo'] font-bold">{m.labelKey ? t(m.labelKey) : m.label}</div>
+                  <div className="font-['Chivo'] font-bold inline-flex items-center gap-1">
+                    {m.labelKey ? t(m.labelKey) : m.label}
+                    {isLastActive && (
+                      <span
+                        data-testid={`site-mode-locked-${m.id}`}
+                        title="Minimum une case obligatoire"
+                        className="inline-flex items-center gap-0.5 text-[8px] uppercase tracking-widest text-amber-300 border border-amber-400/40 bg-amber-400/10 rounded-sm px-1"
+                      >
+                        <ShieldQuestion className="w-2.5 h-2.5" /> verrouillé
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[10px] text-[#A1A1AA]">{m.hintKey ? t(m.hintKey) : m.hint}</div>
                 </div>
               </button>

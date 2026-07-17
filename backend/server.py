@@ -3303,11 +3303,20 @@ async def set_who_can_visit(payload: WhoCanVisitIn):
             out.append(m)
     if not out:
         raise HTTPException(status_code=400, detail="Au moins un mode de visite doit être sélectionné.")
+    # iter135 — Règle métier : si "Invité" (guest) est actif dans le type de site
+    # (siteModes), le mode "Vue forcée" est automatiquement désactivé.
+    site_doc = await db.site_config.find_one(
+        {"_id": "site_mode"}, {"_id": 0, "modes": 1, "mode": 1},
+    ) or {}
+    active_site_modes = site_doc.get("modes") or ([site_doc.get("mode")] if site_doc.get("mode") else [])
+    final_forcing = payload.view_forcing
+    if "guest" in active_site_modes and final_forcing == "forced":
+        final_forcing = "free"
     await db.site_config.update_one(
         {"_id": "site_mode"},
         {"$set": {
             "visit_modes": out,
-            "view_forcing": payload.view_forcing,
+            "view_forcing": final_forcing,
             "who_can_visit_updated_at": datetime.now(timezone.utc).isoformat(),
         }},
         upsert=True,
@@ -3316,12 +3325,12 @@ async def set_who_can_visit(payload: WhoCanVisitIn):
     try:
         await _log_change(
             "who_can_visit",
-            f"Qui peut visiter → {', '.join(out)} ({payload.view_forcing})",
-            {"visit_modes": out, "view_forcing": payload.view_forcing},
+            f"Qui peut visiter → {', '.join(out)} ({final_forcing})",
+            {"visit_modes": out, "view_forcing": final_forcing},
         )
     except Exception:
         pass
-    return {"ok": True, "visit_modes": out, "view_forcing": payload.view_forcing}
+    return {"ok": True, "visit_modes": out, "view_forcing": final_forcing}
 
 
 class SiteModeSetIn(BaseModel):
@@ -3385,6 +3394,17 @@ async def set_site_mode(payload: SiteModeSetIn):
         }},
         upsert=True,
     )
+    # iter135 — Si "Invité" est coché dans le type de site, on désactive
+    # automatiquement le mode "Vue forcée" côté WhoCanVisit (règle métier).
+    if is_guest_mode:
+        current = await db.site_config.find_one(
+            {"_id": "site_mode"}, {"_id": 0, "view_forcing": 1},
+        ) or {}
+        if current.get("view_forcing") == "forced":
+            await db.site_config.update_one(
+                {"_id": "site_mode"},
+                {"$set": {"view_forcing": "free"}},
+            )
     _invalidate_site_mode_cache()
 
     # iter92 — Auto-log dans le changelog créatrice
