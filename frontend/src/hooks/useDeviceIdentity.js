@@ -13,6 +13,7 @@ const VIEW_MODE_KEY = 'codeforge_view_mode';
 // bannière SIMULATION affiche "Tu vois actuellement le compte de XXX"
 // plutôt que "comme un visiteur".
 const VISIT_TARGET_KEY = 'codeforge_visit_target_pseudo';
+const VISIT_TARGET_KEYID = 'codeforge_visit_target_keyid';
 const VALID_VIEW_MODES = ['creator', 'user', 'modo', 'admin', 'guest'];
 function readViewMode() {
   try {
@@ -24,26 +25,36 @@ function readVisitTarget() {
   try { return localStorage.getItem(VISIT_TARGET_KEY) || null; }
   catch (_) { return null; }
 }
+function readVisitTargetKeyId() {
+  try { return localStorage.getItem(VISIT_TARGET_KEYID) || null; }
+  catch (_) { return null; }
+}
 export function setStoredViewMode(mode, opts = {}) {
   try {
     if (mode === null || mode === undefined || mode === '') {
       localStorage.removeItem(VIEW_MODE_KEY);
       localStorage.removeItem(VISIT_TARGET_KEY);
+      localStorage.removeItem(VISIT_TARGET_KEYID);
     } else {
       const safe = VALID_VIEW_MODES.includes(mode) ? mode : null;
       if (safe) localStorage.setItem(VIEW_MODE_KEY, safe);
       else localStorage.removeItem(VIEW_MODE_KEY);
-      // Pseudo de visite optionnel : effacé si non fourni (= simulation manuelle).
+      // Pseudo + key_id de visite optionnels : effacés si non fournis.
       if (opts.visitTargetPseudo) {
         localStorage.setItem(VISIT_TARGET_KEY, opts.visitTargetPseudo);
       } else {
         localStorage.removeItem(VISIT_TARGET_KEY);
       }
+      if (opts.visitTargetKeyId) {
+        localStorage.setItem(VISIT_TARGET_KEYID, opts.visitTargetKeyId);
+      } else {
+        localStorage.removeItem(VISIT_TARGET_KEYID);
+      }
     }
   } catch (_) { /* silent */ }
   try { window.dispatchEvent(new Event('codeforge:view-mode-changed')); } catch (_) { /* silent */ }
 }
-export { readVisitTarget };
+export { readVisitTarget, readVisitTargetKeyId };
 
 /**
  * useDeviceIdentity — ensures a device key exists, attests it on mount,

@@ -3044,7 +3044,7 @@ async def wizard_suggest(request: Request, payload: WizardSuggestInput):
 from device_auth import compute_key_id, new_nonce, verify_signature  # noqa: E402
 
 
-VALID_SITE_MODES = {"public", "private", "creator", "guest", "staff", "admin", "modo", "none", "all"}
+VALID_SITE_MODES = {"public", "private", "creator", "guest", "staff", "admin", "modo"}
 VALID_DEVICE_ROLES = {"creator", "approved", "pending", "revoked"}
 
 
@@ -3052,21 +3052,29 @@ def _normalize_modes(mode_value) -> List[str]:
     """iter83 C11 — Accepte mode_value en str OU list[str] et retourne
     toujours une liste de modes valides. Conserve la rétro-compatibilité avec
     l'ancien stockage str unique. Si la valeur est vide ou invalide,
-    retourne ['public'] par défaut."""
+    retourne ['public'] par défaut.
+
+    iter133 — Les clés 'none' (Personne) et 'all' (Tous) ont été retirées
+    du multi-select "Qui peut voir actuellement". Rétro-compat : si trouvé
+    en base, on les remplace par 'public' (pas de site fermé involontaire).
+    """
     if isinstance(mode_value, str):
         modes = [mode_value]
     elif isinstance(mode_value, (list, tuple)):
         modes = [str(m) for m in mode_value]
     else:
         modes = []
+    # Rétro-compat : 'none' et 'all' legacy → 'public'
+    modes = ["public" if m in ("none", "all") else m for m in modes]
     modes = [m for m in modes if m in VALID_SITE_MODES]
-    # iter130 — "Qui peut voir actuellement" : 'none' (Personne) et 'all'
-    # (Tous) sont EXCLUSIFS : ils remplacent toute autre sélection.
-    if "none" in modes:
-        return ["none"]
-    if "all" in modes:
-        return ["all"]
-    return modes or ["public"]
+    # Dédoublonne en préservant l'ordre.
+    seen = set()
+    out = []
+    for m in modes:
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out or ["public"]
 
 
 def _device_matches_mode(dev: Dict[str, Any], modes: List[str]) -> bool:
@@ -3098,15 +3106,7 @@ def _device_matches_mode(dev: Dict[str, Any], modes: List[str]) -> bool:
     is_staff_only = (is_admin or is_modo) and role not in ("creator",)
     is_approved_clean = role == "approved" and not is_admin and not is_modo
     for m in modes:
-        if m == "all":
-            # iter130 — Tous : tout le monde peut voir le site.
-            return True
-        elif m == "none":
-            # iter130 — Personne : site fermé. Seule la créa physique garde
-            # l'accès (sinon elle ne pourrait plus revenir en arrière).
-            if is_creator:
-                return True
-        elif m == "public":
+        if m == "public":
             # public seul = visiteurs + clés publiques NON-staff
             if not is_staff_only:
                 return True
@@ -4859,6 +4859,13 @@ app.include_router(
 from routes.integrations_routes import build_integrations_router  # noqa: E402
 app.include_router(
     build_integrations_router(db, require_creator_signature=_require_creator_signature),
+    prefix="/api",
+)
+
+# iter133 — /staff-decisions/* : validation créa des actions modo/admin
+from routes.staff_decisions_routes import build_staff_decisions_router  # noqa: E402
+app.include_router(
+    build_staff_decisions_router(db, require_creator_signature=_require_creator_signature),
     prefix="/api",
 )
 

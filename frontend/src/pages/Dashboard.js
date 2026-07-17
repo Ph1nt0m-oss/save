@@ -947,11 +947,10 @@ export default function Dashboard() {
               </span>
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
                 {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => {
-                  // iter128.4 — Visiter le compte = SIMULER la vue de la cible
-                  // (image 2). Pour les rôles user/guest/modo, on bascule le
-                  // viewMode et la dashboard se ré-affiche filtrée comme cet
-                  // utilisateur la verrait. Pour admin/créa, on garde le
-                  // modal infos brutes (cible sensible).
+                  // iter133 — Visiter le compte = TOUJOURS simuler la vue de
+                  // la cible (comme le dashboard qu'elle voit). Le modal
+                  // "infos brutes" n'est plus utilisé que pour les demandes
+                  // d'export sensibles (déclenché explicitement ailleurs).
                   const effRole = a?.staff_kind === 'admin' ? 'admin'
                                 : a?.staff_kind === 'modo' ? 'modo'
                                 : a?.role === 'creator' ? 'creator'
@@ -959,15 +958,14 @@ export default function Dashboard() {
                                 : a?.role === 'pending' ? 'guest'
                                 : a?.role === 'approved' ? 'user'
                                 : 'user';
-                  if (effRole === 'creator' || effRole === 'admin') {
-                    setVisiting(a);
-                  } else {
-                    // Bascule simulation = image 2 (bannière + dashboard filtré).
-                    // iter128.5 — On passe le pseudo cible pour que la bannière
-                    // affiche "Tu vois actuellement le compte de {pseudo}".
-                    const targetPseudo = a?.pseudo || a?.label || (a?.key_id || '').slice(0, 14);
-                    setStoredViewMode(effRole, { visitTargetPseudo: targetPseudo });
-                  }
+                  // Créa qui se visite elle-même → aucune bascule.
+                  if (effRole === 'creator') return;
+                  // Bascule simulation avec pseudo cible (bannière + dashboard filtré).
+                  const targetPseudo = a?.pseudo || a?.label || (a?.key_id || '').slice(0, 14);
+                  setStoredViewMode(effRole, {
+                    visitTargetPseudo: targetPseudo,
+                    visitTargetKeyId: a?.key_id || null,
+                  });
                 }} />}
                 <button
                   onClick={() => { setFriendsOpen(false); setGroupsOpen(true); }}

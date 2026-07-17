@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Globe, Lock, Crown, EyeOff, Check, ChevronDown, ShieldAlert, ShieldCheck, Ban, Users } from 'lucide-react';
+import { Globe, Lock, Crown, EyeOff, Check, ChevronDown, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -28,18 +28,24 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
   };
   const [saving, setSaving] = useState(false);
 
-  // iter130 — Onglet Créa "Qui peut voir actuellement". Les 8 audiences
-  // demandées, dans l'ordre : Personne, Privé, Public, Invité, Modo, Admin,
-  // Créa, Tous. 'none' (Personne) et 'all' (Tous) sont exclusifs.
+  // iter133 — Multi-sélection réduite à 6 clés (Personne/Tous retirés).
+  // Les 6 clés restantes correspondent EXACTEMENT aux rôles/statuts CodeForge :
+  //   - 'private' → Site fermé : uniquement appareils approuvés (rôle=approved) + staff.
+  //   - 'public'  → Ouvert : tout le monde peut lire/écrire (inclut anonymes).
+  //   - 'guest'   → Visite : lecture seule pour appareils non approuvés (rôle=inactive|pending).
+  //   - 'modo'    → Modérateurs uniquement (staff_kind='modo').
+  //   - 'admin'   → Administrateurs uniquement (staff_kind='admin').
+  //   - 'creator' → Créatrice uniquement (rôle='creator').
+  // La créa peut multi-cocher : au moins UNE clé doit matcher côté backend
+  // (voir server.py _device_matches_mode). Prochain iter : nouvel onglet
+  // "Qui peut visiter ?" avec les mêmes clés (multi-sélection obligatoire).
   const MODES = [
-    { id: 'none',    icon: Ban,         label: 'Personne', hint: 'Site fermé — personne ne peut voir le site (sauf toi)', exclusive: true },
     { id: 'private', icon: Lock,        labelKey: 'sm_private', hintKey: 'sm_private_hint' },
     { id: 'public',  icon: Globe,       labelKey: 'sm_public',  hintKey: 'sm_public_hint'  },
     { id: 'guest',   icon: EyeOff,      labelKey: 'sm_guest',   hintKey: 'sm_guest_hint'   },
     { id: 'modo',    icon: ShieldAlert, label: 'Modo',          hint: 'Modos uniquement' },
     { id: 'admin',   icon: ShieldCheck, label: 'Admin',         hint: 'Admins uniquement' },
     { id: 'creator', icon: Crown,       labelKey: 'sm_creator', hintKey: 'sm_creator_hint' },
-    { id: 'all',     icon: Users,       label: 'Tous',          hint: 'Tout le monde peut voir le site', exclusive: true },
   ];
 
   // Source de vérité : siteModes (array) ; fallback à siteMode (legacy str)
@@ -63,20 +69,14 @@ export default function SiteModeBadge({ role, siteMode, siteModes, viewMode, gue
 
   const toggleMode = async (modeId) => {
     if (!isCreator || saving) return;
-    let next;
-    // iter130 — 'none' (Personne) et 'all' (Tous) sont exclusifs : les cocher
-    // remplace toute la sélection ; les décocher revient à 'public'.
-    if (modeId === 'none' || modeId === 'all') {
-      next = activeModes.includes(modeId) ? ['public'] : [modeId];
+    // iter133 — Multi-sélection pure : au moins 1 clé requise, aucune exclusivité.
+    let next = activeModes.filter((m) => m !== 'none' && m !== 'all');
+    if (next.includes(modeId)) {
+      next = next.filter((m) => m !== modeId);
     } else {
-      next = activeModes.filter((m) => m !== 'none' && m !== 'all');
-      if (next.includes(modeId)) {
-        next = next.filter((m) => m !== modeId);
-      } else {
-        next.push(modeId);
-      }
-      if (next.length === 0) next = ['public']; // Au moins 1 mode
+      next.push(modeId);
     }
+    if (next.length === 0) next = ['public']; // fallback : au moins 1 mode
     setSaving(true);
     try {
       const body = await withCreatorProof(API, axios, {

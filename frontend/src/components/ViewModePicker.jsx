@@ -117,10 +117,11 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
             // la "Vue Créatrice" doit elle aussi être bloquée puisqu'elle
             // contournerait la contrainte forcée (image 3 : forcée vers admin
             // → créa désactivée).
+            // iter133 — Estompage retiré : quand une simulation est active, les
+            // autres vues gardent leur couleur normale (uniquement les vues
+            // BLOQUÉES par contrainte "forcé" restent dimmed).
             const dimmedByForced = hasForcedConstraint && !forced.includes(m);
-            const dimmed = isCreator
-              ? (isActive && !active && !forced.includes(m))
-              : dimmedByForced;
+            const dimmed = dimmedByForced;
             const disabled = dimmedByForced;
             return (
               <button

@@ -49,6 +49,7 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
             "target_label": target_label,
             "ts": _now_iso(),
         }
+        actor = None
         if actor_key_id:
             doc["actor_key_id"] = actor_key_id
             actor = await db.device_keys.find_one(
@@ -62,6 +63,35 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
         if extra:
             doc.update(extra)
         await db.account_history.insert_one(doc)
+
+        # iter133 — Décisions de staff NON-créa = "validation temporaire".
+        # On persiste dans `staff_decisions` pour que la créa puisse valider
+        # ou annuler chaque action prise par les modos/admins.
+        is_creator_actor = bool(actor and actor.get("role") == "creator")
+        TRACKED_EVENTS = {
+            "staff_kind_admin", "staff_kind_modo", "staff_kind_clear",
+            "mute", "unmute", "exclude", "ban", "unban",
+            "force_visitor_on", "force_visitor_off",
+            "rename_pseudo",
+        }
+        if not is_creator_actor and event in TRACKED_EVENTS and actor_key_id:
+            await db.staff_decisions.insert_one({
+                "decision_id": f"sd_{uuid.uuid4().hex[:14]}",
+                "event": event,
+                "target_key_id": target_key_id,
+                "target_label": target_label,
+                "actor_key_id": actor_key_id,
+                "actor_kind": doc.get("actor_kind"),
+                "actor_label": doc.get("actor_label"),
+                "extra": extra or {},
+                "ts": _now_iso(),
+                "status": "pending",  # pending | validated | reverted
+            })
+            # Marque le target pour badge UI "Validation temporaire".
+            await db.device_keys.update_one(
+                {"key_id": target_key_id},
+                {"$set": {"pending_creator_review": True}},
+            )
 
     def _disambiguate_pseudos(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         by_lower: Dict[str, int] = {}
@@ -116,6 +146,9 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
             d.setdefault("product", None); d.setdefault("model", None)
             d.setdefault("staff_kind", None)
             d.setdefault("force_visitor", bool(d.get("force_visitor", False)))
+            # iter133 — Marqueur "validation temporaire" : une décision non-créa
+            # a été prise sur ce compte et attend la confirmation de la créa.
+            d["pending_creator_review"] = bool(d.get("pending_creator_review", False))
             # iter127 — share_code = base64(JSON(public_key_jwk)) — identique
             # à `exportPublicKeyShareCode()` côté front. C'est la "clé" que
             # l'utilisateur partage pour ses demandes d'amis / mode privé.

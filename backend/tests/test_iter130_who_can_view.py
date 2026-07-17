@@ -1,7 +1,8 @@
-"""iter130 — Tests "Qui peut voir actuellement" (multi-select site modes).
+"""iter130 (retagged iter133) — Tests "Qui peut voir actuellement" (multi-select).
 
-Nouvelles audiences : 'none' (Personne — site fermé, créa seule) et
-'all' (Tous — tout le monde). Exclusivité none/all dans _normalize_modes.
+iter133 : suppression des clés 'none' (Personne) et 'all' (Tous) sur demande
+utilisateur. Ne restent que 6 clés : private, public, guest, modo, admin, creator.
+Rétro-compat : `_normalize_modes` remappe 'none'/'all' legacy vers 'public'.
 """
 import os
 from pathlib import Path
@@ -16,22 +17,23 @@ ADMIN = {"role": "approved", "staff_kind": "admin"}
 MODO = {"role": "approved", "staff_kind": "modo"}
 APPROVED = {"role": "approved", "staff_kind": None}
 VISITOR = {"role": "pending", "staff_kind": None}
-BANNED = {"role": "approved", "banned": True}
 
 
-def test_valid_modes_include_none_and_all():
-    assert "none" in VALID_SITE_MODES and "all" in VALID_SITE_MODES
+def test_valid_modes_no_none_no_all():
+    """iter133 : 'none' et 'all' RETIRÉS de VALID_SITE_MODES."""
+    assert "none" not in VALID_SITE_MODES
+    assert "all" not in VALID_SITE_MODES
+    # Les 6 clés autorisées.
+    for k in ("public", "private", "creator", "guest", "modo", "admin"):
+        assert k in VALID_SITE_MODES
 
 
-def test_normalize_none_is_exclusive():
-    assert _normalize_modes(["none", "public", "admin"]) == ["none"]
-    assert _normalize_modes(["public", "none"]) == ["none"]
-
-
-def test_normalize_all_is_exclusive():
-    assert _normalize_modes(["all", "private"]) == ["all"]
-    # none prioritaire sur all
-    assert _normalize_modes(["all", "none"]) == ["none"]
+def test_normalize_legacy_none_all_remapped_to_public():
+    """iter133 : les valeurs legacy 'none' et 'all' en DB deviennent 'public'."""
+    assert _normalize_modes("none") == ["public"]
+    assert _normalize_modes("all") == ["public"]
+    assert _normalize_modes(["none", "admin"]) == ["public", "admin"]
+    assert _normalize_modes(["all", "private"]) == ["public", "private"]
 
 
 def test_normalize_regular_multi_unchanged():
@@ -41,45 +43,37 @@ def test_normalize_regular_multi_unchanged():
     assert _normalize_modes(["bogus"]) == ["public"]
 
 
-def test_mode_none_only_creator_matches():
-    assert _device_matches_mode(CREATOR, ["none"]) is True
-    assert _device_matches_mode(ADMIN, ["none"]) is False
-    assert _device_matches_mode(MODO, ["none"]) is False
-    assert _device_matches_mode(APPROVED, ["none"]) is False
-    assert _device_matches_mode(VISITOR, ["none"]) is False
+def test_normalize_dedupes_preserving_order():
+    assert _normalize_modes(["public", "admin", "public"]) == ["public", "admin"]
 
 
-def test_mode_all_everyone_matches_except_banned():
-    for dev in (CREATOR, ADMIN, MODO, APPROVED, VISITOR):
-        assert _device_matches_mode(dev, ["all"]) is True
-    assert _device_matches_mode(BANNED, ["all"]) is False
-    assert _device_matches_mode({"role": "revoked"}, ["all"]) is False
+def test_device_matches_no_all_none_branches():
+    """iter133 : plus de matching magique 'all' / 'none' — comportement standard uniquement."""
+    # 'all' n'est plus dans VALID donc ignoré par _normalize, mais si passé
+    # direct à _device_matches_mode le for-loop ne match plus (safe).
+    assert _device_matches_mode(APPROVED, ["all"]) is False
+    assert _device_matches_mode(CREATOR, ["none"]) is False
 
 
-def test_kick_reason_closed_wired():
-    src = Path("/app/backend/routes/devices_routes.py").read_text(encoding="utf-8")
-    assert '"none" in modes_active' in src
-    assert "kick_closed" in src
+def test_device_matches_regular_still_works():
+    assert _device_matches_mode(CREATOR, ["creator"]) is True
+    assert _device_matches_mode(APPROVED, ["private"]) is True
+    assert _device_matches_mode(ADMIN, ["admin"]) is True
+    assert _device_matches_mode(MODO, ["modo"]) is True
+    assert _device_matches_mode(VISITOR, ["public"]) is True
+    assert _device_matches_mode(VISITOR, ["private"]) is False
 
 
-def test_frontend_multi_select_eight_options():
+def test_frontend_multi_select_six_options_only():
+    """iter133 : SiteModeBadge n'affiche plus que 6 clés."""
     badge = Path("/app/frontend/src/components/SiteModeBadge.jsx").read_text(encoding="utf-8")
-    for mode_id in ("'none'", "'private'", "'public'", "'guest'", "'modo'", "'admin'", "'creator'", "'all'"):
+    for mode_id in ("'private'", "'public'", "'guest'", "'modo'", "'admin'", "'creator'"):
         assert f"id: {mode_id}" in badge
-    assert "'staff'" not in badge  # retiré de l'UI (admin+modo le couvrent)
-    assert "Qui peut voir actuellement" in badge
-    assert "Personne" in badge and "Tous" in badge
+    assert "id: 'none'" not in badge
+    assert "id: 'all'" not in badge
 
 
-def test_frontend_exclusivity_and_overlay():
+def test_frontend_toggle_no_exclusivity_logic():
+    """iter133 : plus de logique d'exclusivité (all/none retirés)."""
     badge = Path("/app/frontend/src/components/SiteModeBadge.jsx").read_text(encoding="utf-8")
-    assert "modeId === 'none' || modeId === 'all'" in badge
-    overlay = Path("/app/frontend/src/components/SiteLockedOverlay.jsx").read_text(encoding="utf-8")
-    assert "kick_closed" in overlay
-    lang = Path("/app/frontend/src/contexts/LanguageContext.js").read_text(encoding="utf-8")
-    assert "kick_closed_title" in lang and "Site fermé" in lang
-
-
-def test_can_write_handles_all_and_none():
-    hook = Path("/app/frontend/src/hooks/useDeviceIdentity.js").read_text(encoding="utf-8")
-    assert "state.siteMode === 'all'" in hook
+    assert "modeId === 'none' || modeId === 'all'" not in badge

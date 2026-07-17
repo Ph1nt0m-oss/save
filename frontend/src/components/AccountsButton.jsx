@@ -46,6 +46,30 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
   const [loading, setLoading] = useState(false);
   const [excluding, setExcluding] = useState(null); // {target, label}
   const [removing, setRemoving] = useState(false);
+  // iter133 — Décisions temporaires prises par modo/admin en attente de validation créa.
+  const [pendingDecisions, setPendingDecisions] = useState([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+
+  const loadPending = useCallback(async () => {
+    if (!isCreator) return;
+    try {
+      const body = await withCreatorProof(API, axios, {});
+      const r = await axios.post(`${API}/staff-decisions/list`, body);
+      setPendingDecisions(r.data?.decisions || []);
+    } catch (_e) { /* silent */ }
+  }, [isCreator]);
+
+  const decideDecision = async (decision_id, action) => {
+    try {
+      const body = await withCreatorProof(API, axios, { decision_id });
+      await axios.post(`${API}/staff-decisions/${action}`, body);
+      toast.success(action === 'validate' ? 'Décision validée' : 'Décision annulée');
+      await loadPending();
+      await load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Erreur');
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,8 +83,8 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
   }, []);
 
   useEffect(() => {
-    if (open) load();
-  }, [open, load]);
+    if (open) { load(); loadPending(); }
+  }, [open, load, loadPending]);
 
   if (!canSeePanel) return null;
 
@@ -196,10 +220,53 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
               <h2 className="text-sm font-['Chivo'] font-bold text-white">{t('acc_title')}</h2>
               {/* iter125 — Bouton historique demandes d'export dismissed (créa uniquement). */}
               <ExportRequestsHistoryButton onClose={() => setOpen(false)} t={t} />
+              {/* iter133 — Bouton "Décisions à valider" — indicateur temps réel. */}
+              {isCreator && pendingDecisions.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="accounts-pending-review-toggle"
+                  onClick={() => setReviewOpen((o) => !o)}
+                  className="text-[10px] uppercase tracking-widest px-2 py-1 border border-amber-400/60 bg-amber-400/15 text-amber-200 rounded-sm hover:bg-amber-400/25 inline-flex items-center gap-1"
+                >
+                  ⏳ {pendingDecisions.length} à valider
+                </button>
+              )}
               <button onClick={() => setOpen(false)} className="ml-auto text-[#A1A1AA] hover:text-white" aria-label="Close">
                 <X className="w-4 h-4" />
               </button>
             </header>
+
+            {/* iter133 — Bandeau des décisions temporaires (modo/admin) en attente créa. */}
+            {isCreator && reviewOpen && pendingDecisions.length > 0 && (
+              <div data-testid="pending-review-panel" className="px-3 py-2 border-b border-amber-400/30 bg-amber-500/[0.04] max-h-56 overflow-y-auto">
+                <div className="text-[10px] uppercase tracking-widest text-amber-300 mb-1.5">Décisions temporaires prises par le staff</div>
+                {pendingDecisions.map((d) => (
+                  <div key={d.decision_id} data-testid={`pending-review-${d.decision_id}`} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-b-0">
+                    <div className="flex-1 min-w-0 text-[11px]">
+                      <div className="text-white truncate">
+                        <span className="text-amber-300 font-bold">{d.actor_label || d.actor_kind || '?'}</span>
+                        {' → '}<span className="text-[#E4FF00]">{d.event}</span>{' '}
+                        <span className="text-white/70">sur</span>{' '}
+                        <span className="text-cyan-300">{d.target_label || d.target_key_id?.slice(0, 12)}</span>
+                      </div>
+                      <div className="text-[9px] text-[#71717A]">{new Date(d.ts).toLocaleString('fr-FR')}</div>
+                    </div>
+                    <button
+                      onClick={() => decideDecision(d.decision_id, 'validate')}
+                      data-testid={`review-validate-${d.decision_id}`}
+                      className="text-[10px] px-2 py-0.5 border border-emerald-400/60 text-emerald-300 hover:bg-emerald-400/15 rounded-sm"
+                      title="Valider définitivement"
+                    >Valider</button>
+                    <button
+                      onClick={() => decideDecision(d.decision_id, 'revert')}
+                      data-testid={`review-revert-${d.decision_id}`}
+                      className="text-[10px] px-2 py-0.5 border border-red-400/60 text-red-300 hover:bg-red-400/15 rounded-sm"
+                      title="Annuler et rollback"
+                    >Annuler</button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-shrink-0">
               <Search className="w-3.5 h-3.5 text-[#71717A]" />
@@ -256,6 +323,15 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                       {a.banned && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">banned</span>}
                       {a.excluded_until && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">excluded</span>}
                       {a.muted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-purple-400/40 text-purple-300 bg-purple-400/10 rounded-sm">muted</span>}
+                      {a.pending_creator_review && (
+                        <span
+                          data-testid={`acc-pending-review-${a.key_id}`}
+                          title="Une décision modo/admin est en attente de ta validation"
+                          className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-amber-400/60 text-amber-200 bg-amber-400/15 rounded-sm inline-flex items-center gap-1"
+                        >
+                          ⏳ Validation temporaire
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-1 flex-wrap">
