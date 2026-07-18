@@ -92,14 +92,45 @@ export default function MessageBubble({ message, revealAnonymous = false }) {
           </span>
         )}
       </div>
-      {/* Message body : text color follows the role */}
+      {/* Message body : text color follows the role. Mentions @handle
+          rendered with highlight. */}
       <div
         className="text-sm whitespace-pre-wrap break-words"
         style={{ color }}
         data-testid="msg-body"
       >
-        {message.content}
+        {renderWithMentions(message.content, color)}
       </div>
     </div>
   );
+}
+
+/**
+ * iter142 — Découpe le texte pour styler @handle en surbrillance.
+ * Un handle vaut : @ suivi de 3-24 caractères [A-Za-z0-9_.-].
+ */
+function renderWithMentions(text, roleColor) {
+  if (!text) return null;
+  const parts = [];
+  const re = /@([A-Za-z0-9_.-]{3,24})/g;
+  let last = 0;
+  let m;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(
+      <span
+        key={`m-${i}`}
+        data-testid="msg-mention"
+        className="px-1 py-0.5 rounded-sm bg-white/10 font-mono text-[13px]"
+        style={{ color: '#E4FF00' }}
+      >
+        @{m[1]}
+      </span>,
+    );
+    last = m.index + m[0].length;
+    i += 1;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
 }

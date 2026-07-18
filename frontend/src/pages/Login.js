@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from '../components/LanguageToggle';
-import CreatorToolbar from '../components/CreatorToolbar';
+import PreviewMenuButton from '../components/PreviewMenuButton';
 import TheftRecoveryDialog from '../components/TheftRecoveryDialog';
 import MessageButton from '../components/MessageButton';
 import AccountsButton from '../components/AccountsButton';
@@ -595,15 +595,16 @@ export default function Login() {
 
       {/* Top toolbar — always visible on Login: theft, message to creator,
           copy device key. iter128 — AccountsButton retiré ici (image 5).
-          iter128.1 — CreatorToolbar ajouté côté droit pour ré-afficher le
-          SiteModeBadge à la créa physique (le composant filtre lui-même). */}
+          iter142 — CreatorToolbar retiré du haut de la page de connexion :
+          les 3 dropdowns config site (Créa/Public/Libre choix) n'ont pas
+          leur place sur login/inscription. Remplacé par PreviewMenuButton
+          côté centre. */}
       <div className="fixed top-3 inset-x-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
         <div className="flex items-center gap-2 pointer-events-auto">
           <TheftButton variant="labelled" />
         </div>
         <div className="flex items-center gap-2 pointer-events-auto">
           <DeviceKeyCopyButton />
-          <CreatorToolbar />
         </div>
       </div>
 
@@ -1160,8 +1161,12 @@ export default function Login() {
             </button>
             <span>·</span>
             <LanguageToggle />
-            <span>·</span>
-            <CreatorToolbar />
+          </div>
+          {/* iter142 — Bouton "Visite du menu" disponible aussi sur la page
+              de connexion/inscription pour permettre de découvrir avant de
+              s'inscrire. Retire aussi le CreatorToolbar du footer (image 5). */}
+          <div className="mt-3 flex justify-center">
+            <PreviewMenuButton />
           </div>
           <div className="mt-3 flex flex-col items-center gap-2">
             <MessageButton variant="inline" />

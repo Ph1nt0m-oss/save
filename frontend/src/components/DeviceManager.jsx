@@ -258,17 +258,17 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                               </span>
                             )}
                           </div>
-                          {/* Type d'appareil sur sa propre ligne en-dessous du pseudo */}
-                          {d.label && (
-                            <div className="text-xs text-[#A1A1AA] mt-0.5 truncate" data-testid={`device-label-${d.key_id}`}>
-                              {d.label}
+                          {/* iter142 — Format demandes d'ajout :
+                              [type de clé] · Pseudo · Pseudo unique · Clé.
+                              Type d'appareil + dernière connexion retirés. */}
+                          {/* Pseudo unique (public_handle) sur sa propre ligne */}
+                          {d.public_handle ? (
+                            <div className="text-[11px] text-[#A1A1AA] font-['IBM_Plex_Mono'] truncate mt-0.5" data-testid={`device-handle-${d.key_id}`}>
+                              @{d.public_handle}
                             </div>
-                          )}
+                          ) : null}
                           {/* iter125 — clé complète (plus de truncate, break-all pour wrap propre) */}
                           <code className="block text-[10px] text-[#71717A] mt-1 break-all" data-testid={`device-key-${d.key_id}`}>{d.key_id}</code>
-                          <div className="text-[10px] text-[#71717A] mt-0.5">
-                            {d.last_seen_at ? t('dm_seen').replace('{when}', new Date(d.last_seen_at).toLocaleString()) : t('dm_never_seen')}
-                          </div>
                         </div>
                         <div className="flex flex-col gap-1 flex-shrink-0">
                           {d.role === 'pending' && (

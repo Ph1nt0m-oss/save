@@ -299,6 +299,16 @@ def build_devices_router(
         devices = await db.device_keys.find(
             {"role": {"$ne": "inactive"}}, {"_id": 0, "public_key_jwk": 0},
         ).sort("created_at", -1).to_list(length=500)
+        # iter142 — Enrichit chaque device avec public_handle depuis users.
+        emails = list({d.get("email") for d in devices if d.get("email")})
+        if emails:
+            handles = {}
+            async for u in db.users.find(
+                {"email": {"$in": emails}}, {"_id": 0, "email": 1, "public_handle": 1},
+            ):
+                handles[u["email"]] = u.get("public_handle") or ""
+            for d in devices:
+                d["public_handle"] = handles.get(d.get("email")) or d.get("public_handle") or ""
         return {"devices": devices}
 
     @router.post("/devices/decisions")

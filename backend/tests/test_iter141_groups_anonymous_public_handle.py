@@ -32,7 +32,8 @@ def test_groups_matrix_admin():
     from backend.routes.social_routes import _groups_for_device
     dev = {"role": "approved", "staff_kind": "admin"}
     got = set(_groups_for_device(dev))
-    assert got == {"public", "staff", "admin", "modo",
+    # iter142 — Admin ne voit PAS 'modo'.
+    assert got == {"public", "staff", "admin",
                    "public_staff", "private_staff", "users_staff"}, got
 
 
@@ -48,7 +49,8 @@ def test_groups_matrix_guest():
     from backend.routes.social_routes import _groups_for_device
     dev = {"role": "guest"}
     got = set(_groups_for_device(dev))
-    assert got == {"public"}, got
+    # iter142 — Guest voit aussi 'public_staff' (historique bloqué).
+    assert got == {"public", "public_staff"}, got
 
 
 def test_groups_matrix_creator_all():
@@ -56,6 +58,15 @@ def test_groups_matrix_creator_all():
     dev = {"role": "creator"}
     got = set(_groups_for_device(dev))
     assert got == set(GROUP_TYPES), (got, GROUP_TYPES)
+
+
+def test_groups_matrix_creator_simulated_admin_no_modo():
+    from backend.routes.social_routes import _groups_for_device
+    dev = {"role": "creator"}
+    got = set(_groups_for_device(dev, view_mode="admin"))
+    # iter142 — Admin simulé ne voit PAS 'modo'.
+    assert got == {"public", "staff", "admin",
+                   "public_staff", "private_staff", "users_staff"}, got
 
 
 def test_groups_matrix_creator_simulated_modo():
@@ -77,7 +88,9 @@ def test_groups_matrix_creator_simulated_guest_only_public():
     from backend.routes.social_routes import _groups_for_device
     dev = {"role": "creator"}
     got = set(_groups_for_device(dev, view_mode="guest"))
-    assert got == {"public"}, got
+    # iter142 — Guest simulé voit aussi 'public_staff' (mais historique
+    # bloqué au rendu).
+    assert got == {"public", "public_staff"}, got
 
 
 def test_group_members_endpoint_defined():

@@ -32,7 +32,7 @@ export default function AnonymousModeToggle({ className = '' }) {
       const body = await withCreatorProof(API, axios, { enabled: !enabled });
       await axios.put(`${API}/social/anonymous`, body);
       setEnabled(!enabled);
-      toast.success(`Mode anonyme ${!enabled ? 'activé' : 'désactivé'}`);
+      // iter142 — Silencieux : le toggle visuel confirme l'état
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Impossible');
     } finally {

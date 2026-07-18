@@ -29,6 +29,8 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from utils import bot_analyzer
+
 
 # Ordre hiérarchique : utilisateurs < privé < modo < admin < créa
 # Invités hors classement (ils sont en lecture seule, ne participent pas).
@@ -234,24 +236,61 @@ def build_social_member_router(db, verify_signed) -> APIRouter:
                       "anonymous_ts": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
+        # iter142 — Journal (créa only view). L'actor est masqué en cas
+        # de mode anonymat activé — c'est un choix normal.
+        me = await _get_dev(payload.key_id) or {}
+        await bot_analyzer.log_mode_change(
+            db, actor_key_id=payload.key_id, mode="anonymous",
+            enabled=bool(payload.enabled),
+            actor_pseudo=me.get("pseudo") or me.get("label"),
+            actor_public_handle=me.get("public_handle") or "",
+            actor_role=me.get("role"),
+        )
         return {"ok": True, "anonymous": bool(payload.enabled)}
 
     @router.put("/social/sun-mode")
     async def sun_mode_toggle(payload: SunModeToggleIn):
-        """iter141 — Bascule Sun/Night Mode (modo/admin/créa seulement).
-        Mode Soleil (enabled=true) : révèle les pseudos/couleurs des
-        utilisateurs anonymes au staff.
-        Mode Nuit (enabled=false) : respecte l'anonymat, comme les autres.
+        """iter141/iter142 — Bascule Sun/Night Mode (modo/admin/créa
+        seulement). Mode Soleil (enabled=true) : révèle les pseudos/couleurs
+        des utilisateurs anonymes au staff. Mode Nuit (enabled=false) :
+        respecte l'anonymat, comme les autres.
+
+        iter142 — Créa peut activer librement. Modo/Admin peuvent activer
+        UNIQUEMENT si les bots ont marqué un groupe comme "sous suspicion"
+        (protection anti-abus). Toute activation est journalisée.
         """
         await verify_signed(payload.key_id, payload.nonce, payload.signature)
         me = await _get_dev(payload.key_id)
         if not (me.get("role") == "creator" or me.get("staff_kind") in ("admin", "modo")):
             raise HTTPException(status_code=403, detail="Réservé au staff (modo/admin/créa).")
+        # iter142 — Modo/Admin : nécessite qu'au moins un groupe soit
+        # actuellement sous suspicion pour activer Sun. Créa passe outre.
+        if payload.enabled and me.get("role") != "creator":
+            any_suspicion = await db.group_suspicion.find_one(
+                {"active_until": {"$gt": datetime.now(timezone.utc).isoformat()}},
+                {"_id": 0, "group_type": 1},
+            )
+            if not any_suspicion:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Mode Soleil non autorisé : aucun signalement bot actif. "
+                        "Le mode Soleil s'active automatiquement quand le "
+                        "système détecte une situation suspecte."
+                    ),
+                )
         await db.social_prefs.update_one(
             {"key_id": payload.key_id},
             {"$set": {"sun_mode": bool(payload.enabled),
                       "sun_mode_ts": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
+        )
+        await bot_analyzer.log_mode_change(
+            db, actor_key_id=payload.key_id, mode="sun_mode",
+            enabled=bool(payload.enabled),
+            actor_pseudo=me.get("pseudo") or me.get("label"),
+            actor_public_handle=me.get("public_handle") or "",
+            actor_role=me.get("role"),
         )
         return {"ok": True, "sun_mode": bool(payload.enabled)}
 
@@ -264,5 +303,33 @@ def build_social_member_router(db, verify_signed) -> APIRouter:
             "anonymous": bool(p.get("anonymous", False)),
             "sun_mode": bool(p.get("sun_mode", False)),
         }
+
+    # iter142 — Journal d'anonymat (créa only view).
+    @router.post("/social/anonymity-journal")
+    async def anonymity_journal(payload: _SignedIn):
+        """iter142 — Retourne l'historique horodaté des changements
+        Anonyme / Sun / Nuit pour la Créa. Chaque entrée inclut l'identité
+        publique de l'actor et son rôle réel — précieux pour la Créa qui
+        traque les comportements suspects des modos/admins."""
+        me = await _get_dev(payload.key_id)
+        await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        if me.get("role") != "creator":
+            raise HTTPException(status_code=403, detail="Réservé à la Créa.")
+        rows = await db.anonymity_journal.find(
+            {}, {"_id": 0},
+        ).sort("ts", -1).limit(300).to_list(length=300)
+        return {"entries": rows}
+
+    @router.post("/social/suspicion-state")
+    async def suspicion_state(payload: _SignedIn):
+        """iter142 — Retourne les groupes actuellement sous suspicion
+        (utilisé côté frontend pour afficher un badge + débloquer Sun Mode
+        chez les modos/admins). Accessible à tous les signés."""
+        await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        rows = await db.group_suspicion.find(
+            {"active_until": {"$gt": now_iso}}, {"_id": 0},
+        ).to_list(length=50)
+        return {"groups": rows}
 
     return router

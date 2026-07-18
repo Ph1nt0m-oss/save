@@ -17,6 +17,8 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from utils import bot_analyzer
+
 
 GROUP_TYPES = {
     # iter140 — Refonte : Public + Privé retiré, ajout de "users" (Utilisateurs
@@ -61,7 +63,8 @@ def _groups_for_device(dev: Dict[str, Any], view_mode: Optional[str] = None) -> 
     if role == "creator" and view_mode:
         vm = view_mode.lower()
         if vm == "admin":
-            return ["public", "staff", "admin", "modo",
+            # iter142 — Admin ne voit PAS le tchat 'modo' (privé aux modos).
+            return ["public", "staff", "admin",
                     "public_staff", "private_staff", "users_staff"]
         if vm == "modo":
             return ["public", "modo",
@@ -69,7 +72,9 @@ def _groups_for_device(dev: Dict[str, Any], view_mode: Optional[str] = None) -> 
         if vm == "user":
             return ["public", "users", "users_staff", "users_private"]
         if vm == "guest":
-            return ["public"]
+            # iter142 — Invité voit aussi 'public_staff' (mais l'historique
+            # est bloqué au niveau du rendu par view_mode==guest côté back).
+            return ["public", "public_staff"]
         # creator ou inconnu → tout.
         return list(GROUP_TYPES)
     # Non-créa : on suit le rôle réel.
@@ -78,7 +83,8 @@ def _groups_for_device(dev: Dict[str, Any], view_mode: Optional[str] = None) -> 
     is_private = role == "approved" and not (is_modo or is_admin)
     is_users = role == "pending"
     if is_admin:
-        return ["public", "staff", "admin", "modo",
+        # iter142 — Admin ne voit PAS 'modo' (chat privé des modos).
+        return ["public", "staff", "admin",
                 "public_staff", "private_staff", "users_staff"]
     if is_modo:
         return ["public", "modo",
@@ -88,8 +94,8 @@ def _groups_for_device(dev: Dict[str, Any], view_mode: Optional[str] = None) -> 
                 "public_staff", "private_staff"]
     if is_users:
         return ["public", "users", "users_staff", "users_private"]
-    # guest / inconnu.
-    return ["public"]
+    # guest / inconnu : public + public_staff (historique bloqué au render).
+    return ["public", "public_staff"]
 
 
 class FriendRequestIn(BaseModel):
@@ -216,8 +222,8 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
     router = APIRouter(tags=["Social"])
 
     async def _sun_mode_active(key_id: str) -> bool:
-        """iter141 — True si le staff (modo/admin/créa) a activé le mode
-        Soleil : il voit à travers l'anonymat des autres."""
+        """iter141/iter142 — True si le staff (modo/admin/créa) a activé le
+        mode Soleil : il voit à travers l'anonymat des autres."""
         row = await db.social_prefs.find_one({"key_id": key_id}, {"_id": 0, "sun_mode": 1}) or {}
         return bool(row.get("sun_mode"))
 
@@ -225,9 +231,15 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
         row = await db.social_prefs.find_one({"key_id": target_key_id}, {"_id": 0, "anonymous": 1}) or {}
         return bool(row.get("anonymous"))
 
+    async def _sender_is_creator(target_key_id: str) -> bool:
+        d = await db.device_keys.find_one({"key_id": target_key_id}, {"_id": 0, "role": 1}) or {}
+        return d.get("role") == "creator"
+
     async def _render_sender(msg: dict, caller_dev: dict) -> dict:
-        """iter141 — Masque pseudo/rôle/couleur si l'expéditeur est en mode
-        Anonyme, sauf si le caller est staff en Sun mode."""
+        """iter141/iter142 — Masque pseudo/rôle/couleur si l'expéditeur est en
+        mode Anonyme. Le staff en Sun mode révèle. EXCEPTION iter142 : si
+        l'expéditeur est la Créa en anonyme, son identité N'EST JAMAIS
+        révélée, même à un staff en Sun mode (protection absolue Créa)."""
         out = dict(msg)
         sender_key = msg.get("from_key_id")
         if not sender_key or sender_key == caller_dev.get("key_id"):
@@ -240,6 +252,15 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
             caller_dev.get("role") == "creator"
             or caller_dev.get("staff_kind") in ("admin", "modo")
         )
+        # iter142 — Protection Créa : si l'expéditeur est la Créa en anonyme,
+        # son identité N'EST JAMAIS révélée (elle reste au-dessus du système
+        # de bots et Sun mode).
+        if await _sender_is_creator(sender_key):
+            out["from_pseudo"] = "Anonyme"
+            out["from_public_handle"] = ""
+            out["from_role"] = "anon"
+            out["from_staff_kind"] = None
+            return out
         if caller_is_staff and await _sun_mode_active(caller_dev.get("key_id")):
             # Sun mode : révèle tout.
             out["_revealed_from_anonymous"] = True
@@ -264,6 +285,15 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
         allowed = _groups_for_device(dev, view_mode=payload.view_mode)
         if payload.group_type not in allowed:
             raise _HTTPException(status_code=403, detail="Tu n'as pas accès à ce groupe.")
+        # iter142 — Invité (guest, ou Créa en simulation guest) : accès au
+        # groupe accordé mais historique bloqué. Idem pour toute simulation.
+        effective_vm = (payload.view_mode or "").lower()
+        is_guest_effective = (
+            dev.get("role") in ("guest", "unknown", None)
+            or effective_vm == "guest"
+        )
+        if is_guest_effective and payload.group_type == "public_staff":
+            return {"messages": []}
         cursor = db.group_messages.find(
             {"group_type": payload.group_type}, {"_id": 0},
         ).sort("ts", -1).limit(max(1, min(payload.limit, 500)))
@@ -306,6 +336,48 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
             "ts": now.isoformat(),
         }
         await db.group_messages.insert_one(doc)
+        # iter142 Batch 3 — Analyse locale du message par les bots.
+        # Si suspicion → marque le groupe, notifie les membres du groupe
+        # (via un événement bot), autorise le staff à activer Sun Mode.
+        try:
+            analysis = bot_analyzer.analyze_message(
+                group_type=payload.group_type,
+                key_id=payload.key_id,
+                content=content,
+            )
+            if analysis.get("suspicion"):
+                await bot_analyzer.mark_group_suspicion(
+                    db, group_type=payload.group_type,
+                    analysis=analysis, sender_key_id=payload.key_id,
+                )
+                # Injecte un "message système" du bot dans le groupe si
+                # aucun staff n'y est présent (héritage règle utilisateur).
+                staff_present = await db.device_keys.count_documents({
+                    "$or": [
+                        {"role": "creator"},
+                        {"staff_kind": {"$in": ["admin", "modo"]}},
+                    ],
+                    "last_seen_at": {"$exists": True},
+                }, limit=1)
+                if not staff_present:
+                    await db.group_messages.insert_one({
+                        "message_id": f"gm_bot_{_uuid.uuid4().hex[:12]}",
+                        "group_type": payload.group_type,
+                        "from_key_id": "bot_moderator",
+                        "from_pseudo": "Modérateur automatique",
+                        "from_public_handle": "moderation_bot",
+                        "from_role": "bot",
+                        "from_staff_kind": None,
+                        "content": (
+                            "⚠ Surveillance déclenchée par le système. "
+                            "Un membre du staff va être notifié pour "
+                            "examiner la conversation."
+                        ),
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    })
+        except Exception:
+            # Non-critical: bot analysis errors never block message send.
+            pass
         return {"sent": True, "message_id": doc["message_id"], "ts": doc["ts"]}
 
     # iter141 — Liste des membres du groupe (pour l'UI listing).

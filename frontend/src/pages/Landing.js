@@ -7,6 +7,7 @@ import CreatorToolbar from '../components/CreatorToolbar';
 import MessageButton from '../components/MessageButton';
 import TheftButton from '../components/TheftButton';
 import AccountsButton from '../components/AccountsButton';
+import PreviewMenuButton from '../components/PreviewMenuButton';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export default function Landing() {
@@ -96,6 +97,12 @@ export default function Landing() {
           <p className="text-base sm:text-lg lg:text-xl text-[#A1A1AA] max-w-3xl mx-auto font-['IBM_Plex_Sans'] leading-relaxed px-2">
             {t('l_subtitle')}
           </p>
+
+          {/* iter142 — Bouton "Visite du menu" AVANT Connexion/Inscription.
+              Permet aux visiteurs de découvrir le menu selon leur choix de vue. */}
+          <div className="flex justify-center pt-2 sm:pt-4">
+            <PreviewMenuButton />
+          </div>
 
           {/* Hero CTAs — Connexion (left, outline) · Inscription (right, outline) */}
           <div className="flex flex-wrap gap-3 sm:gap-4 justify-center items-center pt-2 sm:pt-4">

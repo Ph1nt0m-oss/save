@@ -1,0 +1,28 @@
+{
+  "summary": "iter142 (Batches 1+2+3) fully validated. 47/47 pytests PASS across 3 files (test_iter141_groups_anonymous_public_handle.py [19] + test_iter142_ux_cleanup.py [15] + test_iter142_bots_and_journal.py [13]). Live curl on public endpoints confirms all new routes are registered and enforcing device auth: /api/health=200, POST /api/social/suspicion-state → 404 'Clé inconnue' (unauth), POST /api/social/anonymity-journal → 404 'Appareil inconnu' (unauth), PUT /api/social/sun-mode → 404 'Clé inconnue' (unauth). Frontend source-level validation confirms all data-testids and structural changes: preview-menu-btn (Landing.js L104 + Login.js L1169), sun-suspicion-badge + 15s polling of /social/suspicion-state (SunNightModeToggle L36,44,88), canActivate gating with opacity-40 (L52,107), open-anonymity-journal-btn (Dashboard L1016), journal-filter-{all,staff,sun_on,sun_off} + journal-entry-<i> (AnonymityJournalPanel L87,110 with filter logic L55-58), msg-mention with regex /@([A-Za-z0-9_.-]{3,24})/g (MessageBubble L115,124), acc-pseudo-<id> + acc-handle-<id> (AccountsButton L299,302, no acc-email/device/key), device-pseudo/handle/key (DeviceManager L243,266,271, no dm_never_seen), toast.success removed from InvisibleModeToggle/AnonymousModeToggle/SunNightModeToggle/MemberActionsBar, window.confirm for isDestructive block/report (MemberActionsBar L45-49), CreatorToolbar showSiteModeBadge conditioned on !device.viewMode || viewMode==='creator' (L52-55), GroupChatsPanel silent on 403 (L72-75), Login.js has no `import CreatorToolbar`. Live browser check confirmed 'Site temporarily private' device gate (expected per E1 note); PreviewMenuButton still detected in DOM (count=1) behind gate — dropdown options not tested end-to-end (device gate).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter141_groups_anonymous_public_handle.py",
+    "/app/backend/tests/test_iter142_ux_cleanup.py",
+    "/app/backend/tests/test_iter142_bots_and_journal.py",
+    "/app/test_reports/pytest/iter142_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Import path correct: `from utils import bot_analyzer` (runtime cwd=/app/backend), enforced by test_no_more_backend_prefix_import.",
+    "Sun-mode 409-when-no-suspicion for non-créa is source-verified (any_suspicion + role != creator bypass in social_members_routes). Cannot exercise 409 live without valid device signature (biometric gate), but source path is unambiguous.",
+    "bot_analyzer.analyze_message thresholds validated: clean<60, keywords→+25, flood(≥6/30s)→+40, repeat(≥3)→+35, mention flood(≥6 @handles)→+30, suspicion=true if score≥60.",
+    "log_mode_change signature verified: {db, actor_key_id, mode, enabled, actor_pseudo, actor_public_handle, actor_role} — journal entries contain all fields required by review request.",
+    "Créa anonyme protection: _sender_is_creator branch in build_groups_router returns 'Anonyme' bypassing sun_mode check (protection absolue Créa comment present).",
+    "'Site temporarily private' device gate still blocks live UI end-to-end (unchanged since iter114) — E1 explicitly authorized source-level frontend validation. No console errors on Landing beyond the expected 401s from the private gate.",
+    "MemberActionsBar has zero real toast.success calls (grep -c false-positive from 'toast success' comment — verified manually L43,57 only toast.error remains)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (47/47 pytest)", "frontend": "100% (source-level; live blocked by device gate as expected)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — unusable in fresh browser session due to Site-temporarily-private device gate.",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter142 fully validated. Cumulative 47 pytests (iter141 19 + iter142 UX 15 + iter142 bots/journal 13) = 100% PASS. Live: /api/health=200, POST /social/suspicion-state and /social/anonymity-journal reachable (return 404 without signed device auth). PUT /social/sun-mode reachable (404 unsigned). Frontend gated by 'Site temporarily private' → live UI E2E not possible without whitelisted device. All new data-testids present: preview-menu-btn, preview-opt-user, preview-opt-guest, sun-suspicion-badge, open-anonymity-journal-btn, journal-filter-{all,staff,sun_on,sun_off}, journal-entry-<i>, msg-mention, acc-pseudo/handle, device-pseudo/handle/key. toast.success removed from all 4 target components. Cumulative 219+47=266/266 pytests PASS across iter130→iter142."
+}

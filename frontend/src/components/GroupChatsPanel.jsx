@@ -69,7 +69,13 @@ export default function GroupChatsPanel({ open, onClose }) {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
       }, 60);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Impossible de charger les messages');
+      // iter142 — Silencieux sur 403 (changement de simulation) : évite
+      // "Tu n'as pas accès à ce groupe" qui rend le user méfiant.
+      const status = e?.response?.status;
+      if (status !== 403 && status !== 400) {
+        toast.error(e?.response?.data?.detail || 'Impossible de charger les messages');
+      }
+      setMessages([]);
     }
   };
 

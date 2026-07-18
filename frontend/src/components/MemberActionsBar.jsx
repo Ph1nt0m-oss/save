@@ -39,11 +39,20 @@ export default function MemberActionsBar({
   if (isSelf) return null; // Auto-actions interdites
 
   const call = async (action, extra = {}) => {
+    // iter142 — Actions destructives : confirmation discrète avant, pas de
+    // toast success après (résultat visible via l'UI). Actions banales :
+    // silencieux total (feedback via l'état visuel du bouton).
+    const isDestructive = action === 'block' || action === 'report';
+    if (isDestructive) {
+      const label = action === 'block' ? 'bloquer' : 'signaler';
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm(`Confirmer : ${label} ${target.pseudo || 'ce membre'} ?`);
+      if (!ok) return;
+    }
     setBusy(action);
     try {
       const body = await withCreatorProof(API, axios, { target_key_id: target.key_id, action, ...extra });
       await axios.post(`${API}/social/member/action`, body);
-      toast.success(`${action} appliqué`);
     } catch (e) {
       toast.error(e?.response?.data?.detail || `${action} impossible`);
     } finally {

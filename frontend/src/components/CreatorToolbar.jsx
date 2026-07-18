@@ -45,12 +45,14 @@ export default function CreatorToolbar({ hideSiteModeBadge = false } = {}) {
   // iter113 — Un seul dropdown ouvert à la fois (SiteMode ou ViewMode) pour
   // éviter la superposition visuelle observée par l'utilisatrice.
   const [openDropdown, setOpenDropdown] = useState(null);  // null | 'site' | 'view'
-  // iter128.11 — SiteModeBadge visible pour créa PHYSIQUE (signature ECDSA)
-  // même en simulation de vue. La créa peut ainsi continuer à changer le
-  // mode du site tout en simulant une vue. hideSiteModeBadge=true peut
-  // le forcer caché ailleurs (jamais utilisé actuellement).
+  // iter128.11/iter142 — SiteModeBadge visible UNIQUEMENT pour la Créa
+  // physique HORS simulation. Dès que la Créa entre en simulation
+  // (viewMode !== 'creator'), les 3 dropdowns sont masqués pour ne pas
+  // trahir sa présence face à un utilisateur.
   const showSiteModeBadge =
-    !hideSiteModeBadge && device.role === 'creator';
+    !hideSiteModeBadge
+    && device.role === 'creator'
+    && (!device.viewMode || device.viewMode === 'creator');
 
   const loadDecisions = async () => {
     setLoadingHist(true);

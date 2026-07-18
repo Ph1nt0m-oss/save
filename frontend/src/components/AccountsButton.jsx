@@ -292,21 +292,16 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                 <div key={a.key_id} data-testid={`accounts-row-${a.key_id}`} className={`bg-black/30 border rounded-sm p-2.5 ${isDeleted ? 'border-red-500/30 opacity-70' : 'border-white/10'}`}>
                   <div className="flex items-start gap-2 flex-wrap">
                     <div className="min-w-0 flex-1 space-y-1">
-                      {/* iter127 — 4 lignes claires : Pseudo · Email · Type de compte · Clé complète */}
+                      {/* iter142 — Format simplifié : Pseudo + Identifiant unique.
+                          Email, type d'appareil et clé complète retirés pour
+                          protéger la vie privée (la clé reste utilisée en
+                          coulisse pour les demandes d'ajout). */}
                       <div className="text-sm text-white font-['Chivo'] font-bold truncate" data-testid={`acc-pseudo-${a.key_id}`}>
                         {a.pseudo || a.label || a.key_id.slice(0, 14)}
                       </div>
-                      <div className="text-[11px] text-[#A1A1AA] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-email-${a.key_id}`}>
-                        <span className="text-[#52525B]">Email :</span>{' '}
-                        <span className="text-[#A1A1AA]">{a.email || '—'}</span>
-                      </div>
-                      <div className="text-[11px] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-device-${a.key_id}`}>
-                        <span className="text-[#52525B]">Type d&apos;appareil :</span>{' '}
-                        <span className="text-white">{deviceTypeLabel(a)}</span>
-                      </div>
-                      <div className="text-[10px] font-['IBM_Plex_Mono']" data-testid={`acc-key-${a.key_id}`}>
-                        <span className="text-[#52525B]">Clé :</span>{' '}
-                        <code className="text-[#A1A1AA] break-all whitespace-pre-wrap">{a.share_code || '—'}</code>
+                      <div className="text-[11px] text-[#A1A1AA] font-['IBM_Plex_Mono'] truncate" data-testid={`acc-handle-${a.key_id}`}>
+                        <span className="text-[#52525B]">Identifiant unique :</span>{' '}
+                        <span className="text-white">@{a.public_handle || '—'}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 flex-wrap flex-shrink-0">

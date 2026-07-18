@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, ScrollText
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -33,6 +33,7 @@ import AccountVisitView from '../components/AccountVisitView';
 import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
+import AnonymityJournalPanel from '../components/AnonymityJournalPanel';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
 import BotsAdminPanel from '../components/BotsAdminPanel';
@@ -88,6 +89,7 @@ export default function Dashboard() {
   // iter82 — Group chats + Friend system
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
   // iter99 — Panel admin community bots
   const [showBotsAdmin, setShowBotsAdmin] = useState(false);
   // iter101 — Câblage useViewSpec : la vue simulée gouverne l'affichage UI
@@ -1004,6 +1006,20 @@ export default function Dashboard() {
                     <UserCog className="w-4 h-4" />
                   </button>
                 )}
+                {/* iter142 — Journal d'anonymat : bouton visible UNIQUEMENT
+                    pour la Créa réelle (hors simulation) — la Créa peut y
+                    consulter l'historique horodaté des activations Nuit/
+                    Soleil par les modos et admins. */}
+                {device.role === 'creator' && (!device.viewMode || device.viewMode === 'creator') && (
+                  <button
+                    onClick={() => setJournalOpen(true)}
+                    data-testid="open-anonymity-journal-btn"
+                    title="Journal d'anonymat (staff)"
+                    className="text-[#A1A1AA] hover:text-amber-300 transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
+                  >
+                    <ScrollText className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1594,6 +1610,7 @@ export default function Dashboard() {
       />
       {/* iter82 — Group chats panel */}
       <GroupChatsPanel open={groupsOpen} onClose={() => setGroupsOpen(false)} />
+      <AnonymityJournalPanel open={journalOpen} onClose={() => setJournalOpen(false)} />
       {/* iter82 — Friend system */}
       <FriendsPanel open={friendsOpen} onClose={() => setFriendsOpen(false)} />
       {/* iter80 — C17 ZIP include checkboxes */}

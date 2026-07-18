@@ -47,7 +47,7 @@ export default function InvisibleModeToggle({
       const body = await withCreatorProof(API, axios, { group_type: groupType, enabled: !enabled });
       await axios.put(`${API}/social/invisible`, body);
       setEnabled(!enabled);
-      toast.success(`Mode invisible ${!enabled ? 'activé' : 'désactivé'}`);
+      // iter142 — Toast retiré pour cette action de routine (état visible sur toggle)
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Impossible');
     } finally {
