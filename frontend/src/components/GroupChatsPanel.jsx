@@ -3,23 +3,30 @@ import axios from 'axios';
 import { X, Send, Users, Lock, Crown, Shield, Globe2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
+import InvisibleModeToggle from './InvisibleModeToggle';
+import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// iter86 C19 — 6 → 7 types de tchats de groupe (ajout 'admin').
+// iter86 C19 / iter140 — Refonte : 'users' + 3 nouveaux hybrides ; 'public_private' retiré.
 const GROUP_META = {
   public: { label: 'Public', icon: Globe2, color: 'text-emerald-300', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
   private: { label: 'Privé', icon: Lock, color: 'text-violet-300', bg: 'bg-violet-500/10', border: 'border-violet-500/30' },
+  users: { label: 'Utilisateurs', icon: Users, color: 'text-lime-300', bg: 'bg-lime-500/10', border: 'border-lime-500/30' },
   staff: { label: 'Staff', icon: Shield, color: 'text-orange-300', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
   modo: { label: 'Modo', icon: Shield, color: 'text-cyan-300', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30' },
   admin: { label: 'Admin', icon: Shield, color: 'text-orange-400', bg: 'bg-orange-500/15', border: 'border-orange-400/40' },
   public_staff: { label: 'Public + Staff', icon: Users, color: 'text-yellow-300', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
-  public_private: { label: 'Public + Privé', icon: Users, color: 'text-sky-300', bg: 'bg-sky-500/10', border: 'border-sky-500/30' },
+  private_staff: { label: 'Privé + Staff', icon: Users, color: 'text-sky-300', bg: 'bg-sky-500/10', border: 'border-sky-500/30' },
+  users_staff: { label: 'Utilisateurs + Staff', icon: Users, color: 'text-pink-300', bg: 'bg-pink-500/10', border: 'border-pink-500/30' },
+  users_private: { label: 'Utilisateurs + Privé', icon: Users, color: 'text-fuchsia-300', bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/30' },
 };
 
-const ORDER = ['public', 'private', 'staff', 'modo', 'admin', 'public_staff', 'public_private'];
+// iter140 — Ordre imposé : Utilisateurs entre Privé et Staff.
+const ORDER = ['public', 'private', 'users', 'staff', 'modo', 'admin', 'public_staff', 'private_staff', 'users_staff', 'users_private'];
 
 export default function GroupChatsPanel({ open, onClose }) {
+  const device = useDeviceIdentity();
   const [groups, setGroups] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -131,8 +138,8 @@ export default function GroupChatsPanel({ open, onClose }) {
 
         {/* Messages */}
         <section className="flex-1 flex flex-col min-w-0">
-          <header className="px-3 py-3 border-b border-white/10 flex items-center justify-between">
-            <div className="flex items-center gap-2 truncate">
+          <header className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 truncate min-w-0">
               {active && (() => {
                 const meta = GROUP_META[active];
                 const Icon = meta.icon;
@@ -144,6 +151,14 @@ export default function GroupChatsPanel({ open, onClose }) {
                 );
               })()}
             </div>
+            {/* iter140 Phase 3 — Toggle Mode invisible (admin + créa) */}
+            {active && (
+              <InvisibleModeToggle
+                role={device?.role}
+                staffKind={device?.staffKind}
+                groupType={active}
+              />
+            )}
             <button onClick={onClose} data-testid="groups-close" className="text-[#A1A1AA] hover:text-white">
               <X className="w-4 h-4" />
             </button>

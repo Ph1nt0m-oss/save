@@ -19,16 +19,34 @@ from pydantic import BaseModel
 
 
 GROUP_TYPES = {
-    "public", "private", "staff", "modo", "admin", "public_staff", "public_private",
+    # iter140 — Refonte : Public + Privé retiré, ajout de "users" (Utilisateurs
+    # = compte non-approuvé mais valide, PAS lecture seule) + 4 nouveaux
+    # groupes hybrides. Ordre logique : "users" entre privé et staff.
+    "public", "private", "users", "staff", "modo", "admin",
+    "public_staff", "private_staff", "users_staff", "users_private",
 }
 
 
-def _groups_for_device(dev: Dict[str, Any]) -> List[str]:
-    """Retourne la liste des groupes auxquels CE device a accès.
+# iter140 — Ordre d'affichage imposé pour le front-end.
+GROUP_TYPES_ORDER = [
+    "public", "private", "users", "staff", "modo", "admin",
+    "public_staff", "private_staff", "users_staff", "users_private",
+]
 
-    iter86 — Ajout du groupe 'admin' (admin-only) + créa voit TOUT (y compris
-    admin chat). Cohérence : staff = admin ∪ modo, donc admin a accès à
-    staff + admin + public_staff. Modo a accès à staff + modo + public_staff.
+
+def _groups_for_device(dev: Dict[str, Any]) -> List[str]:
+    """iter86/140 — Retourne la liste des groupes auxquels ce device a accès.
+
+    Règles iter140 :
+      - Créa : voit TOUT.
+      - Staff (admin ou modo) : staff + son propre groupe (modo/admin) +
+        les 4 hybrides staff (public_staff, private_staff, users_staff).
+      - Privé (approved non-staff) : private + users_private + public_staff +
+        private_staff.
+      - Utilisateurs (pending) : public + users + users_private +
+        users_staff + public_staff.
+      - Invité (rôle unknown / no account) : uniquement public (lecture seule
+        gérée ailleurs).
     """
     role = dev.get("role")
     sk = dev.get("staff_kind")
@@ -40,24 +58,37 @@ def _groups_for_device(dev: Dict[str, Any]) -> List[str]:
     is_admin = sk == "admin"
     is_staff = is_modo or is_admin
     is_private = role == "approved" and not is_staff
-    is_public = role in ("pending", "approved")
-    out = []
-    if is_public and not is_staff and not is_private:
-        out.append("public")
-        out.append("public_staff")
-        out.append("public_private")
-    if is_private:
-        out.append("private")
-        out.append("public_staff")
-        out.append("public_private")
+    is_users = role == "pending"
+    out: List[str] = []
+    # Public : accessible à tous les rôles non bloqués.
+    out.append("public")
     if is_staff:
         out.append("staff")
         out.append("public_staff")
-    if is_modo:
-        out.append("modo")
+        out.append("private_staff")
+        out.append("users_staff")
     if is_admin:
         out.append("admin")
-    return list(set(out))
+    if is_modo:
+        out.append("modo")
+    if is_private:
+        out.append("private")
+        out.append("public_staff")
+        out.append("private_staff")
+        out.append("users_private")
+    if is_users:
+        out.append("users")
+        out.append("users_private")
+        out.append("users_staff")
+        out.append("public_staff")
+    # Dédup préservant l'ordre.
+    seen = set()
+    ordered = []
+    for g in out:
+        if g not in seen:
+            seen.add(g)
+            ordered.append(g)
+    return ordered
 
 
 class FriendRequestIn(BaseModel):

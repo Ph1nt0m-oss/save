@@ -4485,13 +4485,16 @@ async def _verify_signed(key_id: str, nonce: str, signature: str) -> Dict[str, A
 # ==========================================================================
 
 GROUP_TYPES = {
-    "public",         # tous les approved non-staff/private + visiteurs publics
+    "public",         # tous les rôles non bloqués
     "private",        # uniquement les clés privées (approved)
+    "users",          # iter140 — Utilisateurs (pending, compte non-approuvé)
     "staff",          # admin + modo
     "modo",           # modo only
     "admin",          # iter86 — admin only
-    "public_staff",   # public + admin + modo (tt types confondus)
-    "public_private", # public + privé (sans staff)
+    "public_staff",   # public + admin + modo
+    "private_staff",  # iter140 — privé + staff
+    "users_staff",    # iter140 — utilisateurs + staff
+    "users_private",  # iter140 — utilisateurs + privé
 }
 
 
@@ -4974,6 +4977,13 @@ app.include_router(
 from routes.staff_decisions_routes import build_staff_decisions_router  # noqa: E402
 app.include_router(
     build_staff_decisions_router(db, require_creator_signature=_require_creator_signature),
+    prefix="/api",
+)
+
+# iter140 Phase 2 & 3 — /social/member/* + /social/invisible/*
+from routes.social_members_routes import build_social_member_router  # noqa: E402
+app.include_router(
+    build_social_member_router(db, verify_signed=_verify_signed),
     prefix="/api",
 )
 

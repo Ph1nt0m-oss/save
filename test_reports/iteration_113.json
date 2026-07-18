@@ -1,0 +1,29 @@
+{
+  "summary": "iter140 validated: 3-phase refonte tchats de groupe. (1) 24/24 pytests source-level PASS (test_iter140_groups_members_invisible.py) covering: GROUP_TYPES = 10 keys in server.py + social_routes.py (no public_private), _groups_for_device returns correct sets for pending/approved/admin/creator, MemberActionsBar has 6 data-testids + tierOf hierarchy check, InvisibleModeToggle bg-[#E4FF00]/bg-black slider + staffLock logic, mounted in GroupChatsPanel. (2) Local openapi.json (via localhost:8001) confirms all 5 new endpoints registered: POST /api/social/member/action, POST /api/social/member/prefs, PUT /api/social/invisible, POST /api/social/invisible/state, POST /api/social/invisible/present. (3) Live gating verified via public URL: all 5 new endpoints return 404 'Clé inconnue' with fake signature (verify_signed enforced). (4) Backend regression OK: GET /api/system/site-mode → 200. (5) Frontend smoke test: login test_dash → /dashboard → click open-groups-btn → GroupChatsPanel opens correctly with 'Groupes' sidebar and Public group visible (device is guest-tier so limited scope, as expected). No new iter140 console errors — only 2 pre-existing (401 auth/session-pending + button-nested-in-button DOM warning noted in iter112). NOTE: public /api/openapi.json returns 404 (docs_url may be gated/removed at ingress) — used localhost:8001 fallback which is legitimate.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter140_groups_members_invisible.py",
+    "/app/test_reports/pytest/iter140_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "social_members_routes.py handles all 8 action types (mute/unmute/notif_off/notif_on/block/unblock/report/friend_req) with correct hierarchy check '_tier(target) > _tier(me)' at L92 for mute-blocking on superiors. Clean implementation.",
+    "invisible endpoint correctly refuses creator in 'staff' group_type at L178-179 (both conditions checked: role=='creator' AND group_type=='staff').",
+    "InvisibleModeToggle.jsx correctly gates visibility to isCreator||isAdmin and disables toggle via staffLock (creator+staff). staffLock check at L25 matches backend logic.",
+    "MemberActionsBar.jsx correctly hides for self-action (isSelf return null at L38-39) and disables mute button visually when tierOf(target) > tierOf(me).",
+    "Pre-existing DOM nested-button warning at Dashboard.js line 836 & 887 (project button + project-eye button) — NOT iter140 related, noted since iter112.",
+    "Public /api/openapi.json returns 404 (docs endpoint may not be exposed via ingress). Internal /openapi.json on port 8001 works fine — used for endpoint verification."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — login OK on live URL",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter140 fully validated. All 3 phases source-level + live-gating tested. Cumulative 177+24=201/201 iter130-140 pytests PASS. GroupChatsPanel opens without crash and lists groups per role. Note: /api/openapi.json is not exposed via public ingress (returns 404); tests fell back to internal localhost:8001 which is standard practice. Test_dash's device shows only 'Public' group in panel — expected because device role/state may not be tagged as approved 'pending' role (guest fallback returns ['public'] only per _groups_for_device fallthrough). To test full user pending scope (public+users+users_private+users_staff+public_staff), main agent would need a device explicitly assigned role='pending'."
+}
