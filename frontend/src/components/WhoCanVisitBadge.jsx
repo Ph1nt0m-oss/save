@@ -227,9 +227,15 @@ export default function WhoCanVisitBadge({
 
           {/* Rappel : où se configure "Qui peut voir" (audiences) */}
           <div className="px-3 py-2 border-t border-white/10 text-[10px] text-[#71717A] italic">
-            Note : les <strong>audiences</strong> (privé, public, guest, modo, admin, créa) se configurent dans l&apos;onglet « Qui peut voir » (à gauche).
+            Note : les <strong>audiences</strong> (privé, public, invité, utilisateurs, modo, admin, créa) se configurent dans l&apos;onglet « Qui peut voir » (à gauche).
             {Array.isArray(visitModes) && visitModes.length > 0 && (
-              <span className="ml-1 text-[#A1A1AA]">Actuelles : {visitModes.join(', ')}.</span>
+              <span className="ml-1 text-[#A1A1AA]">
+                Actuelles :{' '}
+                {visitModes
+                  .map((id) => VIEW_KEYS.find((k) => k.id === id)?.label || id)
+                  .join(', ')}
+                .
+              </span>
             )}
           </div>
         </div>

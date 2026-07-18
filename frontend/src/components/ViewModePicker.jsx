@@ -104,7 +104,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
         data-testid="view-mode-picker-toggle"
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm border transition-colors ${
           isSimulating
-            ? `bg-cyan-500/10 border-cyan-400/40 ${current.color} hover:bg-cyan-500/20`
+            ? 'bg-[#E4FF00]/10 border-[#E4FF00]/40 text-[#E4FF00] hover:bg-[#E4FF00]/20'
             : 'bg-cyan-500/10 border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/20'
         }`}
       >
@@ -125,14 +125,12 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
             const Mi = meta.Icon;
             // iter115 — Toggle universel : active = case correspond exactement à viewMode.
             const active = m === viewMode;
-            // iter115 — Dimming : vues NON actives sont grisées si une vue est active (sauf 'creator' jamais dimmed).
             // iter128.7 — Si une vue forcée existe ET la créa est sur place,
             // la "Vue Créatrice" doit elle aussi être bloquée puisqu'elle
-            // contournerait la contrainte forcée (image 3 : forcée vers admin
-            // → créa désactivée).
-            // iter133 — Estompage retiré : quand une simulation est active, les
-            // autres vues gardent leur couleur normale (uniquement les vues
-            // BLOQUÉES par contrainte "forcé" restent dimmed).
+            // contournerait la contrainte forcée.
+            // iter133 — Estompage retiré : les autres vues gardent leur couleur normale.
+            // iter139 — Style uniformisé sur SiteModeBadge : toutes les cases
+            // actives utilisent #E4FF00, plus de couleurs par-view.
             const dimmedByForced = hasForcedConstraint && !forced.includes(m);
             const dimmed = dimmedByForced;
             const disabled = dimmedByForced;
@@ -143,22 +141,18 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
                 onClick={() => !disabled && toggle(m)}
                 disabled={disabled}
                 data-testid={`view-mode-pick-${m}`}
-                className={`w-full text-left px-3 py-2 text-xs flex items-start gap-2 transition-opacity ${
-                  disabled ? 'cursor-not-allowed' : 'hover:bg-white/[0.05]'
-                } ${
-                  active ? `${meta.color} bg-white/[0.04]`
-                         : dimmed ? 'text-white/40'
-                         : 'text-white'
-                }`}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-white/[0.05] flex items-start gap-2 ${
+                  active ? 'text-[#E4FF00] bg-[#E4FF00]/5' : (dimmed ? 'text-white/40' : 'text-white')
+                } ${disabled ? 'cursor-not-allowed' : ''}`}
               >
-                <span className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 border rounded-sm flex items-center justify-center transition ${
-                  active ? `border-current ${meta.color.replace('text-', 'bg-').replace(']', ']/20')}`
+                <span className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 border rounded-sm flex items-center justify-center ${
+                  active ? 'border-[#E4FF00] bg-[#E4FF00]/20'
                          : dimmed ? 'border-white/15'
                          : 'border-white/30'
                 }`}>
-                  {active && <Check className={`w-2.5 h-2.5 ${meta.color}`} />}
+                  {active && <Check className="w-2.5 h-2.5 text-[#E4FF00]" />}
                 </span>
-                <Mi className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${dimmed ? 'opacity-50' : ''} ${meta.color}`} />
+                <Mi className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${dimmed ? 'opacity-50' : ''}`} />
                 <div className="flex-1 min-w-0">
                   <div className="font-['Chivo'] font-bold">{meta.label}</div>
                   <div className="text-[10px] text-[#A1A1AA]">{meta.desc}</div>
