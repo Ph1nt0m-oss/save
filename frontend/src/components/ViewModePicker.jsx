@@ -81,7 +81,7 @@ export default function ViewModePicker({ role, viewMode, guestView, guestViews, 
   const isActive = !!viewMode && viewMode !== '';
   const isSimulating = isActive && viewMode !== 'creator';
   const current = isActive ? VIEW_META[viewMode] : VIEW_META.creator;
-  const CIcon = current ? current.Icon : Eye;
+  const CIcon = current ? current.Icon : EyeOff;
 
   const toggle = (mode) => {
     // iter115 — Toggle universel : si la case cliquée est DÉJÀ active, on
