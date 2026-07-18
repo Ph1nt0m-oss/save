@@ -1,6 +1,42 @@
 # CodeForge AI — Product Requirements
 
 
+## iter140 (Feb 2026) — Refonte tchats de groupe + 6 boutons membre + Mode invisible
+**Status : COMPLETED (100% tests PASS via testing_agent_v3 rapport 113)**
+
+### Phase 1 — Nouveaux groupes
+- Ajout tier **Utilisateurs** ('users' = accounts pending, PAS lecture seule).
+- Nouveaux groupes : **Privé + Staff**, **Utilisateurs**, **Utilisateurs + Staff**, **Utilisateurs + Privé**.
+- Retrait de **Public + Privé**.
+- Ordre : public → private → users → staff → modo → admin → public_staff → private_staff → users_staff → users_private.
+- `_groups_for_device` refactorisé selon la matrice utilisateur (backend/routes/social_routes.py + backend/server.py).
+- Frontend `GroupChatsPanel.jsx` : GROUP_META + ORDER mis à jour (10 groupes).
+
+### Phase 2 — 6 boutons par membre
+- Nouveau module backend `routes/social_members_routes.py`.
+- `POST /api/social/member/action` accepte : `mute, unmute, notif_off, notif_on, block, unblock, report, friend_req`.
+- `POST /api/social/member/prefs` renvoie `{mutes:[], notif_off:[], blocks:[]}`.
+- **Règle hiérarchique** : `mute` refuse `_tier(target) > _tier(me)` (users<privé<modo<admin<créa). Notif OFF autorisé sur tous.
+- Frontend `MemberActionsBar.jsx` (nouveau) : 6 icônes lucide-react, test-ids `member-{mute|notif|block|report|friend|delete}-<key_id>`, bouton mute automatiquement disabled sur supérieur.
+
+### Phase 3 — Mode invisible admin/créa
+- `PUT /api/social/invisible` : bascule par (key_id, group_type). Réservé admin+créa (403 sinon). **Créa dans groupe 'staff' = INTERDIT (présence obligatoire)**.
+- `POST /api/social/invisible/state` : renvoie les group_types où l'appelant est invisible.
+- `POST /api/social/invisible/present` : renvoie `{invisible_counts: {group: n}}` pour badge côté membres.
+- Frontend `InvisibleModeToggle.jsx` (nouveau) : slider gauche→droite, **noir off / jaune #E4FF00 on**, staffLock désactive le toggle pour créa dans staff. Monté dans `GroupChatsPanel.jsx` header.
+
+### Tests
+- 24 pytests iter140 → 100% PASS.
+- Cumul iter130-140 : **177/177 PASS**.
+- testing_agent_v3 rapport 113 : **100% backend + frontend, 0 issues, retest_needed=false**.
+
+### Fichiers nouveaux
+- `/app/backend/routes/social_members_routes.py`
+- `/app/frontend/src/components/MemberActionsBar.jsx`
+- `/app/frontend/src/components/InvisibleModeToggle.jsx`
+- `/app/backend/tests/test_iter140_groups_members_invisible.py`
+
+
 ## iter138 (Feb 2026) — Source unique 7 clés + Ajout "Utilisateurs" + Cohérence 4 onglets
 **Status : COMPLETED (100% tests PASS)**
 
