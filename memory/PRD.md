@@ -1,6 +1,61 @@
 # CodeForge AI — Product Requirements
 
 
+## iter142 (Feb 2026) — UX cleanup + Login preview + Bots + Journal + Créa protection
+**Status : COMPLETED (47/47 pytests iter141+142 PASS, testing_agent v3 rapport 115 : backend 100% + frontend source-level 100%)**
+
+### Batch 1 — Nettoyage UX & visibilité
+- **Toasts** — Retirés dans InvisibleModeToggle, AnonymousModeToggle, SunNightModeToggle, MemberActionsBar. Restent : erreurs bloquantes + `window.confirm()` sur actions destructives (block/report).
+- **Config site dropdowns** — CreatorToolbar `showSiteModeBadge` conditionné par `!device.viewMode || device.viewMode === 'creator'` → masqué pour Créa en simulation.
+- **Auto-refresh silencieux** — GroupChatsPanel ignore 403 sur changement de simulation (fini "Tu n'as pas accès à ce groupe").
+- **Matrice visibilité (rectifs)** :
+  - Admin ne voit plus le groupe `modo` (chat privé aux modos)
+  - Guest voit `public + public_staff` (mais historique bloqué au rendu)
+- **AccountsButton** — pseudo + `@public_handle` (email/type/clé retirés).
+- **DeviceManager** (demandes d'ajout) — [rôle] + pseudo + `@handle` + clé (type d'appareil + last_seen retirés).
+- **/devices/list** enrichit chaque device avec public_handle depuis users.
+
+### Batch 2 — Login/Signup + Visite du menu
+- **PreviewMenuButton** (nouveau) — dropdown avec 2 options (user/guest), stocke via `setStoredViewMode` + navigate('/dashboard'). Icône œil.
+- **Landing.js** — bouton "Visite du menu" AVANT les CTAs Connexion/Inscription.
+- **Login.js** — PreviewMenuButton en pied de page, CreatorToolbar retiré (header + footer).
+
+### Batch 3 — Bots analyseurs + Journal + Créa protection
+- **backend/utils/bot_analyzer.py** (nouveau) — analyse locale hybride :
+  - Détection mots-clés spam (+25), flood 6msg/30s (+40), répétition (+35), massive paste (+40), mentions en rafale (+30). Suspicion si score ≥ 60.
+  - `mark_group_suspicion` (TTL 10min) + `log_mode_change` (journal).
+  - Injection message "Modérateur automatique" dans groupes sans staff quand suspicion.
+- **Sun mode gating (iter142)** — Modo/Admin ne peuvent activer Sun QUE si suspicion active (409 sinon). Créa passe outre.
+- **Créa anonyme protégée** — `_sender_is_creator` dans `_render_sender` renvoie "Anonyme" quel que soit le Sun mode du caller (protection absolue).
+- **/api/social/anonymity-journal** (Créa only) — historique horodaté avec actor_pseudo + public_handle + role.
+- **/api/social/suspicion-state** — groupes actuellement sous surveillance (frontend polling 15s).
+- **SunNightModeToggle** — badge "Bot alerte" quand suspicion active + toggle grisé sinon (non-Créa).
+- **AnonymityJournalPanel** (nouveau) — panneau modal avec 4 filtres (Tous/Staff/Soleil ON/Soleil OFF).
+- **Dashboard** — bouton `open-anonymity-journal-btn` (icône ScrollText, Créa réelle uniquement).
+- **MessageBubble** — `renderWithMentions` détecte `@[A-Za-z0-9_.-]{3,24}` et surligne en jaune fluo (data-testid msg-mention).
+
+### Fichiers nouveaux
+- `/app/backend/utils/bot_analyzer.py`
+- `/app/frontend/src/components/AnonymityJournalPanel.jsx`
+- `/app/frontend/src/components/PreviewMenuButton.jsx`
+- `/app/backend/tests/test_iter142_ux_cleanup.py`
+- `/app/backend/tests/test_iter142_bots_and_journal.py`
+
+### Fichiers modifiés
+- Backend : `routes/social_routes.py`, `routes/social_members_routes.py`, `routes/devices_routes.py`, `routes/accounts_routes.py`, `server.py` (index public_handle_lower).
+- Frontend : `components/AccountsButton.jsx`, `DeviceManager.jsx`, `MessageBubble.jsx`, `SunNightModeToggle.jsx`, `InvisibleModeToggle.jsx`, `AnonymousModeToggle.jsx`, `MemberActionsBar.jsx`, `CreatorToolbar.jsx`, `GroupChatsPanel.jsx`, `MessageButton.jsx`. `pages/Landing.js`, `Login.js`, `Dashboard.js`.
+
+### Tests
+- 47 pytests iter141+142 → 100% PASS.
+- Cumul iter130-142 : **266/266 PASS**.
+- testing_agent v3 rapport `/app/test_reports/iteration_115.json` : backend 100%, frontend structural 100%.
+
+### Backlog restant (non traité dans iter142)
+- Filtres membre par rôle (staff/amis/anonymes) — nécessite d'abord un GroupMembersListPanel.
+- Autocomplete @handle dans le champ de saisie (le rendu et le comptage bot-side sont OK).
+- Couche 2 LLM (Emergent) au-dessus du bot_analyzer pour analyse ambigüe — scaffolding en place, appel LLM à ajouter.
+
+
 ## iter141 (Feb 2026) — Identité publique unique + Anonymat + Sun/Night + Bulle rôle + Simulation
 **Status : COMPLETED (18/18 nouveaux pytests PASS, testing_agent v3 rapport 114 : backend 100% + frontend source-level 100%)**
 
