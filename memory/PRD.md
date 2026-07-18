@@ -1,6 +1,57 @@
 # CodeForge AI — Product Requirements
 
 
+## iter141 (Feb 2026) — Identité publique unique + Anonymat + Sun/Night + Bulle rôle + Simulation
+**Status : COMPLETED (18/18 nouveaux pytests PASS, testing_agent v3 rapport 114 : backend 100% + frontend source-level 100%)**
+
+### Objectifs
+1. **Restriction UI** — Icône "Amis & demandes" visible aussi pour la Créa réelle (auparavant seulement en simulation). Site config déjà masqué pour non-créa.
+2. **Visibilité groupes par rôle** — Matrice précise :
+   - Créa réelle : tous les groupes
+   - Créa simulée : suit le rôle simulé via `view_mode`
+   - Admin : public, staff, admin, modo, public_staff, private_staff, users_staff
+   - Modo : public, modo, public_staff, private_staff, users_staff (PAS staff, PAS admin)
+   - Privé (approved) : public, private, users_private, public_staff, private_staff
+   - Utilisateurs (pending) : public, users, users_staff, users_private
+   - Invité : public uniquement
+3. **UI bulles** — bordure blanche 1px, fond gris `bg-[#111114]/70`, texte coloré par rôle (Créa noir / Admin orange / Modo bleu / Privé violet / Utilisateur vert / Anonyme gris). En-tête : icône + label rôle + pseudo + `@public_handle` + timestamp.
+4. **Invisibilité Créa dans listes membres** — Créa masquée dans tous les groupes SAUF `staff`. Exception : les Admins voient TOUJOURS la Créa (pour ne pas éveiller les soupçons).
+5. **Mode Anonyme** — Disponible pour tous. Masque pseudo, public_handle et couleur. `PUT /api/social/anonymous`.
+6. **Mode Soleil/Nuit** — Staff seulement (modo/admin/créa). Nuit respecte l'anonymat, Soleil révèle. `PUT /api/social/sun-mode` (403 pour non-staff).
+7. **Simulation** — MP icon reste visible mais inaccessible (toast "Messagerie privée verrouillée pendant une simulation."). GroupChatsPanel affiche "Historique verrouillé" pendant une simulation. Icône est visible avec petit cadenas.
+8. **Identité publique unique (`public_handle`)** — Nouveau champ obligatoire à l'inscription. 3-24 caractères `[A-Za-z0-9_.-]+`. Unique dans toute la plateforme (index MongoDB partiel case-insensitive). Le pseudo n'est PLUS unique (peut être dupliqué comme Discord).
+
+### API ajoutées / modifiées
+- `POST /api/groups/list|messages|send` — nouveau champ optionnel `view_mode` pour la simulation Créa.
+- `POST /api/groups/members` — nouvelle route. Applique la règle Créa/Admin.
+- `PUT /api/social/anonymous` — bascule mode anonyme (tous).
+- `PUT /api/social/sun-mode` — bascule Sun/Night (staff only).
+- `POST /api/social/modes/state` — retourne `{anonymous, sun_mode}`.
+- `POST /api/auth/register` — champ `public_handle` requis + unique.
+
+### Fichiers nouveaux
+- `/app/frontend/src/components/MessageBubble.jsx`
+- `/app/frontend/src/components/AnonymousModeToggle.jsx`
+- `/app/frontend/src/components/SunNightModeToggle.jsx`
+- `/app/backend/tests/test_iter141_groups_anonymous_public_handle.py`
+
+### Fichiers modifiés
+- `/app/backend/routes/social_routes.py` — `_groups_for_device(view_mode)`, `/groups/members`, `_render_sender` (masque pseudo anonyme sauf Sun mode staff), `from_public_handle` stocké dans messages.
+- `/app/backend/routes/social_members_routes.py` — endpoints anonymes + sun/night + modes/state.
+- `/app/backend/server.py` — `RegisterRequest.public_handle`, validation 400/409, index `public_handle_lower` unique partiel, drop `pseudo_lower_1` unique.
+- `/app/backend/routes/accounts_routes.py` — retourne `public_handle` dans `/accounts/list`.
+- `/app/backend/tests/conftest.py` — `seed_verified_user` ajoute `public_handle` unique.
+- `/app/frontend/src/pages/Login.js` — champ `signup-public-handle-input` (3-24 chars, regex).
+- `/app/frontend/src/pages/Dashboard.js` — `open-friends-btn` visible pour Créa réelle.
+- `/app/frontend/src/components/GroupChatsPanel.jsx` — utilise `MessageBubble`, mount des 3 toggles, blocage historique en simulation.
+- `/app/frontend/src/components/MessageButton.jsx` — cadenas + toast en simulation.
+
+### Tests
+- 18 pytests iter141 → 100% PASS.
+- Cumul iter130-141 : **219/219 PASS** (nouveau).
+- testing_agent v3 rapport `/app/test_reports/iteration_114.json` : backend 100%, frontend structural 100% (live gate device inchangé).
+
+
 ## iter140 (Feb 2026) — Refonte tchats de groupe + 6 boutons membre + Mode invisible
 **Status : COMPLETED (100% tests PASS via testing_agent_v3 rapport 113)**
 
