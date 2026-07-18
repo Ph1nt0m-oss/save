@@ -134,11 +134,14 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
         ).sort("created_at", -1).to_list(length=2000)
         emails = list({d.get("email") for d in devices if d.get("email")})
         users = {}
+        handles = {}
         if emails:
-            async for u in db.users.find({"email": {"$in": emails}}, {"_id": 0, "email": 1, "pseudo": 1}):
+            async for u in db.users.find({"email": {"$in": emails}}, {"_id": 0, "email": 1, "pseudo": 1, "public_handle": 1}):
                 users[u["email"]] = u.get("pseudo")
+                handles[u["email"]] = u.get("public_handle") or ""
         for d in devices:
             d["pseudo"] = users.get(d.get("email")) or d.get("pseudo") or d.get("label")
+            d["public_handle"] = handles.get(d.get("email")) or d.get("public_handle") or ""
             d["muted"] = bool(d.get("muted"))
             d["banned"] = bool(d.get("banned"))
             d["is_inactive"] = (d.get("role") == "inactive")

@@ -15,7 +15,10 @@ def _email():
 def _register(email: str, password: str = "Pass1234"):
     return requests.post(
         f"{API}/auth/register",
-        json={"email": email, "password": password, "frontend_url": BASE_URL},
+        json={"email": email, "password": password,
+              "pseudo": "iter23_user",
+              "public_handle": f"iter23_{uuid.uuid4().hex[:6]}",
+              "frontend_url": BASE_URL},
         timeout=15,
     )
 
@@ -124,7 +127,10 @@ class TestNonRegression:
         pw = "Secret123!"
         r1 = requests.post(
             f"{API}/auth/register",
-            json={"email": email, "password": pw}, timeout=15,
+            json={"email": email, "password": pw,
+                  "pseudo": "iter23_reg",
+                  "public_handle": f"iter23_nr_{uuid.uuid4().hex[:6]}"},
+            timeout=15,
         )
         assert r1.status_code == 200
         token = r1.json()["verification_link"].split("token=")[1]

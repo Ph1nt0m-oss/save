@@ -50,6 +50,7 @@ def _base_register_payload(email, pseudo="t"):
         "email": email,
         "password": "Pass1234",
         "pseudo": pseudo,
+        "public_handle": f"iter69_{secrets.token_hex(4)}",
         "frontend_url": BASE_URL,
         "device_capture_kind": "phone",
         "device_capture_product": "Galaxy S21 5G",

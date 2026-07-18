@@ -69,6 +69,7 @@ def _base_payload(**override):
         "email": _fresh_email(),
         "password": "Pass1234",
         "pseudo": "tester",
+        "public_handle": f"tester_{os.urandom(3).hex()}",
         "frontend_url": BASE_URL,
     }
     p.update(override)

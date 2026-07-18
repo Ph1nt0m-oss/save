@@ -66,6 +66,8 @@ def seed_verified_user(
     pseudo = pseudo or email.split("@")[0]
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
+    # iter141 — public_handle unique par utilisateur seeded.
+    public_handle = f"seed_{uuid.uuid4().hex[:8]}"
     db.users.insert_one({
         "user_id": user_id,
         "email": email,
@@ -73,6 +75,8 @@ def seed_verified_user(
         "name": pseudo,
         "pseudo": pseudo,
         "pseudo_lower": pseudo.lower(),
+        "public_handle": public_handle,
+        "public_handle_lower": public_handle.lower(),
         "verified": verified,
         "created_at": now,
         "last_login": now,

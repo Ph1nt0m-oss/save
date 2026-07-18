@@ -198,57 +198,59 @@ def test_register_pseudo_too_short_returns_400():
 
 
 def test_register_reserved_pseudo_returns_409():
-    email = f"test_iter49_reserved_{secrets.token_hex(4)}@gmail.com"
-    r = requests.post(f"{API}/auth/register",
-                      json={"email": email, "password": "Pass1234", "pseudo": "Créatrice"},
-                      timeout=15)
-    assert r.status_code == 409, r.text
-    # Also case-insensitive
-    r2 = requests.post(f"{API}/auth/register",
-                       json={"email": email, "password": "Pass1234", "pseudo": "creatrice"},
-                       timeout=15)
-    assert r2.status_code == 409, r2.text
+    """iter75/iter141 — Le pseudo 'Créatrice' n'est plus réservé et le
+    pseudo n'est plus unique. Ce test est conservé pour documenter la
+    régression comportementale : il ne doit PAS renvoyer 409."""
+    import pytest as _pt
+    _pt.skip("iter75+ : pseudo n'est plus réservé/unique (public_handle est le seul identifiant unique).")
 
 
 def test_register_pseudo_uniqueness(mongo, cleanup):
-    unique = f"Test_iter49_{secrets.token_hex(3)}"
-    email1 = f"test_iter49_uniq_a_{secrets.token_hex(4)}@gmail.com"
-    email2 = f"test_iter49_uniq_b_{secrets.token_hex(4)}@gmail.com"
+    """iter141 — Le pseudo n'est PLUS unique ; seule l'identité publique
+    (public_handle) l'est. On teste l'index MongoDB via insertion directe
+    (bypass la validation full-register qui exige aussi device_capture +
+    biométrie)."""
+    from pymongo.errors import DuplicateKeyError
+    import uuid as _u
+    shared_handle = f"h_iter141_{secrets.token_hex(3)}"
+    email1 = f"test_iter141_uniq_a_{secrets.token_hex(4)}@gmail.com"
+    email2 = f"test_iter141_uniq_b_{secrets.token_hex(4)}@gmail.com"
+    uid1 = f"user_{_u.uuid4().hex[:12]}"
+    uid2 = f"user_{_u.uuid4().hex[:12]}"
+    same_pseudo = f"pseudo_dup_{secrets.token_hex(3)}"
 
-    # First registration succeeds
-    r1 = requests.post(f"{API}/auth/register",
-                       json={"email": email1, "password": "Pass1234", "pseudo": unique,
-                             "frontend_url": BASE_URL},
-                       timeout=15)
-    assert r1.status_code == 200, r1.text
-    j1 = r1.json()
-    token = j1.get("verification_token")
-    assert token, j1
-    # Track for cleanup
-    u = mongo.users.find_one({"email": email1}, {"user_id": 1})
-    if u:
-        cleanup["user_ids"].append(u["user_id"])
+    # 1er user avec un handle unique.
+    mongo.users.insert_one({
+        "user_id": uid1, "email": email1, "password_hash": "x",
+        "pseudo": same_pseudo, "pseudo_lower": same_pseudo.lower(),
+        "public_handle": shared_handle,
+        "public_handle_lower": shared_handle.lower(),
+        "verified": True,
+    })
+    cleanup["user_ids"].append(uid1)
 
-    # Verify email so pseudo_lower goes into the unique partial index
-    rv = requests.get(f"{API}/auth/verify-email", params={"token": token},
-                      timeout=15, allow_redirects=False)
-    assert rv.status_code in (200, 302, 303), rv.text
-    # Confirm verified in DB
-    u_after = mongo.users.find_one({"email": email1}, {"verified": 1, "pseudo_lower": 1})
-    assert u_after and u_after.get("verified") is True, u_after
-    assert u_after.get("pseudo_lower") == unique.lower()
+    # 2e user avec le MÊME pseudo — doit réussir (pseudo n'est plus unique).
+    mongo.users.insert_one({
+        "user_id": uid2, "email": email2, "password_hash": "x",
+        "pseudo": same_pseudo, "pseudo_lower": same_pseudo.lower(),
+        "public_handle": f"other_{secrets.token_hex(4)}",
+        "public_handle_lower": f"other_{secrets.token_hex(4)}".lower(),
+        "verified": True,
+    })
+    cleanup["user_ids"].append(uid2)
 
-    # Second registration with the SAME pseudo → 409
-    r2 = requests.post(f"{API}/auth/register",
-                       json={"email": email2, "password": "Pass1234", "pseudo": unique,
-                             "frontend_url": BASE_URL},
-                       timeout=15)
-    assert r2.status_code == 409, r2.text
-    assert "déjà" in r2.text.lower() or "deja" in r2.text.lower() or "pseudo" in r2.text.lower()
-    # Track stale email2 in case unverified row was created (it shouldn't be)
-    u2 = mongo.users.find_one({"email": email2}, {"user_id": 1})
-    if u2:
-        cleanup["user_ids"].append(u2["user_id"])
+    # 3e user avec un handle EN CONFLIT (case-insensitive) — doit lever.
+    uid3 = f"user_{_u.uuid4().hex[:12]}"
+    with pytest.raises(DuplicateKeyError):
+        mongo.users.insert_one({
+            "user_id": uid3, "email": f"conflict_{secrets.token_hex(4)}@ex.com",
+            "password_hash": "x",
+            "pseudo": f"any_{secrets.token_hex(3)}",
+            "pseudo_lower": "any",
+            "public_handle": shared_handle.upper(),  # case-insensitive uniqueness
+            "public_handle_lower": shared_handle.lower(),
+            "verified": True,
+        })
 
 
 # ============================================================================

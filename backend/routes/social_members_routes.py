@@ -69,6 +69,14 @@ class InvisibleToggleIn(_SignedIn):
     enabled: bool
 
 
+class AnonymousToggleIn(_SignedIn):
+    enabled: bool
+
+
+class SunModeToggleIn(_SignedIn):
+    enabled: bool  # true = Soleil (voit tout), false = Nuit (respecte anonymat)
+
+
 def build_social_member_router(db, verify_signed) -> APIRouter:
     router = APIRouter(tags=["Social-Members"])
 
@@ -209,5 +217,52 @@ def build_social_member_router(db, verify_signed) -> APIRouter:
         for r in rows:
             counts[r["group_type"]] = counts.get(r["group_type"], 0) + 1
         return {"invisible_counts": counts}
+
+    # ---- iter141 — Mode Anonyme (tout le monde) + Sun/Night Mode (staff) ----
+
+    @router.put("/social/anonymous")
+    async def anonymous_toggle(payload: AnonymousToggleIn):
+        """iter141 — Bascule le Mode Anonyme (disponible pour tous).
+        Masque pseudo, public_handle et couleur du rôle dans les groupes,
+        listes de membres et messages privés (pour tous sauf le staff en
+        mode Soleil).
+        """
+        await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        await db.social_prefs.update_one(
+            {"key_id": payload.key_id},
+            {"$set": {"anonymous": bool(payload.enabled),
+                      "anonymous_ts": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        return {"ok": True, "anonymous": bool(payload.enabled)}
+
+    @router.put("/social/sun-mode")
+    async def sun_mode_toggle(payload: SunModeToggleIn):
+        """iter141 — Bascule Sun/Night Mode (modo/admin/créa seulement).
+        Mode Soleil (enabled=true) : révèle les pseudos/couleurs des
+        utilisateurs anonymes au staff.
+        Mode Nuit (enabled=false) : respecte l'anonymat, comme les autres.
+        """
+        await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        me = await _get_dev(payload.key_id)
+        if not (me.get("role") == "creator" or me.get("staff_kind") in ("admin", "modo")):
+            raise HTTPException(status_code=403, detail="Réservé au staff (modo/admin/créa).")
+        await db.social_prefs.update_one(
+            {"key_id": payload.key_id},
+            {"$set": {"sun_mode": bool(payload.enabled),
+                      "sun_mode_ts": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        return {"ok": True, "sun_mode": bool(payload.enabled)}
+
+    @router.post("/social/modes/state")
+    async def modes_state(payload: _SignedIn):
+        """iter141 — Retourne l'état des toggles Anonyme + Sun/Night."""
+        await verify_signed(payload.key_id, payload.nonce, payload.signature)
+        p = await db.social_prefs.find_one({"key_id": payload.key_id}, {"_id": 0}) or {}
+        return {
+            "anonymous": bool(p.get("anonymous", False)),
+            "sun_mode": bool(p.get("sun_mode", False)),
+        }
 
     return router

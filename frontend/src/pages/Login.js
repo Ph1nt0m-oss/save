@@ -75,6 +75,8 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [publicHandle, setPublicHandle] = useState('');
+  const [publicHandleError, setPublicHandleError] = useState('');
   // iter97 — Inscription GitHub obligatoire
   const [githubConfirmed, setGithubConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -307,6 +309,25 @@ export default function Login() {
           setSubmitting(false);
           return;
         }
+        // iter141 — Identité publique unique obligatoire.
+        const handleTrimmed = publicHandle.trim();
+        if (!handleTrimmed || handleTrimmed.length < 3) {
+          setPublicHandleError('L\'identité publique doit faire au moins 3 caractères.');
+          toast.error('L\'identité publique est requise (3-24 caractères).');
+          setSubmitting(false);
+          return;
+        }
+        if (handleTrimmed.length > 24) {
+          setPublicHandleError('L\'identité publique ne doit pas dépasser 24 caractères.');
+          setSubmitting(false);
+          return;
+        }
+        if (!/^[A-Za-z0-9_.-]+$/.test(handleTrimmed)) {
+          setPublicHandleError('Seuls lettres, chiffres, ".", "_" et "-" sont autorisés.');
+          setSubmitting(false);
+          return;
+        }
+        setPublicHandleError('');
         // iter62: device-capture is mandatory. Block submit until OCR
         // confirms a non-empty product/model (phone) or device name (PC).
         if (!deviceCapture || !deviceCapture.kind ||
@@ -333,6 +354,7 @@ export default function Login() {
           password,
           name: pseudoTrimmed,
           pseudo: pseudoTrimmed,
+          public_handle: handleTrimmed,
           frontend_url: window.location.origin,
           device_capture_kind: deviceCapture.kind,
           device_capture_product: deviceCapture.product || '',
@@ -859,6 +881,45 @@ export default function Login() {
                         className="w-full bg-white/[0.04] border border-white/10 rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:border-[#E4FF00] focus:outline-none transition-colors"
                       />
                     </div>
+                    <p className="text-[10px] text-[#A1A1AA]/70 mt-1">
+                      Ton pseudo peut être identique à celui d&apos;autres utilisateurs.
+                    </p>
+                  </div>
+                )}
+
+                {mode === 'signup' && (
+                  <div>
+                    <label className="block text-xs text-[#A1A1AA] font-['IBM_Plex_Sans'] mb-1">
+                      Identité publique unique <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] text-sm font-mono">@</span>
+                      <input
+                        type="text"
+                        value={publicHandle}
+                        onChange={(e) => { setPublicHandle(e.target.value); if (publicHandleError) setPublicHandleError(''); }}
+                        data-testid="signup-public-handle-input"
+                        required
+                        minLength={3}
+                        maxLength={24}
+                        pattern="[A-Za-z0-9_.\-]+"
+                        placeholder="ton_identite_unique"
+                        autoComplete="off"
+                        className={`w-full bg-white/[0.04] border rounded-sm pl-10 pr-3 py-3 text-sm text-white placeholder-[#A1A1AA]/60 focus:outline-none transition-colors ${
+                          publicHandleError ? 'border-red-400/60 focus:border-red-400' : 'border-white/10 focus:border-[#E4FF00]'
+                        }`}
+                      />
+                    </div>
+                    {publicHandleError ? (
+                      <p className="text-[10px] text-red-300 mt-1" data-testid="signup-public-handle-error">
+                        {publicHandleError}
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-[#A1A1AA]/70 mt-1">
+                        Unique dans toute la plateforme — permet de te distinguer même
+                        si d&apos;autres ont le même pseudo. 3-24 caractères (lettres, chiffres, «.», «_», «-»).
+                      </p>
+                    )}
                   </div>
                 )}
 

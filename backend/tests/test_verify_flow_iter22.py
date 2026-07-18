@@ -42,16 +42,25 @@ def _unique_email(tag="iter22"):
     return f"TEST_{tag}_{int(time.time()*1000)}@example.com"
 
 
+def _reg_body(email, password="Secret123!", **extra):
+    """iter141 — Payload d'inscription avec public_handle unique obligatoire."""
+    import secrets as _s
+    body = {
+        "email": email,
+        "password": password,
+        "pseudo": extra.pop("pseudo", "iter22_user"),
+        "public_handle": extra.pop("public_handle", f"iter22_{_s.token_hex(4)}"),
+        "frontend_url": BASE_URL,
+    }
+    body.update(extra)
+    return body
+
+
 # --------- Register returns polling fields ---------
 class TestRegisterResponse:
     def test_register_returns_token_ttl_link(self, api):
         email = _unique_email("reg")
-        r = api.post(f"{BASE_URL}/api/auth/register", json={
-            "email": email,
-            "password": "Secret123!",
-            "name": "Iter22 User",
-            "frontend_url": BASE_URL,
-        })
+        r = api.post(f"{BASE_URL}/api/auth/register", json=_reg_body(email, "Secret123!", name="Iter22 User"))
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["email"] == email.lower()
@@ -68,9 +77,7 @@ class TestRegisterResponse:
 class TestPollingLifecycle:
     def test_pending_then_verified_then_expired_singleuse(self, api):
         email = _unique_email("poll")
-        reg = api.post(f"{BASE_URL}/api/auth/register", json={
-            "email": email, "password": "Secret123!", "frontend_url": BASE_URL,
-        }).json()
+        reg = api.post(f"{BASE_URL}/api/auth/register", json=_reg_body(email)).json()
         token = reg["verification_token"]
 
         # Before click → pending
@@ -116,9 +123,7 @@ class TestExpiredLinkMessage:
         from motor.motor_asyncio import AsyncIOMotorClient
 
         email = _unique_email("exp")
-        reg = api.post(f"{BASE_URL}/api/auth/register", json={
-            "email": email, "password": "Secret123!", "frontend_url": BASE_URL,
-        }).json()
+        reg = api.post(f"{BASE_URL}/api/auth/register", json=_reg_body(email)).json()
         token = reg["verification_token"]
 
         async def _expire():
@@ -145,9 +150,7 @@ class TestExpiredLinkMessage:
         from motor.motor_asyncio import AsyncIOMotorClient
 
         email = _unique_email("expst")
-        reg = api.post(f"{BASE_URL}/api/auth/register", json={
-            "email": email, "password": "Secret123!", "frontend_url": BASE_URL,
-        }).json()
+        reg = api.post(f"{BASE_URL}/api/auth/register", json=_reg_body(email)).json()
         token = reg["verification_token"]
 
         async def _expire():
@@ -202,9 +205,7 @@ class TestLoginAfterVerify:
     def test_login_works_post_verification(self, api):
         email = _unique_email("login")
         pwd = "Secret123!"
-        reg = api.post(f"{BASE_URL}/api/auth/register", json={
-            "email": email, "password": pwd, "frontend_url": BASE_URL,
-        }).json()
+        reg = api.post(f"{BASE_URL}/api/auth/register", json=_reg_body(email, pwd)).json()
         # Consume the link
         api.get(f"{BASE_URL}/api/auth/verify-email", params={"token": reg["verification_token"]})
         # Now login

@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { X, Send, Users, Lock, Crown, Shield, Globe2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { X, Send, Users, Lock, Shield, Globe2 } from 'lucide-react';import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import InvisibleModeToggle from './InvisibleModeToggle';
+import AnonymousModeToggle from './AnonymousModeToggle';
+import SunNightModeToggle from './SunNightModeToggle';
+import MessageBubble from './MessageBubble';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -27,6 +29,7 @@ const ORDER = ['public', 'private', 'users', 'staff', 'modo', 'admin', 'public_s
 
 export default function GroupChatsPanel({ open, onClose }) {
   const device = useDeviceIdentity();
+  const viewMode = device?.viewMode || null;
   const [groups, setGroups] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -39,22 +42,27 @@ export default function GroupChatsPanel({ open, onClose }) {
     let cancelled = false;
     (async () => {
       try {
-        const body = await withCreatorProof(API, axios, {});
+        const body = await withCreatorProof(API, axios, { view_mode: viewMode });
         const r = await axios.post(`${API}/groups/list`, body);
         if (cancelled) return;
         const groupList = (r.data?.groups || []).filter((g) => GROUP_META[g]);
         setGroups(groupList);
         if (!active && groupList.length > 0) setActive(groupList[0]);
+        // Si le groupe actif n'est plus accessible (changement de simulation),
+        // bascule automatiquement.
+        if (active && !groupList.includes(active)) {
+          setActive(groupList[0] || null);
+        }
       } catch (e) {
         toast.error(e?.response?.data?.detail || 'Impossible de charger les groupes');
       }
     })();
     return () => { cancelled = true; };
-  }, [open]); // eslint-disable-line
+  }, [open, viewMode]); // eslint-disable-line
 
   const loadMessages = async (group_type) => {
     try {
-      const body = await withCreatorProof(API, axios, { group_type });
+      const body = await withCreatorProof(API, axios, { group_type, view_mode: viewMode });
       const r = await axios.post(`${API}/groups/messages`, body);
       setMessages(r.data?.messages || []);
       setTimeout(() => {
@@ -72,14 +80,14 @@ export default function GroupChatsPanel({ open, onClose }) {
     tick();
     const id = setInterval(tick, 4000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [open, active]); // eslint-disable-line
+  }, [open, active, viewMode]); // eslint-disable-line
 
   const send = async () => {
     const content = draft.trim();
     if (!content || !active || sending) return;
     setSending(true);
     try {
-      const body = await withCreatorProof(API, axios, { group_type: active, content });
+      const body = await withCreatorProof(API, axios, { group_type: active, content, view_mode: viewMode });
       await axios.post(`${API}/groups/send`, body);
       setDraft('');
       await loadMessages(active);
@@ -138,46 +146,57 @@ export default function GroupChatsPanel({ open, onClose }) {
 
         {/* Messages */}
         <section className="flex-1 flex flex-col min-w-0">
-          <header className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 truncate min-w-0">
-              {active && (() => {
-                const meta = GROUP_META[active];
-                const Icon = meta.icon;
-                return (
-                  <>
-                    <Icon className={`w-4 h-4 ${meta.color}`} />
-                    <h3 className="text-sm font-['Chivo'] font-bold text-white">{meta.label}</h3>
-                  </>
-                );
-              })()}
-            </div>
-            {/* iter140 Phase 3 — Toggle Mode invisible (admin + créa) */}
-            {active && (
-              <InvisibleModeToggle
-                role={device?.role}
-                staffKind={device?.staffKind}
-                groupType={active}
-              />
-            )}
-            <button onClick={onClose} data-testid="groups-close" className="text-[#A1A1AA] hover:text-white">
-              <X className="w-4 h-4" />
-            </button>
-          </header>
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-            {messages.map((m) => (
-              <div key={m.message_id} className="bg-black/30 border border-white/10 rounded-sm p-2.5">
-                <div className="text-[10px] text-[#71717A] flex items-center gap-2 mb-1">
-                  {m.from_role === 'creator' && <Crown className="w-2.5 h-2.5 text-[#E4FF00]" />}
-                  {m.from_staff_kind === 'admin' && <Shield className="w-2.5 h-2.5 text-orange-300" />}
-                  {m.from_staff_kind === 'modo' && <Shield className="w-2.5 h-2.5 text-cyan-300" />}
-                  <span className="font-bold text-white">{m.from_pseudo || m.from_key_id?.slice(0, 10)}</span>
-                  <span>{new Date(m.ts).toLocaleString()}</span>
-                </div>
-                <div className="text-sm text-white whitespace-pre-wrap break-words">{m.content}</div>
+          <header className="px-3 py-3 border-b border-white/10 flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 truncate min-w-0">
+                {active && (() => {
+                  const meta = GROUP_META[active];
+                  const Icon = meta.icon;
+                  return (
+                    <>
+                      <Icon className={`w-4 h-4 ${meta.color}`} />
+                      <h3 className="text-sm font-['Chivo'] font-bold text-white">{meta.label}</h3>
+                    </>
+                  );
+                })()}
               </div>
-            ))}
-            {messages.length === 0 && (
-              <div className="text-xs text-[#71717A] text-center py-8">Aucun message dans ce groupe</div>
+              <button onClick={onClose} data-testid="groups-close" className="text-[#A1A1AA] hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* iter141 — Rangée de toggles : Anonyme (tous) + Soleil/Nuit (staff)
+                + Invisible (admin/créa) */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <AnonymousModeToggle />
+              <SunNightModeToggle role={device?.role} staffKind={device?.staffKind} />
+              {active && (
+                <InvisibleModeToggle
+                  role={device?.role}
+                  staffKind={device?.staffKind}
+                  groupType={active}
+                />
+              )}
+            </div>
+          </header>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#0A0A0A]">
+            {viewMode && viewMode !== 'creator' ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-12" data-testid="chat-simulation-locked">
+                <Lock className="w-8 h-8 text-white/30 mb-3" />
+                <p className="text-sm text-white/60 font-bold">Historique verrouillé</p>
+                <p className="text-xs text-white/40 mt-1 max-w-xs">
+                  L&apos;historique des messages et les messages privés sont
+                  masqués pendant une simulation.
+                </p>
+              </div>
+            ) : (
+              <>
+                {messages.map((m) => (
+                  <MessageBubble key={m.message_id} message={m} revealAnonymous />
+                ))}
+                {messages.length === 0 && (
+                  <div className="text-xs text-[#71717A] text-center py-8">Aucun message dans ce groupe</div>
+                )}
+              </>
             )}
           </div>
           <div className="border-t border-white/10 p-2 flex gap-2">

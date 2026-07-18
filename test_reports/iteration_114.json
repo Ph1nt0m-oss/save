@@ -1,0 +1,26 @@
+{
+  "summary": "iter141 validated. All 18 iter141 pytests PASS (test_iter141_groups_anonymous_public_handle.py). Live backend curl: /api/health=200, /api/social/modes/state POST-signed=404 'Clé inconnue' (verify_signed enforced), /api/social/anonymous & /api/social/sun-mode registered as PUT (matches frontend axios.put calls in AnonymousModeToggle.jsx / SunNightModeToggle.jsx). /api/auth/register public_handle validation confirmed live: missing → 400 'L'identité publique est requise', 'ab' (too short) → 400 'entre 3 et 24 caractères', 'ab#cd!' → 400 'lettres, chiffres, ., _ et -'. Frontend structural checks PASS: MessageBubble.jsx has msg-bubble-<id>, msg-role-label, msg-pseudo, msg-public-handle, msg-body; AnonymousModeToggle.jsx has anonymous-toggle; SunNightModeToggle.jsx has sun-mode-toggle; MessageButton.jsx has message-creator-icon-btn + isSimulating check + Lock overlay + toast 'Messagerie privée verrouillée pendant une simulation.'; GroupChatsPanel.jsx mounts AnonymousModeToggle + SunNightModeToggle + InvisibleModeToggle in header + shows chat-simulation-locked 'Historique verrouillé' state; Login.js has signup-public-handle-input + signup-public-handle-error + 'Identité publique unique' label; Dashboard.js open-friends-btn visible for creator OR (viewMode && viewMode !== 'creator'). Live browser test blocked by 'Site temporarily private' device-recognition gate (expected per E1 note — ECDSA/device gate not testable in fresh browser), so frontend validation is source-level only, which E1 explicitly authorized.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter141_groups_anonymous_public_handle.py",
+    "/app/test_reports/pytest/iter141_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "HTTP method mismatch verified: backend defines PUT for /social/anonymous and /social/sun-mode, frontend correctly uses axios.put — POST would 405. Consistent.",
+    "GroupChatsPanel.jsx sun-mode toggle passes role & staffKind props — SunNightModeToggle.jsx renders only if isStaff (matches backend 403-for-regular-user rule).",
+    "MessageButton.jsx isSimulating check at L24 uses `device.viewMode && device.viewMode !== 'creator'` — matches Dashboard.js open-friends-btn condition for consistency.",
+    "public_handle validation returns clean 400 messages before biometric check, so pytest source-level validation (present in server.py source) is confirmed at runtime. Duplicate 409 not testable via /register (biometric wall) — main agent added direct DB insert test in test_iter49_pseudo_kick_block.py per iter141 note.",
+    "Frontend live browser test blocked by 'Site temporarily private' page (device gate). No console errors, but full UI flow cannot be end-to-end tested without a whitelisted device — this is unchanged infrastructure since prior iterations.",
+    "Pre-existing biometric gate on /register blocks integration testing of duplicate public_handle → 409 via HTTP (as noted by E1). The pytest verifies the unique index + validation string is in the source; the direct-DB uniqueness test in test_iter49 covers the DuplicateKeyError path.",
+    "No new regressions detected on any endpoint tested."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100% (source-level; live blocked by device gate as expected)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — not usable in fresh browser session due to 'Site temporarily private' gate.",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter141 fully validated. 18/18 iter141 pytests PASS. Live backend confirms public_handle validation live (missing/short/bad-chars all return proper 400). Note: /social/anonymous & /social/sun-mode are PUT (not POST); frontend uses axios.put — matches. Live UI end-to-end not runnable without whitelisted device (Site temporarily private gate). All data-testids required by review request confirmed present in source. Cumulative 201+18=219/219 iter130-141 pytests PASS."
+}

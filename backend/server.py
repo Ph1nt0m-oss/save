@@ -195,12 +195,18 @@ async def _lifespan(app):
     # ---- Startup ----
     try:
         await db.users.create_index("email", unique=True, sparse=True)
+        # iter141 — Le pseudo n'est PLUS unique (peut être dupliqué comme
+        # sur Discord). Seule l'identité publique (public_handle) est
+        # unique dans toute la plateforme.
+        try:
+            await db.users.drop_index("pseudo_lower_1")
+        except Exception:
+            pass
         await db.users.create_index(
-            "pseudo_lower",
+            "public_handle_lower",
             unique=True,
             partialFilterExpression={
-                "verified": True,
-                "pseudo_lower": {"$type": "string"},
+                "public_handle_lower": {"$type": "string"},
             },
         )
         await db.email_verifications.create_index("token", unique=True)
@@ -646,6 +652,7 @@ class RegisterRequest(BaseModel):
     password: str
     name: Optional[str] = None       # display name (legacy)
     pseudo: Optional[str] = None     # required, unique nickname — see /auth/register
+    public_handle: Optional[str] = None  # iter141 — required, UNIQUE public identity
     frontend_url: Optional[str] = None
     # iter62: mandatory device-capture data (extracted client-side via /auth/ocr-device-info)
     device_capture_kind: Optional[str] = None      # 'phone' | 'computer'
@@ -789,6 +796,34 @@ async def register(payload: RegisterRequest, request: Request):
     # panel disambiguates duplicates by appending "#N" suffixes when
     # listing, and offers a rename action for both sides.
 
+    # iter141 — Identité publique UNIQUE (obligatoire).
+    handle_raw = (payload.public_handle or "").strip()
+    if not handle_raw:
+        raise HTTPException(status_code=400, detail=(
+            "L'identité publique est requise. C'est un identifiant unique dans "
+            "toute la plateforme, distinct du pseudo, qui permet de te "
+            "distinguer même si d'autres utilisateurs ont le même pseudo."
+        ))
+    if len(handle_raw) < 3 or len(handle_raw) > 24:
+        raise HTTPException(status_code=400, detail="L'identité publique doit faire entre 3 et 24 caractères.")
+    import re as _re_handle
+    if not _re_handle.match(r"^[A-Za-z0-9_.-]+$", handle_raw):
+        raise HTTPException(status_code=400, detail=(
+            "L'identité publique n'accepte que lettres, chiffres, '.', '_' et '-'."
+        ))
+    handle_lower = handle_raw.lower()
+    # Vérification unicité (case-insensitive) — sauf sur ce compte lui-même
+    # si on re-register une inscription non vérifiée.
+    existing_handle = await db.users.find_one(
+        {"public_handle_lower": handle_lower}, {"_id": 0, "user_id": 1, "email": 1, "verified": 1},
+    )
+    if existing_handle:
+        existing_email_norm = normalize_email(existing_handle.get("email") or "")
+        if existing_email_norm != email or existing_handle.get("verified"):
+            raise HTTPException(status_code=409, detail=(
+                "Cette identité publique est déjà utilisée. Choisis-en une autre."
+            ))
+
     # iter62: mandatory device capture (extracted via /auth/ocr-device-info)
     capture_kind = (payload.device_capture_kind or "").strip().lower()
     capture_product = (payload.device_capture_product or "").strip()
@@ -874,6 +909,8 @@ async def register(payload: RegisterRequest, request: Request):
                 "name": payload.name or existing.get("name") or email.split("@")[0],
                 "pseudo": pseudo_raw,
                 "pseudo_lower": pseudo_raw.lower(),
+                "public_handle": handle_raw,
+                "public_handle_lower": handle_lower,
                 "device_capture": {
                     "kind": capture_kind,
                     "product": capture_product or None,
@@ -893,6 +930,8 @@ async def register(payload: RegisterRequest, request: Request):
             "name": payload.name or email.split("@")[0],
             "pseudo": pseudo_raw,
             "pseudo_lower": pseudo_raw.lower(),
+            "public_handle": handle_raw,
+            "public_handle_lower": handle_lower,
             "verified": False,
             "auth_type": "email",
             "device_capture": {

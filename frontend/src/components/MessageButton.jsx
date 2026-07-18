@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Lock } from 'lucide-react';
+import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import MessagesPanel from './MessagesPanel';
@@ -18,9 +19,12 @@ export default function MessageButton({ variant = 'icon' }) {
   const device = useDeviceIdentity();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
+  // iter141 — En simulation, l'icône MP reste visible mais l'accès aux
+  // conversations est bloqué (impossible de voir qui discute et de quoi).
+  const isSimulating = !!device.viewMode && device.viewMode !== 'creator';
 
   useEffect(() => {
-    if (!device.keyId) return undefined;
+    if (!device.keyId || isSimulating) return undefined;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -32,7 +36,15 @@ export default function MessageButton({ variant = 'icon' }) {
     tick();
     const id = setInterval(tick, 10000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [device.keyId]);
+  }, [device.keyId, isSimulating]);
+
+  const handleOpen = () => {
+    if (isSimulating) {
+      toast.info("Messagerie privée verrouillée pendant une simulation.");
+      return;
+    }
+    setOpen(true);
+  };
 
   // For the legacy floating + inline variants we still hide the button until
   // the device identity is ready (those variants assume an authenticated UX).
@@ -46,13 +58,20 @@ export default function MessageButton({ variant = 'icon' }) {
       <>
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={handleOpen}
           data-testid="message-creator-icon-btn"
-          title="Messages"
-          className="relative inline-flex items-center justify-center w-9 h-9 rounded-sm bg-white/[0.04] border border-white/10 text-[#A1A1AA] hover:text-[#E4FF00] hover:border-[#E4FF00]/40 transition-colors"
+          title={isSimulating ? "Messagerie verrouillée en simulation" : "Messages"}
+          className={`relative inline-flex items-center justify-center w-9 h-9 rounded-sm bg-white/[0.04] border transition-colors ${
+            isSimulating
+              ? 'border-white/10 text-white/30 cursor-not-allowed'
+              : 'border-white/10 text-[#A1A1AA] hover:text-[#E4FF00] hover:border-[#E4FF00]/40'
+          }`}
         >
           <MessageCircle className="w-4 h-4" />
-          {unread > 0 && (
+          {isSimulating && (
+            <Lock className="absolute -bottom-0.5 -right-0.5 w-3 h-3 text-white/40" />
+          )}
+          {!isSimulating && unread > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-[#E4FF00] text-[#050505] text-[9px] font-bold rounded-full inline-flex items-center justify-center px-1">
               {unread}
             </span>

@@ -14,9 +14,11 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://no-code-builder-25.p
 
 def _register_verified_user():
     email = f"test_iter26_{int(time.time())}@gmail.com"
+    handle = f"h26_{int(time.time())}"
     r = requests.post(
         f"{BASE_URL}/api/auth/register",
-        json={"email": email, "password": "Pass1234", "frontend_url": BASE_URL},
+        json={"email": email, "password": "Pass1234", "pseudo": "iter26_user",
+              "public_handle": handle, "frontend_url": BASE_URL},
         timeout=30,
     )
     assert r.status_code in (200, 201), f"register failed: {r.status_code} {r.text}"

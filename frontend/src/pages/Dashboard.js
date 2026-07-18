@@ -991,7 +991,10 @@ export default function Dashboard() {
                 >
                   <Users className="w-4 h-4" />
                 </button>
-                {device.viewMode && device.viewMode !== 'creator' && (
+                {/* iter141 — Icône Amis & demandes visible pour la Créa
+                    (auparavant masquée) ET pour les simulations. Toujours
+                    disponible tant que l'appareil est reconnu. */}
+                {(device.role === 'creator' || (device.viewMode && device.viewMode !== 'creator')) && (
                   <button
                     onClick={() => { setGroupsOpen(false); setFriendsOpen(true); }}
                     data-testid="open-friends-btn"
