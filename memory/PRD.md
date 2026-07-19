@@ -1,6 +1,22 @@
 # CodeForge AI — Product Requirements
 
 
+## iter146 (Feb 2026) — Sprint 2 partiel : DeviceManager StaffIconBar + Rename local UI + Filtres membres + Auth fix
+**Status : COMPLETED (9 nouveaux pytests iter146 + cumul iter141-146 = 108/108 PASS)**
+
+### Câblages livrés
+- **DeviceManager.jsx** : remplacement complet des boutons (Promote/Disconnect/Revoke) par `StaffActionsIconBar`. Approve-as dropdown préservé + ajout de l'option `approve-as-creator` pour la Créa. `onRename` câblé sur `/staff/rename-global`, `onAfterAction` déclenche `refreshList()`.
+- **MessageBubble.jsx** : mini crayon `msg-rename-local-<id>` dans l'en-tête chaque bulle (non-anonyme + non-bot). Ouvre un input inline (30 chars max) qui sauve via `/rename/local/set`. Affiche `(alias)` + tooltip "Pseudo officiel : ..." quand alias actif. Hooks placés AVANT early return (rules-of-hooks).
+- **GroupMembersList.jsx** (nouveau) : liste des membres du groupe avec 4 filtres (`Tous · Staff · Amis · Anonymes`), badges de compte par filtre, icônes de rôle (Crown/Shield/ShieldCheck/EyeOff/Heart). Intégré au bas de `GroupChatsPanel`. Data-testids : `group-members-panel`, `gm-filter-<k>`, `gm-member-<key_id>`.
+- **Auth flow multi-devices sécurisé** (`auth_pwreset_session_routes.py::session-pending`) : filtre défensif exclut les requêtes dont `requesting_key_id` == device actuellement authentifié → la validation ne peut PLUS s'afficher sur le NOUVEL appareil pending, uniquement sur le PREMIER déjà connecté.
+
+### Non traités (backlog Sprint 2 restant + Sprint 3)
+- **Notifications @ anonymes-safe** : notifier un utilisateur mentionné sans révéler l'auteur en mode anonyme.
+- **Journal alertes bot séparé** : nouveau panneau Créa avec 2 onglets (Alertes bot / Décisions staff).
+- **Couche LLM Emergent** : brancher un 2ᵉ layer d'analyse sur `bot_analyzer` pour harcèlement subtil (via `integration_playbook_expert_v2`).
+- **Sprint 3** : Programmations dédiées Caly/Bots/Site + Intégrations tierces UI (Stripe/Google/ChatGPT) + Tutoriel + Langues.
+
+
 ## iter145 (Feb 2026) — Correctifs UX Login/Landing + Fondatrices manuelles + Bot report MP analysis
 **Status : COMPLETED (9/9 pytests iter145 PASS · cumul iter141-145 = 99/99 PASS)**
 

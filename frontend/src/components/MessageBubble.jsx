@@ -16,8 +16,12 @@
  *   Utilisateur (pending) / non-validé → vert (#4ADE80)
  *   Anonyme   → gris (#9CA3AF)
  */
-import React from 'react';
-import { Crown, Shield, Lock, User, EyeOff, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { Crown, Shield, Lock, User, EyeOff, Sparkles, Pencil, Check as CheckIcon } from 'lucide-react';
+import { withCreatorProof } from '../lib/deviceIdentity';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 function roleMeta(msg) {
   const role = msg?.from_role;
@@ -44,11 +48,47 @@ function roleMeta(msg) {
 }
 
 export default function MessageBubble({ message, revealAnonymous = false }) {
+  // iter146 — Alias local (renommage personnel). Hooks AVANT early return
+  // pour respecter les rules-of-hooks React.
+  const [alias, setAlias] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const canRename = !!message?.from_key_id && message?.from_role !== 'anon' && message?.from_role !== 'bot';
+
+  useEffect(() => {
+    if (!canRename) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const body = await withCreatorProof(API, axios, {});
+        const r = await axios.post(`${API}/rename/local/list`, body);
+        if (cancelled) return;
+        const match = (r.data?.aliases || []).find((a) => a.target_key_id === message.from_key_id);
+        setAlias(match?.alias || '');
+      } catch (_e) { /* silent */ }
+    })();
+    return () => { cancelled = true; };
+  }, [message?.from_key_id, canRename]);
+
   if (!message) return null;
   const { label, color, Icon } = roleMeta(message);
   const pseudo = message.from_pseudo || (message.from_key_id || '').slice(0, 10);
   const handle = message.from_public_handle || '';
   const ts = message.ts ? new Date(message.ts) : null;
+
+  const saveAlias = async () => {
+    try {
+      const body = await withCreatorProof(API, axios, {
+        target_key_id: message.from_key_id,
+        alias: draft.trim() || null,
+      });
+      await axios.post(`${API}/rename/local/set`, body);
+      setAlias(draft.trim());
+      setEditing(false);
+    } catch (_e) { /* silent */ }
+  };
+
+  const displayPseudo = alias || pseudo;
 
   return (
     <div
@@ -70,8 +110,10 @@ export default function MessageBubble({ message, revealAnonymous = false }) {
         <span
           className="font-bold text-white"
           data-testid="msg-pseudo"
+          title={alias ? `Pseudo officiel : ${pseudo}` : undefined}
         >
-          {pseudo}
+          {displayPseudo}
+          {alias && <span className="ml-1 text-[10px] text-white/50">(alias)</span>}
         </span>
         {handle ? (
           <span
@@ -81,6 +123,40 @@ export default function MessageBubble({ message, revealAnonymous = false }) {
             @{handle}
           </span>
         ) : null}
+        {canRename && !editing && (
+          <button
+            type="button"
+            onClick={() => { setDraft(alias || ''); setEditing(true); }}
+            data-testid={`msg-rename-local-${message.message_id}`}
+            title="Renommer localement (visible que par toi)"
+            className="text-white/30 hover:text-[#E4FF00] transition p-0.5"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+        )}
+        {editing && (
+          <span className="inline-flex items-center gap-1">
+            <input
+              autoFocus
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); if (e.key === 'Escape') setEditing(false); }}
+              maxLength={30}
+              placeholder="alias"
+              data-testid={`msg-rename-input-${message.message_id}`}
+              className="bg-black/40 border border-white/20 rounded-sm px-1.5 py-0.5 text-[11px] text-white w-24"
+            />
+            <button
+              type="button"
+              onClick={saveAlias}
+              data-testid={`msg-rename-save-${message.message_id}`}
+              className="text-emerald-300 hover:text-emerald-200"
+            >
+              <CheckIcon className="w-3 h-3" />
+            </button>
+          </span>
+        )}
         {message._revealed_from_anonymous && revealAnonymous ? (
           <span className="text-[10px] text-amber-300 inline-flex items-center gap-1">
             <Sparkles className="w-3 h-3" /> révélé (Soleil)

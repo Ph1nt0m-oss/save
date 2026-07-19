@@ -7,6 +7,7 @@ import InvisibleModeToggle from './InvisibleModeToggle';
 import AnonymousModeToggle from './AnonymousModeToggle';
 import SunNightModeToggle from './SunNightModeToggle';
 import MessageBubble from './MessageBubble';
+import GroupMembersList from './GroupMembersList';
 import { MentionInputWithSend } from './MentionInput';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
@@ -215,6 +216,10 @@ export default function GroupChatsPanel({ open, onClose }) {
             groupType={active}
             viewMode={viewMode}
           />
+          {/* iter146 Sprint 2 — Liste des membres avec filtres par rôle */}
+          {active && (
+            <GroupMembersList groupType={active} viewMode={viewMode} />
+          )}
         </section>
       </aside>
     </div>

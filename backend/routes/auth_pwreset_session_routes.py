@@ -325,6 +325,36 @@ def build_auth_pwreset_session_router(
              "expires_at": {"$gt": now_iso}, "created_at": {"$gte": stale_threshold}},
             {"_id": 0},
         ).sort("created_at", -1).to_list(length=50)
+        # iter146 — Filtre défensif : la validation doit se déclencher UNIQUEMENT
+        # sur le premier appareil déjà connecté, JAMAIS sur le nouvel appareil
+        # qui a lancé la demande. On exclut toute requête dont le
+        # `requesting_key_id` correspond à un device_key du caller.
+        try:
+            caller_devices = [
+                d["key_id"] async for d in db.device_keys.find(
+                    {"user_id": user_id}, {"_id": 0, "key_id": 1},
+                )
+            ]
+            # user_id → email lookup si nécessaire (device_keys est ancré email).
+            if not caller_devices:
+                u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "email": 1})
+                if u and u.get("email"):
+                    caller_devices = [
+                        d["key_id"] async for d in db.device_keys.find(
+                            {"email": u["email"]}, {"_id": 0, "key_id": 1},
+                        )
+                    ]
+            # Récupère le device_key actuellement authentifié depuis le cookie/session.
+            sess = await db.user_sessions.find_one(
+                {"user_id": user_id, "expires_at": {"$gt": now_iso}},
+                {"_id": 0, "device_key_id": 1},
+                sort=[("last_seen_at", -1)],
+            )
+            active_dev = (sess or {}).get("device_key_id")
+            if active_dev:
+                rows = [r for r in rows if r.get("requesting_key_id") != active_dev]
+        except Exception:
+            pass
         return {"requests": rows}
 
     @router.post("/auth/session-decide")

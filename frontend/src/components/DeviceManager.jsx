@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { withCreatorProof, exportPublicKeyShareCode, parsePublicKeyShareCode } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
 import BiometricEnrollButton from './BiometricEnrollButton';
+import StaffActionsIconBar from './StaffActionsIconBar';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -81,8 +82,11 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
   // iter111 — Quels rôles le caller peut-il accorder ?
   // - creator → user, modo, admin
   // - staff (admin/modo) → on affiche tout, le backend rejette si pas le droit
+  // iter146 — Créa peut aussi approuver directement comme créa (fondatrice
+  // ou pas, création d'une nouvelle créa via /staff/action promote_creator
+  // gérée par la StaffActionsIconBar).
   const allowedApprovalRoles = role === 'creator'
-    ? ['user', 'modo', 'admin']
+    ? ['user', 'modo', 'admin', 'creator']
     : ['user', 'modo', 'admin'];
 
   const handleAddByKey = async () => {
@@ -270,7 +274,9 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                           {/* iter125 — clé complète (plus de truncate, break-all pour wrap propre) */}
                           <code className="block text-[10px] text-[#71717A] mt-1 break-all" data-testid={`device-key-${d.key_id}`}>{d.key_id}</code>
                         </div>
-                        <div className="flex flex-col gap-1 flex-shrink-0">
+                        <div className="flex flex-col gap-1 flex-shrink-0 items-end">
+                          {/* iter146 — StaffActionsIconBar unifiée pour toutes les
+                              actions staff. Approve dropdown préservé pour pending. */}
                           {d.role === 'pending' && (
                             <div className="relative">
                               <button
@@ -299,35 +305,36 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                                       {r === 'user' && '👤 Utilisateur'}
                                       {r === 'modo' && '🛡️ Modérateur'}
                                       {r === 'admin' && '⚙️ Administrateur'}
+                                      {r === 'creator' && '👑 Créa'}
                                     </button>
                                   ))}
                                 </div>
                               )}
                             </div>
                           )}
-                          {d.role !== 'creator' && (
-                            <button
-                              onClick={() => setPromoteTarget(d.key_id)}
-                              data-testid={`promote-${d.key_id}`}
-                              className="px-2 py-1 text-[11px] border border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] rounded-sm transition"
-                            >
-                              <Crown className="w-3 h-3 inline mr-1" />{t('dm_promote')}
-                            </button>
-                          )}
-                          <button
-                            onClick={() => callTarget('/devices/disconnect', d.key_id)}
-                            data-testid={`disconnect-${d.key_id}`}
-                            className="px-2 py-1 text-[11px] border border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-[#050505] rounded-sm transition"
-                          >
-                            <Power className="w-3 h-3 inline mr-1" />{t('dm_disconnect')}
-                          </button>
-                          <button
-                            onClick={() => callTarget('/devices/revoke', d.key_id)}
-                            data-testid={`revoke-${d.key_id}`}
-                            className="px-2 py-1 text-[11px] border border-red-400 text-red-300 hover:bg-red-400 hover:text-white rounded-sm transition"
-                          >
-                            <Trash2 className="w-3 h-3 inline mr-1" />{t('dm_revoke')}
-                          </button>
+                          <StaffActionsIconBar
+                            target={d}
+                            viewerRole="creator"
+                            viewerStaffKind={null}
+                            onDeleteRequested={(t) => callTarget('/devices/revoke', t.key_id)}
+                            onVisit={(t) => {
+                              try { window.dispatchEvent(new CustomEvent('cf:visit-account', { detail: t })); } catch (_) { /* silent */ }
+                            }}
+                            onRename={async (t) => {
+                              const p = window.prompt(`Nouveau pseudo pour @${t.public_handle || t.key_id.slice(0, 8)} :`, t.pseudo || '');
+                              if (!p || !p.trim()) return;
+                              try {
+                                const { withCreatorProof: _wcp } = await import('../lib/deviceIdentity');
+                                const _axios = (await import('axios')).default;
+                                const body = await _wcp(`${process.env.REACT_APP_BACKEND_URL}/api`, _axios, { target_key_id: t.key_id, new_pseudo: p.trim() });
+                                await _axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/staff/rename-global`, body);
+                                refreshList();
+                              } catch (e) {
+                                toast.error(e?.response?.data?.detail || 'Renommage impossible');
+                              }
+                            }}
+                            onAfterAction={() => refreshList()}
+                          />
                         </div>
                       </div>
                     );
