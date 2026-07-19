@@ -309,6 +309,14 @@ def build_devices_router(
                 handles[u["email"]] = u.get("public_handle") or ""
             for d in devices:
                 d["public_handle"] = handles.get(d.get("email")) or d.get("public_handle") or ""
+        # iter144 — Marque les créas fondatrices (intouchables).
+        try:
+            from utils.founder_guard import get_founder_key_ids  # noqa: WPS433
+            founders = get_founder_key_ids()
+            for d in devices:
+                d["is_founder"] = d.get("key_id") in founders
+        except Exception:
+            pass
         return {"devices": devices}
 
     @router.post("/devices/decisions")

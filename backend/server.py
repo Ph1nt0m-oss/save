@@ -221,6 +221,16 @@ async def _lifespan(app):
         await db.messages.create_index("ts")
         logger.info("✅ MongoDB indexes ready")
 
+        # iter144 — Enregistre les créas actuelles comme fondatrices
+        # (idempotent : ne modifie rien si déjà figé).
+        try:
+            from utils.founder_guard import register_current_creators_as_founders  # noqa: E402, WPS433
+            founders = await register_current_creators_as_founders(db)
+            if founders:
+                logger.info(f"🔒 Créas fondatrices figées : {len(founders)} clé(s)")
+        except Exception as e:
+            logger.warning(f"founder_guard init failed: {e}")
+
         # iter126 Lot 2 #7 — Seed "agents bots de test" protégés.
         # Visibles pour rassurer les utilisateurs sceptiques, mais codes
         # cachés + modifications interdites (sauf créatrice).
@@ -5037,6 +5047,13 @@ app.include_router(
 from routes.moderation_routes import build_moderation_router  # noqa: E402
 app.include_router(
     build_moderation_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
+# iter144 — /staff/* (actions staff unifiées) + /rename/* (global + local)
+from routes.staff_actions_routes import build_staff_actions_router  # noqa: E402
+app.include_router(
+    build_staff_actions_router(db, verify_signed=_verify_signed),
     prefix="/api",
 )
 

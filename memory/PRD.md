@@ -1,6 +1,55 @@
 # CodeForge AI — Product Requirements
 
 
+## iter144 (Feb 2026) — Sprint 1 : Créas fondatrices · Actions staff unifiées · Renommages · AI Programming responsive
+**Status : COMPLETED Sprint 1 (17/17 nouveaux pytests iter144 PASS · cumul iter141-144 = 90/90 PASS)**
+
+### Créas fondatrices intouchables
+- Nouveau `backend/utils/founder_guard.py` : figeage automatique au boot des créas existantes → 5 clés protégées.
+- Fichier config `founder_creators.json` (créé auto au premier boot avec 5 clés créa).
+- `assert_not_founder()` levé sur toutes les actions staff — impossible pour QUICONQUE (moi inclus) de retirer/bannir/renommer une fondatrice.
+- Route `/devices/list` retourne désormais `is_founder: true/false` par device.
+
+### Actions staff unifiées
+- Nouveau `backend/routes/staff_actions_routes.py` : `/staff/action` avec matrice permissions par rôle :
+  - **Modo** : mute · unmute · block · unblock · exclude(t) · force_visitor(t) · disconnect(t)
+  - **Admin** : idem + ban · rename_global · promote_modo · promote_admin · demote
+  - **Créa** : tout autorisé + promote_creator
+- Durées par défaut : exclude 1h · force_visitor 30min · disconnect 15min (paramétrable via `duration_sec`).
+- Toutes les actions loggées dans `staff_actions_log` (actor, target, action, reason, ts).
+
+### Renommages (double niveau)
+- **Global** (`/staff/rename-global`) : renomme le compte officiellement (admin+ ou créa). Visible partout. Interdit sur les créas fondatrices.
+- **Local** (`/rename/local/set|list`) : alias personnel, visible uniquement par l'auteur. Chaque user peut renommer différemment le même compte.
+- **Créa view** (`/rename/local/list-on-target`) : la Créa voit le pseudo officiel + tous les alias locaux posés par les autres users sur un compte donné.
+
+### UI — Barre d'icônes staff uniforme
+- Nouveau `StaffActionsIconBar.jsx` : 12 icônes stables (Eye · Pencil · Shield · Star · Crown · VolumeX · Ban · Clock · UserMinus · LogOut · XCircle · Trash2).
+- Icônes non-autorisées → visibles mais désactivées (préserve la cohérence layout selon spec utilisateur).
+- Créas fondatrices → toutes les icônes remplacées par `Lock` avec tooltip "Créa fondatrice — action interdite".
+- Data-testids : `staff-icon-bar-<key_id>` + `staff-action-<key>-<key_id>`.
+
+### AI Programming responsive
+- Sidebar collapsable sur mobile/tablette (breakpoint `lg`) avec `ai-prog-sidebar-toggle` (Menu/X icon).
+- Overlay clic-out pour fermer sur mobile.
+- Editor principal `flex-1 min-w-0` pour éviter overflow horizontal.
+- Éléments avec `tabIndex={0}` pour navigation clavier (↑↓←→ fonctionnent dans les zones scrollables).
+- Padding responsive `px-3 py-2 sm:px-4 sm:py-3`.
+
+### Endpoints ajoutés (7)
+- `POST /api/staff/action`
+- `POST /api/staff/rename-global`
+- `POST /api/rename/local/set`
+- `POST /api/rename/local/list`
+- `POST /api/rename/local/list-on-target` (Créa only)
+- `POST /api/rename/local/creator-view`
+
+### Backlog restant (Sprint 2 & 3)
+- **Sprint 2** : Filtres membres par rôle · Notifications @ anonymous-safe · Journal alertes bot séparé · Couche LLM Emergent au-dessus de bot_analyzer.
+- **Sprint 3** : Fiches Programmation dédiées (Caly, Bots+Chatbots, Site, IA globale, Mes IA refresh) · Intégrations tierces UI (Stripe/Google/ChatGPT).
+- **Reste à câbler** : StaffActionsIconBar dans DeviceManager (remplace boutons existants) · UI renommage MP+groupe chat.
+
+
 ## iter143 (Feb 2026) — 5 batches : Correctifs · Programmation IA · Bot export · Modération workflow · Mentions
 **Status : COMPLETED (73/73 pytests iter141+142+143 PASS + testing_agent v3 rapport 116 : backend 100%, frontend source-level 100%)**
 

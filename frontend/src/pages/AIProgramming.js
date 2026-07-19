@@ -14,7 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, History, RotateCcw, Bot, Sparkles, Wrench } from 'lucide-react';
+import { ArrowLeft, Save, History, RotateCcw, Bot, Sparkles, Wrench, Menu, X as CloseIcon } from 'lucide-react';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
 
@@ -92,6 +92,8 @@ export default function AIProgramming() {
   const [showHistory, setShowHistory] = useState(false);
   const [savingNote, setSavingNote] = useState('');
   const [busy, setBusy] = useState(false);
+  // iter144 — Sidebar collapsable pour responsive (mobile + demi-écran).
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const allowed = device.role === 'creator' && (!device.viewMode || device.viewMode === 'creator');
 
@@ -188,25 +190,39 @@ export default function AIProgramming() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col">
-      <header className="border-b border-white/10 px-4 py-3 flex items-center gap-3">
+      <header className="border-b border-white/10 px-3 py-2 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap">
+        <button
+          onClick={() => setSidebarOpen((v) => !v)}
+          data-testid="ai-prog-sidebar-toggle"
+          className="lg:hidden text-[#A1A1AA] hover:text-white p-1"
+          aria-label="Ouvrir la liste des IA"
+        >
+          {sidebarOpen ? <CloseIcon className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+        </button>
         <button onClick={() => navigate(-1)} className="text-[#A1A1AA] hover:text-white" data-testid="ai-prog-back">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <Bot className="w-4 h-4 text-[#E4FF00]" />
-        <h1 className="text-sm font-['Chivo'] font-bold">Programmation des IA</h1>
-        <span className="text-[11px] text-[#A1A1AA] ml-auto">
-          {items.length} agents · Créa only · versionné
+        <h1 className="text-xs sm:text-sm font-['Chivo'] font-bold truncate flex-1">Programmation des IA</h1>
+        <span className="text-[10px] sm:text-[11px] text-[#A1A1AA] whitespace-nowrap">
+          {items.length} agents
         </span>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-72 border-r border-white/10 overflow-y-auto" data-testid="ai-prog-sidebar">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Sidebar : slide-in sur mobile via .translate, fixe sur desktop */}
+        <aside
+          className={`absolute lg:static inset-y-0 left-0 w-64 sm:w-72 border-r border-white/10 bg-[#050505] overflow-y-auto z-30 transition-transform duration-200 ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          }`}
+          data-testid="ai-prog-sidebar"
+          tabIndex={0}
+        >
           {items.map((it) => (
             <button
               key={it.agent_id}
               type="button"
-              onClick={() => setSelected(it.agent_id)}
+              onClick={() => { setSelected(it.agent_id); setSidebarOpen(false); }}
               data-testid={`ai-prog-select-${it.agent_id}`}
               className={`w-full text-left px-3 py-2 border-b border-white/5 hover:bg-white/[0.04] transition ${
                 selected === it.agent_id ? 'bg-[#E4FF00]/10 border-l-2 border-l-[#E4FF00]' : ''
@@ -221,8 +237,20 @@ export default function AIProgramming() {
           ))}
         </aside>
 
+        {/* Overlay clic-out pour mobile */}
+        {sidebarOpen && (
+          <div
+            className="absolute inset-0 bg-black/60 z-20 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Editor */}
-        <main className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="ai-prog-editor">
+        <main
+          className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 min-w-0"
+          data-testid="ai-prog-editor"
+          tabIndex={0}
+        >
           {selected && (
             <>
               <div className="border border-white/10 rounded-sm p-3 bg-white/[0.02]">
