@@ -8,7 +8,8 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from '../components/LanguageToggle';
-import PreviewMenuButton from '../components/PreviewMenuButton';
+import LoginAuxButtons from '../components/LoginAuxButtons';
+import { LaunchTutorialButton } from '../components/InteractiveTutorial';
 import TheftRecoveryDialog from '../components/TheftRecoveryDialog';
 import AccountsButton from '../components/AccountsButton';
 import TheftButton from '../components/TheftButton';
@@ -1162,11 +1163,12 @@ export default function Login() {
             <span>·</span>
             <LanguageToggle />
           </div>
-          {/* iter142 — Bouton "Visite du menu" disponible aussi sur la page
-              de connexion/inscription pour permettre de découvrir avant de
-              s'inscrire. Retire aussi le CreatorToolbar du footer (image 5). */}
-          <div className="mt-3 flex justify-center">
-            <PreviewMenuButton />
+          {/* iter142/149 — Boutons annexes login/inscription : ligne à 2 boutons
+              (Visite du compte / Choix de vue) alignés sur les tabs Connexion/
+              Inscription. Le dropdown des 2 vues (spec B) est intégré au bouton
+              Choix de vue à droite. */}
+          <div className="mt-3">
+            <LoginAuxButtons />
           </div>
           <div className="mt-3 flex flex-col items-center gap-2">
             {/* iter145 — MessageButton retiré de Login (page publique) :
@@ -1181,6 +1183,8 @@ export default function Login() {
               <ShieldAlert className="w-3.5 h-3.5" />
               {t('theft_link')}
             </button>
+            {/* iter149 — Tutoriel interactif accessible depuis Login/Inscription. */}
+            <LaunchTutorialButton scope="auth" label="Lancer le tutoriel" />
           </div>
         </motion.div>
       </motion.div>

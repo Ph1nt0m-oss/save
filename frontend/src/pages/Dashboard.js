@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, ScrollText, GraduationCap
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, GraduationCap
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -33,8 +33,10 @@ import AccountVisitView from '../components/AccountVisitView';
 import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
-import AnonymityJournalPanel from '../components/AnonymityJournalPanel';
+// iter149 — AnonymityJournalPanel importé plus. Le panneau était monté
+// pour la Créa mais retiré selon la spec C.
 import MentionNotifier from '../components/MentionNotifier';
+import InteractiveTutorial from '../components/InteractiveTutorial';
 import ModAlertModal from '../components/ModAlertModal';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
@@ -91,7 +93,8 @@ export default function Dashboard() {
   // iter82 — Group chats + Friend system
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
-  const [journalOpen, setJournalOpen] = useState(false);
+  // iter149 — journalOpen retiré (AnonymityJournalPanel supprimé, spec C).
+  const [menuTutoOpen, setMenuTutoOpen] = useState(false);
   // iter99 — Panel admin community bots
   const [showBotsAdmin, setShowBotsAdmin] = useState(false);
   // iter101 — Câblage useViewSpec : la vue simulée gouverne l'affichage UI
@@ -965,13 +968,14 @@ export default function Dashboard() {
               <span className="inline-block ml-2 sm:ml-4">
                 <LanguageToggle placement="bottom" />
               </span>
-              {/* iter148 — Bouton tutoriel (accessible à tous les utilisateurs).
-                  z-[5] + position:relative pour ne pas être recouvert par les
-                  boutons d'export dans le même flex row. */}
+              {/* iter148/149 — Bouton tutoriel : lance le tutoriel INTERACTIF
+                  du menu (bulles pointant sur chaque bouton). L'ancienne
+                  page /tutorial reste accessible via /tutorial pour un
+                  tour d'ensemble en pleine page. */}
               <button
-                onClick={() => navigate('/tutorial')}
+                onClick={() => setMenuTutoOpen(true)}
                 data-testid="header-tutorial-btn"
-                title="Tutoriel de la plateforme"
+                title="Tutoriel interactif du menu"
                 aria-label="Ouvrir le tutoriel"
                 className="relative z-[5] text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-2 flex-shrink-0"
               >
@@ -1020,20 +1024,11 @@ export default function Dashboard() {
                     <UserCog className="w-4 h-4" />
                   </button>
                 )}
-                {/* iter142 — Journal d'anonymat : bouton visible UNIQUEMENT
-                    pour la Créa réelle (hors simulation) — la Créa peut y
-                    consulter l'historique horodaté des activations Nuit/
-                    Soleil par les modos et admins. */}
-                {device.role === 'creator' && (!device.viewMode || device.viewMode === 'creator') && (
-                  <button
-                    onClick={() => setJournalOpen(true)}
-                    data-testid="open-anonymity-journal-btn"
-                    title="Journal d'anonymat (staff)"
-                    className="text-[#A1A1AA] hover:text-amber-300 transition-colors p-1.5 rounded-sm hover:bg-white/[0.04]"
-                  >
-                    <ScrollText className="w-4 h-4" />
-                  </button>
-                )}
+                {/* iter142/149 — Journal d'anonymat staff RETIRÉ (spec C).
+                    Le bouton et le panneau ne sont plus exposés — la
+                    modération conserve ses ModAlertModal + Anonymat via
+                    AI Programming/journal moderation depuis les fiches
+                    dédiées si besoin. */}
               </div>
             </div>
 
@@ -1624,9 +1619,18 @@ export default function Dashboard() {
       />
       {/* iter82 — Group chats panel */}
       <GroupChatsPanel open={groupsOpen} onClose={() => setGroupsOpen(false)} />
-      <AnonymityJournalPanel open={journalOpen} onClose={() => setJournalOpen(false)} />
+      {/* iter149 — AnonymityJournalPanel retiré (spec C). Le panneau et
+          son état ne sont plus montés. */}
       {/* iter147 — Notifications @mentions anonymous-safe (badge + panneau) */}
       <MentionNotifier device={device} />
+      {/* iter149 — Tutoriel interactif du menu (bulles pointant vers chaque bouton) */}
+      {menuTutoOpen && (
+        <InteractiveTutorial
+          scope="menu"
+          autoOpen
+          onClose={() => setMenuTutoOpen(false)}
+        />
+      )}
       {/* iter143 — Popup mi-écran modération (staff seulement) */}
       <ModAlertModal />
       {/* iter82 — Friend system */}

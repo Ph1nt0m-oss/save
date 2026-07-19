@@ -72,11 +72,12 @@ def test_login_removes_welcome_toast():
 
 
 def test_landing_has_preview_menu_button_before_login_ctas():
+    """iter149 — LoginAuxButtons remplace PreviewMenuButton. Doit rester avant CTAs."""
     content = Path("/app/frontend/src/pages/Landing.js").read_text()
-    idx_preview = content.find('<PreviewMenuButton')
+    idx_preview = content.find('<LoginAuxButtons')
     idx_login = content.find('hero-login-btn')
     assert idx_preview > 0 and idx_login > 0
-    assert idx_preview < idx_login, "PreviewMenuButton doit être avant les CTAs Connexion/Inscription"
+    assert idx_preview < idx_login, "LoginAuxButtons doit être avant les CTAs Connexion/Inscription"
 
 
 def test_founder_note_only_two_founders():

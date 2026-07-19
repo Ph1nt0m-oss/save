@@ -7,7 +7,8 @@ import CreatorToolbar from '../components/CreatorToolbar';
 import MessageButton from '../components/MessageButton';
 import TheftButton from '../components/TheftButton';
 import AccountsButton from '../components/AccountsButton';
-import PreviewMenuButton from '../components/PreviewMenuButton';
+import LoginAuxButtons from '../components/LoginAuxButtons';
+import { LaunchTutorialButton } from '../components/InteractiveTutorial';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export default function Landing() {
@@ -100,10 +101,14 @@ export default function Landing() {
             {t('l_subtitle')}
           </p>
 
-          {/* iter142 — Bouton "Visite du menu" AVANT Connexion/Inscription.
-              Permet aux visiteurs de découvrir le menu selon leur choix de vue. */}
-          <div className="flex justify-center pt-2 sm:pt-4">
-            <PreviewMenuButton />
+          {/* iter142/149 — Ligne "Visite du compte" + "Choix de vue"
+              (spec A/B). Même largeur pour rester aligné sur les CTAs
+              du hero. */}
+          <div className="max-w-md mx-auto w-full pt-2 sm:pt-4">
+            <LoginAuxButtons />
+          </div>
+          <div className="flex justify-center pt-3">
+            <LaunchTutorialButton scope="auth" label="Lancer le tutoriel" />
           </div>
 
           {/* Hero CTAs — Connexion (left, outline) · Inscription (right, outline) */}

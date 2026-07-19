@@ -58,8 +58,10 @@ def test_all_sprint3_routes_present():
 
 
 def test_dashboard_has_tutorial_button():
+    """iter149 — Le bouton lance désormais le tutoriel INTERACTIF (menu)
+    au lieu de naviguer vers /tutorial."""
     assert 'header-tutorial-btn' in DASHBOARD
-    assert "navigate('/tutorial')" in DASHBOARD
+    assert "setMenuTutoOpen(true)" in DASHBOARD
     assert 'GraduationCap' in DASHBOARD
 
 

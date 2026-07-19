@@ -173,6 +173,16 @@ def build_community_bots_router(db, verify_signed, require_creator_signature, lo
             )
 
         system_prompt = (bot.get("prompt") or "Tu es un assistant.") + kb_text
+        # iter149 — Injecte le profil configuré pour ce bot spécifique
+        # (agent_id = bot_id). Chaque bot conserve sa propre identité.
+        try:
+            from utils.ai_profile_injector import load_profile, build_profile_fragment
+            _prof = await load_profile(db, payload.bot_id)
+            _frag = build_profile_fragment(_prof or {})
+            if _frag:
+                system_prompt = system_prompt + _frag
+        except Exception:
+            pass
         try:
             from emergentintegrations.llm.chat import LlmChat, UserMessage
             api_key = os.environ.get("EMERGENT_LLM_KEY") or ""

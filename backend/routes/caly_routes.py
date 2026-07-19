@@ -77,6 +77,17 @@ def build_caly_router(db, *, verify_signed, log_change, logger):
             )
             system_prompt = system_prompt + kb_text
 
+        # iter149 — Injection du profil configuré via /api/agents/profile/save
+        # pour l'agent "caly_help" (l'assistante flottante). Isolé du reste.
+        try:
+            from utils.ai_profile_injector import load_profile, build_profile_fragment
+            _prof = await load_profile(db, "caly_help")
+            _frag = build_profile_fragment(_prof or {})
+            if _frag:
+                system_prompt = system_prompt + _frag
+        except Exception:
+            pass
+
         # Récupère l'historique récent (max 8 derniers messages)
         history_text = ""
         if input.history:

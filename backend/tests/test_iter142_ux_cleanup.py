@@ -57,18 +57,20 @@ def test_devices_list_enriches_public_handle():
 
 
 def test_preview_menu_component_exists():
-    p = Path("/app/frontend/src/components/PreviewMenuButton.jsx")
+    """iter149 — PreviewMenuButton retiré et remplacé par LoginAuxButtons."""
+    p = Path("/app/frontend/src/components/LoginAuxButtons.jsx")
     assert p.exists()
     content = p.read_text()
-    assert 'preview-menu-btn' in content
+    assert 'login-visit-account-btn' in content
+    assert 'login-view-picker-btn' in content
     assert 'setStoredViewMode' in content
-    assert 'Visite du menu' in content
 
 
 def test_landing_uses_preview_menu():
+    """iter149 — Landing utilise LoginAuxButtons (remplace PreviewMenuButton)."""
     p = Path("/app/frontend/src/pages/Landing.js")
     content = p.read_text()
-    assert 'PreviewMenuButton' in content
+    assert 'LoginAuxButtons' in content
 
 
 def test_login_removes_creator_toolbar():
@@ -76,8 +78,8 @@ def test_login_removes_creator_toolbar():
     content = p.read_text()
     # CreatorToolbar import removed
     assert "import CreatorToolbar" not in content
-    # PreviewMenuButton présent
-    assert "PreviewMenuButton" in content
+    # LoginAuxButtons présent (remplace PreviewMenuButton).
+    assert "LoginAuxButtons" in content
 
 
 def test_creator_toolbar_hides_in_simulation():

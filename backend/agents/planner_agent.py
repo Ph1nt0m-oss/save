@@ -27,6 +27,16 @@ async def run_planner_agent(message: str, *, session_id: str, language: str = "f
     yield await ev("status", "Structuration du plan et priorisation…")
 
     system = PLANNER_AGENT_SYSTEM.format(lang_label=lang_label(language))
+    # iter149 — Injection du profil configuré pour l'agent "planner" (Archi).
+    try:
+        from utils.ai_profile_injector import load_profile, build_profile_fragment
+        from server import db as _srv_db
+        _prof = await load_profile(_srv_db, "planner")
+        _frag = build_profile_fragment(_prof or {})
+        if _frag:
+            system = system + _frag
+    except Exception:
+        pass
     ctx = format_history(history)
     prompt = (f"Historique de la conversation :\n{ctx}\n\n" if ctx else "") + f"Demande : {message}"
     async for delta in stream_llm(system, prompt, session_id=session_id,

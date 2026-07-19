@@ -2529,6 +2529,25 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                         seen_pairs.add(pair)
                         ordered_chain.append(pair)
 
+                # iter149 — Injection du profil IA configuré par la Créa via
+                # /api/agents/profile/save. Chaque IA a son propre agent_id
+                # (jamais de fusion cross-agent). On dérive l'agent_id du
+                # model_choice en normalisant les séparateurs.
+                try:
+                    from utils.ai_profile_injector import load_profile, build_profile_fragment
+                    _agent_id = (model_choice or "").replace("-", "_").replace(".", "_")
+                    _profile = await load_profile(db, _agent_id)
+                    # Fallback : si aucun profil spécifique n'est configuré pour
+                    # ce modèle, on essaie l'agent générique "chat".
+                    if not _profile and _agent_id != "chat":
+                        _profile = await load_profile(db, "chat")
+                    _frag = build_profile_fragment(_profile or {})
+                    if _frag:
+                        system_prompt = system_prompt + _frag
+                        logger.info(f"AI profile applied for agent={_agent_id}")
+                except Exception as _prof_err:
+                    logger.warning(f"AI profile injection failed (agent={model_choice}): {_prof_err}")
+
                 def _is_recoverable(exc: Exception) -> bool:
                     """Errors that justify a silent fallback to another model."""
                     msg = str(exc).lower()

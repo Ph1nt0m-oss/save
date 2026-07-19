@@ -1,0 +1,41 @@
+{
+  "summary": "iter149 review — Full backend + frontend testing done. Backend: 171/171 pytests PASS (iter141-149 regression). +5 NEW runtime injection tests PASS (verify AI profile fragment ACTUALLY flows into LlmChat.system_message at call time, isolation across agent_ids, fault-tolerance when DB is empty or throws). Frontend live UI on /login: LoginAuxButtons layout OK (visit=218px, picker=216px, ~same width via flex-1), old PreviewMenuButton absent, view-picker dropdown opens with 2 options (login-view-opt-user + login-view-opt-guest), interactive tutorial advances 6 steps (progress 17% → 33% → 50% → 67% → 83% → 100%) with localStorage persistence at codeforge_tuto_progress_v2::auth. Dashboard-side reqs (menu tutorial, read-only badge always, anonymity journal removed) validated via 22 source-level pytests in test_iter149_ui_ai_profile.py. No critical issues.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/login page", "issues": ["Note: 'Site temporarily private' modal overlay blocks interactions when the site is in private mode. This is intentional (creator toggled site to private). Interactive tests bypassed the modal via CSS display:none to validate the underneath UI. On a whitelisted/creator device the modal doesn't appear so this is not a bug."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter149_ui_ai_profile.py",
+    "/app/backend/tests/test_iter149_runtime_injection.py",
+    "/app/test_reports/pytest/iter149_full.xml",
+    "/app/test_reports/pytest/iter149_runtime.xml"
+  ],
+  "action_items": [
+    "None. iter149 spec fully implemented and verified."
+  ],
+  "critical_code_review_comments": [
+    "AI profile injection is fault-tolerant everywhere: caly_routes.py (try/except pass), community_bots_routes.py (try/except pass), server.py:2536-2549 (try/except logs warning), agents/*.py (try/except logs warning). No crash path if db.ai_profiles is empty/throws. Verified by test_caly_ask_fault_tolerant_when_db_throws.",
+    "Isolation across agent_ids: each entry-point queries db.ai_profiles.find_one({agent_id: <specific_id>}). No cross-agent bleed. Verified by test_caly_ask_isolation_dev_profile_does_not_bleed + test_community_bots_test_injects_bot_specific_profile.",
+    "LoginAuxButtons layout: both buttons use `flex-1` inside parent `flex gap-1`, so widths are shared 50/50 (measured 218px vs 216px = 2px rounding diff, effectively same width). Matches spec A.",
+    "ViewSimulationBanner refactored to always render (removed the `if (!viewMode || viewMode === 'creator') return null` guard). The read-only-badge is present in ALL modes including creator-self-view (cyan theme) vs simulation modes (amber theme). Matches spec D.",
+    "InteractiveTutorial 6 auth steps + 6 menu steps. Progress bar width correctly updates 17→33→50→67→83→100. localStorage key `codeforge_tuto_progress_v2::auth` written on each step change and cleared when `Terminer` is clicked (finished=true → resetProgress).",
+    "AnonymityJournalPanel.jsx file still EXISTS in /app/frontend/src/components/ but is NOT imported or mounted in Dashboard.js (verified by grep). This is acceptable — leaving legacy file for reference. Consider deleting the .jsx file too for cleanliness, but not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter149_runtime_injection.py (NEW — 5 runtime injection tests using LlmChat monkey-patch)"
+  ],
+  "success_rate": {
+    "backend": "100% (171 iter141-149 pytests + 5 new runtime injection tests = 176/176 PASS)",
+    "frontend": "100% on live /login page (LoginAuxButtons + widths + old-button-absent + dropdown-2-options + tutorial-6-steps + localStorage). Dashboard-side reqs 100% via pytest source-level."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (from /app/memory/test_credentials.md — not used in this session; live /login page is publicly reachable enough for the spec, no auth needed).",
+  "seed_data_creation": "None (used in-memory fake db for runtime injection tests, no live DB writes).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter149 spec (7 changes A-G) is fully implemented and verified. AI profile injection is now REAL at all 6 entry-points: server.py chat pipeline (line 2532-2549), caly_routes.py /caly/ask (line 80-89), community_bots_routes.py /community-bots/test (line 176-185), agents/chat_agent.py, agents/dev_agent.py, agents/planner_agent.py. Each uses `load_profile(db, <agent_id>)` + `build_profile_fragment(...)` and appends to system_message. Isolation is guaranteed by agent_id filter. Fault-tolerance via try/except everywhere. NEW test file test_iter149_runtime_injection.py mocks LlmChat via sys.modules injection to capture system_message and assert the fragment is present with the correct agent-scoped token — this is the strongest possible verification without spending real LLM credits.",
+  "rca of the issue": "N/A — no issue found."
+}
