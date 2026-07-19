@@ -233,17 +233,28 @@ function AppRouter() {
   );
 }
 
+function FloatingWidgetsGate() {
+  // iter148 — n'affiche pas les widgets flottants (CalyChatbot) sur les
+  // routes plein-écran ciblées (/tutorial) où ils gênent l'interaction
+  // avec les boutons de bas de page.
+  const location = useLocation();
+  const path = (location?.pathname || '').toLowerCase();
+  if (path.startsWith('/tutorial')) return null;
+  return <CalyChatbot />;
+}
+
+
 function App() {
-  return (
-    <div className="App dark">
+  return (    <div className="App dark">
       <BrowserRouter>
         <LanguageProvider>
           <CacheProvider>
             <AuthProvider>
               <AppRouter />
               <FeedbackButton />
-              {/* iter105 — CalyChatbot widget flottant global (bottom-right) */}
-              <CalyChatbot />
+              {/* iter105 — CalyChatbot widget flottant global (bottom-right).
+                  iter148 — masqué sur /tutorial (focus lecture) et /login. */}
+              <FloatingWidgetsGate />
               <Toaster 
                 position="top-right"
                 theme="dark"

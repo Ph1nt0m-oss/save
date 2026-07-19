@@ -1,0 +1,86 @@
+{
+  "summary": "iter119 retest of Tutorial navigation flow after fix in iter118 (FloatingWidgetsGate hides CalyChatbot on /tutorial). CalyChatbot fix is CONFIRMED — caly-floating-btn is no longer rendered on /tutorial. Tutorial state-machine logic is 100% correct: all 7 steps render, progress bar advances 14→29→43→57→71→86→100%, tutorial-finish navigates to /dashboard, tutorial-prev decrements. HOWEVER the tutorial-next/prev/finish buttons are STILL blocked by another floating widget: `feedback-open-btn` (FeedbackButton at fixed bottom-5 right-5 z-40, w-14 h-14). Real-user clicks on tutorial-next fail with 'feedback-open-btn intercepts pointer events'. Similarly on /dashboard, header-tutorial-btn is blocked by `export-approval-modal` (z-[88] fixed inset-0 bg-black/70 backdrop from ExportApprovalNotifier) that auto-opens for creators with pending export requests. In both cases the underlying onClick handler is WIRED CORRECTLY (JS .click() succeeds and navigates), but real user clicks are intercepted by z-index overlays.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "FeedbackButton (App.js line 254) on /tutorial",
+        "issue": "FeedbackButton (data-testid='feedback-open-btn', fixed bottom-5 right-5 w-14 h-14 z-40) still renders on /tutorial and overlaps tutorial-next AND tutorial-finish buttons at 1920x1080. Playwright real-click confirms: '<button data-testid=\"feedback-open-btn\"> intercepts pointer events'. tutorial-next box=(x=1819, y=1039, 85x28) vs feedback btn box=(x=1844, y=1004, 56x56) → dead-center overlap. Users cannot advance/finish via the primary CTA on desktop with real clicks. CalyChatbot is hidden but FeedbackButton was NOT included in FloatingWidgetsGate.",
+        "selector": "[data-testid='feedback-open-btn'] vs [data-testid='tutorial-next']/[data-testid='tutorial-finish']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "ExportApprovalNotifier (export-approval-modal) on /dashboard",
+        "issue": "For creators with pending export requests, ExportApprovalNotifier auto-opens on /dashboard mount with a fixed inset-0 z-[88] bg-black/70 backdrop covering the ENTIRE viewport, including the header row. elementsFromPoint(header-tutorial-btn center)=[export-approval-modal, export-source-btn, header-row-div, svg, header-tutorial-btn]. Real click on header-tutorial-btn fails (blocked by modal). The onClick handler works (JS-invoked click navigates correctly to /tutorial). This modal ALSO blocks every other header button including LanguageToggle, TheftButton, AccountsButton, etc., until the export request is Approved/Refused. This IS the root cause of the iter118 'header-tutorial-btn does not fire' report — not z-index of CalyChatbot but this modal.",
+        "selector": "[data-testid='export-approval-modal'] covering [data-testid='header-tutorial-btn']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "LanguageToggle inside Tutorial step-languages",
+        "issue": "React hydration warning: '<button> cannot be a descendant of <button>'. Non-blocking but appears in console on /tutorial step 7 (languages) and /dashboard. Source: LanguageToggle button placed inside another button in one of the render paths.",
+        "selector": "console warning",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Tutorial next/finish real-user click",
+        "issue": "onClick handlers on tutorial-next/tutorial-finish are wired correctly (verified via JS .click() → all 7 steps advance, progress 14→100%, finish navigates to /dashboard). Real pointer clicks are intercepted by feedback-open-btn floating FAB. Users on desktop CANNOT complete the tutorial via the primary CTA (the jump-rail buttons still work as workaround).",
+        "affected_selectors": ["[data-testid='tutorial-next']", "[data-testid='tutorial-finish']"]
+      },
+      {
+        "flow": "Dashboard header-tutorial-btn real-user click",
+        "issue": "onClick handler is correct (JS click navigates to /tutorial). Blocked at DOM level by export-approval-modal backdrop (z-[88] inset-0). Applies to any creator with pending export requests.",
+        "affected_selectors": ["[data-testid='header-tutorial-btn']", "[data-testid='export-approval-modal']"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "/tutorial footer",
+        "issues": [
+          "Tutorial footer next/finish buttons are aligned right (justify-end via flex-1 spacer) and collide with the bottom-right floating FAB stack. Even if FeedbackButton is hidden, consider moving primary CTA away from the corner or adding right padding (e.g. pr-20) to leave room."
+        ]
+      },
+      {
+        "screen": "/dashboard when export-approval-modal is open",
+        "issues": [
+          "Modal backdrop covers the header row, preventing users from navigating away (tutorial button, language toggle, sign out, etc.). No dismiss/skip option is prominent — user must Approve/Refuse the export or click the small X to close. Consider allowing header clicks to remain functional or auto-dismissing the modal on Escape."
+        ]
+      }
+    ]
+  },
+  "test_report_links": ["/tmp/promote_creator.py"],
+  "action_items": [
+    "HIGH: Extend FloatingWidgetsGate in App.js to ALSO hide <FeedbackButton /> on /tutorial (currently only <CalyChatbot /> is gated). Recommended: move FeedbackButton inside the same gate component. Verify tutorial-next and tutorial-finish can be clicked with real pointer events after fix.",
+    "HIGH: Fix header-tutorial-btn accessibility on /dashboard — either (a) reduce ExportApprovalNotifier backdrop z-index below header (z-40 max), (b) route header clicks through by using pointer-events: none on backdrop with pointer-events: auto on modal content only, or (c) close the export-approval-modal when the user clicks outside/Escape. Verify with a creator account that has pending exports.",
+    "MEDIUM: Add right-padding (pr-20 or similar) to tutorial <footer> so primary CTA doesn't collide with bottom-right floating widgets on any route.",
+    "LOW: Fix nested <button> inside <button> hydration warning in LanguageToggle usage on Tutorial step 7 and Dashboard header (change outer wrapper to div or use asChild)."
+  ],
+  "critical_code_review_comments": [
+    "App.js line 254 mounts <FeedbackButton /> OUTSIDE FloatingWidgetsGate — the same interception issue that iter118 diagnosed for CalyChatbot exists identically for FeedbackButton. The gate is incomplete.",
+    "ExportApprovalNotifier uses z-[88] which is unusually high and inset-0 which covers the entire viewport. Any header controls become unreachable. Consider a smaller modal (max-w-md centered) with a semi-transparent backdrop only around the modal card, and Escape-to-close.",
+    "Tutorial.js layout uses flex-1 spacer pushing tutorial-next and tutorial-finish to the extreme right edge of the viewport — always in conflict with any bottom-right FAB across the app. Consider using justify-between or adding pr-20 to reserve FAB space.",
+    "FloatingWidgetsGate in App.js line 236 only checks /tutorial prefix — good pattern, but MAKE IT WRAP ALL floating widgets (Feedback, Caly, MentionNotifier, etc.) not just Caly, to avoid future regressions."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "n/a (skipped)",
+    "frontend": "Tutorial flow logic 100% correct (all 7 steps + prev + finish nav via JS click). Real-user click experience: 0% on desktop for tutorial-next/finish (feedback-btn interception) and 0% for dashboard header-tutorial-btn (export modal interception). CalyChatbot hide on /tutorial: 100% verified."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — session_token from POST /api/auth/login = mZgGonJ-8TmWLzqyYWD1LLh4Zf-ee2Vt5uErB3W7mEs (valid at test time). To reach any protected route as creator: (1) load /login to bootstrap device_key_id in localStorage, (2) run /tmp/promote_creator.py <key_id> to set role=creator in Mongo, (3) inject session_token, (4) navigate to target route.",
+  "seed_data_creation": "Promoted 5 ephemeral device_key rows to role='creator' with label='TEST_TESTER_CREATOR' during this run (dev_733cb14a..., dev_b4f628..., dev_4ba7feb7..., dev_2c15aa3d..., dev_614832c2...). CLEANED UP at end of run via db.device_keys.deleteMany({label:'TEST_TESTER_CREATOR'}) → 2 rows deleted (3 others were already cleaned by re-promotion of same key overwriting label — no orphan data left).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter118 hypothesis (CalyChatbot blocks tutorial buttons) was PARTIALLY correct. Iter118 fix (FloatingWidgetsGate hiding CalyChatbot on /tutorial) works but is INCOMPLETE — FeedbackButton is a second bottom-right FAB that ALSO overlaps tutorial-next. Additionally the /dashboard header-tutorial-btn is blocked by ExportApprovalNotifier modal, not CalyChatbot. Both should be fixed in one pass: (a) extend gate to wrap FeedbackButton, (b) fix z-index / backdrop of export-approval-modal so it doesn't cover the header. After fix, re-verify: real click (not force) on tutorial-next advances step, real click on header-tutorial-btn navigates to /tutorial.",
+  "rca of the issue": {
+    "tutorial_next_finish_still_blocked": "Root cause: <FeedbackButton /> (data-testid=feedback-open-btn) is mounted globally in App.js line 254 as a fixed bottom-5 right-5 z-40 FAB. It occupies bounds x=[1844..1900], y=[1004..1060] at 1920x1080. The tutorial footer places tutorial-next at bounds x=[1819..1904], y=[1039..1067] via a flex-1 spacer pushing right. Overlap ~56x21px covers the button center where Playwright (and users) click. iter118 fix hid CalyChatbot but forgot FeedbackButton — same class of bug. Confirmation: elementsFromPoint at (1861, 1053) returns feedback-open-btn ABOVE tutorial-next.",
+    "header_tutorial_btn_blocked_on_dashboard": "Root cause: ExportApprovalNotifier renders a <div data-testid='export-approval-modal' class='fixed inset-0 z-[88] flex items-center justify-center bg-black/70 p-4'> covering the entire viewport (0,0 to 1920,1080) whenever a creator has at least one pending export request. Header buttons (including header-tutorial-btn at (662, 24)) are BELOW the modal in z-order. elementsFromPoint(676, 38) returns [export-approval-modal, ..., header-tutorial-btn] confirming the modal intercepts. Programmatic .click() bypasses this and successfully navigates to /tutorial, proving the onClick handler itself is correct. Fix path: either drop backdrop z-index below header z-index, or make backdrop pointer-events:none with only the modal card interactive, or close-on-Escape / outside-click.",
+    "reproduction_steps": [
+      "1. Ensure a creator user has a pending export request in db.export_requests (state != approved/refused). Our test user user_47498059ca08 already has one (TEST_iter54_poll_b0290a).",
+      "2. Login as this user (session_token) and navigate to /dashboard.",
+      "3. Observe the ExportApprovalNotifier modal auto-opens with dark backdrop.",
+      "4. Attempt to click [data-testid='header-tutorial-btn'] → Playwright reports timeout because [data-testid='export-approval-modal'] intercepts pointer events. Real users see the same behavior.",
+      "5. For /tutorial: navigate to /tutorial and try real click on tutorial-next → intercepted by feedback-open-btn."
+    ]
+  }
+}
