@@ -965,13 +965,15 @@ export default function Dashboard() {
               <span className="inline-block ml-2 sm:ml-4">
                 <LanguageToggle placement="bottom" />
               </span>
-              {/* iter148 — Bouton tutoriel (accessible à tous les utilisateurs) */}
+              {/* iter148 — Bouton tutoriel (accessible à tous les utilisateurs).
+                  z-[5] + position:relative pour ne pas être recouvert par les
+                  boutons d'export dans le même flex row. */}
               <button
                 onClick={() => navigate('/tutorial')}
                 data-testid="header-tutorial-btn"
                 title="Tutoriel de la plateforme"
                 aria-label="Ouvrir le tutoriel"
-                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-2"
+                className="relative z-[5] text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-2 flex-shrink-0"
               >
                 <GraduationCap className="w-4 h-4" />
               </button>

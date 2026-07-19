@@ -1,6 +1,45 @@
 # CodeForge AI — Product Requirements
 
 
+## iter148 (Feb 2026) — Sprint 3 complet : Tutoriel + routing IA + widgets flottants
+**Status : COMPLETED (12 nouveaux pytests iter148 + cumul iter141-148 = 151/151 PASS + testing agent frontend confirme flow tutoriel)**
+
+### Livrable
+- **`/app/frontend/src/pages/Tutorial.js`** : parcours 7 étapes (identité crypto → groupes anonymes → modération 2 couches → programmation IA → exports Créa → intégrations → langues), progression persistante localStorage, rail de navigation direct, data-testids complets `tutorial-page`, `tutorial-progress-bar`, `tutorial-step-<id>`, `tutorial-jump-<id>`, `tutorial-next/prev/finish`.
+- **`App.js` `FloatingWidgetsGate`** : nouveau composant qui masque **CalyChatbot** et **FeedbackButton** sur `/tutorial` (bug résolu — ils interceptaient les clics sur les boutons du footer tutoriel).
+- **Routage `/private/ai-programming`** : conflit résolu — la route était mappée en double (PrivateProgramming + AIProgramming, la 2ᵉ étant unreachable). Désormais unique et pointe correctement sur `AIProgramming` (iter143).
+- **`Dashboard.js` header** : bouton `header-tutorial-btn` avec icône `GraduationCap` à côté du `LanguageToggle` (position:relative z-[5] pour ne pas être recouvert).
+
+### Sprint 3 — bilan
+- **Fiches dédiées Caly/Bots/Site** : routes `/private/caly-programming`, `/private/bots-programming`, `/private/site-programming` — déjà livrées iter112, chacune a une page dédiée (`PrivateChatbotProgramming mode="caly"` / `mode="bots"` / `PrivateProgramming` pour le site).
+- **Mes IA** : `/private/agent-registry` — déjà livré iter131.
+- **Intégrations tierces UI** : `/private/integrations` avec Stripe, Google, ChatGPT — déjà livré iter131.
+- **Programmation des IA** : `/private/ai-programming` (iter143) — désormais réellement accessible.
+- **Tutoriel** : nouveau (iter148).
+- **Langues** : `LanguageToggle` déjà monté dans le header Dashboard (16 langues supportées via `LanguageContext.js`) — vérifié fonctionnel end-to-end (persistance localStorage `codeforge_language`).
+
+
+## iter147 (Feb 2026) — Sprint 2 P0 : LLM 2ᵉ couche bot_analyzer + Journal 2-tabs + Mentions anonymous-safe
+**Status : COMPLETED (13 nouveaux pytests iter147 + testing agent validation live 151/151 + 5 invariants critiques vérifiés)**
+
+### Invariants critiques
+- **Couche 1 déterministe (règles) TOUJOURS calculée**, TOUJOURS PRIMAIRE — jamais dégradée par la couche LLM.
+- **Couche 2 LLM (Emergent Claude Sonnet 4.6)** : SECONDE PASSE additive, cible le harcèlement subtil (ironie, moquerie, exclusion, sarcasme méchant). Timeout 6 s + `try/except` global : jamais bloquante.
+- Les deux analyses sont **loguées séparément** dans `mod_alerts.layer_local` et `mod_alerts.layer_llm`.
+- **Fail-silently** : si `EMERGENT_LLM_KEY` absente, message < 8 caractères, ou `CODEFORGE_LLM_MOD_DISABLED=1` → `layer_llm=None`, `layer_local` reste 100 % fonctionnel.
+
+### Notifications @mentions anonymous-safe
+- Nouveau routeur **`/api/mentions/*`** (4 endpoints signés ECDSA : `list`, `unread-count`, `mark-read`, `mark-all-read`).
+- Insertion dans `db.mention_notifications` déclenchée par `/api/social/groups/send` sur chaque `@handle` reconnu (regex `@([A-Za-z0-9_.-]{3,24})`, résolution case-insensitive sur `device_keys.public_handle`, filtre `role` ≠ blocked/inactive).
+- Si l'auteur est en mode anonyme (`social_prefs.anonymous=True`) → notif stockée avec `author_hidden=True` et **aucun champ from_pseudo / from_public_handle / from_role / from_key_id** ne fuit. Double-check défensif dans `_sanitize()`.
+- Frontend `MentionNotifier.jsx` : cloche discrète bottom-right (`mentions-bell-btn`), badge unread, panneau déroulant, affichage neutre « Quelqu'un t'a mentionné dans #<group> » lorsque `author_hidden`.
+
+### Journal Créa 3-tabs
+- `AnonymityJournalPanel.jsx` refait : onglets `Alertes bot` (2 couches visibles), `Décisions staff`, `Anonymat` (historique Nuit/Soleil).
+- Filtres bot : `Toutes` / `Détectées par LLM` / `Score ≥ 70`.
+- **Repère hotspot** : détecteur automatique de « refus répétés » par un même staff (≥ 3 `not_infraction`/`refuse`) → warning ambré en haut de l'onglet staff.
+
+
 ## iter146 (Feb 2026) — Sprint 2 partiel : DeviceManager StaffIconBar + Rename local UI + Filtres membres + Auth fix
 **Status : COMPLETED (9 nouveaux pytests iter146 + cumul iter141-146 = 108/108 PASS)**
 
