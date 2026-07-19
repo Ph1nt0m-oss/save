@@ -1,6 +1,56 @@
 # CodeForge AI — Product Requirements
 
 
+## iter143 (Feb 2026) — 5 batches : Correctifs · Programmation IA · Bot export · Modération workflow · Mentions
+**Status : COMPLETED (73/73 pytests iter141+142+143 PASS + testing_agent v3 rapport 116 : backend 100%, frontend source-level 100%)**
+
+### Batch A — Correctifs rapides
+- Retrait de l'icône `ExportRequestsHistoryButton` dupliquée du header AccountsButton (image 1). L'icône principale reste dans le Dashboard header.
+
+### Batch B — Onglet "Programmation des IA" + registre étendu
+- `backend/agents/registry.py` étendu de +16 entrées : Emergent, Vexub Video, Claude 5 Fable, GPT 5.5, Claude 4.8/4.7 (1M)/4.6, GPT 5.3 Codex, Gemini 3.1 Pro, GPT 5.4 (1M), Grok 4.3, Grok 4.20 Reasoning, Lindy Flow, Ollama offline, bot_analyzer, bot_export_validator.
+- Nouveau `backend/routes/ai_programming_routes.py` : `/agents/profile/{get,save,versions,revert,list-all}` (Créa only, sanitize par ALLOWED_FIELDS = {writing_style, behavior, domains, limits, capabilities, allowed_tools, specializations, custom_system_prompt, response_format, reasoning_mode, notes}).
+- Versioning MongoDB : chaque save archive l'ancienne dans `ai_profile_versions` (rollback via `/revert`).
+- Nouvelle page `/private/ai-programming` (Créa only) — sidebar + 11 champs éditables + historique + boutons Save/History/Revert.
+- Lien depuis PrivateAgentRegistry via `registry-open-ai-programming`.
+
+### Batch C — Bot validateur d'export
+- `backend/utils/export_validator_bot.py` : analyse en 5 couches (account, project, discussions, coherence, kind). Retourne `{ok, anomalies, summary, layers}`.
+- `/exports/request` lance `asyncio.create_task(analyze_export_request(...))` en arrière-plan.
+- Nouveau `/exports/bot-report` (Créa only) : retourne `{report, header, request_id}` avec header uniforme (pseudo + public_handle + project + kind + date FR + time FR).
+- `/exports/pending` enrichit avec `public_handle`.
+- `ExportApprovalNotifier.jsx` : bouton `exp-bot-report-btn` → modal `bot-report-overlay` avec anomalies. Le champ "Type d'appareil" remplacé par "Identité publique".
+
+### Batch D — Workflow modération complet
+- Nouveau `backend/routes/moderation_routes.py` :
+  - `/moderation/alerts/create` : crée alerte + auto-assigne au staff online équilibré (par `_pick_online_staff` = min load + priorité modo).
+  - `/moderation/assignments/mine` : polling staff — auto-purge expirations (>120s) + re-assign automatique en excluant précédents.
+  - `/moderation/assignments/action` : actions `accept/refuse/sanction/not_infraction/delegate` avec re-assignation auto (refuse + delegate).
+  - `/moderation/decisions/list` : Créa+Admin voient tout ; Modo voit ses propres décisions.
+  - `/moderation/alerts/list` : Créa+Admin uniquement (403 pour modo).
+- `social_routes.groups/send` : quand analyze_message → suspicion, insère `mod_alert` + `mod_assignment` immédiatement (respect Créa protection anonymat).
+- Nouveau `ModAlertModal.jsx` monté dans Dashboard : polling 8s, popup centré avec Accept/Refuse (pending) puis Sanction/Not-infraction/Delegate (accepted). Sanction → Sun mode `enabled:true` puis `enabled:false` (temporaire).
+
+### Batch E — Autocomplete @mentions
+- Nouveau `MentionInput.jsx` : parse `@xxx` position curseur, appelle `/groups/members` avec debounce 120ms, propose 6 candidats (data-testid `mention-opt-<handle>`). Nav Arrow keys + Enter/Tab.
+- `GroupChatsPanel.jsx` utilise `MentionInputWithSend` en remplacement de l'input plain.
+
+### Backlog restant (iter144+)
+- Filtres membres par rôle (barre en tête de liste des membres) — nécessite un composant GroupMembersListPanel.
+- Notifications de mentions anonymous-safe (« Vous avez été mentionné dans un salon » sans révéler l'auteur).
+- Couche LLM Emergent au-dessus de `bot_analyzer` pour harcèlement subtil.
+
+### Fichiers nouveaux (iter143)
+- Backend : `routes/ai_programming_routes.py`, `routes/moderation_routes.py`, `utils/export_validator_bot.py`.
+- Frontend : `pages/AIProgramming.js`, `components/ModAlertModal.jsx`, `components/MentionInput.jsx`.
+- Tests : `tests/test_iter143_ai_programming_and_export_bot.py`, `tests/test_iter143_moderation_and_mentions.py`.
+
+### Tests iter143
+- 26 nouveaux pytests → 100% PASS.
+- Cumul iter141+142+143 : **73/73 PASS**.
+- testing_agent v3 rapport `/app/test_reports/iteration_116.json` : backend 100%, frontend structural 100%.
+
+
 ## iter142 (Feb 2026) — UX cleanup + Login preview + Bots + Journal + Créa protection
 **Status : COMPLETED (47/47 pytests iter141+142 PASS, testing_agent v3 rapport 115 : backend 100% + frontend source-level 100%)**
 
