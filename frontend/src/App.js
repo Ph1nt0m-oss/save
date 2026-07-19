@@ -20,6 +20,7 @@ import PrivateChatbotProgramming from './pages/PrivateChatbotProgramming';
 import PrivateAgentRegistry from './pages/PrivateAgentRegistry';
 import AIProgramming from './pages/AIProgramming';
 import PrivateIntegrations from './pages/PrivateIntegrations';
+import Tutorial from './pages/Tutorial';
 // iter112 — SiteIssues abandonné (les codes d'erreurs sont trop hétérogènes
 // à répertorier). Route /private/site-issues redirige désormais vers la
 // programmation des bots/chatbots.
@@ -171,10 +172,6 @@ function AppRouter() {
           element={<ProtectedRoute><PrivateProgramming /></ProtectedRoute>}
         />
         <Route
-          path="/private/ai-programming"
-          element={<ProtectedRoute><PrivateProgramming /></ProtectedRoute>}
-        />
-        <Route
           path="/private/chatbot-programming"
           element={<ProtectedRoute><PrivateChatbotProgramming mode="caly" /></ProtectedRoute>}
         />
@@ -198,7 +195,8 @@ function AppRouter() {
           element={<ProtectedRoute><PrivateAgentRegistry /></ProtectedRoute>}
         />
         {/* iter143 — Programmation des IA (Créa only) : édition des profils
-            comportementaux + versioning. */}
+            comportementaux + versioning. Route unifiée iter148 (conflit précédent
+            avec PrivateProgramming supprimé). */}
         <Route
           path="/private/ai-programming"
           element={<ProtectedRoute><AIProgramming /></ProtectedRoute>}
@@ -207,6 +205,11 @@ function AppRouter() {
         <Route
           path="/private/integrations"
           element={<ProtectedRoute><PrivateIntegrations /></ProtectedRoute>}
+        />
+        {/* iter148 — Tutoriel plateforme (accessible à tous) */}
+        <Route
+          path="/tutorial"
+          element={<ProtectedRoute><Tutorial /></ProtectedRoute>}
         />
         <Route 
           path="/profile" 

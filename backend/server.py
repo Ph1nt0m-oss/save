@@ -5057,6 +5057,13 @@ app.include_router(
     prefix="/api",
 )
 
+# iter147 — /mentions/* (notifications @handle anonymous-safe)
+from routes.mentions_routes import build_mentions_router  # noqa: E402
+app.include_router(
+    build_mentions_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
 
 # iter124 — Background helpers consommés par _lifespan() (déclaré en haut du fichier).
 # Documents store ISO strings (not Mongo Date) so we can't use a TTL index — we sweep manually.

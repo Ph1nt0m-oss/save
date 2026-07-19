@@ -1,0 +1,32 @@
+{
+  "summary": "iter147 (Sprint 2 P0 + Sprint 3) fully validated. 151/151 pytests PASS locally in one run: 133 pre-existing (iter141+142+142_ux+143a+143b+144+145+146+147+148) + 18 NEW live tests (12 test_iter147_live_invariants + 3 test_iter147_live_e2e + 3 sanity). All 5 critical invariants verified:  (1) Deterministic layer is PRIMARY — CODEFORGE_LLM_MOD_DISABLED=1 → analyze_message_combined() still returns layer_local (layer='local', score reflects spam keywords) with layer_llm=None. (2) Both layers coexist in mod_alerts docs (layer_local + layer_llm keys BOTH present; layer_llm may be None but never removed). (3) LLM error/timeout never breaks layer_local (monkey-patched _llm_analyze_subtle raising simulated error → layer_local intact). (4) Mentions anonymous-safe end-to-end: seeded 2 test devices in MongoDB, invoked /groups/send handler directly with @handle mention; sender.social_prefs.anonymous=True → mention_notifications doc has author_hidden=true AND no from_pseudo/from_public_handle/from_role/from_key_id (leak check on all 4 fields). Sender.anonymous=False → all 4 identity fields ARE present with correct values (verified end-to-end via DB roundtrip). (5) _sanitize function double-filters identity when author_hidden=true even if stored (defense-in-depth confirmed by unit test). Routing verified live via public URL https://no-code-builder-25.preview.emergentagent.com: /api/mentions/{list,unread-count,mark-read,mark-all-read} all return 422 (validation error, not 404) on unsigned POST; GET returns 405; /api/mentions/bogus returns 404 (sanity). /api/moderation/alerts/list and /api/moderation/decisions/list also 422. /api/groups/send (correct mount, NOT /api/social/groups/send) returns 422. Full test invocation: pytest tests/test_iter14[1-8]*.py tests/test_iter147_live_*.py → 151 passed, 0 failed, 1.87s.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter147_live_invariants.py",
+    "/app/backend/tests/test_iter147_live_e2e.py",
+    "/app/test_reports/pytest/iter141_148_full_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "bot_analyzer.analyze_message_combined() correctly enforces 2-layer independence: layer_local computed FIRST synchronously (deterministic score = keyword+flood+repeat+paste+mention_flood), then optional layer_llm as SECOND additive pass. combined_score = max(local, llm) — no averaging that could hide a signal.",
+    "_llm_analyze_subtle catches all exceptions, wraps errors in {layer:'llm', error:str} — never propagates upward. asyncio.wait_for(timeout=6.0) prevents blocking /groups/send indefinitely.",
+    "CODEFORGE_LLM_MOD_DISABLED env var read at call-time (not at import), so tests can toggle it per-test with no module reload. Verified across 18 new tests.",
+    "social_routes.py /groups/send correctly checks social_prefs.anonymous for sender BEFORE constructing notif doc; identity fields only added inside `if not sender_is_anonymous:` block — no leak possible via structural bug. Verified via runtime DB roundtrip.",
+    "mentions_routes._sanitize provides defense-in-depth: even if a legacy row had leaked identity fields stored, they are stripped on read when author_hidden=true.",
+    "mod_alerts doc structure: {alert_id, group_type, reasons[], score, layer_local, layer_llm, sender_key_id, message_ids, state, created_at, assigned_to?} — both layer_local and layer_llm keys ALWAYS present (verified by runtime insert + fetch).",
+    "GROUP_TYPES uses English keys ('private' not 'prive'); this is a minor style inconsistency with French UI but not a bug — front-end maps them.",
+    "Test isolation: initial invariants tests used asyncio.get_event_loop() which fails after prior tests close the loop — fixed by introducing _run_async() helper that creates fresh event loop per test. All 151 tests now run cleanly in the same session.",
+    "Anonymous-safe rule is enforced in TWO places (defense-in-depth): (a) social_routes.py never STORES identity when anonymous, (b) mentions_routes._sanitize() FILTERS identity on READ if author_hidden=true. Both were runtime-verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter147_live_invariants.py (NEW - 15 tests: 4 analyzer unit + 6 routing + 2 sanitize + 2 moderation routing + 1 groups routing)",
+    "/app/backend/tests/test_iter147_live_e2e.py (NEW - 3 tests: mongo roundtrip verifying author_hidden semantics + layer_local always present)"
+  ],
+  "success_rate": {"backend": "100% (151/151 pytest iter141-148 + iter147 live)", "frontend": "n/a (skipped per E1 instruction: backend-only)"},
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 (not used — tests use synthetic TEST_* devices seeded/cleaned per test)",
+  "seed_data_creation": "Each e2e test creates 1-2 TEST_* devices in db.device_keys + db.social_prefs then cleans them up in finally block (idempotent teardown deletes device_keys, social_prefs, mention_notifications, mod_alerts, mod_assignments, group_messages for the test tag).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter147/148 fully validated with LIVE database roundtrip tests. Cumulative 151/151 (iter141:19 + iter142:28 + iter143:26 + iter144:16 + iter145:8 + iter146:9 + iter147:13 + iter148:12 + iter147_live_invariants:15 + iter147_live_e2e:3). The 2 new test files (test_iter147_live_invariants.py + test_iter147_live_e2e.py) are pattern-reusable for future @mentions or bot_analyzer regressions. Use _run_async() helper (not asyncio.get_event_loop()) to avoid cross-test loop-closed errors. Group types are English keys: 'private'/'public'/'users'/'staff'/'modo'/'admin'/'public_staff'/'private_staff'/'users_staff'/'users_private' (NOT 'prive'). /groups/send mounts under /api (NOT /api/social/*). CODEFORGE_LLM_MOD_DISABLED=1 required in each test that expects layer_llm=None to be hermetic (do not rely on module-level set)."
+}

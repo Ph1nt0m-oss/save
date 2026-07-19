@@ -10,6 +10,7 @@ appelle build_friends_router puis app.include_router(router, prefix='/api').
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
@@ -336,11 +337,61 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
             "ts": now.isoformat(),
         }
         await db.group_messages.insert_one(doc)
-        # iter142 Batch 3 — Analyse locale du message par les bots.
-        # Si suspicion → marque le groupe, notifie les membres du groupe
-        # (via un événement bot), autorise le staff à activer Sun Mode.
+        # iter147 — @mentions notifications ANONYMOUS-SAFE.
+        # Règle absolue : si l'auteur est en mode anonyme, la notif ne
+        # révèle JAMAIS son identité (ni pseudo, ni handle).
         try:
-            analysis = bot_analyzer.analyze_message(
+            mention_handles = re.findall(r"@([A-Za-z0-9_.-]{3,24})", content)
+            if mention_handles:
+                # Auteur anonyme ?
+                sender_prefs = await db.social_prefs.find_one(
+                    {"key_id": payload.key_id}, {"_id": 0, "anonymous": 1},
+                ) or {}
+                sender_is_anonymous = bool(sender_prefs.get("anonymous"))
+                # Résoudre chaque handle → device (case-insensitive).
+                seen_handles = set()
+                for h in mention_handles:
+                    h_lc = h.lower()
+                    if h_lc in seen_handles:
+                        continue
+                    seen_handles.add(h_lc)
+                    # device_keys stocke `public_handle` (case-mixed) → recherche
+                    # case-insensitive via regex ancré. Uniquement les devices
+                    # non bloqués/supprimés.
+                    target = await db.device_keys.find_one(
+                        {"public_handle": {"$regex": f"^{re.escape(h)}$", "$options": "i"},
+                         "role": {"$nin": ["blocked", "inactive"]},
+                         "deleted": {"$ne": True}},
+                        {"_id": 0, "key_id": 1, "pseudo": 1, "public_handle": 1},
+                    )
+                    if not target or target.get("key_id") == payload.key_id:
+                        continue
+                    # Notif enregistrée en DB — payload minimal + strict.
+                    notif = {
+                        "notification_id": f"mn_{_uuid.uuid4().hex[:14]}",
+                        "type": "mention",
+                        "to_key_id": target["key_id"],
+                        "group_type": payload.group_type,
+                        "message_id": doc["message_id"],
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "read": False,
+                        # Champs révélant l'auteur SEULEMENT si non-anonyme.
+                        "author_hidden": sender_is_anonymous,
+                    }
+                    if not sender_is_anonymous:
+                        notif["from_key_id"] = payload.key_id
+                        notif["from_pseudo"] = dev.get("pseudo") or dev.get("label")
+                        notif["from_public_handle"] = public_handle
+                        notif["from_role"] = dev.get("role")
+                    await db.mention_notifications.insert_one(notif)
+        except Exception:
+            pass
+        # iter142/147 Batch 3 — Analyse locale + LLM du message par les bots.
+        # Deux couches INDÉPENDANTES : les règles déterministes sont
+        # PRIMAIRES et ne sont jamais remplacées. La couche LLM est une
+        # SECONDE PASSE pour détecter le harcèlement subtil.
+        try:
+            analysis = await bot_analyzer.analyze_message_combined(
                 group_type=payload.group_type,
                 key_id=payload.key_id,
                 content=content,
@@ -360,7 +411,9 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
                         "alert_id": f"alert_{_u2.uuid4().hex[:14]}",
                         "group_type": payload.group_type,
                         "reasons": analysis.get("reasons", []),
-                        "score": analysis.get("score", 0),
+                        "score": analysis.get("combined_score", 0),
+                        "layer_local": analysis.get("layer_local"),
+                        "layer_llm": analysis.get("layer_llm"),
                         "sender_key_id": payload.key_id,
                         "message_ids": [doc["message_id"]],
                         "state": "open",

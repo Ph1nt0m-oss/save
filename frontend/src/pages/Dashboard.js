@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, ScrollText
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, ScrollText, GraduationCap
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -34,6 +34,7 @@ import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
 import AnonymityJournalPanel from '../components/AnonymityJournalPanel';
+import MentionNotifier from '../components/MentionNotifier';
 import ModAlertModal from '../components/ModAlertModal';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
@@ -964,6 +965,16 @@ export default function Dashboard() {
               <span className="inline-block ml-2 sm:ml-4">
                 <LanguageToggle placement="bottom" />
               </span>
+              {/* iter148 — Bouton tutoriel (accessible à tous les utilisateurs) */}
+              <button
+                onClick={() => navigate('/tutorial')}
+                data-testid="header-tutorial-btn"
+                title="Tutoriel de la plateforme"
+                aria-label="Ouvrir le tutoriel"
+                className="text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-2"
+              >
+                <GraduationCap className="w-4 h-4" />
+              </button>
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
                 {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => {
                   // iter133 — Visiter le compte = TOUJOURS simuler la vue de
@@ -1612,6 +1623,8 @@ export default function Dashboard() {
       {/* iter82 — Group chats panel */}
       <GroupChatsPanel open={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <AnonymityJournalPanel open={journalOpen} onClose={() => setJournalOpen(false)} />
+      {/* iter147 — Notifications @mentions anonymous-safe (badge + panneau) */}
+      <MentionNotifier device={device} />
       {/* iter143 — Popup mi-écran modération (staff seulement) */}
       <ModAlertModal />
       {/* iter82 — Friend system */}
