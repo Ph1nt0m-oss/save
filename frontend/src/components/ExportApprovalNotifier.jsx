@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { CheckCircle, XCircle, Eye, X } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, X, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import { withCreatorProof } from '../lib/deviceIdentity';
@@ -75,6 +75,8 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
   const [pending, setPending] = useState([]);
   const [dismissed, setDismissed] = useState(() => readDismissed());
   const [forcedOpen, setForcedOpen] = useState(false);
+  const [botReportOpen, setBotReportOpen] = useState(false);
+  const [botReport, setBotReport] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!isCreator || !device.keyId) return;
@@ -104,7 +106,19 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
     return () => window.removeEventListener('cf:open-export-requests', onOpen);
   }, [refresh]);
 
-  if (!isCreator) return null;
+  // iter143 — Charger le rapport du bot validateur à la demande. Hooks
+  // DOIVENT être avant les early returns pour respecter les règles React.
+  const loadBotReport = useCallback(async (rid) => {
+    if (!rid) return;
+    setBotReport(null);
+    try {
+      const body = await withCreatorProof(API, axios, { request_id: rid });
+      const r = await axios.post(`${API}/exports/bot-report`, body);
+      setBotReport(r.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Rapport indisponible');
+    }
+  }, []);
 
   // What request should be visible right now ?
   // - In forced-open mode (history button click) → first dismissed pending.
@@ -112,13 +126,21 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
   const visibleQueue = forcedOpen
     ? pending
     : pending.filter((p) => !dismissed.has(p.request_id));
+  const currentReq = visibleQueue[0] || null;
+
+  useEffect(() => {
+    if (botReportOpen && currentReq?.request_id) {
+      loadBotReport(currentReq.request_id);
+    }
+  }, [botReportOpen, currentReq?.request_id, loadBotReport]);
+
+  if (!isCreator) return null;
 
   if (visibleQueue.length === 0) {
-    // Nothing to show. If user just forced-open but no items, close.
     if (forcedOpen) setForcedOpen(false);
     return null;
   }
-  const req = visibleQueue[0];
+  const req = currentReq;
 
   const dismissCurrent = () => {
     // iter127 — Quand le modal a été ouvert manuellement via l'icône
@@ -153,6 +175,9 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
     }
   };
 
+  // iter143 — (bloc loadBotReport / useEffect déplacés au-dessus du early
+  // return pour respecter les rules-of-hooks React).
+
   return (
     <div className="fixed inset-0 z-[88] flex items-center justify-center bg-black/70 p-4" data-testid="export-approval-modal">
       <div className="max-w-md w-full bg-[#0A0A0A] border border-amber-400/40 rounded-sm p-5 space-y-4">
@@ -174,8 +199,10 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
             <span className="text-white truncate" data-testid="exp-field-pseudo">{req.pseudo || '—'}</span>
           </div>
           <div className="flex gap-2">
-            <span className="text-[#71717A] min-w-[140px]">{t('exp_field_device')}</span>
-            <span className="text-white truncate" data-testid="exp-field-device">{req.device_label || '—'}</span>
+            <span className="text-[#71717A] min-w-[140px]">Identité publique</span>
+            <span className="text-white truncate font-mono" data-testid="exp-field-handle">
+              @{req.public_handle || req.key_id?.slice(0, 12) || '—'}
+            </span>
           </div>
           <div className="flex gap-2">
             <span className="text-[#71717A] min-w-[140px]">{t('exp_field_project')}</span>
@@ -194,6 +221,17 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
             <span className="text-white" data-testid="exp-field-time">{frTime(req.created_at)}</span>
           </div>
         </div>
+        {/* iter143 — Icône rapport bot validateur (remplace l'ancien
+            historique). Ouvre un panneau avec l'analyse pré-validation. */}
+        <button
+          type="button"
+          onClick={() => setBotReportOpen(true)}
+          data-testid="exp-bot-report-btn"
+          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 border border-cyan-400/40 text-cyan-300 hover:bg-cyan-400/10 rounded-sm text-xs transition"
+          title="Voir le rapport du bot validateur"
+        >
+          <Bot className="w-3.5 h-3.5" /> Rapport du bot validateur
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -224,6 +262,59 @@ export default function ExportApprovalNotifier({ onOpenAccount }) {
           </button>
         </div>
       </div>
+      {/* iter143 — Panneau rapport bot validateur */}
+      {botReportOpen && (
+        <div
+          className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setBotReportOpen(false)}
+          data-testid="bot-report-overlay"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-lg w-full max-h-[80vh] bg-[#0A0A0A] border border-cyan-400/40 rounded-sm p-4 overflow-y-auto space-y-3"
+          >
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-cyan-300" />
+              <h3 className="text-sm font-bold text-white">Rapport bot validateur</h3>
+              <button onClick={() => setBotReportOpen(false)} data-testid="bot-report-close" className="ml-auto text-[#A1A1AA] hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {!botReport && <div className="text-xs text-[#A1A1AA]">Analyse en cours…</div>}
+            {botReport && (
+              <>
+                <div className="bg-black/30 border border-white/10 rounded-sm p-3 text-xs space-y-1">
+                  {/* Format uniforme aux demandes d'export */}
+                  <div className="flex gap-2"><span className="text-[#71717A] min-w-[120px]">Pseudo :</span><span className="text-white">{botReport.header?.pseudo}</span></div>
+                  <div className="flex gap-2"><span className="text-[#71717A] min-w-[120px]">Identité publique :</span><span className="text-white font-mono">@{botReport.header?.public_handle || '—'}</span></div>
+                  <div className="flex gap-2"><span className="text-[#71717A] min-w-[120px]">Projet :</span><span className="text-white">{botReport.header?.project_name}</span></div>
+                  <div className="flex gap-2"><span className="text-[#71717A] min-w-[120px]">Type d&apos;export :</span><span className="text-[#E4FF00]">{botReport.header?.export_kind}</span></div>
+                  <div className="flex gap-2"><span className="text-[#71717A] min-w-[120px]">Date :</span><span className="text-white">{botReport.header?.date}</span></div>
+                  <div className="flex gap-2"><span className="text-[#71717A] min-w-[120px]">Heure :</span><span className="text-white">{botReport.header?.time}</span></div>
+                </div>
+                <div className={`border rounded-sm p-3 ${botReport.report?.ok ? 'border-emerald-400/40 bg-emerald-500/[0.06]' : 'border-red-400/40 bg-red-500/[0.06]'}`}>
+                  <div className={`text-xs font-bold ${botReport.report?.ok ? 'text-emerald-300' : 'text-red-300'}`} data-testid="bot-report-summary">
+                    {botReport.report?.summary}
+                  </div>
+                  {botReport.report?.anomalies?.length > 0 && (
+                    <ul className="list-disc pl-4 mt-2 space-y-0.5 text-xs text-white/80">
+                      {botReport.report.anomalies.map((a, i) => (
+                        <li key={i} data-testid={`bot-report-anomaly-${i}`}>{a}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <details className="text-[11px] text-[#A1A1AA]">
+                  <summary className="cursor-pointer">Voir les couches d&apos;analyse</summary>
+                  <pre className="mt-2 bg-black/40 p-2 rounded-sm overflow-x-auto text-[10px] text-white/60">
+                    {JSON.stringify(botReport.report?.layers, null, 2)}
+                  </pre>
+                </details>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

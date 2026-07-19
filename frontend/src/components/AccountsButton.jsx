@@ -218,8 +218,9 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
             <header className="px-3 py-3 border-b border-white/10 flex items-center gap-2 flex-shrink-0 flex-wrap">
               <Users className="w-4 h-4 text-[#E4FF00]" />
               <h2 className="text-sm font-['Chivo'] font-bold text-white">{t('acc_title')}</h2>
-              {/* iter125 — Bouton historique demandes d'export dismissed (créa uniquement). */}
-              <ExportRequestsHistoryButton onClose={() => setOpen(false)} t={t} />
+              {/* iter143 — Bouton historique dupliqué RETIRÉ ici (image 1).
+                  L'icône principale reste dans la barre d'onglets du Dashboard,
+                  évite d'avoir 2 icônes identiques. */}
               {/* iter133 — Bouton "Décisions à valider" — indicateur temps réel. */}
               {isCreator && pendingDecisions.length > 0 && (
                 <button

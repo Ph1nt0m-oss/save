@@ -5026,6 +5026,20 @@ app.include_router(
     prefix="/api",
 )
 
+# iter143 — /agents/profile/* (Programmation des IA — créa only)
+from routes.ai_programming_routes import build_ai_programming_router  # noqa: E402
+app.include_router(
+    build_ai_programming_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
+# iter143 — /moderation/* (workflow alertes bot → staff → décisions)
+from routes.moderation_routes import build_moderation_router  # noqa: E402
+app.include_router(
+    build_moderation_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
 
 # iter124 — Background helpers consommés par _lifespan() (déclaré en haut du fichier).
 # Documents store ISO strings (not Mongo Date) so we can't use a TTL index — we sweep manually.

@@ -350,6 +350,53 @@ def build_groups_router(db, verify_signed, max_message_len: int = 2000) -> APIRo
                     db, group_type=payload.group_type,
                     analysis=analysis, sender_key_id=payload.key_id,
                 )
+                # iter143 — Crée une alerte de modération + tente une
+                # assignation immédiate au staff en ligne (respecte
+                # équilibrage + conflit d'intérêt).
+                try:
+                    import uuid as _u2
+                    from datetime import timedelta as _td
+                    alert_doc = {
+                        "alert_id": f"alert_{_u2.uuid4().hex[:14]}",
+                        "group_type": payload.group_type,
+                        "reasons": analysis.get("reasons", []),
+                        "score": analysis.get("score", 0),
+                        "sender_key_id": payload.key_id,
+                        "message_ids": [doc["message_id"]],
+                        "state": "open",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    await db.mod_alerts.insert_one(alert_doc)
+                    # Sélection staff en ligne (5 min).
+                    cutoff = (datetime.now(timezone.utc) - _td(minutes=5)).isoformat()
+                    candidates = await db.device_keys.find(
+                        {"staff_kind": {"$in": ["modo", "admin"]},
+                         "last_seen_at": {"$gt": cutoff},
+                         "role": {"$ne": "blocked"},
+                         "key_id": {"$ne": payload.key_id}},
+                        {"_id": 0, "key_id": 1, "pseudo": 1, "staff_kind": 1},
+                    ).to_list(length=20)
+                    if candidates:
+                        # Prend le premier (équilibrage simple, module dédié
+                        # dans moderation_routes fait mieux via /alerts/create).
+                        p = candidates[0]
+                        await db.mod_assignments.insert_one({
+                            "assignment_id": f"asn_{_u2.uuid4().hex[:14]}",
+                            "alert_id": alert_doc["alert_id"],
+                            "assignee_key_id": p["key_id"],
+                            "assignee_pseudo": p.get("pseudo") or "",
+                            "assignee_role": p.get("staff_kind"),
+                            "state": "pending",
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                            "expires_at": (datetime.now(timezone.utc) + _td(seconds=120)).isoformat(),
+                            "refused_by": [],
+                        })
+                        await db.mod_alerts.update_one(
+                            {"alert_id": alert_doc["alert_id"]},
+                            {"$set": {"assigned_to": p["key_id"], "state": "assigned"}},
+                        )
+                except Exception:
+                    pass
                 # Injecte un "message système" du bot dans le groupe si
                 # aucun staff n'y est présent (héritage règle utilisateur).
                 staff_present = await db.device_keys.count_documents({

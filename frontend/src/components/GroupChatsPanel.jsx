@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { X, Send, Users, Lock, Shield, Globe2 } from 'lucide-react';import { toast } from 'sonner';
+import { X, Users, Lock, Shield, Globe2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import InvisibleModeToggle from './InvisibleModeToggle';
 import AnonymousModeToggle from './AnonymousModeToggle';
 import SunNightModeToggle from './SunNightModeToggle';
 import MessageBubble from './MessageBubble';
+import { MentionInputWithSend } from './MentionInput';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -205,26 +207,14 @@ export default function GroupChatsPanel({ open, onClose }) {
               </>
             )}
           </div>
-          <div className="border-t border-white/10 p-2 flex gap-2">
-            <input
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
-              placeholder="Message…"
-              data-testid="group-input"
-              disabled={!active || sending}
-              className="flex-1 px-3 py-2 bg-[#0F0F13] border border-white/15 rounded-sm text-sm focus:outline-none focus:border-[#E4FF00]"
-            />
-            <button
-              onClick={send}
-              disabled={!active || sending || !draft.trim()}
-              data-testid="group-send"
-              className="px-3 py-2 bg-[#E4FF00] text-[#050505] font-bold rounded-sm hover:bg-[#E4FF00]/90 disabled:opacity-40"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
+          <MentionInputWithSend
+            value={draft}
+            onChange={setDraft}
+            onSend={send}
+            disabled={!active || sending}
+            groupType={active}
+            viewMode={viewMode}
+          />
         </section>
       </aside>
     </div>

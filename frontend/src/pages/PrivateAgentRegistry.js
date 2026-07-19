@@ -91,7 +91,19 @@ export default function PrivateAgentRegistry() {
               Transparence complète des {agents.length || '…'} agents intelligents actifs sur CodeForge AI. Chaque agent garde son propre rôle et son prompt système.
             </p>
           </div>
-          <Sparkles className="hidden sm:block w-12 h-12 text-[#E4FF00]/40" />
+          <div className="flex items-center gap-3">
+            {device.role === 'creator' && (
+              <button
+                data-testid="registry-open-ai-programming"
+                onClick={() => navigate('/private/ai-programming')}
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-2 bg-[#E4FF00] text-[#050505] font-bold rounded-sm hover:bg-[#E4FF00]/90"
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                Programmation des IA
+              </button>
+            )}
+            <Sparkles className="hidden sm:block w-12 h-12 text-[#E4FF00]/40" />
+          </div>
         </div>
 
         {/* iter132 — Toggle densité : plein vs compact (comparer les 13 agents d'un coup) */}

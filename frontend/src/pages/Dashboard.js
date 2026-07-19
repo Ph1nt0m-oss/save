@@ -34,6 +34,7 @@ import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
 import AnonymityJournalPanel from '../components/AnonymityJournalPanel';
+import ModAlertModal from '../components/ModAlertModal';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
 import BotsAdminPanel from '../components/BotsAdminPanel';
@@ -1611,6 +1612,8 @@ export default function Dashboard() {
       {/* iter82 — Group chats panel */}
       <GroupChatsPanel open={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <AnonymityJournalPanel open={journalOpen} onClose={() => setJournalOpen(false)} />
+      {/* iter143 — Popup mi-écran modération (staff seulement) */}
+      <ModAlertModal />
       {/* iter82 — Friend system */}
       <FriendsPanel open={friendsOpen} onClose={() => setFriendsOpen(false)} />
       {/* iter80 — C17 ZIP include checkboxes */}
