@@ -1,0 +1,70 @@
+{
+  "summary": "iter120 FINAL retest of iter148 FloatingWidgetsGate fix (hides BOTH CalyChatbot AND FeedbackButton on /tutorial). PRIMARY FIX VERIFIED — tutorial navigation flow is now 100% working with REAL user clicks (not force). Regression on /dashboard passes. header-tutorial-btn still fails after modal close, but the root cause is a DIFFERENT pre-existing bug (header layout overlap between export-source-btn and header-tutorial-btn), not the tutorial-fix regression.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Dashboard header layout — export-source-btn overlaps header-tutorial-btn",
+        "issue": "At 1920x1080 viewport, header-tutorial-btn rect=(x=662, y=24, w=28, h=28) and export-source-btn (ZIP) rect=(x=666, y=22, w=74, h=32) overlap on 24 of 28 pixels wide. elementsFromPoint(676, 38) returns [export-source-btn, DIV, svg, header-tutorial-btn] — ZIP button intercepts pointer events. Playwright real click on header-tutorial-btn fails with 'Timeout exceeded — element not stable/clickable'. Visually in the header the graduation-cap tutorial icon is completely hidden behind the ZIP button. This is a pre-existing header horizontal-overflow bug (many buttons: home, theft, language, tutorial, APK, EXE, ZIP, Accounts, Créa, Public, ViewMode, Notifications, User — cannot fit at desktop widths). iter119 attributed the failure to export-approval-modal; after dismissing the modal queue (6 pending exports), header-tutorial-btn is STILL blocked by export-source-btn. Root cause is layout, not modal.",
+        "selector": "[data-testid='export-source-btn'] overlapping [data-testid='header-tutorial-btn']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "LanguageToggle nested <button> hydration warning",
+        "issue": "React hydration warning persists on /dashboard: 'In HTML, <button> cannot be a descendant of <button>. This will cause a hydration error.' Source: Dashboard.js line 677 render tree — a LanguageToggle button nested inside another button. Non-blocking but noisy.",
+        "selector": "Dashboard.js:677 render subtree",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Dashboard header-tutorial-btn navigation to /tutorial (real click)",
+        "issue": "onClick handler is correct (mouse click at r.x+2, r.y+2 in the 4px gap that's not covered by ZIP did not navigate either — either the click landed on the DIV wrapper or the tiny hit area is unreliable). export-source-btn covers 24/28 px of tutorial button width. Real users cannot click the tutorial icon on desktop. Workarounds: navigate directly to /tutorial URL, or click tutorial-finish from within /tutorial.",
+        "affected_selectors": ["[data-testid='header-tutorial-btn']", "[data-testid='export-source-btn']"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Dashboard header row at 1920x1080",
+        "issues": [
+          "Header buttons overlap horizontally: 'APK | EnisEXE | ZIP' zone visibly squished (EN language toggle overlaps EXE button, tutorial icon fully covered by ZIP). Header cannot fit ~13 controls on a single row. Consider: (a) wrapping less-used controls into a kebab menu, (b) reducing button padding, (c) moving tutorial icon to a different location, (d) responsive breakpoints hiding less-critical buttons earlier."
+        ]
+      }
+    ]
+  },
+  "test_report_links": ["/tmp/promote_creator.py"],
+  "action_items": [
+    "PRIMARY FIX iter148 IS VERIFIED — no action needed for tutorial page fix.",
+    "HIGH (pre-existing, distinct from iter148 scope): Fix header layout overlap. header-tutorial-btn (x=662-690) is fully covered by export-source-btn (x=666-740). Options: (a) increase inter-button margin, (b) use a responsive layout that hides secondary buttons at narrow header widths, (c) move header-tutorial-btn to a different section of the header (e.g., far right next to Notifications), (d) collapse export buttons (APK/EXE/ZIP) into a single 'Export ▾' dropdown.",
+    "LOW: Fix nested <button> in <button> hydration warning at Dashboard.js:677 (LanguageToggle placement)."
+  ],
+  "critical_code_review_comments": [
+    "iter148 FloatingWidgetsGate correctly hides BOTH CalyChatbot AND FeedbackButton on /tutorial (App.js:236-249). Fix is clean and minimal.",
+    "Dashboard header (Dashboard.js lines 960-1090) packs too many controls in a single flex row — 13+ buttons — with no responsive collapse logic. Overlap is deterministic at 1920px. Consider mobile-first responsive design or an overflow kebab menu.",
+    "export-approval-modal queue (ExportApprovalNotifier) auto-opens ALL pending exports one by one on /dashboard mount for a creator. This is high-friction UX — user must dismiss 6+ modals before touching the dashboard. Consider a single aggregated notification with a badge count."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "n/a (skipped)",
+    "frontend": "Tutorial page fix (iter148): 100% — both floating widgets hidden on /tutorial, all 7 steps advance via real clicks, tutorial-finish redirects to /dashboard. Dashboard regression: 100% — both widgets present on /dashboard. header-tutorial-btn: 0% (blocked by pre-existing header layout bug, NOT by the tutorial fix or by export-approval-modal after dismissal)."
+  },
+  "test_credentials": "test_dash_1777658375@gmail.com / Pass1234 — session_token=vE452GvyAhj7x1AbQC0-Jg8odAXDAI6N1A3OOB3P-5U. Device promotion: run /tmp/promote_creator.py <device_key_id> after localStorage bootstrap. Cleaned up 2 orphan TEST_TESTER_CREATOR device_keys at end of run.",
+  "seed_data_creation": "Promoted 4 ephemeral device_keys to role='creator' with label='TEST_TESTER_CREATOR' during test runs. All cleaned up at end via db.device_keys.update_many({label:'TEST_TESTER_CREATOR'}, {$set:{role:'user'}, $unset:{label:'',pseudo:''}}) → 2 rows modified (other 2 already re-used by same session).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PRIMARY iter148 tutorial-navigation fix is VERIFIED WORKING. FloatingWidgetsGate (App.js line 236-249) correctly hides both CalyChatbot AND FeedbackButton on /tutorial prefix; both widgets remain on /dashboard. The 7-step tutorial (identity → groups → moderation → ai-programming → exports → integrations → languages → finish) advances correctly with real user clicks and redirects to /dashboard on finish. NEW UNRELATED BUG surfaced: Dashboard header horizontal overflow — export-source-btn (ZIP) button at x=666 covers header-tutorial-btn at x=662 entirely (both ~30px tall in a single flex row with ~13 buttons). This is separate from iter119/iter148 and is a pre-existing responsive-design issue that should be addressed in a future iteration.",
+  "rca of the issue": {
+    "primary_iter148_fix": "VERIFIED. App.js FloatingWidgetsGate returns null on paths starting with /tutorial, mounting neither <FeedbackButton /> nor <CalyChatbot />. Real user clicks on tutorial-next/finish are no longer intercepted. All 7 tutorial steps + finish navigation confirmed working.",
+    "new_header_tutorial_btn_bug": "Dashboard.js line 969 defines header-tutorial-btn (28x28 GraduationCap icon button). Dashboard.js line 1074 defines export-source-btn (74x32 ZIP button). Both live in the same flex row (header). At 1920x1080, cumulative width of home+theft+language+tutorial+apk+exe+zip+accounts+creator-badge+public+view+notifications+user exceeds available header width, causing overlap. elementsFromPoint(676, 38) proves ZIP is on top of tutorial button. Not caused by iter148 fix — was previously masked by the export-approval-modal backdrop (iter119) at higher z-index.",
+    "reproduction": [
+      "1. Login as creator (session_token above).",
+      "2. GET /dashboard.",
+      "3. Dismiss all export-approval-modal instances via [data-testid='exp-dismiss-btn'] (usually 4-6 iterations for our test user).",
+      "4. Inspect [data-testid='header-tutorial-btn'] bounding box → (662, 24, 28, 28).",
+      "5. Inspect [data-testid='export-source-btn'] → (666, 22, 74, 32). Overlap 24/28 px.",
+      "6. document.elementsFromPoint(676, 38) → [export-source-btn, ..., header-tutorial-btn]. Confirmed.",
+      "7. Playwright page.click('[data-testid=header-tutorial-btn]') → Timeout, not stable/clickable."
+    ],
+    "mitigation": "Layout fix as described in action_items. Not in scope of iter148 tutorial navigation fix."
+  }
+}
