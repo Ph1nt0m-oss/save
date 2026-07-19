@@ -1,6 +1,29 @@
 # CodeForge AI — Product Requirements
 
 
+## iter145 (Feb 2026) — Correctifs UX Login/Landing + Fondatrices manuelles + Bot report MP analysis
+**Status : COMPLETED (9/9 pytests iter145 PASS · cumul iter141-145 = 99/99 PASS)**
+
+### Correctifs livrés
+- **`founder_creators.json`** : les 2 clés fournies par l'utilisateur sont désormais les fondatrices officielles (backend log confirme "🔒 Créas fondatrices figées : 2 clé(s)"). Pour modifier, éditer manuellement le fichier.
+- **MessageButton retiré** de Landing.js (image 2) et Login.js (image 3) : impossible d'identifier un appareil non connecté → l'icône n'a pas de sens sur ces pages publiques.
+- **Toast "Bienvenue"** retiré de Login.js (2 occurrences) : plus de notifications non-hover en haut à droite après action (spec image 4).
+- **PreviewMenuButton** placé avant les CTAs Connexion/Inscription sur Landing (déjà en place depuis iter142, vérifié).
+- **CreatorToolbar** (Créa/Public/Libre choix dropdowns) → uniquement visible pour Créa réelle hors simulation (déjà en place depuis iter141).
+- **Bot report (`export_validator_bot`)** :
+  - "Type d'export inhabituel" retiré comme anomalie (spec utilisateur).
+  - Nouveau : analyse les MP contenant le project_id + flag les MP suspects (mots-clés spam/leak).
+  - Champ `layers.discussions.dm_related_count` + `dm_flagged` ajoutés.
+
+### Non traités dans iter145 (backlog Sprint 2 & 3)
+- Câblage `StaffActionsIconBar` dans `DeviceManager.jsx` (remplacement des boutons actuels).
+- UI mini-crayon "Renommer local" dans les bulles MP/groupe.
+- Sprint 2 : filtres membres staff/amis/anonymes · notifications @ anonymes-safe · journal alertes bot séparé · couche LLM Emergent au-dessus du `bot_analyzer`.
+- Sprint 3 : Programmations dédiées Caly/Bots/Site + Intégrations tierces UI (Stripe/Google/ChatGPT) + Tutoriel + Langues.
+- Auth flow "same email/password only triggers on first device" — à investiguer (complexe, sans doute lié à `/auth/session/approval` flow).
+- Mobile sidebar (image 5) — probablement résolu suite au retrait de MessageButton (pollution horizontale supprimée) ; à re-tester.
+
+
 ## iter144 (Feb 2026) — Sprint 1 : Créas fondatrices · Actions staff unifiées · Renommages · AI Programming responsive
 **Status : COMPLETED Sprint 1 (17/17 nouveaux pytests iter144 PASS · cumul iter141-144 = 90/90 PASS)**
 

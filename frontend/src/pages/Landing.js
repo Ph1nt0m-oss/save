@@ -74,7 +74,9 @@ export default function Landing() {
 
           <div className="justify-self-end min-w-0 flex items-center gap-2">
             <CreatorToolbar />
-            <MessageButton variant="icon" />
+            {/* iter145 — MessageButton retiré de Landing (page publique).
+                Sans device connecté, on ne peut identifier l'appareil et
+                donc afficher les messages reçus. */}
             <LanguageToggle placement="bottom" />
           </div>
         </div>

@@ -75,12 +75,38 @@ async def analyze_export_request(db, request_id: str) -> Dict[str, Any]:
 
     # 3) Type d'export.
     kind = (req.get("export_kind") or "").upper()
-    if kind not in ("ZIP", "JSON", "TEXT", "TAR"):
-        anomalies.append(f"Type d'export inhabituel : {kind or '—'}.")
+    # iter145 — Un type d'export "inhabituel" n'est PLUS un motif d'anomalie
+    # (spec utilisateur). Seul le rapport d'analyse projet + discussions
+    # (y compris MP liés) constitue un motif de signalement.
 
-    # 4) Discussions liées.
+    # 4) Discussions liées : compte messages projet + MP faisant référence.
     chat_count = await db.chat_messages.count_documents({"project_id": req.get("project_id")})
-    layers["discussions"] = {"count": chat_count}
+    # iter145 — Inspecte aussi les MP du demandeur mentionnant ce projet
+    # (recherche par project_id dans le corps des messages privés).
+    project_id = req.get("project_id") or ""
+    dm_count = 0
+    dm_flagged: List[str] = []
+    if project_id:
+        dm_cursor = db.private_messages.find(
+            {"$or": [{"from_key_id": req.get("key_id")}, {"to_key_id": req.get("key_id")}],
+             "content": {"$regex": project_id, "$options": "i"}},
+            {"_id": 0, "content": 1, "from_pseudo": 1, "ts": 1},
+        ).limit(20)
+        async for dm in dm_cursor:
+            dm_count += 1
+            content = (dm.get("content") or "").lower()
+            # Heuristique légère : signale les MP suspects (mots-clés bot_analyzer).
+            for kw in ("gagne", "cliquez", "gratuit maintenant", "spam", "leak"):
+                if kw in content:
+                    dm_flagged.append(f"MP suspect ({kw}) de {dm.get('from_pseudo') or 'inconnu'}")
+                    break
+    layers["discussions"] = {
+        "count": chat_count,
+        "dm_related_count": dm_count,
+        "dm_flagged": dm_flagged,
+    }
+    if dm_flagged:
+        anomalies.extend(dm_flagged[:3])
 
     # 5) Cohérence rôle / permissions.
     if dev.get("role") == "pending":

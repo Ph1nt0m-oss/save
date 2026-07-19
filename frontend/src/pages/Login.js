@@ -10,7 +10,6 @@ import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from '../components/LanguageToggle';
 import PreviewMenuButton from '../components/PreviewMenuButton';
 import TheftRecoveryDialog from '../components/TheftRecoveryDialog';
-import MessageButton from '../components/MessageButton';
 import AccountsButton from '../components/AccountsButton';
 import TheftButton from '../components/TheftButton';
 import DeviceKeyCopyButton from '../components/DeviceKeyCopyButton';
@@ -281,7 +280,8 @@ export default function Login() {
           setUser(data.user || { email: userEmail, session_token: data.session_token });
           setDemoLink(null);
           fireConfetti();
-          toast.success(`Bienvenue, ${data.user?.name || data.user?.email || userEmail} !`);
+          // iter145 — Toast "Bienvenue" retiré (spec utilisateur : les
+          // toasts non-hover apparaissant après action sont supprimés).
           navigate('/dashboard', { replace: true, state: { user: data.user } });
         } else if (data.status === 'expired') {
           stopWaiting();
@@ -438,7 +438,7 @@ export default function Login() {
         rememberEmailForDevice(data.email || email.trim());
         rememberAccount(data);
         setUser(data);
-        toast.success(`Bienvenue, ${data.name || data.email} !`);
+        // iter145 — Toast "Bienvenue" retiré (spec utilisateur).
         navigate('/dashboard', { replace: true, state: { user: data } });
       }
     } catch (err) {
@@ -1169,7 +1169,9 @@ export default function Login() {
             <PreviewMenuButton />
           </div>
           <div className="mt-3 flex flex-col items-center gap-2">
-            <MessageButton variant="inline" />
+            {/* iter145 — MessageButton retiré de Login (page publique) :
+                l'appareil n'est pas encore identifié → impossible d'afficher
+                des messages ciblés. */}
             <button
               type="button"
               onClick={() => setTheftOpen(true)}

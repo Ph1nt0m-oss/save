@@ -1,10 +1,8 @@
 {
   "key_ids": [
-    "dev_a44728f668b2114871141ff7afdbf248",
-    "dev_a6498d455d3f6aed4e2ff7049bc59239",
-    "iter63_filt_creator_1784222090",
-    "iter63_filt_creator_1784222279",
-    "iter63_filt_creator_1784323050"
+    "eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkFjVlRjU0FHVWxrOHdiUHZMTjY1bm9TUFVteTJmYWJOQmNDd2NzdnM4T0UiLCJ5IjoiU2xqdG9sWTFMQk8zc3RheWNvdWtaMlVmSmc5TGxsT3FxWHM3N0FkdUVWbyJ9",
+    "eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Ik16aTIxNUc4SHdqeS0ybEVyS1VENW9YVm41OURTd1FtTkRidFhGSU5xLVUiLCJ5IjoiVzBXU0wwQTBQTHdlUnpVVTdWTEJhRG5PX3I0WHUza0dEcm1zN3loRWhfSSJ9"
   ],
-  "frozen_at": null
+  "frozen_at": "2026-02-19T00:00:00Z",
+  "note": "iter145 — Liste manuelle des 2 créas fondatrices (spec utilisateur). Intouchables."
 }
