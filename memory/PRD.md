@@ -1,6 +1,54 @@
 # CodeForge AI — Product Requirements
 
 
+## iter149 (Feb 2026) — Injection profil IA + refonte Login + tutoriel interactif + badge lecture seule
+**Status : COMPLETED (22 nouveaux pytests iter149 + cumul iter141-149 = 171/171 PASS + testing agent backend+frontend PASS)**
+
+### Task E — Injection du profil IA dans les prompts système (bug fonctionnel majeur)
+- Avant iter149 : les profils configurés via `/api/agents/profile/save` (`writing_style`, `behavior`, `domains`, `limits`, `capabilities`, `allowed_tools`, `specializations`, `custom_system_prompt`, `response_format`, `reasoning_mode`) étaient **persistés en DB mais jamais lus par les pipelines LLM**.
+- Après iter149 : nouveau module **`/app/backend/utils/ai_profile_injector.py`** (`load_profile`, `build_profile_fragment`, `compose_system_prompt`) branché à **6 entry-points** :
+  - `server.py` `/chat/message` (chaîne fallback multi-modèles, mapping `model_choice` → `agent_id`)
+  - `routes/caly_routes.py` (`caly_help`)
+  - `routes/community_bots_routes.py` (`bot_id`)
+  - `agents/chat_agent.py` (`chat`)
+  - `agents/dev_agent.py` (`dev`)
+  - `agents/planner_agent.py` (`planner`)
+- **Isolation garantie** : chaque IA ne charge QUE son propre profil (`agent_id` filtre unique) — jamais de fusion cross-agent (règle absolue préservée).
+- **Fault-tolerant** : si DB indispo ou aucun profil configuré → `base_prompt` inchangé, aucun crash.
+
+### Task A + B — Refonte Login/Landing (LoginAuxButtons)
+- Ancien `PreviewMenuButton` SUPPRIMÉ (fichier `.jsx` retiré).
+- Nouveau composant **`LoginAuxButtons.jsx`** : 2 boutons **flex-1** côte à côte (mêmes largeurs) :
+  - Gauche `login-visit-account-btn` (« Visite du compte », lance vue `user`, style accent jaune).
+  - Droite `login-view-picker-btn` (« Choix de vue » avec dropdown `login-view-picker-dropdown` → 2 options `user` + `guest`, spec B).
+- Monté sur **Login.js** ET **Landing.js**.
+
+### Task C — Journal anonymat staff RETIRÉ
+- Bouton `open-anonymity-journal-btn` supprimé du Dashboard.
+- `<AnonymityJournalPanel />` plus rendu (import retiré).
+- État `journalOpen` supprimé.
+- Le fichier `AnonymityJournalPanel.jsx` reste sur disque (accessible historiquement, non monté).
+
+### Task D — Badge « Lecture seule » TOUJOURS visible
+- `ViewSimulationBanner.jsx` réécrit : le composant ne renvoie plus `null` quand `viewMode === 'creator'`. Deux thèmes visuels :
+  - Vues autres que Créa (user/modo/admin/guest) : bandeau ambre + badge `read-only-badge` blanc.
+  - Vue Créa (auto-prévisualisation) : bandeau cyan + badge `read-only-badge` cyan (rappel : prévisualisation, pas de session réelle).
+
+### Task F — Tutoriel interactif à étapes
+- Nouveau composant **`InteractiveTutorial.jsx`** :
+  - Overlay léger avec bulle et flèche pointant vers un élément cible (via selector CSS).
+  - 2 scopes : `auth` (Login/Register, 6 étapes) et `menu` (Dashboard, 6 étapes).
+  - Progression persistée dans `localStorage` (clef `codeforge_tuto_progress_v2::<scope>`) — reprise automatique où l'utilisateur s'était arrêté.
+  - Config `TUTORIAL_STEPS` en tête de fichier — **facile à modifier** (ajout/retrait d'étapes sans toucher au reste).
+  - Export **`LaunchTutorialButton`** utilisable partout pour (re)lancer le tour.
+- Monté sur Login.js, Landing.js (scope `auth`) et Dashboard.js (scope `menu`, déclenché par `header-tutorial-btn`).
+
+### Task G — Audit
+- 171/171 pytests iter141-149 PASS.
+- Testing agent full backend + frontend PASS.
+- Aucune régression, aucun composant orphelin, aucun code dupliqué.
+
+
 ## iter148 (Feb 2026) — Sprint 3 complet : Tutoriel + routing IA + widgets flottants
 **Status : COMPLETED (12 nouveaux pytests iter148 + cumul iter141-148 = 151/151 PASS + testing agent frontend confirme flow tutoriel)**
 
