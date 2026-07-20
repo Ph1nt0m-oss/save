@@ -65,7 +65,9 @@ def test_build_profile_fragment_partial_only_includes_set_fields():
 
 
 def test_compose_system_prompt_preserves_base_when_no_profile():
-    """Si aucun profil configuré → base_prompt inchangé (couche 1 primaire)."""
+    """iter156 — Si aucun profil configuré ET pas de fiche registry connue :
+    base_prompt reste inchangé. Si la fiche registry existe, une identité
+    est injectée (comportement voulu iter156)."""
     from utils.ai_profile_injector import compose_system_prompt
 
     class _MockDB:
@@ -74,8 +76,9 @@ def test_compose_system_prompt_preserves_base_when_no_profile():
             async def find_one(*_a, **_kw):
                 return None
     base = "Tu es Caly."
-    result = asyncio.run(compose_system_prompt(_MockDB(), "chat", base))
-    assert result == base, "Aucun profil ne doit pas modifier le prompt"
+    # agent_id inconnu → aucune identité, aucun profil → base inchangé.
+    result = asyncio.run(compose_system_prompt(_MockDB(), "no_such_agent", base))
+    assert result == base, "Sans registry ni profil : base inchangée"
 
 
 def test_compose_system_prompt_appends_fragment_when_profile_exists():
@@ -113,26 +116,20 @@ def test_compose_system_prompt_isolates_per_agent():
 
 
 def test_llm_entry_points_all_call_profile_injector():
-    """Vérifie que TOUS les entry-points IA majeurs importent l'injecteur."""
-    server = (BACKEND / "server.py").read_text()
-    assert "from utils.ai_profile_injector import" in server, \
-        "Chat pipeline principal doit importer l'injecteur"
-    assert "load_profile" in server and "build_profile_fragment" in server
-
-    caly = (BACKEND / "routes" / "caly_routes.py").read_text()
-    assert "ai_profile_injector" in caly, "caly_routes doit injecter"
-
-    community = (BACKEND / "routes" / "community_bots_routes.py").read_text()
-    assert "ai_profile_injector" in community, "community_bots doit injecter"
-
-    chat_agent = (BACKEND / "agents" / "chat_agent.py").read_text()
-    assert "ai_profile_injector" in chat_agent, "chat_agent doit injecter"
-
-    dev_agent = (BACKEND / "agents" / "dev_agent.py").read_text()
-    assert "ai_profile_injector" in dev_agent, "dev_agent doit injecter"
-
-    planner_agent = (BACKEND / "agents" / "planner_agent.py").read_text()
-    assert "ai_profile_injector" in planner_agent, "planner_agent doit injecter"
+    """Vérifie que TOUS les entry-points IA majeurs utilisent l'injecteur
+    (soit via compose_system_prompt iter156, soit via l'ancienne API)."""
+    entries = ['backend/server.py',
+               'backend/routes/caly_routes.py',
+               'backend/routes/community_bots_routes.py',
+               'backend/agents/chat_agent.py',
+               'backend/agents/dev_agent.py',
+               'backend/agents/planner_agent.py']
+    for e in entries:
+        src = (Path("/app") / e).read_text()
+        assert 'ai_profile_injector' in src, f"{e} doit importer l'injecteur"
+        # iter156 : la majorité passe désormais par compose_system_prompt.
+        assert ('compose_system_prompt' in src or 'load_profile' in src), \
+            f"{e} doit appeler compose_system_prompt ou load_profile"
 
 
 # -----------------------------------------------------------

@@ -77,14 +77,10 @@ def build_caly_router(db, *, verify_signed, log_change, logger):
             )
             system_prompt = system_prompt + kb_text
 
-        # iter149 — Injection du profil configuré via /api/agents/profile/save
-        # pour l'agent "caly_help" (l'assistante flottante). Isolé du reste.
+        # iter149/156 — Identité registry + profil configuré pour "caly_help".
         try:
-            from utils.ai_profile_injector import load_profile, build_profile_fragment
-            _prof = await load_profile(db, "caly_help")
-            _frag = build_profile_fragment(_prof or {})
-            if _frag:
-                system_prompt = system_prompt + _frag
+            from utils.ai_profile_injector import compose_system_prompt
+            system_prompt = await compose_system_prompt(db, "caly_help", system_prompt)
         except Exception:
             pass
 

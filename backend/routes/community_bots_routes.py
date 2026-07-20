@@ -173,14 +173,10 @@ def build_community_bots_router(db, verify_signed, require_creator_signature, lo
             )
 
         system_prompt = (bot.get("prompt") or "Tu es un assistant.") + kb_text
-        # iter149 — Injecte le profil configuré pour ce bot spécifique
-        # (agent_id = bot_id). Chaque bot conserve sa propre identité.
+        # iter149/156 — Identité + profil configuré pour ce bot spécifique.
         try:
-            from utils.ai_profile_injector import load_profile, build_profile_fragment
-            _prof = await load_profile(db, payload.bot_id)
-            _frag = build_profile_fragment(_prof or {})
-            if _frag:
-                system_prompt = system_prompt + _frag
+            from utils.ai_profile_injector import compose_system_prompt
+            system_prompt = await compose_system_prompt(db, payload.bot_id, system_prompt)
         except Exception:
             pass
         try:

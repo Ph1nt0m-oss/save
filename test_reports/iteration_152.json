@@ -1,0 +1,41 @@
+{
+  "summary": "iter156 backend validation — Verified per-agent identity injection via build_identity_fragment + compose_system_prompt stacking across all 6 chat entry points. All targeted tests + full regression pass (230/230).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter156_ai_identity.py",
+    "/app/test_reports/pytest/iter156_ai_identity.xml",
+    "/app/test_reports/pytest/iter156_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 5120 lines — well beyond the 700-line guideline; ongoing decomposition already tracked in iter121-124. Continue extracting the /chat/message pipeline (approx L2400-L2700) which now mixes fallback-chain assembly with system-prompt composition.",
+    "compose_system_prompt swallows all DB exceptions silently in load_profile (except: pass). While this is intentional (avoid breaking chat on Mongo hiccup), it also hides misconfigurations. Consider logger.warning inside the except so ops can detect ai_profiles collection issues.",
+    "server.py L2538: `_agent_id = model_choice.replace('-', '_').replace('.', '_')` — no validation that _agent_id exists in AGENT_REGISTRY. If model_choice is arbitrary (e.g. 'foo-bar'), build_identity_fragment returns '' (safe) but the log line still prints 'AI identity+profile applied for agent=foo_bar', which could mislead debugging. Minor: log the resolved fragment length or 'no_registry_match' when card is None."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "not tested (backend only per request)"
+  },
+  "seed_data_creation": "None — all runtime tests use in-memory mock DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter156 introduces AGENT_REGISTRY-driven identity injection. Key invariants now under test: (1) build_identity_fragment(agent_id) returns non-empty distinct fragments per known agent and '' for unknown/empty ids; (2) compose_system_prompt stacks base → identity → Créa profile in that exact order; (3) all 6 entry points (server.py, caly_routes.py, community_bots_routes.py, chat_agent.py, dev_agent.py, planner_agent.py) call compose_system_prompt; (4) cross-agent isolation: dev fragment contains 'Forge' but not 'Archi', planner contains 'Archi' but not 'Forge'; (5) dev_agent emits 8 progression event kinds (status/status_done/search_done/file_viewed/file_created/file_modified/code_executed/validation); (6) registry.py planner prompt explicitly contains 'pas de raisonnement privé'. Full regression across iter141-156: 230/230 passed in ~2s. Runtime log line 'AI identity+profile applied for agent=<id>' emitted at server.py:2540 inside send_chat_message try-block.",
+  "detailed_results": {
+    "item_1_build_identity_fragment_distinct": "PASS — build_identity_fragment('gpt_5_5') contains 'GPT 5.5', 'OBJECTIF PROPRE', 'FORMAT DE RÉPONSE ATTENDU'; claude_5_fable contains 'Claude 5 Fable' + 'récits'; gpt_5_3_codex contains 'GPT 5.3 Codex' + 'code'. All 3 fragments distinct.",
+    "item_2_compose_stacks_correctly": "PASS — dev fragment contains 'Forge' but NOT 'Archi'; planner contains 'Archi' but NOT 'Forge' (test_two_agents_get_isolated_identities).",
+    "item_3_all_6_entry_points": "PASS — grep confirms compose_system_prompt in server.py, routes/caly_routes.py, routes/community_bots_routes.py, agents/chat_agent.py, agents/dev_agent.py, agents/planner_agent.py.",
+    "item_4_runtime_stack_order": "PASS — With mock db.ai_profiles returning profile for gpt_5_3_codex (writing_style='MON_STYLE_CODEX'), final prompt starts with BASE_TEXT, then contains 'GPT 5.3 Codex' BEFORE 'MON_STYLE_CODEX'.",
+    "item_5_log_line": "PASS (code-verified) — server.py:2540 emits logger.info(f'AI identity+profile applied for agent={_agent_id}') inside send_chat_message. Backend startup clean, /api/ HTTP 200. Full runtime chat E2E not exercised (requires auth + LLM call, out of scope for unit validation).",
+    "item_6_full_regression": "PASS — pytest across iter141-156 (22 test files): 230 passed, 0 failed, ~2.07s. XML: /app/test_reports/pytest/iter156_regression.xml.",
+    "item_7_dev_agent_events_and_planner_prompt": "PASS — all 8 event kinds present in dev_agent.py; registry.py line 38 explicitly reads 'pas de raisonnement privé'."
+  }
+}

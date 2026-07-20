@@ -17,16 +17,13 @@ async def run_chat_agent(message: str, *, session_id: str, language: str = "fr",
                          provider: str = "openai", model_id: str = "gpt-4o-mini",
                          ) -> AsyncIterator[Dict[str, Any]]:
     system = CHAT_AGENT_SYSTEM.format(lang_label=lang_label(language))
-    # iter149 — Injection du profil configuré pour l'agent "chat" (Caly).
+    # iter149/156 — Identité registry + profil configuré (isolés par agent).
     try:
-        from utils.ai_profile_injector import load_profile, build_profile_fragment
+        from utils.ai_profile_injector import compose_system_prompt
         from server import db as _srv_db
-        _prof = await load_profile(_srv_db, "chat")
-        _frag = build_profile_fragment(_prof or {})
-        if _frag:
-            system = system + _frag
+        system = await compose_system_prompt(_srv_db, "chat", system)
     except Exception as _err:
-        logger.warning(f"chat_agent: profile injection failed: {_err}")
+        logger.warning(f"chat_agent: identity+profile injection failed: {_err}")
     ctx = format_history(history)
     prompt = (f"Historique de la conversation :\n{ctx}\n\n" if ctx else "") + f"Message : {message}"
     async for delta in stream_llm(system, prompt, session_id=session_id,

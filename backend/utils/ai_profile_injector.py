@@ -113,25 +113,68 @@ async def compose_system_prompt(
     *,
     extra_agent_ids: Optional[Iterable[str]] = None,
 ) -> str:
-    """Compose le prompt système final = base + profil enregistré.
+    """Compose le prompt système final = base + IDENTITÉ REGISTRY + profil enregistré.
 
-    - `base_prompt` : prompt par défaut de l'agent (jamais écrasé).
-    - `agent_id`    : identifiant unique dans `AGENT_REGISTRY`.
-    - `extra_agent_ids` : si l'agent utilise plusieurs sous-agents
-      (planner + responder p.ex.), on peut concaténer plusieurs profils.
-      Interdit dans la spec (« interdiction de fusion »), donc utilisé
-      uniquement pour appliquer AU RESPONDER SEUL le profil visible côté
-      utilisateur — pas de fusion croisée.
+    Ordre d'assemblage (iter156 — chaque IA garde son rôle propre) :
+      1. `base_prompt` = prompt de base du module (jamais écrasé)
+      2. Fragment d'identité issu de `AGENT_REGISTRY[agent_id]` (défaut)
+      3. Profil personnalisé configuré par la Créa (surcharge finale)
 
-    Retour : prompt final (str). Si aucun profil configuré : renvoie
-    `base_prompt` inchangé.
+    Retour : prompt final (str). Si aucun profil configuré ET pas de fiche
+    registry : renvoie `base_prompt` inchangé.
     """
     base = base_prompt or ""
+    # Couche 2 — identité par défaut extraite de AGENT_REGISTRY.
+    identity_frag = build_identity_fragment(agent_id)
+    # Couche 3 — profil sur-mesure Créa.
     profile = await load_profile(db, agent_id)
-    frag = _build_profile_fragment(profile or {})
-    if not frag:
-        return base
-    return base + frag
+    creator_frag = _build_profile_fragment(profile or {})
+    return base + identity_frag + creator_frag
+
+
+def build_identity_fragment(agent_id: str) -> str:
+    """iter156 — Convertit la fiche d'identité `AGENT_REGISTRY[agent_id]`
+    en fragment de prompt système. Ce fragment IMPOSE le rôle, l'expertise,
+    le format et les outils propres à cet agent — même si la Créa n'a pas
+    configuré de profil personnalisé pour ce modèle.
+
+    Garantit qu'une IA spécialisée (Codex, Claude Fable, Grok Reasoning…)
+    conserve son identité et ne se comporte PAS comme un ChatGPT générique.
+    """
+    if not agent_id:
+        return ""
+    try:
+        from agents.registry import AGENT_REGISTRY
+        card = AGENT_REGISTRY.get(agent_id)
+    except Exception:
+        card = None
+    if not card:
+        return ""
+    lines = []
+    name = card.get("name", agent_id)
+    lines.append(f"IDENTITÉ DE L'AGENT : tu es **{name}** (id `{agent_id}`).")
+    if card.get("objectif"):
+        lines.append(f"OBJECTIF PROPRE : {card['objectif']}.")
+    if card.get("expertise"):
+        lines.append(f"EXPERTISE : {card['expertise']}.")
+    if card.get("raisonnement"):
+        lines.append(f"MODE DE RAISONNEMENT : {card['raisonnement']}.")
+    if card.get("format"):
+        lines.append(f"FORMAT DE RÉPONSE ATTENDU : {card['format']}.")
+    outils = card.get("outils")
+    if isinstance(outils, (list, tuple)) and outils:
+        lines.append("OUTILS AUTORISÉS : " + " · ".join(str(o) for o in outils) + ".")
+    if card.get("limites"):
+        lines.append(f"LIMITES STRICTES : {card['limites']}.")
+    lines.append(
+        "RÈGLE ABSOLUE : conserve TON identité. Ne te comporte pas comme "
+        "un chatbot générique. Reste dans ton rôle propre."
+    )
+    return (
+        "\n\n=== IDENTITÉ D'AGENT (registry — NE PAS FUSIONNER) ===\n"
+        + "\n".join(lines)
+        + "\n=== FIN DE L'IDENTITÉ D'AGENT ==="
+    )
 
 
 async def compose_system_prompt_sync(profile: Dict[str, Any], base_prompt: str) -> str:

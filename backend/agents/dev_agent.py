@@ -136,17 +136,13 @@ async def run_dev_agent(message: str, *, session_id: str, project_id: Optional[s
         f"Rédige la réponse finale au FORMAT OBLIGATOIRE."
     )
     system = DEV_RESPONDER_SYSTEM.format(lang_label=lang_label(language))
-    # iter149 — Injection du profil configuré pour l'agent "dev" (Forge).
-    # Chaque IA garde sa propre config, jamais de fusion.
+    # iter149/156 — Identité registry + profil configuré pour l'agent "dev" (Forge).
     try:
-        from utils.ai_profile_injector import load_profile, build_profile_fragment
-        from server import db as _srv_db  # single-connection reuse
-        _prof = await load_profile(_srv_db, "dev")
-        _frag = build_profile_fragment(_prof or {})
-        if _frag:
-            system = system + _frag
+        from utils.ai_profile_injector import compose_system_prompt
+        from server import db as _srv_db
+        system = await compose_system_prompt(_srv_db, "dev", system)
     except Exception as _err:
-        logger.warning(f"dev_agent: profile injection failed: {_err}")
+        logger.warning(f"dev_agent: identity+profile injection failed: {_err}")
     async for delta in stream_llm(system, responder_input, session_id=f"{session_id}_devresp",
                                   provider=provider, model_id=model_id):
         yield {"delta": delta}

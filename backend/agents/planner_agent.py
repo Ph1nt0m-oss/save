@@ -27,14 +27,11 @@ async def run_planner_agent(message: str, *, session_id: str, language: str = "f
     yield await ev("status", "Structuration du plan et priorisation…")
 
     system = PLANNER_AGENT_SYSTEM.format(lang_label=lang_label(language))
-    # iter149 — Injection du profil configuré pour l'agent "planner" (Archi).
+    # iter149/156 — Identité registry + profil configuré pour l'agent "planner".
     try:
-        from utils.ai_profile_injector import load_profile, build_profile_fragment
+        from utils.ai_profile_injector import compose_system_prompt
         from server import db as _srv_db
-        _prof = await load_profile(_srv_db, "planner")
-        _frag = build_profile_fragment(_prof or {})
-        if _frag:
-            system = system + _frag
+        system = await compose_system_prompt(_srv_db, "planner", system)
     except Exception:
         pass
     ctx = format_history(history)
