@@ -709,6 +709,11 @@ export default function Login() {
             {/* Tabs — hidden while waiting to avoid confusion */}
             {!waitingFor && (
               <motion.div variants={item} className="space-y-2">
+                {/* iter151 — LoginAuxButtons AU-DESSUS des tabs Connexion/
+                    Inscription (spec image 1). Le user voit d'abord l'option
+                    "Visite du compte" + "Choix de vue" avant de choisir
+                    entre Connexion et Inscription. */}
+                <LoginAuxButtons />
                 <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/10 rounded-sm">
                   <button
                     type="button"
@@ -735,10 +740,6 @@ export default function Login() {
                     {t('loginSignup')}
                   </button>
                 </div>
-                {/* iter150 — LoginAuxButtons intégrés DANS la carte auth,
-                    juste sous les tabs Connexion/Inscription (spec « intégré
-                    naturellement »). Mêmes largeurs, même style. */}
-                <LoginAuxButtons />
               </motion.div>
             )}
 

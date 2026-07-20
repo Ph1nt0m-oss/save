@@ -29,10 +29,12 @@ export default function ViewSimulationBanner({ role, viewMode }) {
 
   // Uniquement pour la Créa (seule à pouvoir simuler des vues).
   if (role !== 'creator') return null;
-  // iter149 : afficher aussi quand viewMode==='creator' — permet à la
-  // Créa de savoir qu'elle est dans une prévisualisation même de sa
-  // propre vue Créa.
-  const activeMode = viewMode || 'creator';
+  // iter151 — CORRECTION : si AUCUNE vue n'est active (viewMode null/vide),
+  // la Créa travaille en mode ÉCRITURE réel — on ne doit PAS afficher le
+  // bandeau « LECTURE SEULE ». Seul l'affichage d'une vue simulée (creator
+  // self-view incluse) affiche le bandeau.
+  if (!viewMode) return null;
+  const activeMode = viewMode;
   const isCreatorSelfView = activeMode === 'creator';
 
   return (

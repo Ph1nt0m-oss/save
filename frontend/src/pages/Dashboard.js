@@ -1290,22 +1290,22 @@ export default function Dashboard() {
             </motion.button>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 cf-export-blocked">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 cf-export-blocked">
               {/* Bouton Chat (en ligne uniquement) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'online' } }); }}
                 data-testid="online-chat-btn"
-                className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-8 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
               >
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="w-16 h-16 bg-[#E4FF00] rounded-full flex items-center justify-center">
-                    <Send className="w-8 h-8 text-[#050505]" />
+                <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 bg-[#E4FF00] rounded-full flex items-center justify-center">
+                    <Send className="w-5 h-5 sm:w-6 sm:h-6 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashChat')}</h3>
-                    <p className="text-[#A1A1AA]">{t('dashChatDescOn')}</p>
+                    <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashChat')}</h3>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashChatDescOn')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -1317,15 +1317,15 @@ export default function Dashboard() {
                 onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'online' } }); }}
                 data-testid="online-create-btn"
                 data-tour="create"
-                className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-8 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
               >
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="w-16 h-16 bg-[#00FF66] rounded-full flex items-center justify-center">
-                    <Code2 className="w-8 h-8 text-[#050505]" />
+                <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 bg-[#00FF66] rounded-full flex items-center justify-center">
+                    <Code2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashCreate')}</h3>
-                    <p className="text-[#A1A1AA]">{t('dashCreateDescOn')}</p>
+                    <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashCreate')}</h3>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashCreateDescOn')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -1336,15 +1336,15 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'offline' } }); }}
                 data-testid="offline-chat-btn"
-                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
               >
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center">
-                    <Send className="w-8 h-8 text-[#050505]" />
+                <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 bg-cyan-400 rounded-full flex items-center justify-center">
+                    <Send className="w-5 h-5 sm:w-6 sm:h-6 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashChat')}</h3>
-                    <p className="text-[#A1A1AA]">{t('dashChatDescOff')}</p>
+                    <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashChat')}</h3>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashChatDescOff')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -1355,15 +1355,15 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'offline' } }); }}
                 data-testid="offline-create-btn"
-                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-8 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
               >
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="w-16 h-16 bg-purple-400 rounded-full flex items-center justify-center">
-                    <Code2 className="w-8 h-8 text-[#050505]" />
+                <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 bg-purple-400 rounded-full flex items-center justify-center">
+                    <Code2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#050505]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-['Chivo'] font-bold mb-2">{t('dashCreate')}</h3>
-                    <p className="text-[#A1A1AA]">{t('dashCreateDescOff')}</p>
+                    <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashCreate')}</h3>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashCreateDescOff')}</p>
                   </div>
                 </div>
               </motion.button>

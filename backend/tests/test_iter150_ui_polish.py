@@ -39,12 +39,13 @@ def test_login_aux_buttons_sets_simulation_unauth_on_visit():
 
 
 def test_login_aux_buttons_integrated_inside_auth_card():
-    """iter150 — Les boutons sont maintenant DANS la carte auth (sous les tabs)."""
-    # Le composant est monté juste après les tabs Connexion/Inscription.
+    """iter150/151 — Les boutons sont DANS la carte auth, AU-DESSUS des tabs
+    (spec image 1 iter151). LoginAuxButtons apparaît AVANT tab-signup dans
+    le source."""
     idx_tabs = LOGIN.find('data-testid="tab-signup"')
     idx_aux = LOGIN.find('<LoginAuxButtons')
     assert idx_tabs > 0 and idx_aux > 0
-    assert idx_aux > idx_tabs, "LoginAuxButtons doit être APRÈS les tabs (donc dedans)"
+    assert idx_aux < idx_tabs, "LoginAuxButtons doit être AVANT les tabs (au-dessus, spec iter151)"
     # Pas d'occurrence en dehors du bloc auth.
     assert LOGIN.count('<LoginAuxButtons') == 1
 
