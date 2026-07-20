@@ -136,10 +136,9 @@ def test_interactive_tutorial_scrolls_target_into_view():
     assert 'scrollTargetIntoView' in src
     # Retry si l'élément n'est pas encore monté (jusqu'à 2s).
     assert 'maxAttempts' in src
-    # Auto-flip de placement si pas de place.
-    assert 'spaceTop' in src and 'spaceBottom' in src
-    # Clamp aux limites du viewport.
-    assert 'const clamp' in src or 'Math.max(margin' in src or 'clamp(' in src
+    # iter154 — Auto-flip et clamp via l'algorithme tryPlacement.
+    assert 'tryPlacement' in src
+    assert 'const clamp' in src
 
 
 # -----------------------------------------------------------

@@ -19,11 +19,16 @@ def test_tutorial_overlay_uses_top_z_index():
     assert 'z-[9999]' in TUT
 
 
-def test_center_placement_offset_down_to_reveal_target():
-    """Spec : baisser la bulle en center-mode pour laisser voir les
-    boutons cibles situés en haut (navbar/barre latérale)."""
-    # Le clamp inclut +80 pour center.
-    assert 'vh / 2 - bubbleH / 2 + 80' in TUT
+def test_center_placement_uses_dynamic_fit_algorithm():
+    """iter154 — Le center placement N'EST PLUS forcé avec un offset fixe.
+    Le moteur teste chaque candidat (top/bottom/left/right/center) et
+    choisit celui qui RENTRE ENTIÈREMENT dans le viewport."""
+    # Plus de "+ 80" (offset manuel supprimé).
+    assert 'vh / 2 - bubbleH / 2 + 80' not in TUT
+    # Nouveau : algorithme tryPlacement + candidats ordonnés.
+    assert 'tryPlacement' in TUT
+    assert 'overflow === 0' in TUT
+    assert 'candidates' in TUT
 
 
 def test_highlight_is_non_interactive():

@@ -24,7 +24,7 @@
  *     - placement : 'top' | 'bottom' | 'left' | 'right' | 'center'
  *     - ctaTarget : selector optionnel du bouton à surligner à la fin
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 
@@ -149,60 +149,98 @@ function resetProgress(scope) {
 }
 
 // Positionne la bulle par rapport à l'élément cible.
-function computeBubblePos(target, placement) {
-  if (!target) return { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' };
-  const rect = target.getBoundingClientRect();
+// `bubbleW` / `bubbleH` = dimensions RÉELLES mesurées post-render.
+// Chaque placement candidat est testé « rentre entièrement dans le
+// viewport ? » avant d'être choisi (iter154).
+function computeBubblePos(target, placement, bubbleW, bubbleH) {
   const off = 14;
-  const bubbleW = 340;
-  const bubbleH = 240;
   const margin = 12;
-  let top, left, transform = '';
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+
+  // Sans cible → centre du viewport (dernier recours).
+  if (!target) {
+    return {
+      top: `${Math.max(margin, (vh - bubbleH) / 2)}px`,
+      left: `${Math.max(margin, (vw - bubbleW) / 2)}px`,
+      transform: '',
+    };
+  }
+
+  const rect = target.getBoundingClientRect();
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-  // iter152 — `auto-top` : si la cible est dans la zone haute (navbar,
-  // < 120px de haut d'écran), on centre la bulle plutôt que de la coller
-  // à la cible — ça évite tout chevauchement avec les chips du CreatorToolbar.
-  let p = placement;
-  if (p === 'auto-top') {
-    p = (rect.top < 120) ? 'center' : 'top';
+  // Calcule un point d'ancrage pour un placement donné + vérifie qu'il
+  // rentre. Retourne { fits: bool, top, left, overflow }.
+  const tryPlacement = (p) => {
+    let top, left;
+    switch (p) {
+      case 'top':
+        top = rect.top - bubbleH - off;
+        left = rect.left + rect.width / 2 - bubbleW / 2;
+        break;
+      case 'bottom':
+        top = rect.bottom + off;
+        left = rect.left + rect.width / 2 - bubbleW / 2;
+        break;
+      case 'left':
+        top = rect.top + rect.height / 2 - bubbleH / 2;
+        left = rect.left - bubbleW - off;
+        break;
+      case 'right':
+        top = rect.top + rect.height / 2 - bubbleH / 2;
+        left = rect.right + off;
+        break;
+      case 'center':
+      default:
+        top = (vh - bubbleH) / 2;
+        left = (vw - bubbleW) / 2;
+    }
+    // Overflow = somme des débordements sur les 4 côtés.
+    const overflow =
+      Math.max(0, margin - top) +
+      Math.max(0, top + bubbleH - (vh - margin)) +
+      Math.max(0, margin - left) +
+      Math.max(0, left + bubbleW - (vw - margin));
+    const fits = overflow === 0;
+    // Clamp final aux limites du viewport (pour ne jamais dépasser).
+    const clTop = clamp(top, margin, Math.max(margin, vh - bubbleH - margin));
+    const clLeft = clamp(left, margin, Math.max(margin, vw - bubbleW - margin));
+    return { fits, top: clTop, left: clLeft, overflow };
+  };
+
+  // Ordre de candidats selon le placement demandé — auto-top / auto
+  // essaie plusieurs candidats successivement.
+  let candidates;
+  if (placement === 'auto-top' || placement === 'auto') {
+    // Ordre : préférer une position qui NE couvre PAS la barre du haut.
+    // Donc bottom d'abord si la cible est en haut, sinon top.
+    if (rect.top < 120) {
+      candidates = ['bottom', 'right', 'left', 'center', 'top'];
+    } else {
+      candidates = ['top', 'bottom', 'right', 'left', 'center'];
+    }
+  } else if (placement === 'top') {
+    candidates = ['top', 'bottom', 'right', 'left', 'center'];
+  } else if (placement === 'bottom') {
+    candidates = ['bottom', 'top', 'right', 'left', 'center'];
+  } else if (placement === 'left') {
+    candidates = ['left', 'right', 'top', 'bottom', 'center'];
+  } else if (placement === 'right') {
+    candidates = ['right', 'left', 'top', 'bottom', 'center'];
+  } else {
+    candidates = ['center', 'bottom', 'top', 'right', 'left'];
   }
 
-  // Sélectionne la meilleure orientation si celle demandée manque de place.
-  const spaceTop = rect.top;
-  const spaceBottom = vh - rect.bottom;
-  const spaceLeft = rect.left;
-  const spaceRight = vw - rect.right;
-  if (p === 'top' && spaceTop < bubbleH + off && spaceBottom > bubbleH + off) p = 'bottom';
-  if (p === 'bottom' && spaceBottom < bubbleH + off && spaceTop > bubbleH + off) p = 'top';
-  if (p === 'left' && spaceLeft < bubbleW + off && spaceRight > bubbleW + off) p = 'right';
-  if (p === 'right' && spaceRight < bubbleW + off && spaceLeft > bubbleW + off) p = 'left';
-
-  switch (p) {
-    case 'top':
-      top = clamp(rect.top - bubbleH - off, margin, vh - bubbleH - margin);
-      left = clamp(rect.left + rect.width / 2 - bubbleW / 2, margin, vw - bubbleW - margin);
-      break;
-    case 'left':
-      top = clamp(rect.top + rect.height / 2 - bubbleH / 2, margin, vh - bubbleH - margin);
-      left = clamp(rect.left - bubbleW - off, margin, vw - bubbleW - margin);
-      break;
-    case 'right':
-      top = clamp(rect.top + rect.height / 2 - bubbleH / 2, margin, vh - bubbleH - margin);
-      left = clamp(rect.right + off, margin, vw - bubbleW - margin);
-      break;
-    case 'center':
-      // iter153 — Décalé vers le bas (+80px) pour laisser voir la
-      // barre latérale/navbar cible AU-DESSUS de la bulle.
-      top = clamp(vh / 2 - bubbleH / 2 + 80, margin, vh - bubbleH - margin);
-      left = clamp(vw / 2 - bubbleW / 2, margin, vw - bubbleW - margin);
-      break;
-    default: // bottom
-      top = clamp(rect.bottom + off, margin, vh - bubbleH - margin);
-      left = clamp(rect.left + rect.width / 2 - bubbleW / 2, margin, vw - bubbleW - margin);
+  // Prend le premier qui RENTRE entièrement. Sinon celui qui déborde le
+  // moins (mesure d'overflow), et on l'aura clampé pour rester visible.
+  let best = null;
+  for (const p of candidates) {
+    const r = tryPlacement(p);
+    if (r.fits) { best = r; break; }
+    if (!best || r.overflow < best.overflow) best = r;
   }
-  return { top: `${top}px`, left: `${left}px`, transform };
+  return { top: `${best.top}px`, left: `${best.left}px`, transform: '' };
 }
 
 function highlightRect(target) {
@@ -272,9 +310,43 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
     return () => { cancelled = true; };
   }, [open, current]);
 
+  // iter154 — Mesure la hauteur/largeur RÉELLES de la bulle après rendu
+  // pour que le moteur de placement puisse tester chaque emplacement en
+  // fonction des dimensions vraies (et pas d'un H estimé à 240px).
+  const bubbleRef = useRef(null);
+  // Estimations initiales — remplacées par la vraie mesure au 1er layout.
+  const [bubbleDims, setBubbleDims] = useState({ w: 340, h: 240 });
+  useLayoutEffect(() => {
+    if (!open || !bubbleRef.current) return;
+    const el = bubbleRef.current;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      // Ignore les mesures nulles (avant peinture).
+      if (r.width > 0 && r.height > 0) {
+        setBubbleDims((prev) => {
+          if (Math.abs(prev.w - r.width) < 1 && Math.abs(prev.h - r.height) < 1) return prev;
+          return { w: r.width, h: r.height };
+        });
+      }
+    };
+    measure();
+    // ResizeObserver garantit un recalcul si le contenu texte change de
+    // hauteur (retour ligne, wrapping, i18n…) ou si la fenêtre change.
+    let ro = null;
+    try {
+      ro = new window.ResizeObserver(() => measure());
+      ro.observe(el);
+    } catch (_) { /* ResizeObserver indispo → recalcul via resize event uniquement */ }
+    window.addEventListener('resize', measure);
+    return () => {
+      if (ro) { try { ro.disconnect(); } catch (_) { /* ignore */ } }
+      window.removeEventListener('resize', measure);
+    };
+  }, [open, stepIdx]);
+
   const bubblePos = useMemo(
-    () => computeBubblePos(target, current?.placement || 'center'),
-    [target, current, tick],
+    () => computeBubblePos(target, current?.placement || 'center', bubbleDims.w, bubbleDims.h),
+    [target, current, tick, bubbleDims.w, bubbleDims.h],
   );
   const hRect = highlightRect(target);
 
@@ -323,6 +395,7 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
       )}
       {/* Bulle */}
       <div
+        ref={bubbleRef}
         data-testid={`tuto-bubble-${scope}`}
         className="absolute w-[340px] max-w-[calc(100vw-24px)] bg-[#050505] border border-[#E4FF00]/60 rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.8)] pointer-events-auto text-white p-4 space-y-3"
         style={bubblePos}
