@@ -25,6 +25,7 @@
  *     - ctaTarget : selector optionnel du bouton à surligner à la fin
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 
 // -----------------------------------------------------------
@@ -192,8 +193,10 @@ function computeBubblePos(target, placement) {
       left = clamp(rect.right + off, margin, vw - bubbleW - margin);
       break;
     case 'center':
-      top = vh / 2 - bubbleH / 2;
-      left = vw / 2 - bubbleW / 2;
+      // iter153 — Décalé vers le bas (+80px) pour laisser voir la
+      // barre latérale/navbar cible AU-DESSUS de la bulle.
+      top = clamp(vh / 2 - bubbleH / 2 + 80, margin, vh - bubbleH - margin);
+      left = clamp(vw / 2 - bubbleW / 2, margin, vw - bubbleW - margin);
       break;
     default: // bottom
       top = clamp(rect.bottom + off, margin, vh - bubbleH - margin);
@@ -293,8 +296,12 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
   if (!open || !current) return null;
   const percent = Math.round(((stepIdx + 1) / steps.length) * 100);
 
-  return (
-    <div data-testid={`tuto-overlay-${scope}`} className="fixed inset-0 z-[100] pointer-events-none">
+  // iter153 — Portal vers document.body pour ÉCHAPPER à tout stacking context
+  // parent (navbar sticky, motion.div, CreatorToolbar…) qui empêchait la
+  // bulle de passer par-dessus les chips. Combiné à z-[9999], le tuto passe
+  // désormais au-dessus de TOUT.
+  const tree = (
+    <div data-testid={`tuto-overlay-${scope}`} className="fixed inset-0 z-[9999] pointer-events-none">
       {/* Voile assombri PARTIEL + trou sur l'élément cible (via clip-path). */}
       <div
         className="absolute inset-0 bg-black/60 pointer-events-auto"
@@ -305,7 +312,7 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
       {hRect && (
         <div
           data-testid={`tuto-highlight-${scope}`}
-          className="absolute border-2 border-[#E4FF00] rounded-sm shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] transition-all duration-200"
+          className="absolute border-2 border-[#E4FF00] rounded-sm shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] transition-all duration-200 pointer-events-none"
           style={{
             top: hRect.top - 6,
             left: hRect.left - 6,
@@ -317,7 +324,7 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
       {/* Bulle */}
       <div
         data-testid={`tuto-bubble-${scope}`}
-        className="absolute w-[340px] max-w-[calc(100vw-24px)] bg-[#050505] border border-[#E4FF00]/60 rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.8)] pointer-events-auto text-white p-4 space-y-3 z-[110]"
+        className="absolute w-[340px] max-w-[calc(100vw-24px)] bg-[#050505] border border-[#E4FF00]/60 rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.8)] pointer-events-auto text-white p-4 space-y-3"
         style={bubblePos}
       >
         <div className="flex items-center gap-2">
@@ -360,6 +367,9 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
       </div>
     </div>
   );
+  // iter153 — Attache au body via Portal (skip stacking contexts parents).
+  if (typeof document === 'undefined') return null;
+  return createPortal(tree, document.body);
 }
 
 /** Bouton public pour (re)lancer le tutoriel — à utiliser depuis toute page. */

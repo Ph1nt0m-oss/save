@@ -47,9 +47,11 @@ def test_auto_top_placement_centers_when_target_in_navbar():
 
 
 def test_bubble_z_index_above_navbar_chips():
-    """La bulle est z-[110] et l'overlay z-[100] pour dépasser CreatorToolbar."""
-    assert 'z-[110]' in TUT, 'bubble doit être z-[110]'
-    assert 'z-[100]' in TUT, 'overlay doit être z-[100]'
+    """iter153 — Portal + z-[9999] pour dépasser TOUT stacking context."""
+    assert 'z-[9999]' in TUT, 'overlay doit être z-[9999]'
+    # Portal vers document.body pour échapper aux stacking contexts.
+    assert 'createPortal' in TUT
+    assert 'document.body' in TUT
 
 
 def test_bubble_has_solid_background():
