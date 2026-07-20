@@ -58,22 +58,27 @@ export const TUTORIAL_STEPS = {
       id: 'auth-language',
       title: 'Multi-langues',
       body: '16 langues disponibles. Ta préférence est persistée localement — même hors connexion.',
+      // iter152 — Sur Landing, `language-toggle` est dans le nav top-right :
+      // on préfère centrer la bulle pour éviter le chevauchement CreatorToolbar.
       target: '[data-testid=language-toggle]',
-      placement: 'top',
+      placement: 'auto-top',
     },
     {
       id: 'auth-legal',
       title: 'Comment ça marche · CGU',
       body: 'Découvre le fonctionnement du site et les conditions d\'utilisation avant de te connecter.',
-      target: '[data-testid=link-how-it-works]',
-      placement: 'top',
+      // iter152 — Fallback multi-selectors : Login → link-how-it-works ;
+      // Landing → footer-how-it-works.
+      target: '[data-testid=link-how-it-works], [data-testid=footer-how-it-works]',
+      placement: 'auto-top',
     },
     {
       id: 'auth-theft',
       title: 'Vol d\'appareil',
       body: 'Si tu as perdu ton appareil ou qu\'on t\'a volé ta clé, tu peux déclarer un vol et récupérer ton accès depuis un autre appareil.',
-      target: '[data-testid=declare-theft-link]',
-      placement: 'top',
+      // iter152 — Fallback Landing : theft-labelled-btn (TheftButton).
+      target: '[data-testid=declare-theft-link], [data-testid=theft-labelled-btn]',
+      placement: 'auto-top',
     },
   ],
   // Menu du Dashboard (aperçu des boutons principaux).
@@ -155,12 +160,19 @@ function computeBubblePos(target, placement) {
   const vh = window.innerHeight;
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+  // iter152 — `auto-top` : si la cible est dans la zone haute (navbar,
+  // < 120px de haut d'écran), on centre la bulle plutôt que de la coller
+  // à la cible — ça évite tout chevauchement avec les chips du CreatorToolbar.
+  let p = placement;
+  if (p === 'auto-top') {
+    p = (rect.top < 120) ? 'center' : 'top';
+  }
+
   // Sélectionne la meilleure orientation si celle demandée manque de place.
   const spaceTop = rect.top;
   const spaceBottom = vh - rect.bottom;
   const spaceLeft = rect.left;
   const spaceRight = vw - rect.right;
-  let p = placement;
   if (p === 'top' && spaceTop < bubbleH + off && spaceBottom > bubbleH + off) p = 'bottom';
   if (p === 'bottom' && spaceBottom < bubbleH + off && spaceTop > bubbleH + off) p = 'top';
   if (p === 'left' && spaceLeft < bubbleW + off && spaceRight > bubbleW + off) p = 'right';
@@ -282,7 +294,7 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
   const percent = Math.round(((stepIdx + 1) / steps.length) * 100);
 
   return (
-    <div data-testid={`tuto-overlay-${scope}`} className="fixed inset-0 z-[95] pointer-events-none">
+    <div data-testid={`tuto-overlay-${scope}`} className="fixed inset-0 z-[100] pointer-events-none">
       {/* Voile assombri PARTIEL + trou sur l'élément cible (via clip-path). */}
       <div
         className="absolute inset-0 bg-black/60 pointer-events-auto"
@@ -305,7 +317,7 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
       {/* Bulle */}
       <div
         data-testid={`tuto-bubble-${scope}`}
-        className="absolute w-[340px] bg-[#050505] border border-[#E4FF00]/50 rounded-sm shadow-2xl pointer-events-auto text-white p-4 space-y-3"
+        className="absolute w-[340px] max-w-[calc(100vw-24px)] bg-[#050505] border border-[#E4FF00]/60 rounded-sm shadow-[0_20px_60px_rgba(0,0,0,0.8)] pointer-events-auto text-white p-4 space-y-3 z-[110]"
         style={bubblePos}
       >
         <div className="flex items-center gap-2">
