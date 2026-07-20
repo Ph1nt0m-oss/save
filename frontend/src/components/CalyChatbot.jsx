@@ -59,8 +59,11 @@ export default function CalyChatbot() {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [open, messages.length]);
 
-  // iter128 — Early-return APRÈS tous les hooks pour respecter Rules of Hooks.
-  const HIDDEN_ON = ['/', '/login', '/signup', '/sms-login', '/verify-email', '/reset-password', '/theft-confirm'];
+  // iter157 — Caly VISIBLE sur / (landing), /login et /signup (spec
+  // finalisation) : un visiteur non connecté doit pouvoir demander de
+  // l'aide avant même d'ouvrir un compte. Reste masquée uniquement sur
+  // les écrans techniques (reset password, verify email, theft-confirm).
+  const HIDDEN_ON = ['/sms-login', '/verify-email', '/reset-password', '/theft-confirm'];
   if (HIDDEN_ON.includes(location.pathname)) return null;
 
   const send = async (text) => {

@@ -79,11 +79,19 @@ def test_login_removes_accounts_and_creator_message():
 
 
 def test_caly_chatbot_hides_on_public_routes():
+    """iter157 — Caly reste MASQUÉE sur les écrans techniques uniquement
+    (reset password, verify email, theft-confirm, sms-login). Elle est
+    désormais VISIBLE sur /, /login et /signup pour aider les visiteurs
+    non connectés."""
     src = _read("components/CalyChatbot.jsx")
     assert "useLocation" in src
     assert "HIDDEN_ON" in src
-    assert "'/login'" in src
-    assert "'/signup'" in src
+    # Login et signup NE SONT PLUS masqués (spec iter157).
+    assert "'/login'" not in src
+    assert "'/signup'" not in src
+    # Les écrans techniques restent masqués.
+    assert "'/reset-password'" in src
+    assert "'/verify-email'" in src
 
 
 def test_user_menu_supports_hide_email_and_profile():
