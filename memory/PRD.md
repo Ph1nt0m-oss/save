@@ -1,6 +1,37 @@
 # CodeForge AI — Product Requirements
 
 
+## iter150 (Feb 2026) — Interface/UX (Message 1)
+**Status : COMPLETED (20 nouveaux pytests iter150 + cumul iter141-150 = 196/196 PASS + testing agent backend+frontend PASS)**
+
+### Livrables
+1. **LoginAuxButtons refait (5 vues)** :
+   - 5 vues exposées : creator/user/modo/admin/guest (spec « toutes les vues disponibles »).
+   - Le libellé du bouton reflète la vue active (« Vue : Utilisateur », « Vue : Admin », etc.).
+   - Le bouton clique-décoche : re-cliquer la vue active la retire.
+   - Déplacé **DANS la carte auth** (juste sous les tabs Connexion/Inscription).
+   - « Visite du compte » marque `codeforge_simulation_unauth=1` en localStorage.
+2. **Discord-style Mentions Bell** (nouveau composant `MentionsBell.jsx`) :
+   - Placé dans le header du Dashboard (plus de widget flottant `MentionNotifier`).
+   - Badge rouge avec compteur unread, dropdown, clic sur une mention → dispatch `codeforge:open-conversation` → ouvre le `GroupChatsPanel` sur le bon salon.
+   - Marque-lu automatique au clic + bouton « Tout marquer lu ».
+3. **Compteurs de messages non-lus par conversation** :
+   - Backend : nouveau `/app/backend/routes/unread_routes.py` avec collection `conversation_read_state` + endpoints `POST /api/social/unread-counts` et `POST /api/social/mark-read` (signés ECDSA).
+   - Frontend : hook `useUnreadCounts` + composant `UnreadBadge` intégrés dans `GroupChatsPanel.jsx` (badge rouge à côté de chaque salon, mark-read au clic sur onglet ou à l'ouverture).
+4. **Simulation guest complète (lecture seule sans compte)** :
+   - `setSimulationUnauth` / `isSimulationUnauth` dans `useDeviceIdentity.js`.
+   - Sur `/dashboard` : si `simulation_unauth=1` ET aucune vue active → redirect `/login` (spec « il revient à la page de connexion »).
+   - Le mode lecture-seule existant (`canWrite`/`requireWrite`) bloque déjà toute écriture serveur ; combiné à la nouvelle redirection, l'utilisateur sim navigue en démo sans jamais écrire.
+5. **Tutoriel interactif — positionnement fiable** :
+   - Retry (jusqu'à 2s) si la cible n'est pas encore montée.
+   - `scrollIntoView({ block: 'center' })` avant lecture des coordonnées.
+   - Auto-flip si pas de place (haut ↔ bas, gauche ↔ droite).
+   - Clamp aux marges du viewport (jamais hors écran).
+
+### Suppression
+- `MentionNotifier.jsx` supprimé (remplacé par `MentionsBell.jsx`).
+
+
 ## iter149 (Feb 2026) — Injection profil IA + refonte Login + tutoriel interactif + badge lecture seule
 **Status : COMPLETED (22 nouveaux pytests iter149 + cumul iter141-149 = 171/171 PASS + testing agent backend+frontend PASS)**
 
