@@ -73,11 +73,14 @@ export default function Landing() {
             <span className="text-base sm:text-2xl font-['Chivo'] font-black tracking-tight truncate">CodeForge AI</span>
           </div>
 
-          <div className="justify-self-end min-w-0 flex items-center gap-2">
+          <div className="justify-self-end min-w-0 flex items-center gap-2 mr-6 sm:mr-12 md:mr-20">
             <CreatorToolbar />
             {/* iter145 — MessageButton retiré de Landing (page publique).
                 Sans device connecté, on ne peut identifier l'appareil et
-                donc afficher les messages reçus. */}
+                donc afficher les messages reçus.
+                iter155 — mr-6/12/20 pour décaler les chips CreatorToolbar
+                vers la gauche (spec image 1 iter155) sur les pages
+                pré-menu (Landing). */}
             <LanguageToggle placement="bottom" />
           </div>
         </div>

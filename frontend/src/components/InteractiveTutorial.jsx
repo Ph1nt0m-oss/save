@@ -213,13 +213,11 @@ function computeBubblePos(target, placement, bubbleW, bubbleH) {
   // essaie plusieurs candidats successivement.
   let candidates;
   if (placement === 'auto-top' || placement === 'auto') {
-    // Ordre : préférer une position qui NE couvre PAS la barre du haut.
-    // Donc bottom d'abord si la cible est en haut, sinon top.
-    if (rect.top < 120) {
-      candidates = ['bottom', 'right', 'left', 'center', 'top'];
-    } else {
-      candidates = ['top', 'bottom', 'right', 'left', 'center'];
-    }
+    // iter155 — Priorité TOP (retour au comportement d'origine — bulle
+    // près de la cible). Fallback bottom si top ne rentre pas dans la
+    // fenêtre. La mesure RÉELLE de bubbleH (via ResizeObserver) permet
+    // ce choix précis désormais.
+    candidates = ['top', 'bottom', 'right', 'left', 'center'];
   } else if (placement === 'top') {
     candidates = ['top', 'bottom', 'right', 'left', 'center'];
   } else if (placement === 'bottom') {

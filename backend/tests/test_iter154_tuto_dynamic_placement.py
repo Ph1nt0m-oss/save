@@ -62,12 +62,14 @@ def test_placement_recomputes_on_step_change_and_resize():
     assert "window.addEventListener('scroll', onResize, true)" in TUT
 
 
-def test_prefer_bottom_when_target_is_in_top_navbar():
-    """Si la cible est en haut (rect.top < 120), l'ordre PRIORISE bottom
-    (donc pas de bulle collée au-dessus qui déborderait)."""
+def test_prefer_top_and_auto_fallback_if_no_space():
+    """iter155 — Placement top primaire ; l'algorithme tryPlacement teste
+    chaque candidat (dans l'ordre top→bottom→right→left→center) et prend
+    le premier qui rentre entièrement. Le fallback est PURE overflow-based,
+    aucune règle fixe rect.top < 120."""
     idx_fn = TUT.find('function computeBubblePos(')
     idx_next_fn = TUT.find('function highlightRect(')
     body = TUT[idx_fn: idx_next_fn]
-    # Ordre pour auto-top / auto quand target est en haut :
-    # 'bottom', 'right', 'left', 'center', 'top' (top en dernier — jamais forcé).
-    assert "candidates = ['bottom', 'right', 'left', 'center', 'top']" in body
+    assert "candidates = ['top', 'bottom', 'right', 'left', 'center']" in body
+    # Le seuil fixe rect.top < 120 est supprimé (retour comportement natif).
+    assert 'rect.top < 120' not in body

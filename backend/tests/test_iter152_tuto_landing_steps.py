@@ -40,11 +40,11 @@ def test_step_theft_has_landing_fallback():
     assert "placement: 'auto-top'" in tail
 
 
-def test_auto_top_placement_centers_when_target_in_navbar():
-    """iter154 — Quand la cible est dans la navbar (< 120 px), l'algo
-    priorise 'bottom' au lieu de 'top' (jamais forcé au-dessus)."""
-    assert 'rect.top < 120' in TUT
-    assert "candidates = ['bottom', 'right', 'left', 'center', 'top']" in TUT
+def test_auto_top_placement_prioritizes_top_first_iter155():
+    """iter155 — Retour au placement d'origine : top primaire, fallback
+    auto (bottom/right/left/center) SI top ne rentre pas. La bulle reste
+    NEAR la cible."""
+    assert "candidates = ['top', 'bottom', 'right', 'left', 'center']" in TUT
 
 
 def test_bubble_z_index_above_navbar_chips():
