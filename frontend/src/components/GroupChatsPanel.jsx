@@ -10,6 +10,7 @@ import MessageBubble from './MessageBubble';
 import GroupMembersList from './GroupMembersList';
 import { MentionInputWithSend } from './MentionInput';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
+import { useUnreadCounts, UnreadBadge } from '../hooks/useUnreadCounts';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -32,6 +33,7 @@ const ORDER = ['public', 'private', 'users', 'staff', 'modo', 'admin', 'public_s
 
 export default function GroupChatsPanel({ open, onClose }) {
   const device = useDeviceIdentity();
+  const unread = useUnreadCounts(device);
   const viewMode = device?.viewMode || null;
   const [groups, setGroups] = useState([]);
   const [active, setActive] = useState(null);
@@ -50,7 +52,18 @@ export default function GroupChatsPanel({ open, onClose }) {
         if (cancelled) return;
         const groupList = (r.data?.groups || []).filter((g) => GROUP_META[g]);
         setGroups(groupList);
-        if (!active && groupList.length > 0) setActive(groupList[0]);
+        // iter150 — Si une mention a demandé un salon spécifique, on l'ouvre.
+        try {
+          const hint = typeof window !== 'undefined' ? window.__codeforgeOpenGroupHint : null;
+          if (hint && groupList.includes(hint)) {
+            setActive(hint);
+            window.__codeforgeOpenGroupHint = null;
+          } else if (!active && groupList.length > 0) {
+            setActive(groupList[0]);
+          }
+        } catch (_) {
+          if (!active && groupList.length > 0) setActive(groupList[0]);
+        }
         // Si le groupe actif n'est plus accessible (changement de simulation),
         // bascule automatiquement.
         if (active && !groupList.includes(active)) {
@@ -84,6 +97,8 @@ export default function GroupChatsPanel({ open, onClose }) {
 
   useEffect(() => {
     if (!open || !active) return undefined;
+    // iter150 — Marque le salon actif comme lu à l'ouverture.
+    unread.markRead('group', active);
     let cancelled = false;
     const tick = async () => { if (!cancelled) await loadMessages(active); };
     tick();
@@ -132,7 +147,7 @@ export default function GroupChatsPanel({ open, onClose }) {
               return (
                 <button
                   key={g}
-                  onClick={() => setActive(g)}
+                  onClick={() => { setActive(g); unread.markRead('group', g); }}
                   data-testid={`group-tab-${g}`}
                   className={`w-full text-left px-3 py-2 flex items-center gap-2 border-l-2 transition ${
                     active === g
@@ -141,7 +156,8 @@ export default function GroupChatsPanel({ open, onClose }) {
                   }`}
                 >
                   <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
-                  <span className="text-xs font-bold">{meta.label}</span>
+                  <span className="text-xs font-bold flex-1 truncate">{meta.label}</span>
+                  <UnreadBadge count={unread.groups?.[g] || 0} testId={`unread-badge-${g}`} />
                 </button>
               );
             })}

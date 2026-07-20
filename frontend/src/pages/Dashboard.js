@@ -28,14 +28,14 @@ import TheftButton from '../components/TheftButton';
 import IdeasButton from '../components/IdeasButton';
 import AnnounceButton from '../components/AnnounceButton';
 import AccountsButton, { ExportRequestsHistoryButton } from '../components/AccountsButton';
-import { setStoredViewMode } from '../hooks/useDeviceIdentity';
+import { setStoredViewMode, isSimulationUnauth, setSimulationUnauth } from '../hooks/useDeviceIdentity';
 import AccountVisitView from '../components/AccountVisitView';
 import ExportApprovalNotifier from '../components/ExportApprovalNotifier';
 import GroupChatsPanel from '../components/GroupChatsPanel';
 import FriendsPanel from '../components/FriendsPanel';
 // iter149 — AnonymityJournalPanel importé plus. Le panneau était monté
 // pour la Créa mais retiré selon la spec C.
-import MentionNotifier from '../components/MentionNotifier';
+import MentionsBell from '../components/MentionsBell';
 import InteractiveTutorial from '../components/InteractiveTutorial';
 import ModAlertModal from '../components/ModAlertModal';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
@@ -59,6 +59,47 @@ export default function Dashboard() {
     toast.error(t('ro_toast_write'), { id: 'read-only' });
     return false;
   };
+
+  // iter150 — Redirection sim-unauth : si le device est en simulation
+  // pure (visiteur non authentifié via LoginAuxButtons) ET qu'aucune
+  // vue n'est active, on retourne à /login (l'utilisateur a « quitté »
+  // la démo). Écoute aussi l'event global de changement de vue.
+  useEffect(() => {
+    const check = () => {
+      const isSim = isSimulationUnauth();
+      const mode = (() => {
+        try { return localStorage.getItem('codeforge_view_mode'); }
+        catch (_) { return null; }
+      })();
+      if (isSim && !mode) {
+        setSimulationUnauth(false);
+        navigate('/login');
+      }
+    };
+    check();
+    window.addEventListener('codeforge:view-mode-changed', check);
+    window.addEventListener('storage', check);
+    return () => {
+      window.removeEventListener('codeforge:view-mode-changed', check);
+      window.removeEventListener('storage', check);
+    };
+  }, [navigate]);
+
+  // iter150 — Écoute l'event global émis par MentionsBell pour ouvrir la
+  // conversation ciblée par une mention.
+  useEffect(() => {
+    const onOpen = (e) => {
+      const detail = e.detail || {};
+      if (detail.group_type) {
+        setGroupsOpen(true);
+        // GroupChatsPanel lit le premier groupe par défaut ; on peut
+        // stocker le groupe demandé pour qu'il l'ouvre en priorité.
+        try { window.__codeforgeOpenGroupHint = detail.group_type; } catch (_) {}
+      }
+    };
+    window.addEventListener('codeforge:open-conversation', onOpen);
+    return () => window.removeEventListener('codeforge:open-conversation', onOpen);
+  }, []);
   
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -968,6 +1009,9 @@ export default function Dashboard() {
               <span className="inline-block ml-2 sm:ml-4">
                 <LanguageToggle placement="bottom" />
               </span>
+              {/* iter150 — Cloche @mentions style Discord dans le header,
+                  à côté du bouton tutoriel. */}
+              <MentionsBell device={device} />
               {/* iter148/149 — Bouton tutoriel : lance le tutoriel INTERACTIF
                   du menu (bulles pointant sur chaque bouton). L'ancienne
                   page /tutorial reste accessible via /tutorial pour un
@@ -1621,8 +1665,8 @@ export default function Dashboard() {
       <GroupChatsPanel open={groupsOpen} onClose={() => setGroupsOpen(false)} />
       {/* iter149 — AnonymityJournalPanel retiré (spec C). Le panneau et
           son état ne sont plus montés. */}
-      {/* iter147 — Notifications @mentions anonymous-safe (badge + panneau) */}
-      <MentionNotifier device={device} />
+      {/* iter150 — MentionsBell déplacé dans le header (voir ci-dessous),
+          plus de widget flottant bottom-right (spec Discord-style). */}
       {/* iter149 — Tutoriel interactif du menu (bulles pointant vers chaque bouton) */}
       {menuTutoOpen && (
         <InteractiveTutorial

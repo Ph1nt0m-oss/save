@@ -146,32 +146,46 @@ function resetProgress(scope) {
 function computeBubblePos(target, placement) {
   if (!target) return { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' };
   const rect = target.getBoundingClientRect();
-  const off = 12;
+  const off = 14;
   const bubbleW = 340;
-  const bubbleH = 220;
+  const bubbleH = 240;
+  const margin = 12;
   let top, left, transform = '';
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  switch (placement) {
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  // Sélectionne la meilleure orientation si celle demandée manque de place.
+  const spaceTop = rect.top;
+  const spaceBottom = vh - rect.bottom;
+  const spaceLeft = rect.left;
+  const spaceRight = vw - rect.right;
+  let p = placement;
+  if (p === 'top' && spaceTop < bubbleH + off && spaceBottom > bubbleH + off) p = 'bottom';
+  if (p === 'bottom' && spaceBottom < bubbleH + off && spaceTop > bubbleH + off) p = 'top';
+  if (p === 'left' && spaceLeft < bubbleW + off && spaceRight > bubbleW + off) p = 'right';
+  if (p === 'right' && spaceRight < bubbleW + off && spaceLeft > bubbleW + off) p = 'left';
+
+  switch (p) {
     case 'top':
-      top = Math.max(8, rect.top - bubbleH - off);
-      left = Math.min(vw - bubbleW - 8, Math.max(8, rect.left + rect.width / 2 - bubbleW / 2));
+      top = clamp(rect.top - bubbleH - off, margin, vh - bubbleH - margin);
+      left = clamp(rect.left + rect.width / 2 - bubbleW / 2, margin, vw - bubbleW - margin);
       break;
     case 'left':
-      top = Math.max(8, rect.top + rect.height / 2 - bubbleH / 2);
-      left = Math.max(8, rect.left - bubbleW - off);
+      top = clamp(rect.top + rect.height / 2 - bubbleH / 2, margin, vh - bubbleH - margin);
+      left = clamp(rect.left - bubbleW - off, margin, vw - bubbleW - margin);
       break;
     case 'right':
-      top = Math.max(8, rect.top + rect.height / 2 - bubbleH / 2);
-      left = Math.min(vw - bubbleW - 8, rect.right + off);
+      top = clamp(rect.top + rect.height / 2 - bubbleH / 2, margin, vh - bubbleH - margin);
+      left = clamp(rect.right + off, margin, vw - bubbleW - margin);
       break;
     case 'center':
       top = vh / 2 - bubbleH / 2;
       left = vw / 2 - bubbleW / 2;
       break;
     default: // bottom
-      top = Math.min(vh - bubbleH - 8, rect.bottom + off);
-      left = Math.min(vw - bubbleW - 8, Math.max(8, rect.left + rect.width / 2 - bubbleW / 2));
+      top = clamp(rect.bottom + off, margin, vh - bubbleH - margin);
+      left = clamp(rect.left + rect.width / 2 - bubbleW / 2, margin, vw - bubbleW - margin);
   }
   return { top: `${top}px`, left: `${left}px`, transform };
 }
@@ -179,6 +193,15 @@ function computeBubblePos(target, placement) {
 function highlightRect(target) {
   if (!target) return null;
   return target.getBoundingClientRect();
+}
+
+function scrollTargetIntoView(target) {
+  if (!target || typeof target.scrollIntoView !== 'function') return;
+  try {
+    target.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  } catch (_) {
+    try { target.scrollIntoView(); } catch (__) { /* ignore */ }
+  }
 }
 
 export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen = false }) {
@@ -201,12 +224,43 @@ export default function InteractiveTutorial({ scope = 'auth', onClose, autoOpen 
   useEffect(() => { writeProgress(scope, stepIdx); }, [scope, stepIdx]);
 
   const current = steps[stepIdx];
-  const target = useMemo(() => {
-    if (!current?.target) return null;
-    return document.querySelector(current.target);
-  }, [current, tick, open, stepIdx]);
 
-  const bubblePos = useMemo(() => computeBubblePos(target, current?.placement || 'center'), [target, current, tick]);
+  // iter150 — Résolution de la cible avec RETRY (si l'élément n'est pas
+  // encore monté au premier tick), scroll-into-view, et RAF forcé sur
+  // changement d'étape/ouverture pour recomputer précisément.
+  const [target, setTarget] = useState(null);
+  useEffect(() => {
+    if (!open || !current) { setTarget(null); return undefined; }
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 20; // 20 × 100ms = 2s
+    const tryResolve = () => {
+      if (cancelled) return;
+      const el = current.target ? document.querySelector(current.target) : null;
+      if (el) {
+        scrollTargetIntoView(el);
+        // Attends 60ms que le scroll se stabilise puis lit la position.
+        setTimeout(() => {
+          if (!cancelled) {
+            setTarget(el);
+            setTick((v) => v + 1);
+          }
+        }, 60);
+      } else if (attempts < maxAttempts) {
+        attempts += 1;
+        setTimeout(tryResolve, 100);
+      } else {
+        setTarget(null);
+      }
+    };
+    tryResolve();
+    return () => { cancelled = true; };
+  }, [open, current]);
+
+  const bubblePos = useMemo(
+    () => computeBubblePos(target, current?.placement || 'center'),
+    [target, current, tick],
+  );
   const hRect = highlightRect(target);
 
   const doClose = useCallback((finished = false) => {

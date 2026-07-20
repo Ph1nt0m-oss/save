@@ -5083,6 +5083,13 @@ app.include_router(
     prefix="/api",
 )
 
+# iter150 — /social/unread-* (compteurs de messages non lus par conversation)
+from routes.unread_routes import build_unread_router  # noqa: E402
+app.include_router(
+    build_unread_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
 
 # iter124 — Background helpers consommés par _lifespan() (déclaré en haut du fichier).
 # Documents store ISO strings (not Mongo Date) so we can't use a TTL index — we sweep manually.

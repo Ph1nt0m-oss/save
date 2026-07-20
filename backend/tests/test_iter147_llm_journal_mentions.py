@@ -185,17 +185,19 @@ def test_journal_panel_uses_moderation_endpoints():
 
 
 def test_mention_notifier_component_exists_and_mounted():
-    p = Path('/app/frontend/src/components/MentionNotifier.jsx')
+    """iter150 — MentionNotifier remplacé par MentionsBell dans le header."""
+    p = Path('/app/frontend/src/components/MentionsBell.jsx')
     assert p.exists()
     src = p.read_text()
     assert 'mentions-bell-btn' in src
     assert 'mentions-panel-close' in src
     assert 'mention-item-' in src
     # Anonymous-safe: label neutre si auteur caché.
-    assert 'Quelqu' in src  # "Quelqu'un t'a mentionné..."
-    # Vibration douce.
-    assert 'vibrate' in src
-    # Monté dans le Dashboard.
+    assert 'Quelqu' in src
+    # Discord-style : badge rouge + navigate to conversation.
+    assert 'bg-red-500' in src
+    assert 'codeforge:open-conversation' in src
+    # Monté dans le Dashboard (header, plus flottant).
     dash = Path('/app/frontend/src/pages/Dashboard.js').read_text()
-    assert 'import MentionNotifier' in dash
-    assert '<MentionNotifier' in dash
+    assert 'import MentionsBell' in dash
+    assert '<MentionsBell' in dash

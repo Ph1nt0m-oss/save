@@ -14,7 +14,24 @@ const VIEW_MODE_KEY = 'codeforge_view_mode';
 // plutôt que "comme un visiteur".
 const VISIT_TARGET_KEY = 'codeforge_visit_target_pseudo';
 const VISIT_TARGET_KEYID = 'codeforge_visit_target_keyid';
+// iter150 — Simulation « visiteur non authentifié ». Set à 1 quand
+// l'utilisateur clique "Visite du compte" depuis Login/Landing SANS
+// être connecté. Utilisé pour :
+//   1. Bloquer les écritures serveur (lecture seule totale).
+//   2. Rediriger vers /login si l'utilisateur décoche toutes les vues.
+const SIM_UNAUTH_KEY = 'codeforge_simulation_unauth';
 const VALID_VIEW_MODES = ['creator', 'user', 'modo', 'admin', 'guest'];
+
+export function setSimulationUnauth(on) {
+  try {
+    if (on) localStorage.setItem(SIM_UNAUTH_KEY, '1');
+    else localStorage.removeItem(SIM_UNAUTH_KEY);
+  } catch (_) { /* silent */ }
+}
+export function isSimulationUnauth() {
+  try { return localStorage.getItem(SIM_UNAUTH_KEY) === '1'; }
+  catch (_) { return false; }
+}
 function readViewMode() {
   try {
     const v = localStorage.getItem(VIEW_MODE_KEY);

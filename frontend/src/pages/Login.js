@@ -708,31 +708,37 @@ export default function Login() {
 
             {/* Tabs — hidden while waiting to avoid confusion */}
             {!waitingFor && (
-              <motion.div variants={item} className="flex gap-1 p-1 bg-white/[0.04] border border-white/10 rounded-sm">
-                <button
-                  type="button"
-                  onClick={() => { setMode('login'); setDemoLink(null); }}
-                  data-testid="tab-login"
-                  className={`flex-1 py-2 text-sm font-['Chivo'] font-bold rounded-sm transition-all ${
-                    mode === 'login'
-                      ? 'bg-[#E4FF00] text-[#050505]'
-                      : 'text-[#A1A1AA] hover:text-white'
-                  }`}
-                >
-                  {t('loginSignin')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setMode('signup'); setDemoLink(null); }}
-                  data-testid="tab-signup"
-                  className={`flex-1 py-2 text-sm font-['Chivo'] font-bold rounded-sm transition-all ${
-                    mode === 'signup'
-                      ? 'bg-[#E4FF00] text-[#050505]'
-                      : 'text-[#A1A1AA] hover:text-white'
-                  }`}
-                >
-                  {t('loginSignup')}
-                </button>
+              <motion.div variants={item} className="space-y-2">
+                <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/10 rounded-sm">
+                  <button
+                    type="button"
+                    onClick={() => { setMode('login'); setDemoLink(null); }}
+                    data-testid="tab-login"
+                    className={`flex-1 py-2 text-sm font-['Chivo'] font-bold rounded-sm transition-all ${
+                      mode === 'login'
+                        ? 'bg-[#E4FF00] text-[#050505]'
+                        : 'text-[#A1A1AA] hover:text-white'
+                    }`}
+                  >
+                    {t('loginSignin')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMode('signup'); setDemoLink(null); }}
+                    data-testid="tab-signup"
+                    className={`flex-1 py-2 text-sm font-['Chivo'] font-bold rounded-sm transition-all ${
+                      mode === 'signup'
+                        ? 'bg-[#E4FF00] text-[#050505]'
+                        : 'text-[#A1A1AA] hover:text-white'
+                    }`}
+                  >
+                    {t('loginSignup')}
+                  </button>
+                </div>
+                {/* iter150 — LoginAuxButtons intégrés DANS la carte auth,
+                    juste sous les tabs Connexion/Inscription (spec « intégré
+                    naturellement »). Mêmes largeurs, même style. */}
+                <LoginAuxButtons />
               </motion.div>
             )}
 
@@ -1163,13 +1169,9 @@ export default function Login() {
             <span>·</span>
             <LanguageToggle />
           </div>
-          {/* iter142/149 — Boutons annexes login/inscription : ligne à 2 boutons
-              (Visite du compte / Choix de vue) alignés sur les tabs Connexion/
-              Inscription. Le dropdown des 2 vues (spec B) est intégré au bouton
-              Choix de vue à droite. */}
-          <div className="mt-3">
-            <LoginAuxButtons />
-          </div>
+          {/* iter150 — LoginAuxButtons DÉPLACÉS dans la carte auth (au-dessus,
+              sous les tabs Connexion/Inscription). Le bloc footer ci-dessous
+              conserve uniquement le lien vol + tutoriel. */}
           <div className="mt-3 flex flex-col items-center gap-2">
             {/* iter145 — MessageButton retiré de Login (page publique) :
                 l'appareil n'est pas encore identifié → impossible d'afficher
