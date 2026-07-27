@@ -340,7 +340,7 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                     {!actionsDisabled && canRename && (
                       <button title={t('acc_action_rename')} data-testid={`acc-rename-${a.key_id}`} onClick={() => renameContact(a)} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Edit3 className="w-3.5 h-3.5" /></button>
                     )}
-                    {!isSelf && a.role === 'approved' && !actionsDisabled && (
+                    {!isSelf && a.role === 'approved' && !actionsDisabled && canRename && (
                       <>
                         <button title={a.staff_kind === 'admin' ? 'Retirer admin' : 'Mettre admin'} data-testid={`acc-admin-${a.key_id}`} onClick={() => setStaffKind(a, a.staff_kind === 'admin' ? null : 'admin')} className={`p-1.5 border rounded-sm transition ${a.staff_kind === 'admin' ? 'border-cyan-400/60 text-cyan-300 bg-cyan-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-cyan-400/40 hover:text-cyan-300'}`}><Shield className="w-3.5 h-3.5" /></button>
                         <button title={a.staff_kind === 'modo' ? 'Retirer modo' : 'Mettre modo'} data-testid={`acc-modo-${a.key_id}`} onClick={() => setStaffKind(a, a.staff_kind === 'modo' ? null : 'modo')} className={`p-1.5 border rounded-sm transition ${a.staff_kind === 'modo' ? 'border-violet-400/60 text-violet-300 bg-violet-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-violet-400/40 hover:text-violet-300'}`}><Star className="w-3.5 h-3.5" /></button>

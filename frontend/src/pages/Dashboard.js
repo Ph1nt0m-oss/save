@@ -100,6 +100,30 @@ export default function Dashboard() {
     window.addEventListener('codeforge:open-conversation', onOpen);
     return () => window.removeEventListener('codeforge:open-conversation', onOpen);
   }, []);
+
+  // iter158.2 — Check `is_owner` pour n'afficher le bouton Sandbox qu'au
+  // propriétaire réel (pas à une Créa déléguée). Requête légère et cachée
+  // en state local. Reste silencieux en cas d'erreur (le bouton reste
+  // masqué par défaut).
+  const [isOwnerDevice, setIsOwnerDevice] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (device.role !== 'creator' || device.viewMode) {
+        if (!cancelled) setIsOwnerDevice(false);
+        return;
+      }
+      try {
+        const { withCreatorProof } = await import('../lib/deviceIdentity');
+        const body = await withCreatorProof(API, axios, {});
+        const r = await axios.post(`${API}/ownership/status`, body);
+        if (!cancelled) setIsOwnerDevice(!!r.data?.is_owner);
+      } catch (_) {
+        if (!cancelled) setIsOwnerDevice(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [device.role, device.viewMode, device.keyId]);
   
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -1003,11 +1027,11 @@ export default function Dashboard() {
               >
                 <GraduationCap className="w-4 h-4" />
               </button>
-              {device.role === 'creator' && !device.viewMode && (
+              {device.role === 'creator' && !device.viewMode && isOwnerDevice && (
                 <button
                   onClick={() => navigate('/dev/sandbox')}
                   data-testid="header-sandbox-btn"
-                  title="Environnement de test (Sandbox)"
+                  title="Environnement de test (Sandbox — propriétaire réel uniquement)"
                   aria-label="Ouvrir le sandbox de test"
                   className="relative z-[5] text-[#A1A1AA] hover:text-cyan-300 transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-1 flex-shrink-0"
                 >

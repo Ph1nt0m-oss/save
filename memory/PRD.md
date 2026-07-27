@@ -1,6 +1,18 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.2 (Jul 2026) — Checkpoint `production-ready-iter158.2` (audit UI par rôle)
+**Status : COMPLETED (12 nouveaux pytests UI + régression 61/61 iter158 PASS).**
+Vérification finale des 9 profils via Sandbox (temporairement `CODEFORGE_TEST_MODE=1` puis refermé
+`=0`). **3 incohérences UI corrigées** — aucune logique serveur touchée :
+1. Bouton Sandbox `header-sandbox-btn` désormais gaté par `is_owner` (déléguée exclue).
+2. Boutons `promote-admin/modo` désormais réservés à admin+créa (modo exclu).
+3. Ajout des traductions manquantes `kick_disconnected_*` et `kick_staff_only_*` (FR + EN).
+Fichiers modifiés : `pages/Dashboard.js`, `components/AccountsButton.jsx`,
+`components/SiteLockedOverlay.jsx`, `contexts/LanguageContext.js`.
+Détail : `/app/memory/RAPPORT_VALIDATION_iter158.md` §12.
+
+
 ## iter158.1 (Jul 2026) — Checkpoint `production-ready-iter158.1` (audit final IA)
 **Status : COMPLETED (lecture seule, 0 modification fonctionnelle nécessaire).**
 Audit conformité des 25+ agents IA : identité figée (registry + ai_profile_injector), styles

@@ -282,3 +282,98 @@ fonctionnelle appliquée).**
 
 > Note pour l'utilisateur : pour figer un tag Git réel de cette version, utiliser le bouton
 > **« Save to GitHub »** dans la barre de chat Emergent.
+
+---
+
+## 12. Contrôle UI final par rôle (iter158.2 — checkpoint `production-ready-iter158.2`)
+
+Vérification ciblée des icônes, boutons et actions visibles pour chacun des 9 profils utilisateurs
+(propriétaire, déléguée, admin, modérateur, utilisateur validé, utilisateur classique, invité,
+sanctionné, banni). **3 incohérences d'affichage corrigées ; aucune logique serveur touchée.**
+
+### 12.1 Profils sandbox validés (10 profils seedés)
+Sandbox temporairement réactivé (`CODEFORGE_TEST_MODE=1`) puis refermé (`=0`) après vérification :
+| Slug sandbox | Rôle attendu | Vérifié |
+|---|---|---|
+| `owner` | `role='creator'` + `is_owner=True` | ✅ |
+| `delegate` | `role='creator'` + `is_delegate_creator=True` + `is_owner=False` | ✅ |
+| `admin` | `role='approved'` + `staff_kind='admin'` | ✅ |
+| `modo` | `role='approved'` + `staff_kind='modo'` | ✅ |
+| `approved` | `role='approved'` | ✅ |
+| `pending` | `role='pending'` | ✅ |
+| `guest` | `role='inactive'` | ✅ |
+| `muted` | sanction `muted=True` | ✅ |
+| `excluded` | sanction `exclude_until` | ✅ |
+| `banned` | `role='banned'` | ✅ |
+
+### 12.2 Incohérences d'affichage détectées et corrigées
+
+#### 🔴 A. Bouton Sandbox (icône `FlaskConical` du header) visible à la Créa déléguée
+- **Constat** : `Dashboard.js:1006` gatait le bouton par `device.role === 'creator' && !device.viewMode`.
+  Une Créa déléguée voyait donc l'icône (bien que la page `/dev/sandbox` la refuse ensuite).
+- **Correction** : ajout d'un état `isOwnerDevice` alimenté par un appel à `/ownership/status` au
+  chargement du Dashboard. Le bouton n'apparaît désormais **que si `is_owner === true`**
+  (`Dashboard.js:104-125` + `1024-1029`).
+- **Fichier modifié** : `frontend/src/pages/Dashboard.js`.
+
+#### 🔴 B. Boutons `promote-admin` / `promote-modo` visibles au Modérateur
+- **Constat** : `AccountsButton.jsx:343-347` affichait les boutons de promotion à TOUT staff pouvant
+  voir la liste des comptes (donc modo inclus), alors que la matrice iter144 réserve ces actions à
+  `admin+creator` (`_permission_matrix`).
+- **Correction** : ajout du gate `canRename` (qui vaut `isAdminOrCreator`) sur la condition
+  d'affichage des deux boutons (`AccountsButton.jsx:343`).
+- **Fichier modifié** : `frontend/src/components/AccountsButton.jsx`.
+
+#### 🟡 C. Traductions `kick_disconnected_*` et `kick_staff_only_*` manquantes
+- **Constat** : le backend renvoie `kick_reason='kick_disconnected'` (sanction disconnect) et
+  `kick_reason='kick_staff_only'` (site en mode staff seul). Les clés i18n correspondantes n'existaient
+  ni en FR ni en EN → l'utilisateur voyait la clé brute au lieu du message.
+- **Correction** : ajout de 4 clés dans `LanguageContext.js` (FR + EN) :
+  `kick_disconnected_title/body`, `kick_staff_only_title/body`.
+- **Fichier modifié** : `frontend/src/contexts/LanguageContext.js`.
+
+#### 🟢 D. Défense en profondeur — `SiteLockedOverlay` avec `role='banned'`
+- **Constat** : si le backend omettait `kick_reason` mais renvoyait `role='banned'`, l'overlay ne
+  s'affichait pas.
+- **Correction** : ajout d'un fallback `else if (role === 'banned') reason = 'kick_banned'`
+  (`SiteLockedOverlay.jsx:27`).
+- **Fichier modifié** : `frontend/src/components/SiteLockedOverlay.jsx`.
+
+### 12.3 Matrice UI confirmée (aucun autre écart)
+| Rôle effectif | Icônes/boutons visibles |
+|---|---|
+| **Créa propriétaire** | Tous (dont Sandbox `header-sandbox-btn`), tous les rangs `StaffActionsIconBar`, promote-créa, delete. |
+| **Créa déléguée** | Tous SAUF `header-sandbox-btn` (owner-only). Peut promote_creator (visibilité) mais serveur refuse toute action sur appareil propriétaire (`assert_not_owner_target`). |
+| **Admin** | Comptes + megaphone + rename/ban/exclude/force-visitor/delete + promote-admin/modo. Pas d'exports/idées/robot-bots (créa physique only). |
+| **Modérateur** | Comptes + megaphone + mute/unmute/block/unblock/exclude/force-visitor/disconnect UNIQUEMENT. Plus de boutons promote-admin/modo (corrigé §12.2 B). |
+| **Utilisateur validé** (`approved`) | Aucun bouton staff. Boutons `AccountsButton`/`AnnounceButton`/etc. masqués (`isStaffOrCreator=false`). |
+| **Utilisateur classique** (`pending`) | Aucun bouton staff, dashboard lecture/écriture selon `site_mode`. |
+| **Invité** (`inactive` / non enregistré) | Aucun bouton staff. `SiteLockedOverlay` si accès refusé. `canWrite=false` (lecture seule totale). |
+| **Sanctionné** (`muted`/`excluded`/`disconnected`) | `SiteLockedOverlay` avec `kick_reason` approprié (traductions complètes §12.2 C). Sanction auto-levée à expiration via `evaluate_sanctions`. |
+| **Banni** (`role='banned'`) | `SiteLockedOverlay` avec `kick_banned` + fallback défensif §12.2 D. Aucun accès. |
+
+### 12.4 Tests ajoutés — `tests/test_iter158_2_ui_visibility.py`
+12 tests source-level PASS :
+- `test_sandbox_button_gated_by_isOwnerDevice`
+- `test_sandbox_page_denies_non_owner`
+- `test_promote_admin_modo_buttons_gated_by_canRename`
+- `test_useViewSpec_matrix`
+- `test_staff_icon_bar_min_rank`
+- `test_kick_reason_translations_complete`
+- `test_site_locked_overlay_handles_banned_role`
+- `test_backend_ownership_status_exposes_is_owner_and_is_delegate`
+- `test_backend_staff_action_blocks_owner_target`
+- `test_backend_staff_action_promote_creator_requires_creator_role`
+- `test_backend_devices_verify_evaluates_all_sanctions`
+- `test_test_mode_disabled_in_env`
+
+Régression complète iter158 : **61/61 PASS** (12 nouveaux + 49 existants). Sandbox validé
+`CODEFORGE_TEST_MODE=1` puis refermé (`=0`), 0 doc résiduel, 2 fondatrices + 2 propriétaires.
+
+### 12.5 Verdict
+**3 incohérences d'affichage UI corrigées, aucune logique serveur modifiée.** L'ensemble des 9 rôles
+utilisateur affiche uniquement les icônes/boutons correspondant à leurs permissions réelles. Les
+sanctions masquent correctement les actions concernées via `SiteLockedOverlay` + `evaluate_sanctions`.
+Les changements de rôle sont reflétés dynamiquement (viewSpec + isOwnerDevice sur useEffect).
+
+**Checkpoint enregistré : `production-ready-iter158.2`.**
