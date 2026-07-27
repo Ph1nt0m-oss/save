@@ -1,6 +1,14 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.1 (Jul 2026) — Checkpoint `production-ready-iter158.1` (audit final IA)
+**Status : COMPLETED (lecture seule, 0 modification fonctionnelle nécessaire).**
+Audit conformité des 25+ agents IA : identité figée (registry + ai_profile_injector), styles
+préservés, formats reconnaissables, aucune fuite de raisonnement interne, journaux serveur limités
+aux actions. Environnement : `CODEFORGE_TEST_MODE=0`, 0 doc `sandbox=true`, 2 fondatrices +
+2 propriétaires en base. Détail : `/app/memory/RAPPORT_VALIDATION_iter158.md` §11.
+
+
 ## iter158 (Jul 2026) — Phase finale : Propriété réelle + Auth renforcée + Sandbox + Refonte export + Sanctions
 **Status : COMPLETED (54/54 pytests backend PASS + testing agent rapport iteration_154 : backend 100 %, 0 anomalie). Sandbox FERMÉ pour production (CODEFORGE_TEST_MODE=0).**
 Rapport de validation détaillé : `/app/memory/RAPPORT_VALIDATION_iter158.md`.

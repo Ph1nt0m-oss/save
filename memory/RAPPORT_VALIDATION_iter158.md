@@ -195,3 +195,90 @@ backend PASS, 0 anomalie.
 
 **Conclusion : le projet est prêt pour la mise en production. Aucune anomalie critique ou bloquante ne
 subsiste. Le Sandbox est correctement fermé et les demandes de rôle sont réellement fonctionnelles.**
+
+---
+
+## 11. Contrôle final identité des IA (iter158.1 — checkpoint `production-ready-iter158.1`)
+
+Vérification lecture seule des agents IA avant mise en production. Aucune modification fonctionnelle
+n'a été nécessaire — aucune incohérence détectée.
+
+### 11.1 Environnement
+- `backend/.env` → `CODEFORGE_TEST_MODE=0` ✅
+- Collection MongoDB filtrée sur `sandbox=true` → **0 document** (purge confirmée) ✅
+- `backend/utils/founder_creators.json` → 2 clés fondatrices figées ✅
+- Document `ownership._id='root'` → 2 propriétaires réels (identiques aux fondatrices) ✅
+- Startup log : `🔒 Créas fondatrices figées : 2 clé(s)` + `🔑 Propriété initialisée : 2 appareil(s)` ✅
+
+### 11.2 Identité de chaque agent IA
+| Agent (`agent_id`) | Nom | Fiche registry | Prompt système | Injection profil Créa |
+|---|---|---|---|---|
+| `router` | Router | ✅ | `ROUTER_SYSTEM` (JSON pur) | n/a (interne) |
+| `chat` | Caly | ✅ | `CHAT_AGENT_SYSTEM` | ✅ `compose_system_prompt(db,"chat",…)` |
+| `dev` | Forge | ✅ | `DEV_PLANNER_SYSTEM` + `DEV_RESPONDER_SYSTEM` | ✅ `compose_system_prompt(db,"dev",…)` |
+| `planner` | Archi | ✅ | `PLANNER_AGENT_SYSTEM` | ✅ `compose_system_prompt(db,"planner",…)` |
+| `caly_help` | Caly (assistant flottant) | ✅ | `CALY_DEFAULT_SYSTEM_PROMPT` | ✅ `compose_system_prompt(db,"caly_help",…)` |
+| `community_bots` (par bot_id) | Personas utilisateurs | ✅ | prompt du bot | ✅ `compose_system_prompt(db,bot_id,…)` |
+| `bot_analyzer` | Bot d'analyse tchat | ✅ | `_LLM_SYSTEM_PROMPT` (« JSON strict ») | n/a (bot système) |
+| `bot_export_validator` | Bot validateur d'export | ✅ | déterministe (pas de LLM) | n/a |
+| `emergent_llm`, `gpt_5_5`, `gpt_5_3_codex`, `claude_4_6_sonnet`, `claude_4_7_opus_1m`, `claude_4_8_opus`, `claude_5_fable`, `gemini_3_1_pro`, `gpt_5_4_1m`, `grok_4_3`, `grok_4_20_reasoning`, `lindy_flow`, `ollama_offline`, `vexub_video` | Modèles LLM sélectionnables | ✅ | fragment d'identité registry appliqué via `server.py:2547` (`_agent_id = model_choice.replace("-","_").replace(".","_")`) | ✅ |
+
+### 11.3 Style de communication conservé
+- Caly : `chaleureux, direct, structuré quand utile, adapté au niveau de l'utilisateur`.
+- Forge : `ingénieur senior — précis, transparent, pédagogique`, format 5 blocs `[État][Actions
+  réalisées][Fichiers/Ressources utilisées][Résultat][Prochaines étapes]`.
+- Archi : `chef de projet — structuré, concret, orienté livrables`, format 5 blocs
+  `[État][Objectifs][Plan][Priorités][Prochaines étapes]` (ne produit PAS de code).
+- Router : JSON pur `{"agent": "chat"|"dev"|"planner"}`, jamais de prose.
+- Bot analyzer : `_LLM_SYSTEM_PROMPT` impose `« Aucune explication en dehors du JSON »`.
+- Registre isolé : `AGENT_REGISTRY[agent_id]` unique + filtre `agent_id` unique dans
+  `db.ai_profiles` — interdiction absolue de fusion cross-agent réaffirmée.
+
+### 11.4 Réponses reconnaissables
+- Formats de sortie imposés par les prompts système (voir table 11.2) et par
+  `build_identity_fragment` (`FORMAT DE RÉPONSE ATTENDU : …`).
+- Modèles avec réponse libre (`gpt_5_5`, `claude_4_6_sonnet`, `claude_5_fable`, …) conservent le
+  fragment d'identité registry qui rappelle : *« Conserve TON identité. Ne te comporte pas comme un
+  chatbot générique. Reste dans ton rôle propre. »* (`ai_profile_injector.py:169-171`).
+
+### 11.5 Aucune fuite de raisonnement interne
+- Aucun agent ne renvoie de `chain_of_thought`/`<thinking>`/`reasoning_content` : recherche
+  regex `thinking|reasoning_content|<think>|chain_of_thought` → **0 occurrence** hors tests.
+- `grok_integration.py` remonte uniquement `choices[0].message.content` (jamais le raisonnement
+  interne du modèle Grok Reasoning).
+- `DEV_PLANNER_SYSTEM` impose `« label opérationnel court en français (pas de raisonnement privé) »`
+  (`registry.py:38`).
+- `dev_agent` : événements SSE `status`/`status_done`/`plan_ready`/`file_viewed`/`file_created`/
+  `file_modified`/`code_executed`/`validation` — chaque `summary` est une phrase opérationnelle,
+  aucune pensée privée n'est incluse (`agents/dev_agent.py:6-13`).
+- `bot_analyzer` (couche 2 LLM) : réponse forcée en JSON strict `{is_suspicious, score, reasons}`
+  (`utils/bot_analyzer.py:184-198`).
+- `orchestrator` (Guided Wizard) : l'événement `thought` transporte uniquement les *résultats
+  d'analyse* du CRITIC (`logical_flaws`, `edge_cases`), pas les tokens de raisonnement du LLM ;
+  ce mode « analyse visible » fait partie de la spec Wizard (comportement volontaire, distinct des
+  agents de chat).
+
+### 11.6 Journaux serveur — actions uniquement
+Extraction en direct de `/var/log/supervisor/backend.err.log` + `.out.log` :
+- Démarrage : indexes MongoDB, fondatrices figées, ownership initialisée, bots protégés seedés.
+- Runtime : lignes HTTP standard `POST /api/... 200 OK` + tâches périodiques (kick sweeper, auth
+  cleanup).
+- Warnings d'agents (`agents/chat_agent.py:26`, `agents/dev_agent.py:145`, `routes/caly_routes.py:118/187`,
+  `routes/community_bots_routes.py:199`) : uniquement le message d'exception (`{e}`), **jamais** le
+  prompt système, le message utilisateur, la clé ou la sortie LLM.
+- Log `AI identity+profile applied for agent={_agent_id}` (`server.py:2548`) : ne contient que
+  l'`agent_id` (ex. `gpt_5_5`), pas le contenu du profil.
+- Recherche `logger\.(info|debug).*system|logger\.(info|debug).*prompt` → **0 occurrence** dans le
+  périmètre `agents/` + `routes/caly_routes.py` + `routes/community_bots_routes.py` +
+  `utils/ai_profile_injector.py` + `utils/bot_analyzer.py` + `utils/export_validator_bot.py`.
+
+### 11.7 Verdict
+**Aucune incohérence détectée sur les 25+ agents IA du système.** Toutes les identités sont figées,
+les styles préservés, les formats de réponse imposés, les raisonnements internes non exposés, et
+les journaux serveur ne contiennent que des actions ou des erreurs opérationnelles.
+
+**Checkpoint enregistré : `production-ready-iter158.1` (audit lecture seule — aucune modification
+fonctionnelle appliquée).**
+
+> Note pour l'utilisateur : pour figer un tag Git réel de cette version, utiliser le bouton
+> **« Save to GitHub »** dans la barre de chat Emergent.
