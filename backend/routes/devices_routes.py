@@ -180,25 +180,20 @@ def build_devices_router(
         can_access = True
         kick_reason = None
 
-        excluded_until = dev.get("excluded_until")
-        if excluded_until:
-            try:
-                exp = datetime.fromisoformat(excluded_until.replace("Z", "+00:00"))
-                if exp <= datetime.now(timezone.utc):
-                    await db.device_keys.update_one(
-                        {"key_id": payload.key_id},
-                        {"$unset": {"excluded_until": "", "excluded_reason": ""}},
-                    )
-                    excluded_until = None
-            except Exception:
-                excluded_until = None
-        if dev.get("banned"):
+        # iter158 — Évaluation centralisée des sanctions (auto-expiration +
+        # unification legacy/unifié). Retour automatique à l'état normal.
+        from utils.sanctions import evaluate_sanctions
+        sanc = await evaluate_sanctions(db, {**dev, "key_id": payload.key_id})
+        excluded_until = sanc.get("exclude_until")
+        if sanc["banned"]:
             can_access = False; kick_reason = "kick_banned"
-        elif excluded_until:
+        elif sanc["excluded"]:
             can_access = False; kick_reason = "kick_excluded"
-        elif role == "blocked":
+        elif sanc["disconnected"]:
+            can_access = False; kick_reason = "kick_disconnected"
+        elif sanc["blocked"]:
             can_access = False; kick_reason = "kick_blocked"
-        elif role == "revoked":
+        elif sanc["revoked"]:
             can_access = False; kick_reason = "kick_revoked"
         else:
             modes_active = normalize_modes(site_mode)
@@ -280,7 +275,10 @@ def build_devices_router(
             "guest_views": gv_list,
             "kick_reason": kick_reason,
             "excluded_until": excluded_until,
-            "force_visitor": bool(dev.get("force_visitor", False)),
+            "force_visitor": sanc["force_visitor"],
+            "muted": sanc["muted"],
+            "force_visitor_until": sanc.get("force_visitor_until"),
+            "disconnect_until": sanc.get("disconnect_until"),
             "staff_kind": dev.get("staff_kind"),
             # iter128.8 — Nouveau gating dynamique
             "can_simulate_views": can_simulate_views,

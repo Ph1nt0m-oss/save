@@ -231,6 +231,9 @@ def build_exports_router(db, *, verify_signed, require_creator_signature, get_cu
         )
         if not project:
             raise HTTPException(status_code=404, detail="Projet introuvable.")
+        # iter158 — Gating : export uniquement après validation Créa.
+        from utils.export_guard import assert_export_approved
+        await assert_export_approved(db, project_id, user_id)
         messages = (
             await db.chat_messages.find(
                 {"project_id": project_id, "user_id": user_id}, {"_id": 0}

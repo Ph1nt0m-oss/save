@@ -471,13 +471,22 @@ export default function Chat() {
         } catch { /* silent */ }
       }
     } catch (error) {
-      console.error('Chat error:', error);
+      // iter158 — Message propre pour l'utilisateur final : jamais d'erreur
+      // technique brute (Cloudflare 5xx, HTML, stack trace, "Ollama"...).
+      const status = error?.response?.status;
+      const raw = String(error?.response?.data || error?.message || '');
+      const looksLikeCloudflare = /cloudflare|<!doctype|<html|bad gateway|gateway time|service unavailable/i.test(raw);
+      const overloaded = looksLikeCloudflare || [429, 500, 502, 503, 504].includes(status);
+      const cleanMsg = overloaded
+        ? "Le service IA est momentanément surchargé. Réessaie dans quelques instants — ta demande n'a pas été perdue."
+        : "Une erreur est survenue pendant la génération. Réessaie dans un instant.";
       setMessages(prev => [...prev.filter(m => !m._streaming), {
         role: 'assistant',
-        content: 'Erreur: Vérifiez qu\'Ollama est installé et en cours d\'exécution.',
-        timestamp: new Date()
+        content: cleanMsg,
+        timestamp: new Date(),
+        _error: true,
       }]);
-      toast.error('Erreur de chat');
+      toast.error(cleanMsg);
     } finally {
       setIsLoading(false);
     }

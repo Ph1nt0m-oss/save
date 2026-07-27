@@ -21,6 +21,8 @@ import PrivateAgentRegistry from './pages/PrivateAgentRegistry';
 import AIProgramming from './pages/AIProgramming';
 import PrivateIntegrations from './pages/PrivateIntegrations';
 import Tutorial from './pages/Tutorial';
+import Sandbox from './pages/Sandbox';
+import { getSandboxSlug } from './lib/deviceIdentity';
 // iter112 — SiteIssues abandonné (les codes d'erreurs sont trop hétérogènes
 // à répertorier). Route /private/site-issues redirige désormais vers la
 // programmation des bots/chatbots.
@@ -228,6 +230,14 @@ function AppRouter() {
           }
         />
         <Route path="/share/:slug" element={<SharedPreview />} />
+        <Route
+          path="/dev/sandbox"
+          element={
+            <ProtectedRoute>
+              <Sandbox />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </Suspense>
   );
@@ -249,6 +259,23 @@ function FloatingWidgetsGate() {
 }
 
 
+function SandboxIndicator() {
+  // iter158 — Bandeau global permanent quand une incarnation Sandbox est active,
+  // pour que le propriétaire sache qu'il navigue sous une fausse identité de test.
+  const slug = getSandboxSlug();
+  if (!slug) return null;
+  return (
+    <div
+      data-testid="sandbox-global-indicator"
+      className="fixed bottom-3 left-3 z-[9998] flex items-center gap-2 px-3 py-2 rounded-sm bg-cyan-500/15 border border-cyan-400/50 text-cyan-100 text-xs backdrop-blur-md"
+    >
+      <span>🧪 Sandbox — tu incarnes <b>{slug}</b></span>
+      <a href="/dev/sandbox" className="underline hover:text-white">gérer</a>
+    </div>
+  );
+}
+
+
 function App() {
   return (    <div className="App dark">
       <BrowserRouter>
@@ -259,6 +286,7 @@ function App() {
               {/* iter105/148 — FeedbackButton + CalyChatbot flottants globaux,
                   masqués sur /tutorial pour ne pas gêner les boutons du footer. */}
               <FloatingWidgetsGate />
+              <SandboxIndicator />
               <Toaster 
                 position="top-right"
                 theme="dark"

@@ -135,6 +135,20 @@ export async function ensureDeviceKey() {
  * `cryptography` library expects after our /verify endpoint conversion).
  */
 export async function signNonce(nonceB64url) {
+  // iter158 — Incarnation Sandbox : si une identité de test est active, on
+  // signe avec sa clé privée (JWK importé). Les vraies clés (IndexedDB
+  // non-extractibles) ne sont JAMAIS touchées → incarnation réversible.
+  const sbx = _getSandboxIdentity();
+  if (sbx) {
+    const key = await crypto.subtle.importKey(
+      'jwk', sbx.privateJwk,
+      { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'],
+    );
+    const sigBuf = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: { name: 'SHA-256' } }, key, b64urlToBuf(nonceB64url),
+    );
+    return b64urlFromBuf(sigBuf);
+  }
   const privKey = await idbGet(PRIVATE_KEY_HANDLE);
   if (!privKey) throw new Error('No device key — call ensureDeviceKey() first.');
   const nonceBuf = b64urlToBuf(nonceB64url);
@@ -146,7 +160,35 @@ export async function signNonce(nonceB64url) {
   return b64urlFromBuf(sigBuf);
 }
 
+// ---------------- iter158 — Incarnation Sandbox (owner test harness) --------
+const SANDBOX_LS = 'cf_sandbox_identity_v1';
+
+function _getSandboxIdentity() {
+  try {
+    const raw = localStorage.getItem(SANDBOX_LS);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (obj && obj.keyId && obj.privateJwk) return obj;
+  } catch (_) {}
+  return null;
+}
+
+export function enterSandboxIdentity({ slug, keyId, privateJwk, publicJwk }) {
+  localStorage.setItem(SANDBOX_LS, JSON.stringify({ slug, keyId, privateJwk, publicJwk }));
+}
+
+export function exitSandboxIdentity() {
+  try { localStorage.removeItem(SANDBOX_LS); } catch (_) {}
+}
+
+export function getSandboxSlug() {
+  const s = _getSandboxIdentity();
+  return s ? s.slug : null;
+}
+
 export function getCachedKeyId() {
+  const sbx = _getSandboxIdentity();
+  if (sbx) return sbx.keyId;
   try { return localStorage.getItem(KEY_ID_LS) || null; } catch (_) { return null; }
 }
 

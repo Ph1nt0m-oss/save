@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from utils.founder_guard import assert_not_founder, is_founder
+from utils.ownership_guard import assert_not_owner_target
 
 
 # Actions durées par défaut (secondes).
@@ -108,6 +109,16 @@ def build_staff_actions_router(db, verify_signed) -> APIRouter:
                 status_code=403,
                 detail="Créa fondatrice — cette action est interdite.",
             )
+        # iter158 — Protection APPAREIL PROPRIÉTAIRE : aucune action staff
+        # (ban, demote, block, disconnect, exclude...) ne peut viser un
+        # appareil propriétaire. Seul le module /ownership/* (auth renforcée)
+        # peut agir sur la propriété. Bloque même la Créa déléguée.
+        _owner_touching = action in (
+            "ban", "block", "demote", "disconnect", "exclude",
+            "force_visitor", "mute", "promote_modo", "promote_admin",
+        )
+        if _owner_touching:
+            await assert_not_owner_target(db, payload.target_key_id, payload.key_id, action)
         # Anti self-target sur actions destructives.
         if payload.target_key_id == payload.key_id and action in \
                 ("ban", "disconnect", "exclude", "demote"):

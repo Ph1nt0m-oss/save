@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, GraduationCap
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, GraduationCap, FlaskConical
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -662,34 +662,12 @@ export default function Dashboard() {
 
         toast.success('Code source téléchargé !');
 
-        // 2) Also push to GitHub in the background — non-blocking, silent on failure.
+        // iter158 — Sauvegarde GitHub 100% SILENCIEUSE (aucune notification
+        // technique destinée aux utilisateurs finaux).
         (async () => {
-          const t1 = toast.loading('Sauvegarde sur GitHub…');
           try {
-            const gh = await axios.post(
-              `${API}/export/github/${project.project_id}`,
-              {},
-              { withCredentials: true }
-            );
-            toast.dismiss(t1);
-            if (gh.data?.url) {
-              toast.success('Sauvegardé sur GitHub', {
-                description: gh.data.repository || '',
-                action: {
-                  label: 'Ouvrir',
-                  onClick: () => window.open(gh.data.url, '_blank'),
-                },
-                duration: 10000,
-              });
-            }
-          } catch (ghErr) {
-            toast.dismiss(t1);
-            // Silent: ZIP download already succeeded. Only show a discreet hint.
-            const detail = ghErr.response?.data?.detail || '';
-            if (detail && !/(non configuré|not configured)/i.test(detail)) {
-              toast.message('GitHub indisponible', { description: detail, duration: 5000 });
-            }
-          }
+            await axios.post(`${API}/export/github/${project.project_id}`, {}, { withCredentials: true });
+          } catch (_) { /* invisible — jamais exposé à l'utilisateur */ }
         })();
       } else if (exportType === 'apk') {
         // Open mobile export page
@@ -1025,6 +1003,17 @@ export default function Dashboard() {
               >
                 <GraduationCap className="w-4 h-4" />
               </button>
+              {device.role === 'creator' && !device.viewMode && (
+                <button
+                  onClick={() => navigate('/dev/sandbox')}
+                  data-testid="header-sandbox-btn"
+                  title="Environnement de test (Sandbox)"
+                  aria-label="Ouvrir le sandbox de test"
+                  className="relative z-[5] text-[#A1A1AA] hover:text-cyan-300 transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-1 flex-shrink-0"
+                >
+                  <FlaskConical className="w-4 h-4" />
+                </button>
+              )}
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
                 {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => {
                   // iter133 — Visiter le compte = TOUJOURS simuler la vue de
@@ -1118,10 +1107,10 @@ export default function Dashboard() {
                 variant="outline"
                 data-testid="export-source-btn"
                 className="hidden sm:inline-flex border-[#E4FF00] text-[#E4FF00] hover:bg-[#E4FF00] hover:text-[#050505] px-2 lg:px-3"
-                title="Télécharger le code source (ZIP) — sauvegarde GitHub déjà automatique"
+                title="Exporter ce projet (demande envoyée à la Créa pour validation)"
               >
                 <Download className="w-4 h-4 lg:mr-1" />
-                <span className="hidden lg:inline">ZIP</span>
+                <span className="hidden lg:inline">{t('ctx_export_project')}</span>
               </Button>}
 
               <div className="ml-3 sm:ml-12 flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4">
@@ -1503,34 +1492,13 @@ export default function Dashboard() {
           )}
           <button
             type="button"
-            onClick={() => askExportProjectZip(ctxMenu.project)}
-            data-testid="project-ctx-export-zip"
+            onClick={() => { const p = ctxMenu.project; setCtxMenu(null); _doExport(p, 'source'); }}
+            data-testid="project-ctx-export"
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
           >
             <Download className="w-4 h-4 text-cyan-400" />
-            <span>{t('ctx_download_zip')}</span>
+            <span>{t('ctx_export_project')}</span>
           </button>
-          {/* iter79 — GitHub push retiré côté UI (le ZIP suffit pour push manuel) */}
-          <button
-            type="button"
-            onClick={() => duplicateProject(ctxMenu.project)}
-            data-testid="project-ctx-duplicate"
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
-          >
-            <Copy className="w-4 h-4 text-amber-400" />
-            <span>{t('ctx_duplicate')}</span>
-          </button>
-          {(ctxMenu.project?.project_type !== 'chat') && (
-            <button
-              type="button"
-              onClick={() => togglePublicShare(ctxMenu.project)}
-              data-testid="project-ctx-public-share"
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/[0.05] transition-colors"
-            >
-              <Share2 className="w-4 h-4 text-[#E4FF00]" />
-              <span>{ctxMenu.project?.is_public ? t('ctx_share_disable') : t('ctx_share_enable')}</span>
-            </button>
-          )}
           <button
             type="button"
             onClick={() => askDelete(ctxMenu.project)}

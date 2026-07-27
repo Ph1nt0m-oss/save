@@ -139,68 +139,40 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
 
     @router.post("/projects/{project_id}/duplicate")
     async def duplicate_project(request: Request, project_id: str):
-        """Clone a project — new id + '(copie)' suffix. Chat history NOT copied."""
-        user_id = await get_current_user(request)
-        src = await db.projects.find_one(
-            {"project_id": project_id, "user_id": user_id}, {"_id": 0},
+        """iter158 — Clonage direct RETIRÉ. Toute copie/export passe par le
+        workflow sécurisé « Exporter ce projet » (demande → validation Créa)."""
+        raise HTTPException(
+            status_code=403,
+            detail="Le clonage direct a été retiré. Utilise « Exporter ce projet » (validation Créa requise).",
         )
-        if not src:
-            raise HTTPException(status_code=404, detail="Projet non trouvé")
-
-        new_id = f"proj_{uuid.uuid4().hex[:12]}"
-        now_iso = datetime.now(timezone.utc).isoformat()
-        clone = {
-            **src,
-            "project_id": new_id,
-            "name": f"{src.get('name', 'Projet')} (copie)"[:80],
-            "created_at": now_iso,
-            "updated_at": now_iso,
-            "share_slug": None,
-            "is_public": False,
-        }
-        await db.projects.insert_one(clone)
-        clone.pop("_id", None)
-        return {"success": True, "project_id": new_id, "project": clone}
 
     @router.post("/projects/{project_id}/share")
     async def toggle_project_share(request: Request, project_id: str):
-        """Generate (or refresh) a public share URL. Body (optional): {"enable": true|false}."""
+        """iter158 — Partage public direct RETIRÉ. On autorise UNIQUEMENT la
+        désactivation d'un ancien partage (enable=false) ; toute activation est
+        refusée côté serveur (non contournable par le frontend)."""
         user_id = await get_current_user(request)
         try:
             body = await request.json()
         except Exception:
             body = {}
         enable = body.get("enable") if isinstance(body, dict) else None
-
         project = await db.projects.find_one(
             {"project_id": project_id, "user_id": user_id}, {"_id": 0},
         )
         if not project:
             raise HTTPException(status_code=404, detail="Projet non trouvé")
-
         if enable is False:
             await db.projects.update_one(
                 {"project_id": project_id},
-                {"$set": {"is_public": False, "updated_at": datetime.now(timezone.utc).isoformat()}},
+                {"$set": {"is_public": False, "share_slug": None,
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
             )
             return {"is_public": False, "slug": None, "url": None}
-
-        slug = project.get("share_slug") or _make_slug(project.get("name") or project_id)
-        await db.projects.update_one(
-            {"project_id": project_id},
-            {"$set": {
-                "is_public": True,
-                "share_slug": slug,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
+        raise HTTPException(
+            status_code=403,
+            detail="Le partage public direct a été retiré. Utilise « Exporter ce projet ».",
         )
-        frontend_url = (
-            os.environ.get("FRONTEND_URL")
-            or os.environ.get("REACT_APP_BACKEND_URL")
-            or ""
-        )
-        public_url = f"{frontend_url.rstrip('/')}/share/{slug}" if frontend_url else f"/share/{slug}"
-        return {"is_public": True, "slug": slug, "url": public_url}
 
     @router.get("/share/{slug}")
     async def get_public_share(slug: str):

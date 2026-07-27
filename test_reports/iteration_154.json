@@ -1,0 +1,36 @@
+{
+  "summary": "iter158 — Validation finale campagne CodeForge AI (Ownership + AuthRenforcée + Sanctions + ExportRefonte + Sandbox + GardeIA). 46/46 pytests PASS. 28 tests existants (main agent) rejoués OK + 18 nouveaux tests SUPPLEMENT couvrant les gaps: (1) escalade admin→propriétaire impossible via /ownership/challenge, /ownership/add-owner-device et via /staff/action action='promote_creator' (invariant DB owner_key_ids); (2) refonte export: /projects/{id}/duplicate → 403, /projects/{id}/share {enable:true} → 403, {enable:false} autorisé + persistance DB; (3) gating export: /exports/zip-project/{id} et /export/download → 403 sans demande approuvée, 200 avec status='approved'; (4) invariants signature: /ownership/status|challenge|init et /sandbox/seed|teardown rejettent body vide, mauvaise signature, ET rejeu de nonce; (5) sanction end-to-end: /staff/action exclude → /devices/verify can_access=false kick_reason=kick_excluded, exclude_until passé → auto-levée + effacement DB.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter158_ownership.py",
+    "/app/backend/tests/test_iter158_sandbox.py",
+    "/app/backend/tests/test_iter158_sanctions.py",
+    "/app/backend/tests/test_iter158_permissions_ai.py",
+    "/app/backend/tests/test_iter158_supplement.py",
+    "/app/test_reports/pytest/iter158_full.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py = 5146 lignes — au-delà du seuil 700. La décomposition en routes/ est bien engagée (iter121-128) mais /export/download et 2 autres routes export/* restent inline dans server.py; les déplacer dans routes/exports_routes.py finaliserait l'invariant 'aucune logique métier dans server.py'.",
+    "utils/export_guard.assert_export_approved: le fallback 'appareil propriétaire' matche sur user_id via device_keys.user_id — bien mais aucune corrélation avec le session_token courant; si un user_id est usurpé côté client (via header), la garde propriétaire pourrait être court-circuitée. Non exploitable actuellement (session_token → user_id via DB), mais à documenter.",
+    "routes/projects_routes.py:duplicate_project raise 403 SANS appeler get_current_user d'abord: informatif seulement mais un attaquant non-authentifié peut sonder l'existence de l'endpoint. Cohérent avec la volonté iter158 (blocage absolu) donc acceptable."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter158_supplement.py (nouveau — 18 tests supplémentaires)"
+  ],
+  "success_rate": {"backend": "100% (46/46)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "Aucune. Devices ECDSA P-256 créés via /api/devices/register + injection MongoDB directe (ownership.owner_key_ids, device_keys.role/staff_kind). CODEFORGE_TEST_MODE=1 actif dans backend/.env pour /sandbox/*.",
+  "seed_data_creation": "Fixtures pytest module-scope créent puis nettoient: 2 devices propriétaires (owner_pair), devices admin/modo/plain, sessions user TEST_*, projets TEST_proj_*, export_requests. Teardown complet — aucune donnée résiduelle en DB à la fin.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "La campagne iter158 est verrouillée à 46/46 PASS. Les helpers ECDSA (gen_keypair/sign/register/signed_body) sont identiques dans les 5 fichiers test_iter158_*.py — un futur refactor pourrait les factoriser dans conftest.py. La clé créa figée hardcodée mentionnée pour iter46 n'est pas présente dans cette DB (documenté environnemental, non-régression). Ne PAS supprimer la clé créa figée si elle est ajoutée ultérieurement. Le champ sandbox=True est utilisé comme marker de teardown — respecter cette convention.",
+  "rca of the issue": "N/A — aucune régression détectée. Un seul faux positif transitoire pendant l'écriture des tests (test_export_download utilisait 'format' au lieu du champ Pydantic requis 'export_type') → corrigé, retesté OK. Confirme que la route /export/download valide bien son payload (422 Pydantic) AVANT d'atteindre la garde d'export (403), ce qui est l'ordre correct."
+}

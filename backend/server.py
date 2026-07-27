@@ -231,6 +231,14 @@ async def _lifespan(app):
         except Exception as e:
             logger.warning(f"founder_guard init failed: {e}")
 
+        # iter158 — Bootstrap propriété réelle (indépendante des rôles).
+        try:
+            from utils.ownership_guard import ensure_ownership  # noqa: E402, WPS433
+            odoc = await ensure_ownership(db)
+            logger.info(f"🔑 Propriété initialisée : {len(odoc.get('owner_key_ids') or [])} appareil(s) propriétaire(s)")
+        except Exception as e:
+            logger.warning(f"ownership init failed: {e}")
+
         # iter126 Lot 2 #7 — Seed "agents bots de test" protégés.
         # Visibles pour rassurer les utilisateurs sceptiques, mais codes
         # cachés + modifications interdites (sauf créatrice).
@@ -3812,6 +3820,10 @@ async def download_export(request: Request, export_req: ExportRequest):
     if not project:
         raise HTTPException(status_code=404, detail="Projet non trouvé")
     
+    # iter158 — Gating export : téléchargement direct interdit sans validation Créa.
+    from utils.export_guard import assert_export_approved
+    await assert_export_approved(db, export_req.project_id, user_id)
+    
     # Chat-type projects have no generated_code — they export the transcript only.
     if not project.get("generated_code") and project.get("project_type") != "chat":
         raise HTTPException(status_code=400, detail="Aucun code généré. Générez d'abord le code.")
@@ -5080,6 +5092,20 @@ app.include_router(
 from routes.unread_routes import build_unread_router  # noqa: E402
 app.include_router(
     build_unread_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
+# iter158 — /ownership/* (propriété réelle indépendante des rôles, auth renforcée)
+from routes.ownership_routes import build_ownership_router  # noqa: E402
+app.include_router(
+    build_ownership_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
+# iter158 — /sandbox/* (environnement de test multi-rôles, gated owner + TEST_MODE)
+from routes.sandbox_routes import build_sandbox_router  # noqa: E402
+app.include_router(
+    build_sandbox_router(db, verify_signed=_verify_signed),
     prefix="/api",
 )
 
