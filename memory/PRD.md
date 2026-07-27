@@ -1,6 +1,40 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158 (Jul 2026) — Phase finale : Propriété réelle + Auth renforcée + Sandbox + Refonte export + Sanctions
+**Status : COMPLETED (46/46 pytests backend PASS + testing agent rapport iteration_154 : backend 100 %, 0 anomalie).**
+Rapport de validation détaillé : `/app/memory/RAPPORT_VALIDATION_iter158.md`.
+
+### Livrables
+1. **Propriété réelle indépendante des rôles** — collection `ownership` (_id='root') : `owner_key_ids`,
+   `owner_user_id`, `delegates[]`, `recovery_code_hash`. `utils/ownership_guard.py` + `routes/ownership_routes.py`.
+   Le rôle `creator` (visible) et les permissions sont DÉCOUPLÉS de la propriété réelle. Bootstrap au boot.
+2. **Auth renforcée** — challenge lié à l'action (TTL 180s, single-use) + **double signature ECDSA** pour
+   transfer/remove-owner-device/revoke. Endpoints `/ownership/{status,init,challenge,add-owner-device,
+   remove-owner-device,transfer,delegate/add,delegate/revoke,recover,audit}`.
+3. **Récupération propriétaire** — code secret PBKDF2 (affiché 1×), rotation à l'usage, brute-force 5/15min→429.
+4. **Garde IA** — invariant vérifié : aucun module IA ne modifie rôle/permissions/propriété (test statique).
+5. **Sandbox multi-rôles** — `routes/sandbox_routes.py` (gated `CODEFORGE_TEST_MODE` + owner) : seed de 10 profils
+   isolés (`sandbox=true`) + incarnation réelle via vraies clés ECDSA (`lib/deviceIdentity.js`). Page `/dev/sandbox`,
+   bouton `header-sandbox-btn`, indicateur global `sandbox-global-indicator`. Teardown complet.
+6. **Sanctions** — BUG corrigé : `utils/sanctions.py::evaluate_sanctions` unifie `exclude_until`/`force_visitor_until`/
+   `disconnect_until`/`muted`/legacy `excluded_until`, auto-expiration + retour état normal, câblé dans `/devices/verify`.
+7. **Refonte export** — retrait ZIP direct/clone/partage public (UI + serveur 403), workflow unique « Exporter ce projet ».
+   `utils/export_guard.py::assert_export_approved` gate `/exports/zip-project` + `/export/download`. Clés i18n mises à jour.
+8. **UX** — message espace Créa privé (`kick_creator_only_body`), erreur IA Cloud propre (`Chat.js`), notifs GitHub techniques supprimées.
+
+### Fichiers nouveaux
+- Backend : `utils/ownership_guard.py`, `routes/ownership_routes.py`, `routes/sandbox_routes.py`,
+  `utils/sanctions.py`, `utils/export_guard.py`, `tests/test_iter158_{ownership,sandbox,sanctions,permissions_ai,supplement}.py`.
+- Frontend : `pages/Sandbox.js`.
+- Doc : `memory/RAPPORT_VALIDATION_iter158.md`.
+
+### À faire avant production
+- Retirer `CODEFORGE_TEST_MODE` de `backend/.env` (désactive le Sandbox).
+- Recommandé : timeout LLM backend + réponse JSON de repli ; formaliser les endpoints « demande de rôle » (P2).
+
+
+
 ## iter150 (Feb 2026) — Interface/UX (Message 1)
 **Status : COMPLETED (20 nouveaux pytests iter150 + cumul iter141-150 = 196/196 PASS + testing agent backend+frontend PASS)**
 

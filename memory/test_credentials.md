@@ -82,3 +82,10 @@ curl -s -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
 - `EMAIL_REPLY_TO` : `commandes.et.publicites@gmail.com` (catch-all silencieux)
 - `FRONTEND_URL` : `https://no-code-builder-25.preview.emergentagent.com`
 - `XAI_API_KEY` : ✅ configurée iter93 (Grok via API xAI compatible OpenAI). ⚠️ Compte xAI sans crédits actuellement → fallback cascade claude-sonnet automatique. Ajouter des crédits sur https://console.x.ai/ pour activer Grok réel.
+
+## iter158 — Mode test Sandbox + Propriété (Ownership)
+- `CODEFORGE_TEST_MODE=1` dans `/app/backend/.env` (preview/préprod). **RETIRER avant production.**
+- Page owner-only : `/dev/sandbox` (bouton header `header-sandbox-btn` visible pour role=creator hors simulation).
+- Propriétaires réels = 2 créas fondatrices (`utils/founder_creators.json`) + collection MongoDB `ownership` (_id='root', owner_key_ids[]).
+- Pour tester ownership/sandbox en pytest : créer un device via /api/devices/register puis injecter son key_id dans `ownership.owner_key_ids` (MongoDB local test_database) + device_keys.role='creator'. Voir tests/test_iter158_ownership.py (helpers gen_keypair/sign/register/signed_body).
+- Sandbox seed crée 10 comptes fictifs flaggés `sandbox=true` (emails `*@sandbox.local`) ; teardown les supprime.
