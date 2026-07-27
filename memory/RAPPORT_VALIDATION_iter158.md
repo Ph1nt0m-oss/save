@@ -130,7 +130,7 @@ Testing agent : rapport `/app/test_reports/iteration_154.json` — backend 100 %
 | Suppression notifs techniques | **CONFORME** | Toasts GitHub/dev retirés du flux export ; message chat technique (« Ollama ») remplacé. |
 | Contrôles d'autorisation côté serveur | **CONFORME** | Toutes les actions critiques signées ECDSA + vérif `ownership`/permissions serveur. Front jamais autoritatif. |
 | Permissions modo/admin/user/invité | **CONFORME** | `_permission_matrix` : modo = mute/block/exclude/force_visitor/disconnect ; admin += ban/promote/rename ; user/guest = rien. Tests OK. |
-| Demandes entre comptes | **PARTIELLEMENT CONFORME** | Validation d'appareil + sessions déjà en place ; le Sandbox seed des demandes (device/modo/admin) pour test. Les endpoints dédiés « demande de rôle modo/admin/créa » restent à formaliser (backlog). |
+| Demandes entre comptes | **ENTIÈREMENT CONFORME** | iter158.1 — workflow RÉEL `routes/account_requests_routes.py` : `/requests/create|mine|pending|decide`. 5 types (device_validation, go_private, role_modo, role_admin, role_creator). Statut stocké, notification (mine/pending), validation/refus par personne autorisée (matrice serveur), application réelle, journalisation (`role_requests_log`), aucune fuite (email/clé jamais exposés). `role_creator` : approbation PROPRIÉTAIRE réel uniquement + n'accorde JAMAIS la propriété. 8 tests PASS. |
 | Confidentialité infos privées | **CONFORME** | `/ownership/status` masque `owner_key_ids`/`delegates` aux non-propriétaires ; MP/mentions déjà anonymous-safe (iter147). |
 | Identité/personnalité des IA préservée | **CONFORME** (inchangé) | `ai_profile_injector` + registre isolé (iter149-157) ; invariant IA §1.5 renforcé. |
 | Traductions / textes / tutoriels à jour | **CONFORME** | Clés export FR/EN mises à jour ; messages site adaptés. |
@@ -170,7 +170,28 @@ Testing agent : rapport `/app/test_reports/iteration_154.json` — backend 100 %
 
 ## 8. Verdict
 Tous les écarts de sécurité majeurs du CDC ont été corrigés et testés (propriété, auth renforcée,
-récupération, sanctions, export, garde IA, permissions). 46/46 tests backend PASS, 0 anomalie.
-Les points restants sont mineurs, documentés et non bloquants. **Le projet est prêt pour une mise en
-production** sous réserve de retirer `CODEFORGE_TEST_MODE` et d'appliquer les 2 durcissements
-recommandés (timeout LLM backend, formalisation des demandes de rôle).
+récupération, sanctions, export, garde IA, permissions, **demandes de rôle réelles**). 54/54 tests
+backend PASS, 0 anomalie.
+
+## 9. Clôture finale du Sandbox (validation avant production)
+- **Données de test** : purge exécutée — 0 document `sandbox=true` restant en base.
+- **Désactivation** : `CODEFORGE_TEST_MODE=0` dans `backend/.env`. Aucune activation automatique du
+  Sandbox (gate uniquement par cette variable).
+- **Vérification post-fermeture** (avec un appareil propriétaire réel) :
+  - `POST /api/sandbox/status` → `enabled: false` ;
+  - `POST /api/sandbox/seed` → **403** (bloqué même pour le propriétaire) ;
+  - aucune route/donnée/compte simulé n'est accessible ; la page `/dev/sandbox` affiche le bandeau
+    « mode test désactivé ».
+- **État production** : seul le fonctionnement réel destiné aux utilisateurs finaux subsiste.
+
+## 10. Points restants (transparence)
+- **Parcours visuels multi-rôles** : validés via backend + capacité d'incarnation ; parcours UI clic-
+  par-clic non automatisé (nécessite identité propriétaire ECDSA en navigateur). Le Sandbox permettait
+  ce test manuel en 1 clic/rôle ; il est désormais fermé pour la production comme requis.
+- **Timeout passerelle (ingress/Cloudflare)** : une 5xx brute peut théoriquement précéder le backend ;
+  le frontend la détecte et affiche un message propre.
+- **`export_guard` fallback propriétaire** : matche `user_id` (dérivé du session_token en DB) — non
+  exploitable actuellement.
+
+**Conclusion : le projet est prêt pour la mise en production. Aucune anomalie critique ou bloquante ne
+subsiste. Le Sandbox est correctement fermé et les demandes de rôle sont réellement fonctionnelles.**

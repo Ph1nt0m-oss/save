@@ -5109,6 +5109,13 @@ app.include_router(
     prefix="/api",
 )
 
+# iter158.1 — /requests/* (demandes entre comptes réelles : appareil, privé, rôles)
+from routes.account_requests_routes import build_account_requests_router  # noqa: E402
+app.include_router(
+    build_account_requests_router(db, verify_signed=_verify_signed),
+    prefix="/api",
+)
+
 
 # iter124 — Background helpers consommés par _lifespan() (déclaré en haut du fichier).
 # Documents store ISO strings (not Mongo Date) so we can't use a TTL index — we sweep manually.

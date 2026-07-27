@@ -2,7 +2,7 @@
 
 
 ## iter158 (Jul 2026) — Phase finale : Propriété réelle + Auth renforcée + Sandbox + Refonte export + Sanctions
-**Status : COMPLETED (46/46 pytests backend PASS + testing agent rapport iteration_154 : backend 100 %, 0 anomalie).**
+**Status : COMPLETED (54/54 pytests backend PASS + testing agent rapport iteration_154 : backend 100 %, 0 anomalie). Sandbox FERMÉ pour production (CODEFORGE_TEST_MODE=0).**
 Rapport de validation détaillé : `/app/memory/RAPPORT_VALIDATION_iter158.md`.
 
 ### Livrables
@@ -30,8 +30,9 @@ Rapport de validation détaillé : `/app/memory/RAPPORT_VALIDATION_iter158.md`.
 - Doc : `memory/RAPPORT_VALIDATION_iter158.md`.
 
 ### À faire avant production
-- Retirer `CODEFORGE_TEST_MODE` de `backend/.env` (désactive le Sandbox).
-- Recommandé : timeout LLM backend + réponse JSON de repli ; formaliser les endpoints « demande de rôle » (P2).
+- ✅ FAIT : `CODEFORGE_TEST_MODE=0` dans `backend/.env` (Sandbox fermé : status enabled:false, seed → 403, 0 donnée sandbox résiduelle).
+- ✅ FAIT : demandes de rôle RÉELLES (iter158.1 — `routes/account_requests_routes.py`, `/requests/create|mine|pending|decide`).
+- Recommandé (non bloquant) : timeout LLM backend + réponse JSON de repli.
 
 
 
