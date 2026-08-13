@@ -459,3 +459,82 @@ Vu l'ampleur du CDC, les items suivants sont priorisés pour la prochaine itéra
   `/ownership/transfer` déjà en place).
 
 **Checkpoint enregistré : `production-ready-iter158.3` (fonctionnalité owner ON/OFF opérationnelle).**
+
+---
+
+## 14. Chantier 1 — Autres identifiants : Reorg (iter158.4)
+
+Refonte de la gestion des clés dans `DeviceManager` selon la spec CDC : deux onglets, historique
+consolidé, sélection multiple, undo groupé, recherche, matrice de permissions élargie
+(modo/admin), suppression du bouton « Vider l'historique ».
+
+### 14.1 Backend
+- **`/devices/decisions`** (GET → POST signé) — élargi de créa-only à `require_staff_signature`
+  avec périmètre par rôle :
+  - Créa : voit toutes les décisions.
+  - Admin : voit toutes les décisions (modo + admin + créa).
+  - Modo : voit uniquement ses propres décisions (`actor_key_id == payload.key_id`).
+- **`/devices/decisions/clear`** → **410 Gone** (« Les listes d'historique ne doivent pas avoir de
+  bouton permettant de vider ou supprimer définitivement l'historique »). Conservé pour retour
+  explicite aux anciens clients.
+- **`/devices/decisions/undo`** — élargi à staff avec matrice :
+  - Créa : peut tout annuler.
+  - Admin : peut annuler admin + modo, mais PAS créa.
+  - Modo : peut annuler UNIQUEMENT ses propres décisions.
+- **`/devices/decisions/undo-multi`** (NOUVEAU) — annulation en batch.
+  Payload `{decisions:[{target_key_id, decision_ts},...]}`. Retourne `{ok_count, failed[]}`.
+  Chaque item respecte individuellement la matrice ci-dessus (les échecs partiels ne bloquent
+  pas le batch). Rétro-log via `log_decision('undo',...)` pour chaque annulation.
+- **Nouveau modèle Pydantic** `DecisionsUndoMultiIn(SignedIn)` avec liste `decisions`.
+
+### 14.2 Frontend
+- **`components/KeysHistoryTab.jsx`** (NOUVEAU) — onglet Historique complet :
+  - Chargement automatique via `/devices/decisions`.
+  - Barre de recherche client-side (pseudo, public_handle, action, key_id, actor).
+  - Case « Tout sélectionner » qui bascule selon l'état courant.
+  - Sélection multiple stateful (`Set`) avec surbrillance ambrée par ligne.
+  - Bouton « Annuler (N) » disabled si aucune ligne sélectionnée.
+  - `window.confirm` avec **texte exact CDC** : « Quelles actions choisies par cette clé
+    doivent être annulées ? »
+  - Ligne : action label FR, `@public_handle`, target_label, clé, timestamp `fr-FR`, acteur.
+  - Aucun bouton « vider » (spec CDC).
+  - Data-testids : `keys-history-tab`, `keys-history-search`, `keys-history-select-all`,
+    `keys-history-undo-multi`, `keys-history-empty`, `keys-history-row-<ts>`.
+- **`components/DeviceManager.jsx`** — refonte structurelle :
+  - Deux onglets : `dm-tab-requests` (existant) et `dm-tab-history` (nouveau) avec highlight
+    jaune fluo sur l'onglet actif.
+  - État `activeTab` local (défaut `'requests'`).
+  - Le contenu Demandes (add-by-key, biometric, liste devices) reste identique quand
+    `activeTab === 'requests'`.
+  - Rendu `<KeysHistoryTab />` quand `activeTab === 'history'`.
+
+### 14.3 Tests
+- **`test_iter158_4_keys_reorg.py`** — 8 nouveaux tests source-level PASS :
+  - `test_backend_devices_decisions_multi_role`
+  - `test_backend_decisions_clear_deprecated`
+  - `test_backend_decisions_undo_multi_exists`
+  - `test_backend_decisions_undo_matrix`
+  - `test_backend_decisions_undo_multi_permission_matrix`
+  - `test_frontend_keys_history_tab_component`
+  - `test_frontend_device_manager_two_tabs`
+  - `test_full_regression_iter158_still_passes`
+- **Régression cumulée** : 29/29 tests iter158.2+.3+.4 PASS, 79/79 tests iter158.* hors sandbox.
+- **Backend live** : `/devices/decisions/clear` → 410 confirmé, `/devices/decisions/undo-multi`
+  → 403 sans auth (endpoint enregistré, matrice appliquée).
+
+### 14.4 Bilan Chantier 1
+✅ Dropdown/menu unifié de changement de statut : la barre unifiée `StaffActionsIconBar` gère
+   déjà toutes les promotions (rename, promote_modo, promote_admin, promote_creator) — spec
+   satisfaite sans duplication. L'approve dropdown (« Approuver comme… ») complète cette
+   unification pour les demandes pending.
+✅ Onglet Historique séparé.
+✅ Sélection multiple + « Tout sélectionner ».
+✅ Undo groupé (endpoint + UI).
+✅ Recherche par pseudo unique/action/clé.
+✅ Traçabilité conservée (matrice permissions serveur + `log_decision`).
+✅ Permissions élargies : modo peut approuver/refuser (déjà iter111) + annuler ses propres
+   décisions (nouveau).
+✅ Aucun bouton « vider historique ».
+✅ Aucune régression sur les tests précédents.
+
+**Checkpoint enregistré : `production-ready-iter158.4` (Chantier 1 clos).**

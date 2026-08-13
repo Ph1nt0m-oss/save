@@ -1,6 +1,20 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.4 (Aug 2026) — Chantier 1 : Autres identifiants — Reorg
+**Status : COMPLETED (8 nouveaux tests + régression 29/29 iter158.2/.3/.4 PASS + backend live vérifié).**
+Refonte gestion des clés selon spec CDC :
+- Backend : `/devices/decisions` élargi staff (créa=tout / admin=admin+modo / modo=self).
+  `/devices/decisions/undo` idem + matrice permissions. Nouveau `/devices/decisions/undo-multi`
+  (batch avec `{ok_count, failed[]}`). `/devices/decisions/clear` → 410 Gone (spec CDC : plus
+  de vidage historique).
+- Frontend : `DeviceManager.jsx` refondu avec 2 onglets (Demandes / Historique).
+  Nouveau `KeysHistoryTab.jsx` : recherche, tout-sélectionner, sélection multiple, undo batch
+  avec confirm CDC exact « Quelles actions choisies par cette clé doivent être annulées ? ».
+Fichiers modifiés : `routes/devices_routes.py`, `components/DeviceManager.jsx`,
+`components/KeysHistoryTab.jsx` (nouveau).
+
+
 ## iter158.3 (Aug 2026) — Finalisation autonome Lot 1 : Owner Privileges ON/OFF + i18n CDC
 **Status : COMPLETED (10 nouveaux pytests + backend live OK + régression 21/21 iter158.2+.3 PASS).**
 Fonctionnalité conceptuelle majeure du CDC de finalisation :

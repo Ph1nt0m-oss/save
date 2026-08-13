@@ -49,6 +49,12 @@ class DecisionUndoIn(SignedIn):
     decision_ts: str
 
 
+class DecisionsUndoMultiIn(SignedIn):
+    """iter158.4 — Multi-undo pour l'onglet Historique (Autres identifiants).
+    Chaque entry contient target_key_id + decision_ts."""
+    decisions: List[Dict[str, str]]
+
+
 class DeviceTargetIn(CreatorOnlyIn):
     target_key_id: str
 
@@ -319,27 +325,69 @@ def build_devices_router(
 
     @router.post("/devices/decisions")
     async def devices_decisions(payload: CreatorOnlyIn):
-        """Creator-only — return the history of past decisions."""
-        await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-        rows = await db.device_decisions.find({}, {"_id": 0}).sort("ts", -1).to_list(length=200)
+        """iter158.4 — Historique des décisions. Ouvert aux staff (modo/admin)
+        et créa selon la matrice de permission (spec CDC : le modo peut
+        également annuler ses propres décisions dans les limites de son niveau)."""
+        actor = await require_staff_signature(payload.key_id, payload.nonce, payload.signature)
+        actor_role = actor.get("role"); actor_sk = actor.get("staff_kind")
+        # Filtre selon le niveau :
+        #   - créa : voit tout
+        #   - admin : voit décisions admin + modo + les siennes
+        #   - modo : voit uniquement ses propres décisions
+        q: Dict[str, Any] = {}
+        if actor_role != "creator":
+            if actor_sk == "modo":
+                q = {"actor_key_id": payload.key_id}
+        rows = await db.device_decisions.find(q, {"_id": 0}).sort("ts", -1).to_list(length=500)
         return {"decisions": rows}
 
     @router.post("/devices/decisions/clear")
     async def devices_decisions_clear(payload: CreatorOnlyIn):
-        await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-        res = await db.device_decisions.delete_many({})
-        return {"deleted": res.deleted_count}
+        """iter158.4 — Fonction retirée par spec CDC ('Les listes d'historique
+        ne doivent pas avoir de bouton permettant de vider ou supprimer
+        définitivement l'historique').
+        Conservée en 410 Gone pour rétro-compat des clients qui l'appelleraient
+        encore."""
+        raise HTTPException(
+            status_code=410,
+            detail="Fonction retirée : l'historique des décisions ne peut plus être vidé (spec finalisation).",
+        )
 
     @router.post("/devices/decisions/undo")
     async def devices_decisions_undo(payload: DecisionUndoIn):
-        """Creator-only — undo a specific decision."""
-        await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
+        """iter158.4 — Annulation d'UNE décision.
+        Permissions : admin+créa (élargi depuis créa-only). Un modo peut
+        également annuler ses propres décisions (traçabilité + permissions
+        limitées). Spec CDC : le modo doit désormais pouvoir annuler ses
+        décisions dans les limites de son niveau."""
+        actor = await require_staff_signature(payload.key_id, payload.nonce, payload.signature)
+        actor_role = actor.get("role"); actor_sk = actor.get("staff_kind")
         dec = await db.device_decisions.find_one(
             {"target_key_id": payload.target_key_id, "ts": payload.decision_ts},
             {"_id": 0},
         )
         if not dec:
             raise HTTPException(status_code=404, detail="Décision introuvable.")
+        # Matrice permission d'annulation :
+        # - créa : tout
+        # - admin : décisions admin + modo
+        # - modo : uniquement ses propres décisions
+        if actor_role != "creator":
+            actor_of_dec = dec.get("actor_key_id")
+            if actor_sk == "modo":
+                if actor_of_dec != payload.key_id:
+                    raise HTTPException(status_code=403,
+                                        detail="Un modérateur ne peut annuler que ses propres décisions.")
+            elif actor_sk == "admin":
+                # Un admin peut annuler ses décisions et celles des modos.
+                dec_actor = await db.device_keys.find_one(
+                    {"key_id": actor_of_dec}, {"_id": 0, "role": 1, "staff_kind": 1},
+                ) or {}
+                if dec_actor.get("role") == "creator":
+                    raise HTTPException(status_code=403,
+                                        detail="Un administrateur ne peut annuler les décisions d'un créateur.")
+            else:
+                raise HTTPException(status_code=403, detail="Réservé staff.")
         action = dec.get("action")
         snapshot = dec.get("snapshot") or {}
 
@@ -374,6 +422,80 @@ def build_devices_router(
 
         await log_decision("undo", payload.target_key_id, payload.key_id, dec.get("target_label"))
         return {"success": True}
+
+    @router.post("/devices/decisions/undo-multi")
+    async def devices_decisions_undo_multi(payload: DecisionsUndoMultiIn):
+        """iter158.4 — Annulation MULTIPLE (batch).
+        Retourne {ok_count, failed[]} — jamais 500. Chaque décision suit la
+        même matrice permission que /undo simple."""
+        actor = await require_staff_signature(payload.key_id, payload.nonce, payload.signature)
+        actor_role = actor.get("role"); actor_sk = actor.get("staff_kind")
+        ok = 0
+        failed: List[Dict[str, Any]] = []
+        for entry in payload.decisions or []:
+            tkid = entry.get("target_key_id")
+            ts = entry.get("decision_ts")
+            if not tkid or not ts:
+                failed.append({"target_key_id": tkid, "decision_ts": ts, "reason": "missing_fields"})
+                continue
+            dec = await db.device_decisions.find_one({"target_key_id": tkid, "ts": ts}, {"_id": 0})
+            if not dec:
+                failed.append({"target_key_id": tkid, "decision_ts": ts, "reason": "not_found"})
+                continue
+            # Matrice de permission
+            allowed = True
+            actor_of_dec = dec.get("actor_key_id")
+            if actor_role != "creator":
+                if actor_sk == "modo":
+                    if actor_of_dec != payload.key_id:
+                        allowed = False
+                elif actor_sk == "admin":
+                    dec_actor = await db.device_keys.find_one(
+                        {"key_id": actor_of_dec}, {"_id": 0, "role": 1},
+                    ) or {}
+                    if dec_actor.get("role") == "creator":
+                        allowed = False
+                else:
+                    allowed = False
+            if not allowed:
+                failed.append({"target_key_id": tkid, "decision_ts": ts, "reason": "not_authorized"})
+                continue
+            action = dec.get("action")
+            snapshot = dec.get("snapshot") or {}
+            try:
+                if action == "approve":
+                    await db.device_keys.update_one(
+                        {"key_id": tkid}, {"$set": {"role": "pending"}},
+                    )
+                elif action in ("revoke", "disconnect"):
+                    existing = await device_by_key(tkid)
+                    if existing:
+                        await db.device_keys.update_one(
+                            {"key_id": tkid}, {"$set": {"role": "pending"}},
+                        )
+                    else:
+                        await db.device_keys.insert_one({
+                            "key_id": tkid,
+                            "public_key_jwk": snapshot.get("public_key_jwk", {}),
+                            "label": snapshot.get("label") or dec.get("target_label"),
+                            "role": "pending",
+                            "created_at": snapshot.get("created_at") or datetime.now(timezone.utc).isoformat(),
+                            "last_seen_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                elif action == "promote":
+                    await db.device_keys.update_one(
+                        {"key_id": tkid}, {"$set": {"role": "approved"}},
+                    )
+                elif action == "add_by_key":
+                    await db.device_keys.delete_one({"key_id": tkid})
+                else:
+                    failed.append({"target_key_id": tkid, "decision_ts": ts, "reason": "non_undoable_action"})
+                    continue
+                await log_decision("undo", tkid, payload.key_id, dec.get("target_label"))
+                ok += 1
+            except Exception as e:  # pragma: no cover
+                failed.append({"target_key_id": tkid, "decision_ts": ts, "reason": str(e)[:120]})
+        return {"success": True, "ok_count": ok, "failed": failed}
 
     @router.post("/devices/pending-count")
     async def devices_pending_count(payload: CreatorOnlyIn):

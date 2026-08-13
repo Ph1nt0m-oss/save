@@ -6,6 +6,7 @@ import { withCreatorProof, exportPublicKeyShareCode, parsePublicKeyShareCode } f
 import { useLanguage } from '../contexts/LanguageContext';
 import BiometricEnrollButton from './BiometricEnrollButton';
 import StaffActionsIconBar from './StaffActionsIconBar';
+import KeysHistoryTab from './KeysHistoryTab';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -32,6 +33,9 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
   const [promoteTarget, setPromoteTarget] = useState(null);
   // iter111 — Tiered approval : dropdown "Approuver comme..." par device.
   const [approveOpenFor, setApproveOpenFor] = useState(null);  // key_id du device dont le menu est ouvert
+  // iter158.4 — Onglets Demandes / Historique (spec CDC finalisation).
+  const [activeTab, setActiveTab] = useState('requests');
+  const [search, setSearch] = useState('');
   const isCreator = role === 'creator';
 
   useEffect(() => {
@@ -175,6 +179,36 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
         {/* Creator panel */}
         {isCreator && (
           <>
+            {/* iter158.4 — Barre d'onglets : Demandes vs Historique */}
+            <div className="flex items-center gap-1 border-b border-white/10 pb-1">
+              <button
+                onClick={() => setActiveTab('requests')}
+                data-testid="dm-tab-requests"
+                className={`px-3 py-1.5 text-xs font-['Chivo'] font-bold uppercase tracking-widest rounded-sm transition ${
+                  activeTab === 'requests'
+                    ? 'text-[#E4FF00] border-b-2 border-[#E4FF00] -mb-[1px]'
+                    : 'text-[#A1A1AA] hover:text-white'
+                }`}
+              >
+                Demandes de clés
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                data-testid="dm-tab-history"
+                className={`px-3 py-1.5 text-xs font-['Chivo'] font-bold uppercase tracking-widest rounded-sm transition ${
+                  activeTab === 'history'
+                    ? 'text-[#E4FF00] border-b-2 border-[#E4FF00] -mb-[1px]'
+                    : 'text-[#A1A1AA] hover:text-white'
+                }`}
+              >
+                Historique
+              </button>
+            </div>
+
+            {activeTab === 'history' && <KeysHistoryTab />}
+
+            {activeTab === 'requests' && (
+              <>
             <section className="bg-white/[0.03] border border-white/10 rounded-sm p-3 space-y-2">
               <div className="text-xs uppercase tracking-widest text-[#71717A]">{t('dm_add_by_key_title')}</div>
               <div className="flex gap-2">
@@ -344,6 +378,8 @@ export default function DeviceManager({ open, onClose, role, currentKeyId }) {
                 )}
               </div>
             </section>
+              </>
+            )}
           </>
         )}
 
