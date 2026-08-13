@@ -145,6 +145,51 @@ async def is_owner_device(db, key_id: Optional[str]) -> bool:
     return key_id in (await owner_key_ids(db))
 
 
+async def is_privileges_active(db, key_id: Optional[str]) -> bool:
+    """iter158.3 — Le propriétaire peut désactiver ses pouvoirs supplémentaires
+    (mode OFF) pour vivre l'expérience du rôle temporaire actif (modo, admin,
+    user, etc.). Par défaut True (privilèges actifs). Renvoie False uniquement
+    si l'appareil est propriétaire ET a explicitement toggle OFF.
+
+    Le statut propriétaire lui-même n'est JAMAIS supprimé — seuls les
+    pouvoirs supplémentaires sont masqués.
+    """
+    if not await is_owner_device(db, key_id):
+        return False
+    dev = await db.device_keys.find_one({"key_id": key_id}, {"_id": 0, "owner_privileges_active": 1})
+    if not dev:
+        return True  # défaut : ON tant que l'appareil existe et est owner
+    val = dev.get("owner_privileges_active")
+    return True if val is None else bool(val)
+
+
+async def log_owner_notification(db, *, owner_key_id: str, action: str,
+                                  actor_key_id: str, actor_public_handle: Optional[str] = None,
+                                  actor_role: Optional[str] = None,
+                                  actor_staff_kind: Optional[str] = None,
+                                  target_key_id: Optional[str] = None,
+                                  detail: Optional[Dict[str, Any]] = None) -> None:
+    """iter158.3 — Notification secrète pour le propriétaire quand une action
+    est prise contre lui alors qu'il est en mode OFF, ou pour l'informer des
+    décisions prises par d'autres statuts (staff, autres créateurs propriétaires).
+
+    Contient l'identifiant unique de l'acteur pour transparence entre
+    créateurs propriétaires (« ils ne doivent rien pouvoir se cacher »).
+    """
+    await db.owner_notifications.insert_one({
+        "owner_key_id": owner_key_id,
+        "action": action,
+        "actor_key_id": actor_key_id,
+        "actor_public_handle": actor_public_handle,
+        "actor_role": actor_role,
+        "actor_staff_kind": actor_staff_kind,
+        "target_key_id": target_key_id,
+        "detail": detail or {},
+        "ts": _now_iso(),
+        "read": False,
+    })
+
+
 async def get_delegate(db, key_id: Optional[str]) -> Optional[Dict[str, Any]]:
     if not key_id:
         return None
@@ -169,12 +214,42 @@ async def assert_not_owner_target(db, target_key_id: Optional[str], actor_key_id
     """Empêche TOUTE action administrative (ban, demote, delete, revoke...)
     contre un APPAREIL PROPRIÉTAIRE si l'acteur n'est pas lui-même propriétaire.
 
-    → Une Créa déléguée (ou un admin) ne peut jamais toucher un appareil
-    propriétaire. Seul un propriétaire peut agir sur un autre propriétaire, et
-    uniquement via les endpoints /ownership/* (auth renforcée)."""
+    iter158.3 — Comportement raffiné :
+      - Si les privilèges propriétaire de la cible sont ACTIFS (ON, par défaut) :
+        blocage total → 403. Seul `/ownership/*` (auth renforcée) peut agir.
+      - Si les privilèges sont DÉSACTIVÉS (OFF) : le propriétaire teste
+        volontairement un rôle inférieur. L'action peut donc APPLIQUER les
+        sanctions normales du rôle, mais une notification secrète est
+        journalisée pour que le propriétaire soit informé et puisse
+        éventuellement l'annuler ensuite. Le statut propriétaire lui-même
+        reste inviolable et la reconnexion propriétaire reste garantie.
+
+    Note : entre deux appareils propriétaires (les deux ON), même les actions
+    passent obligatoirement par le module Propriété (auth renforcée) — on
+    refuse toujours ici.
+    """
     if not await is_owner_device(db, target_key_id):
         return
     # La cible EST un appareil propriétaire.
+    target_active = await is_privileges_active(db, target_key_id)
+    if not target_active:
+        # Propriétaire OFF : sanctions normales autorisées, mais notification secrète.
+        actor_dev = await db.device_keys.find_one(
+            {"key_id": actor_key_id},
+            {"_id": 0, "public_handle": 1, "role": 1, "staff_kind": 1},
+        ) or {}
+        await log_owner_notification(
+            db,
+            owner_key_id=target_key_id,
+            action=action,
+            actor_key_id=actor_key_id or "unknown",
+            actor_public_handle=actor_dev.get("public_handle"),
+            actor_role=actor_dev.get("role"),
+            actor_staff_kind=actor_dev.get("staff_kind"),
+            target_key_id=target_key_id,
+        )
+        return  # Laisse l'action se poursuivre
+    # Privilèges ON : protection totale.
     if not await is_owner_device(db, actor_key_id):
         raise HTTPException(
             status_code=403,

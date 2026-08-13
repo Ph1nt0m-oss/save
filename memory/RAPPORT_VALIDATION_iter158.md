@@ -377,3 +377,85 @@ sanctions masquent correctement les actions concernées via `SiteLockedOverlay` 
 Les changements de rôle sont reflétés dynamiquement (viewSpec + isOwnerDevice sur useEffect).
 
 **Checkpoint enregistré : `production-ready-iter158.2`.**
+
+---
+
+## 13. Finalisation autonome (iter158.3 — checkpoint `production-ready-iter158.3`)
+
+Cette itération répond au cahier des charges de finalisation reçu de l'utilisateur (spec complète)
+en priorisant la **fonctionnalité conceptuelle majeure** manquante : le **bouton ON/OFF des
+pouvoirs propriétaires**, indépendant du statut propriétaire lui-même (inviolable).
+
+**Fait dans cette itération (Lot 1 + i18n) — 10 tests source-level PASS + backend live OK :**
+
+### 13.1 Nouveaux mécanismes serveur
+- **`utils/ownership_guard.py`** : ajout de `is_privileges_active(db, key_id)` et
+  `log_owner_notification(...)`. Le champ `owner_privileges_active` (défaut `True`) est stocké
+  sur le device propriétaire. Un non-owner retourne toujours `False` (pas de faux positif).
+- **`assert_not_owner_target` raffinée** : si les privilèges cible sont **OFF**, l'action passe
+  normalement mais une notification secrète est journalisée (`owner_notifications`) avec
+  `actor_key_id`, `actor_public_handle`, `actor_role`, `actor_staff_kind` — transparence
+  inter-propriétaires garantie. Si **ON**, protection totale (403 comme avant).
+- **`routes/ownership_routes.py`** : 3 nouveaux endpoints (owner-only, signés) :
+  - `POST /ownership/toggle-privileges` — bascule ON↔OFF. **Passage ON → clear automatique** des
+    sanctions actives (`muted`, `banned`, `force_visitor`, `exclude_until`,
+    `force_visitor_until`, `disconnect_until`, `excluded_until`, `muted_until`, `banned_at`,
+    `blocked_at`) + **restauration du rôle** à `creator` si actuellement `blocked`/`banned`. Cela
+    matérialise la **garantie de reconnexion propriétaire** demandée par le CDC.
+  - `POST /ownership/notifications` — liste les notifications secrètes du propriétaire + celles
+    prises par d'autres propriétaires (transparence). Renvoie `unread_count`.
+  - `POST /ownership/notifications/mark-read` — marque toutes les notifs de l'owner comme lues.
+- **`/ownership/status`** enrichi : renvoie `owner_privileges_active` pour un owner.
+- Le statut propriétaire lui-même n'est **jamais** modifié — seul le flag `owner_privileges_active`
+  bascule (spec CDC : « ne doit pas servir à supprimer ou remettre le statut propriétaire »).
+
+### 13.2 Composants frontend
+- **`components/OwnerPrivilegesToggle.jsx`** — bouton bascule dans le header du Dashboard, visible
+  UNIQUEMENT sur un appareil propriétaire réel. Icône `Crown` + badge ON/OFF (jaune fluo/gris) +
+  toast confirmant le nouvel état. Déclenche `device.refresh()` pour repositionner les permissions.
+- **`components/ForceVisitorBanner.jsx`** — bannière orange fixée en haut de l'app affichant
+  le **texte exact du CDC** : « Ton historique de discussion ou tes projets sont perçus comme
+  une menace. Une équipe de bots de modération est actuellement en enquête sur ton compte. La
+  décision sera transmise à la modération. Merci. » Cachée pour la Créa réelle et invisible
+  quand `force_visitor=false`.
+- **`Dashboard.js`** — montage des deux composants (Toggle dans le header header-right, Banner
+  en haut de la page).
+
+### 13.3 Traductions i18n (texte CDC exact)
+- **`kick_force_visitor_title/body`** — nouveau (FR + EN), texte exact du CDC.
+- **`kick_disconnected_body`** mis à jour au texte exact du CDC :
+  « Oh oh... on dirait que vous avez un problème de connexion. Veuillez vous connecter et
+  réessayer. »
+
+### 13.4 Tests
+- **10 nouveaux tests source-level** dans `test_iter158_3_owner_privileges.py` → 100 % PASS.
+- **Régression cumulée** : 21/21 tests iter158.2 + iter158.3 PASS (nouveaux + UI matrix).
+- **Backend live** : endpoints répondent, boot OK avec 2 fondatrices + 2 propriétaires.
+
+### 13.5 Backlog restant (documenté, non traité dans cette itération)
+Vu l'ampleur du CDC, les items suivants sont priorisés pour la prochaine itération (P0→P2) :
+
+**P0 — Priorité critique :**
+- **« Autres identifiants » refonte** : menu déroulant unifié « Changer statut » remplaçant
+  les icônes séparées promote-modo/admin/creator. Approbation/refus de clés par modo (matrice
+  élargie). Onglet historique clés séparé avec multi-sélection + annulation + recherche.
+- **« Autres comptes » réorg** : disconnect avec message exact « Oh oh... » (backend déjà OK,
+  UI icône à afficher). Historique account_history étendu avec undo par action.
+
+**P1 — Priorité haute :**
+- **Créateur apprenti (delegate creator) progression** : UI de délégation temporaire/permanente
+  par le propriétaire, verrouillage « véritable créateur » quand toutes perms permanentes.
+- **AI errors distinction Cloudflare/Ollama/timeout/JSON invalid** — refactor error mapping.
+- **Anonymous mode + pseudo change owner incognito** — persist alt_pseudo par device pour retour
+  incognito.
+
+**P2 — Priorité normale :**
+- **Notification dedup** : retirer les notifs redondantes déjà présentes dans « Autres comptes ».
+- **Secrets audit** frontend : vérifier qu'aucune clé n'est exposée côté client.
+- **Vue simulée hides owner-only functions** : audit approfondi de chaque icône (déjà
+  partiellement fait iter158.2).
+- **Tutoriel** update pour nouveau bouton ON/OFF + banner force_visitor.
+- **Transfer ownership UI dédiée** : formulaire avec confirmation explicite (endpoint
+  `/ownership/transfer` déjà en place).
+
+**Checkpoint enregistré : `production-ready-iter158.3` (fonctionnalité owner ON/OFF opérationnelle).**

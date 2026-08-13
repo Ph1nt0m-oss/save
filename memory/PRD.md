@@ -1,6 +1,25 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.3 (Aug 2026) — Finalisation autonome Lot 1 : Owner Privileges ON/OFF + i18n CDC
+**Status : COMPLETED (10 nouveaux pytests + backend live OK + régression 21/21 iter158.2+.3 PASS).**
+Fonctionnalité conceptuelle majeure du CDC de finalisation :
+- **Bouton ON/OFF pouvoirs propriétaires** — indépendant du statut propriétaire (inviolable).
+  Backend : `is_privileges_active`, `log_owner_notification`, `assert_not_owner_target` raffinée,
+  3 nouveaux endpoints `/ownership/toggle-privileges|notifications|notifications/mark-read`.
+  Passage ON→ clear auto des sanctions + restauration role (garantie reconnexion propriétaire).
+- **Frontend** : `OwnerPrivilegesToggle.jsx` (header) + `ForceVisitorBanner.jsx` (top bar).
+- **i18n CDC** : messages exacts `kick_force_visitor_*` + `kick_disconnected_body` mis à jour
+  (FR + EN).
+- **Notifications secrètes** propriétaire : chaque action prise contre owner OFF logue
+  actor_key_id + actor_public_handle + actor_role + actor_staff_kind (transparence
+  inter-propriétaires).
+Fichiers modifiés/créés : `utils/ownership_guard.py`, `routes/ownership_routes.py`,
+`components/OwnerPrivilegesToggle.jsx`, `components/ForceVisitorBanner.jsx`,
+`pages/Dashboard.js`, `contexts/LanguageContext.js`.
+Backlog documenté (P0 → P2) dans `RAPPORT_VALIDATION_iter158.md §13.5`.
+
+
 ## iter158.2 (Jul 2026) — Checkpoint `production-ready-iter158.2` (audit UI par rôle)
 **Status : COMPLETED (12 nouveaux pytests UI + régression 61/61 iter158 PASS).**
 Vérification finale des 9 profils via Sandbox (temporairement `CODEFORGE_TEST_MODE=1` puis refermé

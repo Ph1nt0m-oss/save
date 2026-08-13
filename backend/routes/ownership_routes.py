@@ -108,6 +108,11 @@ def build_ownership_router(db, *, verify_signed) -> APIRouter:
             "owner_device_count": len(set(await owner_key_ids(db))),
         }
         if me_owner:
+            # iter158.3 — Statut ON/OFF des privilèges propriétaire (défaut ON).
+            dev = await db.device_keys.find_one({"key_id": payload.key_id},
+                                                {"_id": 0, "owner_privileges_active": 1}) or {}
+            _pa = dev.get("owner_privileges_active")
+            out["owner_privileges_active"] = True if _pa is None else bool(_pa)
             out["owner_key_ids"] = sorted(set(await owner_key_ids(db)))
             out["owner_user_id"] = doc.get("owner_user_id")
             out["delegates"] = doc.get("delegates") or []
@@ -364,5 +369,86 @@ def build_ownership_router(db, *, verify_signed) -> APIRouter:
         await _require_owner(payload.key_id, payload.nonce, payload.signature)
         rows = await db.ownership_audit.find({}, {"_id": 0}).sort("ts", -1).limit(200).to_list(length=200)
         return {"events": rows}
+
+    # ---------------- TOGGLE PRIVILEGES (ON/OFF) ----------------
+    @router.post("/ownership/toggle-privileges")
+    async def ownership_toggle_privileges(payload: _SignedIn):
+        """iter158.3 — Bascule les pouvoirs supplémentaires du propriétaire ON/OFF.
+
+        Le STATUT propriétaire reste inchangé (inviolable). Seuls les
+        privilèges supplémentaires sont activés/désactivés :
+          - ON  : le propriétaire garde ses pouvoirs propriétaires même quand
+                  il utilise temporairement un rôle inférieur (modo, admin…).
+          - OFF : le propriétaire fonctionne exactement comme le rôle actif.
+                  Il peut subir les sanctions normales (utile pour tester),
+                  mais une notification secrète est enregistrée à chaque
+                  action prise contre lui.
+
+        Passage ON → clear automatique des sanctions actives sur ce device
+        (garantie de reconnexion propriétaire, spec CDC).
+        """
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        dev = await db.device_keys.find_one({"key_id": payload.key_id}, {"_id": 0})
+        current = dev.get("owner_privileges_active")
+        current = True if current is None else bool(current)
+        new_val = not current
+        set_ops: Dict[str, Any] = {"owner_privileges_active": new_val,
+                                   "owner_privileges_toggled_at": _now().isoformat()}
+        unset_ops: Dict[str, Any] = {}
+        if new_val:  # ON → clear toutes les sanctions actives (reconnexion garantie)
+            for f in ("muted", "banned", "force_visitor"):
+                if dev.get(f):
+                    set_ops[f] = False
+            for tf in ("exclude_until", "force_visitor_until", "disconnect_until",
+                       "excluded_until", "muted_until", "banned_at", "blocked_at"):
+                if dev.get(tf):
+                    unset_ops[tf] = ""
+            # Restaurer role si actuellement blocked/banned
+            if dev.get("role") in ("blocked", "banned"):
+                set_ops["role"] = "creator"
+        update: Dict[str, Any] = {"$set": set_ops}
+        if unset_ops:
+            update["$unset"] = unset_ops
+        await db.device_keys.update_one({"key_id": payload.key_id}, update)
+        await log_ownership_event(db, "ownership_toggle_privileges", payload.key_id,
+                                  {"new_state": "ON" if new_val else "OFF"})
+        return {"ok": True, "owner_privileges_active": new_val}
+
+    # ---------------- OWNER NOTIFICATIONS (secret log) ----------------
+    @router.post("/ownership/notifications")
+    async def ownership_notifications(payload: _SignedIn):
+        """iter158.3 — Liste les notifications secrètes du propriétaire :
+        décisions prises contre lui pendant qu'il était en mode OFF, ainsi
+        que les actions administratives effectuées par d'autres propriétaires
+        (transparence inter-propriétaires).
+
+        Réservé aux appareils propriétaires. Chaque propriétaire voit
+        SES notifications (owner_key_id == self) + les décisions de nature
+        globale prises par les autres propriétaires (actions sur staff/comptes).
+        """
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        rows = await db.owner_notifications.find(
+            {"$or": [
+                {"owner_key_id": payload.key_id},
+                # Décisions prises par d'autres propriétaires (actions administratives)
+                # sont visibles à tous les propriétaires pour transparence.
+                {"actor_key_id": {"$in": sorted(await owner_key_ids(db))},
+                 "owner_key_id": {"$ne": payload.key_id}},
+            ]},
+            {"_id": 0},
+        ).sort("ts", -1).limit(200).to_list(length=200)
+        unread = sum(1 for r in rows if not r.get("read"))
+        return {"notifications": rows, "unread_count": unread}
+
+    @router.post("/ownership/notifications/mark-read")
+    async def ownership_notifications_mark_read(payload: _SignedIn):
+        """Marque toutes les notifications visibles par cet appareil propriétaire
+        comme lues."""
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        await db.owner_notifications.update_many(
+            {"owner_key_id": payload.key_id, "read": False},
+            {"$set": {"read": True, "read_at": _now().isoformat()}},
+        )
+        return {"ok": True}
 
     return router

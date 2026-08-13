@@ -41,6 +41,8 @@ import ModAlertModal from '../components/ModAlertModal';
 import ViewSimulationBanner from '../components/ViewSimulationBanner';
 import TranslatedProjectName from '../components/TranslatedProjectName';
 import BotsAdminPanel from '../components/BotsAdminPanel';
+import ForceVisitorBanner from '../components/ForceVisitorBanner';
+import OwnerPrivilegesToggle from '../components/OwnerPrivilegesToggle';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useViewSpec from '../hooks/useViewSpec';
 
@@ -740,6 +742,7 @@ export default function Dashboard() {
         });
       }} />
       {visiting && <AccountVisitView target={visiting} onClose={() => setVisiting(null)} />}
+      <ForceVisitorBanner />
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* iter67: on mobile, the sidebar becomes a fixed overlay drawer with
          a backdrop. On desktop (md+) it stays as a normal flex column that
@@ -1038,6 +1041,7 @@ export default function Dashboard() {
                   <FlaskConical className="w-4 h-4" />
                 </button>
               )}
+              <OwnerPrivilegesToggle />
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
                 {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => {
                   // iter133 — Visiter le compte = TOUJOURS simuler la vue de
