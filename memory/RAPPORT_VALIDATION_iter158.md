@@ -538,3 +538,90 @@ consolidé, sélection multiple, undo groupé, recherche, matrice de permissions
 ✅ Aucune régression sur les tests précédents.
 
 **Checkpoint enregistré : `production-ready-iter158.4` (Chantier 1 clos).**
+
+---
+
+## 15. Chantier 2 — Autres comptes : Reorg (iter158.5)
+
+Alignement de la gestion des comptes sur la spec CDC (Chantier 2) : action Déconnecter réellement
+branchée, historique détaillé par action avec undo unitaire ET batch, matrice de permission
+symétrique à celle du Chantier 1, suppression du vidage historique.
+
+### 15.1 Backend
+- **`POST /accounts/disconnect`** (NOUVEAU, staff modo+) — applique la sanction `disconnect_until`
+  (défaut 15 min, plage 1 min → 24 h), invalide les sessions actives par email, protège les
+  propriétaires via `assert_not_owner_target`, journalise `event="disconnect"` +
+  `kick_reason="kick_disconnected"` dans `account_history`. Le message d'écran affiché à
+  l'utilisateur déconnecté est le texte i18n `kick_disconnected_body` — spec CDC exact
+  (« Oh oh... on dirait que vous avez un problème de connexion »).
+- **`/accounts/history`** — élargi de créa-only à `require_staff_signature`. Périmètre :
+  - Créa : voit toutes les décisions.
+  - Admin : voit toutes les décisions.
+  - Modo : voit uniquement ses propres décisions.
+- **`/accounts/history/clear`** → **410 Gone** (spec CDC : plus de bouton vider).
+- **`/accounts/history/undo`** (NOUVEAU) — annulation d'un événement. Utilise `UNDO_MATRIX` :
+  mute↔unmute, ban↔unban, exclude→clear, disconnect→clear, force_visitor_on↔off,
+  staff_kind_admin/modo→clear, staff_kind_clear→modo (défaut sécurisé).
+- **`/accounts/history/undo-multi`** (NOUVEAU) — batch avec `{ok_count, failed[]}` et matrice de
+  permission identique. Chaque undo génère un événement `undo_<event>` traçable
+  (via `_log_account_event`).
+- **`_can_undo_event`** — matrice partagée symétrique au Chantier 1 :
+  - Créa : tout.
+  - Admin : peut annuler admin + modo, PAS créa.
+  - Modo : uniquement ses propres décisions (`actor_key_id == self`).
+- Modèles Pydantic `_AccountsUndoIn` et `_AccountsUndoMultiIn` déplacés au **niveau module**
+  (correction anti-fallback FastAPI vers `query.payload`).
+
+### 15.2 Frontend
+- **`useViewSpec.canDisconnectFromAccountsPanel`** (NOUVEAU) = `isStaffOrCreator` (spec CDC :
+  modo+).
+- **`AccountsButton.jsx`** — bouton `acc-disconnect-<key>` (icône `LogOut` ambrée) placé
+  juste avant l'exclusion. Gaté par `canDisconnect`. Appelle `/accounts/disconnect` via
+  `doAction`. Le bouton n'apparaît pas dans les vues simulées non-staff.
+- **`AccountsButton.jsx`** — bouton `accounts-open-history-btn` dans la barre de recherche
+  du panneau qui ouvre `<AccountsHistoryPanel />`.
+- **`components/AccountsHistoryPanel.jsx`** (NOUVEAU) — panneau modal complet :
+  - Chargement via `/accounts/history`.
+  - Recherche client (event, target, acteur, key_id, actor_label).
+  - Multi-select (Set) + « Tout sélectionner ».
+  - Bouton « Annuler (N) » disabled si vide.
+  - `window.confirm` avec **texte exact CDC** : « Quelles actions choisies par cette clé
+    doivent être annulées ? ».
+  - Ligne : `EVENT_LABEL[event]`, target, acteur, timestamp `fr-FR`, cible key_id.
+  - Aucun bouton « vider » (spec CDC).
+  - Data-testids : `accounts-history-panel`, `accounts-history-close`, `accounts-history-search`,
+    `accounts-history-select-all`, `accounts-history-undo-multi`, `accounts-history-empty`,
+    `accounts-history-row-<event_id>`, `accounts-open-history-btn`.
+
+### 15.3 Tests
+- **`test_iter158_5_accounts_reorg.py`** — 9 nouveaux tests source-level PASS :
+  - `test_backend_accounts_disconnect_endpoint_exists`
+  - `test_backend_accounts_history_multi_role`
+  - `test_backend_accounts_history_clear_gone`
+  - `test_backend_accounts_history_undo_endpoints`
+  - `test_backend_undo_permission_matrix_symmetric_with_keys`
+  - `test_useViewSpec_can_disconnect`
+  - `test_accounts_button_disconnect_wired`
+  - `test_accounts_history_panel_component`
+  - `test_accounts_button_opens_history_panel`
+- **Régression cumulée** : 38/38 tests iter158.2/.3/.4/.5 PASS, 88/88 tests iter158.* hors sandbox.
+- **Backend live vérifié** :
+  - `POST /accounts/history/clear` → **410 Gone**.
+  - `POST /accounts/disconnect` sans auth → 403.
+  - `POST /accounts/history/undo` sans auth → 403.
+  - `POST /accounts/history/undo-multi` sans auth → 403 (endpoints enregistrés proprement).
+
+### 15.4 Bilan Chantier 2
+✅ Déconnexion réellement branchée dans l'UI (bouton `acc-disconnect-*`).
+✅ Message CDC exact utilisé (`kick_disconnected_body` FR + EN, journalisé dans account_history).
+✅ Historique détaillé par action (`event_id` unique, `actor_key_id`, `actor_kind`, `actor_label`,
+   `target_key_id`, `target_label`, `ts`, `extra`).
+✅ Undo par action + undo batch avec matrice permission serveur.
+✅ Recherche + multi-sélection + tout sélectionner.
+✅ Traçabilité conservée : chaque undo génère un événement `undo_<event>` avec le
+   `original_event_id` en extra.
+✅ Propriétaires protégés (`assert_not_owner_target` sur `/accounts/disconnect`).
+✅ Aucun bouton vider.
+✅ Aucune régression.
+
+**Checkpoint enregistré : `production-ready-iter158.5` (Chantier 2 clos).**

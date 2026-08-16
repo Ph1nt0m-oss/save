@@ -33,6 +33,14 @@ class _ForceVisitorIn(SignedIn):
     force: bool = True
 
 
+class _AccountsUndoIn(SignedIn):
+    event_id: str
+
+
+class _AccountsUndoMultiIn(SignedIn):
+    event_ids: List[str]
+
+
 def build_accounts_router(db, *, require_creator_signature, require_staff_signature):
     router = APIRouter()
 
@@ -299,17 +307,157 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
         await _log_account_event("unban", payload.target_key_id, actor_key_id=payload.key_id)
         return {"success": True}
 
+    @router.post("/accounts/disconnect")
+    async def accounts_disconnect(payload: _TargetCreatorSigIn):
+        """iter158.5 — Déconnexion temporaire d'un compte (staff modo+).
+
+        Applique une sanction `disconnect_until` (15 min par défaut) et invalide
+        les sessions actives. Le message d'écran affiché à l'utilisateur
+        déconnecté est celui du CDC exact — voir i18n `kick_disconnected_body`
+        (« Oh oh... on dirait que vous avez un problème de connexion »).
+        """
+        actor = await require_staff_signature(payload.key_id, payload.nonce, payload.signature)
+        # Interdit d'agir sur un appareil propriétaire ON (protection).
+        try:
+            from utils.ownership_guard import assert_not_owner_target
+            await assert_not_owner_target(db, payload.target_key_id, payload.key_id, action="disconnect")
+        except Exception:
+            raise
+        body = payload.model_dump()
+        minutes = int(body.get("duration_minutes") or 15)
+        minutes = max(1, min(minutes, 60 * 24))  # 1 min → 24 h
+        until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        await db.device_keys.update_one(
+            {"key_id": payload.target_key_id},
+            {"$set": {"disconnect_until": until.isoformat()}},
+        )
+        target = await db.device_keys.find_one({"key_id": payload.target_key_id}, {"_id": 0, "email": 1})
+        if target and target.get("email"):
+            await db.user_sessions.delete_many({"email": target["email"]})
+        await _log_account_event(
+            "disconnect", payload.target_key_id,
+            extra={"until": until.isoformat(), "minutes": minutes,
+                   "kick_reason": "kick_disconnected"},
+            actor_key_id=payload.key_id,
+        )
+        return {"success": True, "disconnect_until": until.isoformat()}
+
     @router.post("/accounts/history")
     async def accounts_history(payload: _CreatorSigIn):
-        await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-        rows = await db.account_history.find({}, {"_id": 0}).sort("ts", -1).to_list(length=1000)
+        """iter158.5 — Historique des actions comptes. Ouvert au staff selon
+        la matrice de permissions :
+          - Créa : voit tout.
+          - Admin : voit toutes les décisions (admin + modo).
+          - Modo : voit uniquement ses propres décisions.
+        """
+        actor = await require_staff_signature(payload.key_id, payload.nonce, payload.signature)
+        role = actor.get("role"); sk = actor.get("staff_kind")
+        q: Dict[str, Any] = {}
+        if role != "creator":
+            if sk == "modo":
+                q = {"actor_key_id": payload.key_id}
+        rows = await db.account_history.find(q, {"_id": 0}).sort("ts", -1).to_list(length=1000)
         return {"history": rows}
 
     @router.post("/accounts/history/clear")
     async def accounts_history_clear(payload: _CreatorSigIn):
-        await require_creator_signature(payload.key_id, payload.nonce, payload.signature)
-        r = await db.account_history.delete_many({})
-        return {"deleted": r.deleted_count}
+        """iter158.5 — Fonction retirée par spec CDC. 410 Gone."""
+        raise HTTPException(
+            status_code=410,
+            detail="Fonction retirée : l'historique des comptes ne peut plus être vidé (spec finalisation).",
+        )
+
+    # ---------------- UNDO helpers ----------------
+    UNDO_MATRIX = {
+        # event → (undo_endpoint_or_action, reverse_updates)
+        "mute": {"$set": {"muted": False}, "$unset": {"muted_at": ""}},
+        "unmute": {"$set": {"muted": True, "muted_at": _now_iso()}},
+        "ban": {"$set": {"banned": False}, "$unset": {"banned_at": "", "banned_reason": ""}},
+        "unban": {"$set": {"banned": True, "banned_at": _now_iso()}},
+        "exclude": {"$unset": {"excluded_until": "", "excluded_reason": ""}},
+        "disconnect": {"$unset": {"disconnect_until": ""}},
+        "force_visitor_on": {"$set": {"force_visitor": False}},
+        "force_visitor_off": {"$set": {"force_visitor": True}},
+        "staff_kind_admin": {"$unset": {"staff_kind": ""}},
+        "staff_kind_modo": {"$unset": {"staff_kind": ""}},
+        "staff_kind_clear": {"$set": {"staff_kind": "modo"}},  # défaut sécurisé
+    }
+
+    def _can_undo_event(actor_role: Optional[str], actor_sk: Optional[str],
+                        event_actor_kind: Optional[str], event_actor_key_id: Optional[str],
+                        me_key_id: str) -> bool:
+        if actor_role == "creator":
+            return True
+        if actor_sk == "admin":
+            return event_actor_kind != "creator"
+        if actor_sk == "modo":
+            return event_actor_key_id == me_key_id
+        return False
+
+    async def _apply_undo(event_row: Dict[str, Any]) -> bool:
+        ev = event_row.get("event")
+        tkid = event_row.get("target_key_id")
+        if not tkid or ev not in UNDO_MATRIX:
+            return False
+        await db.device_keys.update_one({"key_id": tkid}, UNDO_MATRIX[ev])
+        return True
+
+    @router.post("/accounts/history/undo")
+    async def accounts_history_undo(payload: _AccountsUndoIn):
+        """iter158.5 — Annulation d'une action comptes.
+
+        Applique la matrice inverse `UNDO_MATRIX` et logue un événement
+        `undo_<event>` pour traçabilité. Refuse si l'événement n'est pas
+        annulable (delete_account, delete_all_accounts…) ou hors périmètre
+        du rôle acteur.
+        """
+        actor = await require_staff_signature(payload.key_id, payload.nonce, payload.signature)
+        row = await db.account_history.find_one({"event_id": payload.event_id}, {"_id": 0})
+        if not row:
+            raise HTTPException(status_code=404, detail="Événement introuvable.")
+        allowed = _can_undo_event(
+            actor.get("role"), actor.get("staff_kind"),
+            row.get("actor_kind"), row.get("actor_key_id"),
+            payload.key_id,
+        )
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Cette action n'est pas dans ton périmètre d'annulation.")
+        applied = await _apply_undo(row)
+        if not applied:
+            return {"success": False, "reason": "non_undoable_action"}
+        await _log_account_event(f"undo_{row.get('event')}", row.get("target_key_id"),
+                                 extra={"original_event_id": payload.event_id},
+                                 actor_key_id=payload.key_id)
+        return {"success": True}
+
+    @router.post("/accounts/history/undo-multi")
+    async def accounts_history_undo_multi(payload: _AccountsUndoMultiIn):
+        """iter158.5 — Annulation multiple. Retourne {ok_count, failed[]}."""
+        actor = await require_staff_signature(payload.key_id, payload.nonce, payload.signature)
+        ok = 0
+        failed: List[Dict[str, Any]] = []
+        for eid in payload.event_ids or []:
+            row = await db.account_history.find_one({"event_id": eid}, {"_id": 0})
+            if not row:
+                failed.append({"event_id": eid, "reason": "not_found"})
+                continue
+            allowed = _can_undo_event(
+                actor.get("role"), actor.get("staff_kind"),
+                row.get("actor_kind"), row.get("actor_key_id"),
+                payload.key_id,
+            )
+            if not allowed:
+                failed.append({"event_id": eid, "reason": "not_authorized"})
+                continue
+            applied = await _apply_undo(row)
+            if not applied:
+                failed.append({"event_id": eid, "reason": "non_undoable_action"})
+                continue
+            await _log_account_event(f"undo_{row.get('event')}", row.get("target_key_id"),
+                                     extra={"original_event_id": eid},
+                                     actor_key_id=payload.key_id)
+            ok += 1
+        return {"success": True, "ok_count": ok, "failed": failed}
 
     @router.post("/accounts/visit")
     async def accounts_visit(payload: _TargetCreatorSigIn):

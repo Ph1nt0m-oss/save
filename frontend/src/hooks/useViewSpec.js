@@ -77,6 +77,9 @@ export default function useViewSpec() {
     canExcludeFromAccountsPanel: isAdminOrCreator,
     canBanFromAccountsPanel: isAdminOrCreator,
     canDeleteFromAccountsPanel: isAdminOrCreator,
+    // iter158.5 — Déconnexion temporaire disponible modo+ (spec CDC :
+    // « le message doit être utilisé lors de la déconnexion »).
+    canDisconnectFromAccountsPanel: isStaffOrCreator,
     // Profile (actions locales — créa seulement) : rename+mute local
     canLocalRenameMuteInProfile: isPhysicallyCreator,
   };

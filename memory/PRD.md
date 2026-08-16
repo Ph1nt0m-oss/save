@@ -1,6 +1,23 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.5 (Aug 2026) — Chantier 2 : Autres comptes — Reorg
+**Status : COMPLETED (9 nouveaux tests + régression 38/38 iter158.2/.3/.4/.5 PASS + backend live vérifié).**
+Alignement gestion des comptes sur spec CDC Chantier 2 :
+- Backend : nouveau `/accounts/disconnect` (staff modo+, sanction disconnect_until + protection
+  owner + kick_reason='kick_disconnected'). `/accounts/history` élargi staff (matrice
+  créa=tout / admin=admin+modo / modo=self). `/accounts/history/clear` → 410 Gone.
+  Nouveaux `/accounts/history/undo` et `/accounts/history/undo-multi` avec UNDO_MATRIX
+  (mute↔unmute, ban↔unban, exclude→clear, disconnect→clear, force_visitor_on↔off,
+  staff_kind_*). Matrice permission symétrique au Chantier 1.
+- Frontend : bouton `acc-disconnect-*` (icône LogOut ambrée) gaté par
+  `canDisconnectFromAccountsPanel=isStaffOrCreator`. Nouveau `AccountsHistoryPanel.jsx`
+  (modal search + tout-sélectionner + multi-select + undo batch avec confirm CDC exact).
+  Bouton `accounts-open-history-btn` dans la barre de recherche AccountsButton.
+Fichiers modifiés : `routes/accounts_routes.py`, `hooks/useViewSpec.js`,
+`components/AccountsButton.jsx`, `components/AccountsHistoryPanel.jsx` (nouveau).
+
+
 ## iter158.4 (Aug 2026) — Chantier 1 : Autres identifiants — Reorg
 **Status : COMPLETED (8 nouveaux tests + régression 29/29 iter158.2/.3/.4 PASS + backend live vérifié).**
 Refonte gestion des clés selon spec CDC :

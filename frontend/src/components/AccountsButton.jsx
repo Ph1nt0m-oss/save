@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { Users, X, Search, MessageCircle, Edit3, Ban, ShieldCheck, BellOff, Bell, Clock, Skull, ShieldOff, Eye, EyeOff, Crown, Trash2, Shield, Star } from 'lucide-react';
+import { Users, X, Search, MessageCircle, Edit3, Ban, ShieldCheck, BellOff, Bell, Clock, Skull, ShieldOff, Eye, EyeOff, Crown, Trash2, Shield, Star, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useViewSpec from '../hooks/useViewSpec';
 import { withCreatorProof } from '../lib/deviceIdentity';
 import { useLanguage } from '../contexts/LanguageContext';
+import AccountsHistoryPanel from './AccountsHistoryPanel';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -40,12 +41,14 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
   const canExclude = vs.canExcludeFromAccountsPanel;
   const canBan = vs.canBanFromAccountsPanel;
   const canDelete = vs.canDeleteFromAccountsPanel;
+  const canDisconnect = vs.canDisconnectFromAccountsPanel;
   const [open, setOpen] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [excluding, setExcluding] = useState(null); // {target, label}
   const [removing, setRemoving] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // iter133 — Décisions temporaires prises par modo/admin en attente de validation créa.
   const [pendingDecisions, setPendingDecisions] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -278,6 +281,14 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                 data-testid="accounts-search"
                 className="flex-1 bg-transparent text-xs text-white placeholder-[#71717A] focus:outline-none"
               />
+              <button
+                onClick={() => setHistoryOpen(true)}
+                data-testid="accounts-open-history-btn"
+                title="Historique des actions comptes"
+                className="text-[10px] px-2 py-1 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition inline-flex items-center gap-1"
+              >
+                Historique
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
               {loading && <div className="text-xs text-[#A1A1AA] py-4 text-center">…</div>}
@@ -359,6 +370,16 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                     ) : (
                       <button title={t('acc_action_block')} data-testid={`acc-block-${a.key_id}`} onClick={() => doAction('/devices/block', a.key_id)} className="p-1.5 border border-white/15 hover:border-red-400/40 text-[#A1A1AA] hover:text-red-400 rounded-sm transition"><Ban className="w-3.5 h-3.5" /></button>
                     ))}
+                    {!isSelf && !actionsDisabled && canDisconnect && (
+                      <button
+                        title="Déconnecter temporairement"
+                        data-testid={`acc-disconnect-${a.key_id}`}
+                        onClick={() => doAction('/accounts/disconnect', a.key_id)}
+                        className="p-1.5 border border-white/15 hover:border-amber-400/60 text-[#A1A1AA] hover:text-amber-300 rounded-sm transition"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     {!isSelf && !actionsDisabled && canExclude && (
                       <button title={t('acc_action_exclude')} onClick={() => setExcluding({ a })} data-testid={`acc-exclude-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-orange-400/40 text-[#A1A1AA] hover:text-orange-300 rounded-sm transition"><Clock className="w-3.5 h-3.5" /></button>
                     )}
@@ -396,6 +417,8 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
           </div>
         </div>
       )}
+
+      <AccountsHistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />
 
       {excluding && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4" onClick={() => setExcluding(null)}>
