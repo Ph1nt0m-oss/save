@@ -59,6 +59,9 @@ export default function OwnerPrivilegesToggle() {
       toast.success(nextState
         ? 'Pouvoirs propriétaires : ACTIVÉS'
         : 'Pouvoirs propriétaires : DÉSACTIVÉS (test rôle actif)');
+      // iter158.13 (P1.3) — Broadcast so useDeviceIdentity/useViewSpec
+      // re-calcule effectiveView sans reload.
+      try { window.dispatchEvent(new Event('codeforge:owner-privileges-changed')); } catch (_) {}
       try { device.refresh?.(); } catch (_) {}
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Bascule impossible');

@@ -26,14 +26,36 @@ export default function useViewSpec() {
     }).catch(() => { /* silent */ });
   }, []);
 
+  // iter158.13 (P1.3) — Owner Privileges OFF : le propriétaire teste
+  // volontairement un rôle inférieur. L'UI DOIT masquer les icônes/fonctions
+  // propriétaire fantômes (crayon lampe, robots, exports, secret keys,
+  // programmation, bots édition, visite depuis liste, rename+mute local).
+  //
+  // CDC iter158.3 §13.1 :
+  //   ON  → tous les pouvoirs (comportement inchangé).
+  //   OFF → « fonctionne exactement comme le rôle actif » (viewMode ou
+  //         'user' par défaut si aucune vue simulée sélectionnée).
+  //
+  // Le backend reste l'autorité pour les permissions ; ce clamp est
+  // strictement une amélioration UX pour cohérence visuelle.
+  const ownerOff = !!(device?.isOwnerDevice && device?.ownerPrivilegesActive === false);
+
   // viewMode prioritaire : si la créatrice simule une vue, on prend la vue simulée.
   // Sauf pour see_programming + secret_key_access : ces 2 restent liés à role
   // physique 'creator' (signature ECDSA), pas à la vue simulée.
-  const effectiveView = device?.viewMode || device?.role || 'user';
+  // iter158.13 : quand ownerOff, on force effectiveView à viewMode || 'user'
+  // (jamais 'creator') pour refléter le rôle temporaire actif.
+  let effectiveView;
+  if (ownerOff) {
+    effectiveView = device?.viewMode || 'user';
+  } else {
+    effectiveView = device?.viewMode || device?.role || 'user';
+  }
   const viewSpec = spec?.[effectiveView] || spec?.user || {};
 
   // Override : programming et secret_key_access toujours basés sur role physique
-  const isPhysicallyCreator = device?.role === 'creator';
+  // iter158.13 : clampé à false quand ownerOff (masque icônes fantômes).
+  const isPhysicallyCreator = device?.role === 'creator' && !ownerOff;
 
   // iter128 — Buckets de visibilité demandés par l'utilisatrice :
   // - user + guest : aucun outil créa, juste le contenu public.

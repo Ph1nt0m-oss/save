@@ -1469,6 +1469,29 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.14 — P1.3 effectiveView Owner Privileges OFF
+
+**✅ Livré :**
+- `useDeviceIdentity.js` expose `isOwnerDevice` + `ownerPrivilegesActive`
+  (fetch `/ownership/status` après attest, si role=='creator').
+- Event `codeforge:owner-privileges-changed` propage la bascule sans reload.
+- `useViewSpec.js` clampe `effectiveView` à `viewMode || 'user'` et
+  `isPhysicallyCreator` à `false` quand OFF ; branche ON strictement inchangée.
+- `OwnerPrivilegesToggle.jsx` dispatch l'event après la bascule.
+- 10 tests (`test_iter158_14_effective_view_owner_off.py`) : source-level +
+  live cycle ON → OFF → ON.
+
+**Invariants** : backend seule autorité de sécurité, `owner_key_ids` intact,
+`role='creator'` inchangé par le toggle, comportement ON strictement identique.
+
+**Régression** : 194/194 iter158 hors sandbox PASS. 2 pré-existants sans lien.
+
+**Checkpoint** : `production-ready-iter158.14`. P1.4 non entamé.
+
+---
+
+
+
 ### 2026-02 — iter158.13 — P1.2 Tests d'interactions inter-fonctionnalités
 
 **✅ Livré :**

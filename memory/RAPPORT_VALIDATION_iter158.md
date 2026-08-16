@@ -1351,3 +1351,96 @@ avec privilèges OFF. Un délégué Créa reste 100 % protégé (test 1b non-ré
 **Prochain chantier proposé** : P1.3 — Corriger `effectiveView` avec Owner
 Privileges OFF (recalcul de la vue pour que le rôle temporaire soit affiché
 sans icônes owner fantômes).
+
+---
+
+## 25. iter158.14 — P1.3 : `effectiveView` avec Owner Privileges OFF
+
+### 25.1 Problème d'origine
+Quand un propriétaire désactivait `owner_privileges_active`, l'UI continuait
+d'afficher les icônes/fonctions propriétaire fantômes (ampoule idées, robots,
+exports, secret keys, programmation, édition bots, visite depuis liste, rename+
+mute local). Cause :
+
+- `useDeviceIdentity` n'exposait pas `owner_privileges_active` au reste de l'app.
+- `useViewSpec` calculait `effectiveView = viewMode || role || 'user'` — role
+  restait `'creator'` en base, donc `effectiveView='creator'`.
+- `isPhysicallyCreator = role === 'creator'` restait vrai, gardant toutes les
+  icônes physiques créa visibles.
+
+CDC iter158.3 §13.1 : « OFF → le propriétaire fonctionne exactement comme le
+rôle actif ».
+
+### 25.2 Solution
+Clamp UX-only dans les hooks (le backend reste 100 % autorité de sécurité —
+`assert_not_owner_target` continue d'appliquer les règles côté serveur).
+
+1. **`useDeviceIdentity.js`** : après `attestDevice`, si `role==='creator'`
+   → fetch `/ownership/status` et expose `isOwnerDevice` + `ownerPrivilegesActive`
+   dans le state.
+2. **Event `codeforge:owner-privileges-changed`** : listener global dans
+   `useDeviceIdentity` (re-fetch immédiat).
+3. **`OwnerPrivilegesToggle.jsx`** : `window.dispatchEvent(new Event(...))`
+   après bascule → propagation instantanée sans reload.
+4. **`useViewSpec.js`** : dérive `ownerOff = isOwnerDevice && ownerPrivilegesActive === false`.
+   - Quand `ownerOff` : `effectiveView = viewMode || 'user'` (jamais `'creator'`).
+   - Quand `ownerOff` : `isPhysicallyCreator = false`.
+   - Sinon (ON) : calcul strictement inchangé (`viewMode || role || 'user'` +
+     `role === 'creator'`).
+
+### 25.3 Invariants respectés
+- Le backend reste l'autorité pour toute permission (aucun endpoint modifié).
+- `owner_key_ids` intact quel que soit l'état de privilèges (test live).
+- `role='creator'` en base inchangé par un simple toggle (seules les sanctions
+  peuvent le muter ; test scenario 1 iter158.13 déjà validé).
+- `is_owner` retourné par `/ownership/status` reste true en OFF.
+- Comportement ON strictement inchangé (test `test_use_view_spec_on_behavior_unchanged`).
+
+### 25.4 Flags impactés par le clamp (masqués quand OFF)
+| Flag                              | Base            | Masqué en OFF ? |
+|-----------------------------------|-----------------|-----------------|
+| canSeeProgramming                 | isPhysicallyCreator | ✅ oui |
+| canAccessSecretKeys               | isPhysicallyCreator | ✅ oui |
+| canSeeIdeasLightbulb              | isPhysicallyCreator | ✅ oui |
+| canSeeRobotBots                   | isPhysicallyCreator | ✅ oui |
+| canEditTestBots                   | isPhysicallyCreator | ✅ oui |
+| canViewTestBotsCode               | isPhysicallyCreator | ✅ oui |
+| canVisitAccountFromList           | isPhysicallyCreator | ✅ oui |
+| canLocalRenameMuteInProfile       | isPhysicallyCreator | ✅ oui |
+| canSeeExports                     | effectiveView===creator | ✅ oui |
+| canSeeCreatorProgsCards           | effectiveView===creator | ✅ oui |
+| canRename/ForceVisitor/…AccountsPanel | isAdminOrCreator | ✅ oui (car effectiveView passe à user) |
+
+### 25.5 Tests
+- **`test_iter158_14_effective_view_owner_off.py`** — 10 tests PASS :
+  - Source-level wiring : hook fetch, listener event, dispatch, clamp effectiveView,
+    clamp isPhysicallyCreator, branche ON non-régression, gates isPhysicallyCreator
+    présents, canSeeExports basé sur effectiveView.
+  - Live : cycle ON → OFF → ON (owner_key_ids intact, role='creator' constant,
+    is_owner=true toujours), champ `owner_privileges_active` exposé par
+    `/ownership/status` (contrat frontend).
+- **Régression iter158 hors sandbox : 194 passed, 1 skipped**.
+  - 2 échecs pré-existants (`test_expired_exclude_auto_lifted*`) inchangés.
+- Frontend smoke test : app rendue sans crash (attest exécuté, gate site privé
+  affiché — comportement prod attendu).
+
+### 25.6 Fichiers modifiés
+- `frontend/src/hooks/useDeviceIdentity.js` (+ isOwnerDevice/ownerPrivilegesActive
+  + fetch /ownership/status + listener event, ~35 lignes)
+- `frontend/src/hooks/useViewSpec.js` (clamp ownerOff, ~15 lignes)
+- `frontend/src/components/OwnerPrivilegesToggle.jsx` (dispatchEvent, 2 lignes)
+- `backend/tests/test_iter158_14_effective_view_owner_off.py` (nouveau, 10 tests)
+
+### 25.7 Bilan P1.3
+✅ Bug UX corrigé : les icônes propriétaire fantômes disparaissent en OFF.
+✅ Comportement ON strictement inchangé (branche else conservée + test
+   dédié `test_use_view_spec_on_behavior_unchanged`).
+✅ Le statut de propriétaire réel et `owner_key_ids` NE SONT JAMAIS modifiés.
+✅ Le backend reste seule autorité de sécurité (aucun endpoint modifié).
+✅ Cycle ON → OFF → ON testé en live sans effet de bord.
+✅ Régression iter158 : 194 PASS, 0 régression introduite.
+
+**Checkpoint enregistré : `production-ready-iter158.14` (P1.3 clos).**
+
+**Prochain chantier proposé** : P1.4 — Compléter la mise à jour du tutoriel
+(Owner Privileges, Apprentice Creator, Force-visitor banner, AI error mapping).

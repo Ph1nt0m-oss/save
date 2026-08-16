@@ -91,6 +91,8 @@ export default function useDeviceIdentity() {
     canAccess: true,
     pendingCount: 0,
     viewMode: readViewMode(),
+    isOwnerDevice: false,             // iter158.13 (P1.3)
+    ownerPrivilegesActive: true,      // iter158.13 (P1.3)
     error: null,
   });
   const sseRef = useRef(null);
@@ -107,12 +109,27 @@ export default function useDeviceIdentity() {
       const result = await attestDevice(API, axios);
       const effective = result.effective_role || result.role || null;
       let pendingCount = 0;
+      let isOwnerDevice = false;
+      let ownerPrivilegesActive = true;
       if (result.role === 'creator') {
         try {
           const body = await withCreatorProof(API, axios, {});
           const r = await axios.post(`${API}/devices/pending-count`, body);
           pendingCount = r.data?.pending_count || 0;
         } catch (_) { pendingCount = 0; }
+        // iter158.13 (P1.3) — Fetch ownership status once per refresh so that
+        // `effectiveView` / `isPhysicallyCreator` peuvent réagir au bascule
+        // "Owner Privileges OFF" (masque les icônes/fonctions propriétaire
+        // fantômes ; l'autorité de sécurité reste 100 % backend).
+        try {
+          const body2 = await withCreatorProof(API, axios, {});
+          const r2 = await axios.post(`${API}/ownership/status`, body2);
+          isOwnerDevice = !!r2.data?.is_owner;
+          ownerPrivilegesActive = r2.data?.owner_privileges_active !== false;
+        } catch (_) {
+          isOwnerDevice = false;
+          ownerPrivilegesActive = true;
+        }
       }
       setState({
         loading: false,
@@ -134,6 +151,8 @@ export default function useDeviceIdentity() {
         forcedViews: Array.isArray(result.forced_views) ? result.forced_views : [], // iter137
         pendingCount,
         viewMode: readViewMode(),
+        isOwnerDevice,                  // iter158.13 (P1.3)
+        ownerPrivilegesActive,          // iter158.13 (P1.3)
         error: null,
       });
     } catch (e) {
@@ -142,6 +161,14 @@ export default function useDeviceIdentity() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // iter158.13 (P1.3) — Listen for owner-privileges toggle broadcast, so the
+  // effectiveView (via useViewSpec) recalcule immédiatement sans page reload.
+  useEffect(() => {
+    const onChange = () => { refresh(); };
+    window.addEventListener('codeforge:owner-privileges-changed', onChange);
+    return () => window.removeEventListener('codeforge:owner-privileges-changed', onChange);
+  }, [refresh]);
 
   // Real-time SSE subscription for the creator's pending-count badge.
   useEffect(() => {
