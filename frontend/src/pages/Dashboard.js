@@ -44,6 +44,7 @@ import BotsAdminPanel from '../components/BotsAdminPanel';
 import ForceVisitorBanner from '../components/ForceVisitorBanner';
 import OwnerPrivilegesToggle from '../components/OwnerPrivilegesToggle';
 import OwnerDelegatesPanel from '../components/OwnerDelegatesPanel';
+import OwnerNotificationsBell from '../components/OwnerNotificationsBell';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useViewSpec from '../hooks/useViewSpec';
 
@@ -1057,6 +1058,7 @@ export default function Dashboard() {
                 </>
               )}
               <OwnerPrivilegesToggle />
+              <OwnerNotificationsBell />
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">
                 {viewSpec.canSeeAccountsButton && <AccountsButton onVisitAccount={(a) => {
                   // iter133 — Visiter le compte = TOUJOURS simuler la vue de

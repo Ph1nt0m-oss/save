@@ -1,6 +1,21 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.9 (Aug 2026) — P0.2 : Owner Notifications UI
+**Status : COMPLETED (10 nouveaux tests + régression 93/93 iter158.2→.9 PASS + 143/143 hors sandbox + backend live vérifié).**
+Exposition frontend des notifications secrètes owner (backend déjà en place iter158.3) :
+- Frontend `OwnerNotificationsBell.jsx` (nouveau) — cloche header gaté `/ownership/status.is_owner`,
+  polling 30 s, badge unread jaune fluo, panneau modal listant action + `@public_handle` +
+  role + staff_kind + timestamp + detail. Badge « contre toi (OFF) » si target=self.
+- Sécurité backend inchangée (spec « ne pas modifier la sécurité backend existante ») :
+  `_require_owner` sur les 2 endpoints, filtre `owner_key_id: {$ne: self}` sur branch actor
+  (owner A ne voit pas les notifs privées d'owner B), mark-read isolé par owner_key_id.
+- Séparation du système général `NotificationBell` (vérifié source-level : pas de fuite).
+- Composant auto-suffisant : se gate via `is_owner` interne, réutilisable.
+Fichiers modifiés : `components/OwnerNotificationsBell.jsx` (nouveau), `pages/Dashboard.js`,
+`tests/test_iter158_9_owner_notifications_ui.py` (nouveau).
+
+
 ## iter158.8 (Aug 2026) — P0.1 : AI Error Mapper couverture backend complète
 **Status : COMPLETED (8 nouveaux tests + régression 83/83 iter158.2→.8 PASS + 133/133 hors sandbox + backend live vérifié).**
 Fait suite à l'audit final §18 (item H5) :

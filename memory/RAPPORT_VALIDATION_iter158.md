@@ -907,6 +907,87 @@ monolithe **ignorant** encore `ai_error_mapper.py`, ce chantier P0 étend la cou
 
 ---
 
+## 20. P0.2 — Owner Notifications UI (iter158.9)
+
+Exposition frontend des notifications secrètes du propriétaire déjà journalisées côté backend
+(voir §13.1 iter158.3). La cloche `OwnerNotificationsBell.jsx` est visible UNIQUEMENT sur un
+appareil propriétaire réel et consulte les endpoints existants.
+
+### 20.1 Composant `OwnerNotificationsBell.jsx`
+- **Détection owner** via `/ownership/status` (miroir de `OwnerPrivilegesToggle`) — `is_owner`
+  détermine le rendu (`if (!isOwner) return null`).
+- **Cloche header** : icône `Bell` (grise) ou `BellDot` (jaune fluo si `unread > 0`).
+- **Badge unread** : compteur en jaune fluo sur fond noir (min-width 14 px), `99+` si > 99.
+- **Polling léger** : `/ownership/notifications` toutes les 30 s tant que la cloche est montée
+  (owner-only donc rare).
+- **Panneau modal** au clic :
+  - Titre « Notifications propriétaire » + badge « X non lue(s) ».
+  - Bandeau info : « Ces notifications sont visibles UNIQUEMENT par les appareils propriétaires
+    (transparence inter-propriétaires). Un délégué, un admin ou un modo ne peut y accéder. »
+  - Bouton « Tout marquer lu » (`Check` vert) — disabled si `unread === 0`.
+  - Liste triée récent-en-tête : action, badge role/staff_kind, `@public_handle`, timestamp,
+    detail JSON compact.
+  - Badge « contre toi (OFF) » orange si `target_key_id === owner_key_id`
+    (action prise contre le propriétaire lui-même en mode OFF).
+  - Notifications non lues encadrées jaune (`border-[#E4FF00]/30`) ; lues → opacité 0.7.
+- **Data-testids** : `owner-notifications-bell`, `owner-notifications-unread-badge`,
+  `owner-notifications-panel`, `owner-notifications-close`, `owner-notifications-mark-read`,
+  `owner-notifications-empty`, `owner-notification-row-<i>`.
+
+### 20.2 Sécurité
+- **Backend inchangé** — vérifications existantes réutilisées (spec P0.2 : « ne pas modifier
+  la sécurité backend existante sans raison ») :
+  - `/ownership/notifications` : `_require_owner(key_id, nonce, signature)` → 401/403/404 pour
+    non-owner. Filtre MongoDB `{$or: [{owner_key_id: self}, {actor_key_id: ∈owner_key_ids,
+    owner_key_id: {$ne: self}}]}` → un owner A ne voit **jamais** les notifs privées d'un owner
+    B (où `owner_key_id == B`), seulement les décisions administratives que B a prises (via
+    `actor_key_id`).
+  - `/ownership/notifications/mark-read` : `_require_owner` + filtre `owner_key_id ==
+    payload.key_id` → un owner ne peut mark-read que ses propres notifs.
+- **Frontend défensif** — silence total sur erreur d'accès (`setRows([]); setUnread(0)`) : un
+  délégué ou un admin qui aurait forcé le montage du composant ne verrait rien.
+- **Séparation des systèmes de notification** — vérification source-level que
+  `NotificationBell.jsx` (système général) ne consomme PAS `/ownership/notifications`.
+
+### 20.3 Intégration Dashboard
+- Import `OwnerNotificationsBell` + montage dans le header owner block, juste après
+  `OwnerPrivilegesToggle` (préservation de l'ordre existant sandbox → delegates → toggle → bell).
+- Aucune modification du gate `isOwnerDevice` externe — le composant se gate lui-même via
+  `/ownership/status` (auto-suffisant, réutilisable).
+
+### 20.4 Tests
+- **`test_iter158_9_owner_notifications_ui.py`** — 10 tests source-level PASS :
+  - `test_backend_notifications_requires_owner`
+  - `test_backend_notifications_query_isolation` (vérifie `owner_key_id: {$ne: self}` sur
+    branch actor)
+  - `test_backend_mark_read_isolated_per_owner`
+  - `test_backend_endpoints_registered`
+  - `test_frontend_bell_component_exists` (6 data-testids)
+  - `test_frontend_bell_hidden_if_not_owner` (`if (!isOwner) return null`)
+  - `test_frontend_bell_shows_actor_identity` (public_handle + role + staff_kind)
+  - `test_frontend_bell_marks_read_via_endpoint` (disabled si unread==0)
+  - `test_dashboard_mounts_bell`
+  - `test_bell_does_not_leak_via_general_notification_bell` (anti-doublon NotificationBell)
+- **Régression cumulée** : 93/93 tests iter158.2→.9 PASS ; **143/143 tests iter158.* hors sandbox**.
+- **Backend live** : boot OK, 2 endpoints répondent 404 sans clé valide (auth appliquée).
+
+### 20.5 Bilan P0.2
+✅ Cloche visible uniquement pour le propriétaire.
+✅ Badge unread avec compteur clair.
+✅ Panneau/liste des notifications.
+✅ Récupération via `/ownership/notifications` existant.
+✅ Mark-read via `/ownership/notifications/mark-read` existant.
+✅ Affichage complet : action, `@public_handle`, role, staff_kind, timestamp, detail JSON.
+✅ Isolation stricte : owner A ne voit pas les notifs privées d'owner B.
+✅ Non-owner refusé (backend + frontend).
+✅ Séparation du système général `NotificationBell` (spec CDC : notifs owner = système séparé).
+✅ Backend reste l'autorité finale.
+✅ Aucune régression.
+
+**Checkpoint enregistré : `production-ready-iter158.9` (P0.2 clos).**
+
+---
+
 ## 18. Statut global des 4 chantiers CDC
 
 | Chantier | Iter | Status | Tests | Endpoints/composants clés |
