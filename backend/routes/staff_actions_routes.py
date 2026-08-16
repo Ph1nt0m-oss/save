@@ -128,8 +128,19 @@ def build_staff_actions_router(db, verify_signed) -> APIRouter:
             raise HTTPException(status_code=403, detail=f"Action '{action}' non autorisée pour ton rôle.")
         # Enforce : un admin ne peut pas ban/demote une créa réelle (non-fondatrice).
         # Seule la Créa peut agir sur une autre créa.
+        # iter158.13 (P1.2) — Exception CDC iter158.3 : un propriétaire en mode
+        # « privilèges OFF » teste volontairement le rôle actif et DOIT pouvoir
+        # subir les sanctions normales (cf. §13.1 : « OFF → le propriétaire
+        # fonctionne exactement comme le rôle actif »). Le statut owner lui-même
+        # reste inviolable ; le rôle est restauré au passage ON.
         if target.get("role") == "creator" and me.get("role") != "creator":
-            raise HTTPException(status_code=403, detail="Seule une Créa peut modifier une autre Créa.")
+            from utils.ownership_guard import is_owner_device, is_privileges_active
+            is_off_owner = (
+                await is_owner_device(db, payload.target_key_id) and
+                not await is_privileges_active(db, payload.target_key_id)
+            )
+            if not is_off_owner:
+                raise HTTPException(status_code=403, detail="Seule une Créa peut modifier une autre Créa.")
 
         now = _now()
         set_ops: Dict[str, Any] = {}

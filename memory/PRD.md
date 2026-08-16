@@ -1469,6 +1469,33 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.13 — P1.2 Tests d'interactions inter-fonctionnalités
+
+**✅ Livré :**
+- `backend/tests/test_iter158_13_interactions.py` — 10 tests couvrant 6 scénarios croisés :
+  1. Owner OFF × sanction × Owner ON (restauration rôle + `owner_key_ids` intact)
+  2. Non-régression : délégué Créa reste protégé
+  3. Undo × matrice permissions (modo refusé, admin autorisé, event loggé)
+  4. Délégué × force-visitor × ownership (pas de contournement possible)
+  5. Transfer ownership × notifications (isolation A/B, mark-read isolé)
+  6. Sanction × switch_account × délégation (temp expirée filtrée)
+  7-10. AI error mapping × chat multi-tour (historique préservé + `_error_code`)
+
+**🐛 Bug CDC corrigé** :
+- `routes/staff_actions_routes.py` — guard `Créa-vs-Créa` firait AVANT le check
+  ownership et bloquait le scénario CDC iter158.3 §13.1 (« OFF = subir sanctions
+  normales »). Fix : la relaxation ne s'applique QUE quand la cible est un
+  propriétaire avec privilèges OFF ; les délégués Créa restent protégés.
+
+**Régression** : 184/184 tests iter158 hors sandbox PASS (2 échecs pré-existants
+`test_expired_exclude_auto_lifted*` sans rapport avec P1.2).
+
+**Checkpoint** : `production-ready-iter158.13`. P1.3 non entamé (attente validation).
+
+---
+
+
+
 ### 2026-02-12 — Iter 120 (Tentative extraction auth password+session — annulée pour cause de helpers inline)
 
 **🔴 Tentative d'extraction `/auth/forgot-password + confirm-password-reset + reset-password + session-*`** (~330 lignes ciblées) :

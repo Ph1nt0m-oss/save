@@ -22,7 +22,7 @@ const API = `${BACKEND_URL}/api`;
 
 export default function Create() {
   const { user } = useAuth();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const device = useDeviceIdentity();
@@ -118,14 +118,27 @@ export default function Create() {
 
       toast.success('Application générée !');
     } catch (error) {
-      console.error('Generation error:', error);
-      const errorMsg = error.response?.data?.detail || 'Erreur de génération';
+      // iter158.12 — P1.1 : mappage précis via classifyAiError partagé.
+      const { classifyAiError } = await import('../lib/aiErrorMapper');
+      const errInfo = classifyAiError(error, {
+        provider: mode === 'offline' ? 'ollama' : undefined,
+        context: 'create.generate',
+      });
+      // eslint-disable-next-line no-console
+      console.warn('[AI error]', errInfo.code, {
+        status: error?.response?.status,
+        message: error?.message,
+        raw: error?.response?.data,
+      });
+      const cleanMsg = t(errInfo.i18nKey) || errInfo.fallback;
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `Erreur: ${errorMsg}. Le mode en ligne utilise l'IA cloud, le mode hors ligne nécessite Ollama installé localement.`,
-        timestamp: new Date()
+        content: cleanMsg,
+        timestamp: new Date(),
+        _error: true,
+        _error_code: errInfo.code,
       }]);
-      toast.error(errorMsg);
+      toast.error(cleanMsg);
     } finally {
       setIsGenerating(false);
     }

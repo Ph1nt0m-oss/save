@@ -85,8 +85,13 @@ export default function GuidedWizard() {
         setAppName(list[0]);
         toast.success('🪄 ' + list.join(' · '));
       }
-    } catch (_) {
-      toast.error('Suggestion impossible');
+    } catch (e) {
+      // iter158.12 — P1.1 : mapping partagé (context distinct pour diagnostic)
+      const { classifyAiError } = await import('../lib/aiErrorMapper');
+      const errInfo = classifyAiError(e, { context: 'wizard.suggest.name' });
+      // eslint-disable-next-line no-console
+      console.warn('[AI error]', errInfo.code, { status: e?.response?.status, message: e?.message });
+      toast.error(t(errInfo.i18nKey) || errInfo.fallback);
     } finally {
       setMagicLoading(s => ({ ...s, name: false }));
     }
@@ -103,8 +108,12 @@ export default function GuidedWizard() {
         setDesignText(prev => prev ? `${prev}\n\n${text}` : text);
         toast.success('🪄 Design ajouté');
       }
-    } catch (_) {
-      toast.error('Suggestion impossible');
+    } catch (e) {
+      const { classifyAiError } = await import('../lib/aiErrorMapper');
+      const errInfo = classifyAiError(e, { context: 'wizard.suggest.design' });
+      // eslint-disable-next-line no-console
+      console.warn('[AI error]', errInfo.code, { status: e?.response?.status, message: e?.message });
+      toast.error(t(errInfo.i18nKey) || errInfo.fallback);
     } finally {
       setMagicLoading(s => ({ ...s, design: false }));
     }
@@ -122,8 +131,12 @@ export default function GuidedWizard() {
         setFuncText(prev => prev ? `${prev}\n\n${text}` : text);
         toast.success('🪄 Fonctionnement ajouté');
       }
-    } catch (_) {
-      toast.error('Suggestion impossible');
+    } catch (e) {
+      const { classifyAiError } = await import('../lib/aiErrorMapper');
+      const errInfo = classifyAiError(e, { context: 'wizard.suggest.func' });
+      // eslint-disable-next-line no-console
+      console.warn('[AI error]', errInfo.code, { status: e?.response?.status, message: e?.message });
+      toast.error(t(errInfo.i18nKey) || errInfo.fallback);
     } finally {
       setMagicLoading(s => ({ ...s, func: false }));
     }
@@ -173,7 +186,15 @@ export default function GuidedWizard() {
       toast.success(t('wizard_success_toast'));
       setStep(5);
     } catch (e) {
-      toast.error(t('wizard_error_toast'));
+      // iter158.12 — P1.1 : mapping partagé pour le call `/api/generate` principal.
+      const { classifyAiError } = await import('../lib/aiErrorMapper');
+      const errInfo = classifyAiError(e, { context: 'wizard.generate' });
+      // eslint-disable-next-line no-console
+      console.warn('[AI error]', errInfo.code, {
+        status: e?.response?.status, message: e?.message,
+        raw: e?.response?.data,
+      });
+      toast.error(t(errInfo.i18nKey) || errInfo.fallback || t('wizard_error_toast'));
     } finally {
       setIsGenerating(false);
     }

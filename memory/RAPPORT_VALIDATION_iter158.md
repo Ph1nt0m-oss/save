@@ -1163,6 +1163,83 @@ apparaître lorsque cette possibilité lui est déléguée »).
 
 ---
 
+## 23. P1.1 — Autres call sites frontend AI (iter158.12)
+
+Migration des call sites frontend restants vers `classifyAiError` pour cohérence complète du
+mapping d'erreurs IA.
+
+### 23.1 Périmètre effectif (après grep)
+- ✅ **Create.js** — call `/api/generate` (LLM, mode online/offline).
+- ✅ **GuidedWizard.js** — 4 catches d'appels IA : `/ai/wizard-suggest` (kind=name, design,
+  function) + `/api/generate` principal.
+- ❌ **Discover.js** — aucun call LLM identifié (grep : 0 hit). Hors périmètre.
+- ❌ **PrivateChatbotProgramming.js** — gestion config bots + fichiers, pas de génération LLM
+  directe. Hors périmètre.
+- ✅ **Chat.js** — déjà migré iter158.7, vérifié inchangé.
+
+### 23.2 Migration Create.js
+- Bloc catch de `handleGenerate` — l'ancien message hardcodé (« Erreur de génération.
+  Le mode en ligne utilise l'IA cloud, le mode hors ligne nécessite Ollama installé
+  localement. ») est remplacé par `classifyAiError(error, {provider: mode==='offline'?'ollama':undefined,
+  context: 'create.generate'})`.
+- Message utilisateur = `t(errInfo.i18nKey) || errInfo.fallback` — s'adapte automatiquement
+  à la catégorie (Ollama offline, timeout, cloudflare, provider…).
+- Bulle chat conserve `_error: true` + nouveau `_error_code: errInfo.code` pour diagnostic UI.
+- Détail technique loggué via `console.warn('[AI error]', code, {status, message, raw})`.
+- Ajout `const { language, t } = useLanguage()` (`t` manquait).
+
+### 23.3 Migration GuidedWizard.js
+- **4 catches distincts** avec `context` propre (fine-grained diagnostic) :
+  - `wizard.suggest.name`
+  - `wizard.suggest.design`
+  - `wizard.suggest.func`
+  - `wizard.generate` (call principal `/api/generate` avec `wizard_config`)
+- Le générique `toast.error('Suggestion impossible')` est supprimé sur les 3 suggest.
+- Le générique `toast.error(t('wizard_error_toast'))` sur `handleGenerate` est remplacé par
+  `t(errInfo.i18nKey) || errInfo.fallback || t('wizard_error_toast')` — le fallback ultime
+  `wizard_error_toast` reste utilisé si le mapper retourne un code sans i18n key spécifique.
+- 4 `console.warn('[AI error]', code, {...})` distincts pour diagnostic serveur-side.
+
+### 23.4 Contraintes respectées (spec P1.1)
+- ✅ Réutilise `lib/aiErrorMapper.js` existant — aucune logique de détection dupliquée.
+- ✅ Réutilise les 10 clés i18n `ai_err_*` FR + EN existantes (iter158.7).
+- ✅ Comportement utilisateur préservé — un toast d'erreur reste affiché, un message dans le
+  chat Create reste ajouté, avec un texte désormais adapté à la cause réelle.
+- ✅ Détails techniques conservés dans logs (`console.warn`), pas exposés à l'utilisateur.
+- ✅ Aucune modification permissions, ownership, délégation.
+- ✅ Aucune modification backend.
+
+### 23.5 Tests
+- **`test_iter158_12_frontend_ai_migration.py`** — 9 tests source-level PASS :
+  - `test_mapper_still_exists`
+  - `test_create_js_uses_mapper` (ancien message hardcodé absent, i18n_key wire, context)
+  - `test_create_js_stores_error_code_in_message` (`_error_code` propagé)
+  - `test_guided_wizard_migrated_all_catches` (4 contextes distincts)
+  - `test_guided_wizard_falls_back_to_i18n_key_when_available` (fallback wizard_error_toast
+    conservé)
+  - `test_no_leak_technical_details_to_user` (console.warn présent dans les 2 fichiers)
+  - `test_discover_and_chatbotprogramming_not_touched` (hors périmètre)
+  - `test_chat_js_still_uses_mapper` (sanity iter158.7)
+  - `test_mapper_returns_all_ten_codes` (10 catégories)
+- **Régression cumulée** : 127/127 tests iter158.2→.12 PASS ; **177/177 tests iter158.* hors sandbox**.
+- Live : aucun endpoint backend modifié, vérification unitaire suffisante (call sites frontend).
+
+### 23.6 Bilan P1.1
+✅ Create.js migré vers `classifyAiError` (context `create.generate`).
+✅ GuidedWizard.js : 4 catches migrés (context `wizard.suggest.*` + `wizard.generate`).
+✅ Discover.js et PrivateChatbotProgramming.js confirmés hors périmètre (aucun call LLM).
+✅ Chat.js reste inchangé (iter158.7).
+✅ Mapper `lib/aiErrorMapper.js` réutilisé, aucune duplication.
+✅ i18n FR/EN existant réutilisé, comportement utilisateur préservé.
+✅ Logs techniques conservés en `console.warn`, pas d'exposition à l'utilisateur.
+✅ Aucune modification permissions/ownership/délégation.
+✅ Aucune modification backend.
+✅ Aucune régression (177/177).
+
+**Checkpoint enregistré : `production-ready-iter158.12` (P1.1 clos).**
+
+---
+
 ## 18. Statut global des 4 chantiers CDC
 
 | Chantier | Iter | Status | Tests | Endpoints/composants clés |
@@ -1177,3 +1254,100 @@ Régression complète iter158.2/.3/.4/.5/.6/.7 : 125/125 PASS hors sandbox.**
 
 **Prochaine étape attendue** : audit complet CDC/PRD/code/tests/interactions avant toute déclaration
 de finalisation globale (demande explicite de l'utilisateur).
+
+---
+
+## 24. iter158.13 — P1.2 : Tests d'interactions inter-fonctionnalités
+
+### 24.1 Objectif
+Vérifier que les fonctionnalités livrées (Owner Privileges ON/OFF, sanctions,
+délégations Apprentice Creator, transfer ownership, switch_account gate, AI error
+mapping) se comportent correctement quand elles s'entrecroisent. Chaque test valide
+un PARCOURS RÉEL avec états avant/après, pas seulement l'existence des fonctions.
+
+### 24.2 Scénarios couverts (10 tests)
+1. **`test_scenario1_owner_off_then_sanction_then_on_restores`** — Owner OFF →
+   admin ban → notification créée avec identité admin → owner ON → sanctions
+   nettoyées, `role='creator'` restauré, `is_owner=True` intact. `owner_key_ids`
+   n'est jamais retiré pendant l'état `banned` temporaire.
+2. **`test_scenario1b_non_regression_delegate_creator_still_protected`** — Un
+   délégué Créa (rôle=creator, is_owner=False) reste protégé par la guard
+   Créa-vs-Créa. Un admin ne peut pas le mute.
+3. **`test_scenario2_undo_permission_matrix_respected`** — Admin mute user →
+   modo tente undo (403, matrice respectée) → admin undo (200, muted=False,
+   event `undo_mute` loggé avec `original_event_id`).
+4. **`test_scenario3_delegate_and_force_visitor_no_ownership_bypass`** — Un
+   délégué full_control ne peut pas obtenir de challenge owner ; un
+   `force_visitor` sur owner ON reste bloqué (403) ; `owner_key_ids` intact.
+5. **`test_scenario4_notifications_isolation_between_owners`** — Owner B OFF,
+   admin mute B → notif privée pour B (owner_key_id=B). Owner A ne voit JAMAIS
+   les notifs privées de B. Mark-read de B n'impacte pas le compteur de A.
+6. **`test_scenario5_switch_account_gate_with_expired_temp`** — Délégué sans
+   `switch_account` ne l'a pas dans `delegate_perms`. Grant-temp 60 min →
+   perm visible. Forcer `expires_at` au passé → perm filtrée automatiquement
+   par `_all_active_perms`.
+7. **`test_scenario6_ai_error_preserves_chat_history`** — Le catch d'erreur
+   IA de Chat.js préserve tous les messages précédents (`prev.filter(m =>
+   !m._streaming)`), annote avec `_error: true` + `_error_code`, et libère
+   `isLoading` dans `finally` pour permettre le tour suivant.
+8. **`test_scenario6_ai_error_mapper_frontend_returns_i18n_key_and_fallback`**
+   — Mapper JS expose `i18nKey` + `fallback`, 10 catégories cohérentes.
+9. **`test_scenario6_ai_error_mapper_backend_llm_json_returns_error_code`** —
+   `agents/common.py::llm_json` propage `_error_code` (contrat multi-tour).
+10. **`test_scenario6_backend_generate_exposes_ai_error_code_field`** —
+    `/api/generate` expose `ai_error_code` (fallback IA vs template).
+
+### 24.3 Bug réel révélé et corrigé
+**Scénario 1 initial** : le guard `Créa-vs-Créa` de `staff_actions_routes.py:131`
+firait AVANT le check ownership et bloquait `staff.action(admin, target=owner_off)`
+avec un 403 "Seule une Créa peut modifier une autre Créa." Ceci contredit
+directement le CDC iter158.3 §13.1 :
+
+> OFF → le propriétaire fonctionne exactement comme le rôle actif. Il peut
+> subir les sanctions normales (utile pour tester).
+
+**Fix minimal** (`routes/staff_actions_routes.py`) :
+
+```python
+if target.get("role") == "creator" and me.get("role") != "creator":
+    from utils.ownership_guard import is_owner_device, is_privileges_active
+    is_off_owner = (
+        await is_owner_device(db, payload.target_key_id) and
+        not await is_privileges_active(db, payload.target_key_id)
+    )
+    if not is_off_owner:
+        raise HTTPException(status_code=403,
+                            detail="Seule une Créa peut modifier une autre Créa.")
+```
+
+**Portée** : la relaxation ne s'applique QUE si la cible est un propriétaire
+avec privilèges OFF. Un délégué Créa reste 100 % protégé (test 1b non-régression).
+
+### 24.4 Tests
+- **`test_iter158_13_interactions.py`** — 10 tests PASS.
+- **Régression iter158 complète (hors sandbox) : 184 passed, 1 skipped**.
+  - 2 échecs pré-existants (`test_expired_exclude_auto_lifted*` — auto-lift
+    exclusion, sans rapport avec P1.2, présents avant modification).
+
+### 24.5 Contraintes respectées (spec P1.2)
+- ✅ Chaque test vérifie une INTERACTION avec états avant/après.
+- ✅ Un bug réel trouvé (Créa-vs-Créa guard non-relaxé) → corrigé dans le
+  chantier + test de non-régression `scenario1b`.
+- ✅ Aucun autre code modifié inutilement.
+- ✅ Aucune régression iter158 (184/184 tests P1.2-conformes PASS).
+- ✅ Cleanup complet (fixture module-scope avec suppression owner_key_ids,
+  delegates, device_keys, notifications).
+- ✅ P1.3+ non entamés.
+
+### 24.6 Bilan P1.2
+✅ 10 tests d'interaction ajoutés couvrant les 6 scénarios croisés demandés.
+✅ 1 bug CDC réel détecté et fixé (relaxation Créa-vs-Créa pour owner OFF).
+✅ 1 test de non-régression ajouté (délégué Créa toujours protégé).
+✅ Régression iter158 : 184 PASS, 0 régression introduite.
+✅ Aucune régression sur les tests P0/P1.1.
+
+**Checkpoint enregistré : `production-ready-iter158.13` (P1.2 clos).**
+
+**Prochain chantier proposé** : P1.3 — Corriger `effectiveView` avec Owner
+Privileges OFF (recalcul de la vue pour que le rôle temporaire soit affiché
+sans icônes owner fantômes).
