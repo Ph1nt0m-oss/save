@@ -988,6 +988,111 @@ appareil propriétaire réel et consulte les endpoints existants.
 
 ---
 
+## 21. P0.3 — Transfer Ownership UI (iter158.10)
+
+Exposition frontend du mécanisme backend existant `POST /ownership/transfer`. **Aucune
+modification du backend** — le mécanisme cryptographique (challenge + double signature ECDSA)
+reste l'autorité finale.
+
+### 21.1 Analyse backend (rappel — INCHANGÉ)
+- **`POST /ownership/challenge`** — payload `{key_id, nonce, signature, action, target_key_id}`.
+  Pour `action='transfer_ownership'` renvoie `{challenge_id, challenge_nonce, needs_double_signature: true, expires_at}`.
+- **`POST /ownership/transfer`** — payload `CriticalIn` = `{challenge_id, proofs: [{key_id,
+  signature} × 2], new_owner_key_id, new_owner_user_id?}`.
+  - Consomme le challenge (single-use, TTL).
+  - Vérifie 2 signatures ECDSA de 2 appareils propriétaires DISTINCTS (`_verify_proofs`).
+  - Ajoute `new_owner_key_id` à `owner_key_ids` + set `new_owner_user_id` si fourni.
+  - Journalise via `log_ownership_event("transfer_ownership", ...)`.
+- `transfer_ownership` ∈ `DOUBLE_SIG_ACTIONS` (`utils/ownership_guard.py:70`).
+
+### 21.2 Composant `TransferOwnershipPanel.jsx`
+- **Auto-gaté** via `/ownership/status.is_owner` (rendu « Accès refusé » sinon avec
+  `data-testid="transfer-ownership-denied"`).
+- **Flow en 4 étapes** matérialisées par un state machine :
+  - `INTRO` — saisie de `new_owner_key_id`. Refuse le key_id courant (self).
+  - `CONFIRM` — double confirmation par saisie du token littéral `TRANSFERT` (bouton
+    request-challenge disabled tant que le token n'est pas exact).
+  - `SIG2` — challenge émis + proof #1 auto-signée par l'appareil courant via
+    `signNonce(challenge_nonce)`. UI affiche le `challenge_nonce` (avec bouton copier)
+    à faire signer par le 2e appareil propriétaire (via `signNonce()` console).
+    L'utilisateur colle `secondKeyId` + `secondSig`. Refuse `secondKeyId === selfKeyId`.
+  - `DONE` — affichage du nouveau propriétaire + `owner_user_id` renvoyé par le backend.
+- **Avertissement CDC** visible sur toutes les étapes : « Ce transfert ajoute un nouvel
+  appareil propriétaire… définitif… 2 signatures ECDSA de 2 appareils propriétaires
+  distincts. Aucun état frontend ne peut la déclencher seul. »
+- **Data-testids** (15 au total) :
+  - Panneau : `transfer-ownership-panel`, `transfer-ownership-close`, `transfer-ownership-denied`,
+    `transfer-ownership-success`.
+  - INTRO : `transfer-ownership-new-key`, `transfer-ownership-continue-intro`,
+    `transfer-ownership-cancel-intro`.
+  - CONFIRM : `transfer-ownership-confirm-token`, `transfer-ownership-request-challenge`.
+  - SIG2 : `transfer-ownership-nonce`, `transfer-ownership-copy-nonce`,
+    `transfer-ownership-sig2-keyid`, `transfer-ownership-sig2-value`,
+    `transfer-ownership-submit`, `transfer-ownership-cancel-sig2`.
+
+### 21.3 Intégration Dashboard
+- Bouton `header-transfer-ownership-btn` (icône `ArrowRightLeft` rouge hover) dans le header
+  owner block, à côté de `header-delegates-btn` (gaté même bloc `isOwnerDevice`).
+- Panneau monté conditionnellement via `transferPanelOpen` state.
+
+### 21.4 Sécurité (revue explicite)
+- ✅ Backend inchangé (spec P0.3 : « ne pas modifier la sécurité backend existante sans
+  raison »).
+- ✅ **Aucun état frontend ne peut transférer la propriété** — la seule voie vers
+  `setResultInfo(r.data)` passe par `axios.post('/ownership/transfer', ...)`.
+- ✅ Le frontend ne prétend PAS avoir un mot de passe : le CDC mentionne « mot de passe »
+  mais le backend utilise 2 signatures ECDSA. Décision : respecter le backend existant
+  (spec P0.3 : « N'invente aucun nouveau mécanisme d'authentification si le backend possède
+  déjà le mécanisme requis »).
+- ✅ Double confirmation UX (`TRANSFERT` littéral + bouton submit distinct).
+- ✅ Refus self-target + refus 2 signatures identiques côté client (défense en profondeur ;
+  le backend refuse aussi via `_verify_proofs`).
+- ✅ Backend reste l'autorité finale : challenge single-use, TTL, vérification cryptographique
+  des 2 signatures, écriture atomique de `owner_key_ids`.
+- ✅ Aucun mécanisme d'authentification inventé — utilisation stricte de `signNonce`,
+  `withCreatorProof`, `/ownership/challenge`, `/ownership/transfer` déjà en place.
+
+### 21.5 Tests
+- **`test_iter158_10_transfer_ownership_ui.py`** — 14 tests source-level PASS :
+  - Backend contract inchangé (`_consume_challenge`, `_verify_proofs`, écriture
+    `owner_key_ids`, `owner_user_id`).
+  - `transfer_ownership` ∈ `DOUBLE_SIG_ACTIONS`.
+  - `/ownership/challenge` renvoie `needs_double_signature`.
+  - Composant frontend présent avec 15 data-testids.
+  - Utilise strictement `/ownership/status`, `/ownership/challenge`, `/ownership/transfer`.
+  - Gaté par `is_owner` (accès refusé sinon).
+  - Double confirmation `'TRANSFERT'`.
+  - Refuse `secondKeyId === selfKeyId` (2 sigs distinctes).
+  - Refuse `newOwnerKeyId === selfKeyId` (pas de self-target).
+  - Envoie `proofs=[proof1, proof2]` + `challenge_id` + `new_owner_key_id` au backend.
+  - Utilise `signNonce(challenge_nonce)` local pour proof #1.
+  - Dashboard monte le panneau derrière un bouton gaté `isOwnerDevice`.
+  - Aucun bypass état frontend possible (seule voie via axios).
+- **Régression cumulée** : 107/107 tests iter158.2→.10 PASS ; **157/157 tests iter158.* hors sandbox**.
+- **Backend live** : boot OK, `POST /ownership/challenge` → 404 sans clé valide,
+  `POST /ownership/transfer` → 403 « Challenge invalide ou déjà utilisé » (auth/challenge
+  vérifiés). Aucun crash.
+
+### 21.6 Bilan P0.3
+✅ Composant `TransferOwnershipPanel.jsx` créé.
+✅ Accès owner-only (auto-gaté + backend authoritatif).
+✅ Destinataire clairement identifié (input `new_owner_key_id` visible dans 3 étapes).
+✅ Avertissement explicite « transfert définitif » sur toutes les étapes.
+✅ Éléments d'authentification exigés par le backend respectés (challenge + 2 signatures ECDSA).
+✅ Double confirmation (`TRANSFERT` littéral + bouton submit distinct).
+✅ Aucune validation accidentelle possible (state machine + boutons disabled).
+✅ Affichage succès/échec (data-testids `transfer-ownership-success` + `transfer-ownership-denied`).
+✅ Backend reste autorité finale (challenge single-use + verify_proofs serveur).
+✅ Mécanisme CriticalIn / double signature respecté.
+✅ Aucune modification `owner_key_ids` / `owner_user_id` côté client.
+✅ Tests frontend + backend contract présents.
+✅ Cas non-owner géré (`transfer-ownership-denied` rendu à la place).
+✅ Aucune régression (157/157 hors sandbox).
+
+**Checkpoint enregistré : `production-ready-iter158.10` (P0.3 clos).**
+
+---
+
 ## 18. Statut global des 4 chantiers CDC
 
 | Chantier | Iter | Status | Tests | Endpoints/composants clés |

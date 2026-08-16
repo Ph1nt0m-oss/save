@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, GraduationCap, FlaskConical, UserPlus
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, GraduationCap, FlaskConical, UserPlus, ArrowRightLeft
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -45,6 +45,7 @@ import ForceVisitorBanner from '../components/ForceVisitorBanner';
 import OwnerPrivilegesToggle from '../components/OwnerPrivilegesToggle';
 import OwnerDelegatesPanel from '../components/OwnerDelegatesPanel';
 import OwnerNotificationsBell from '../components/OwnerNotificationsBell';
+import TransferOwnershipPanel from '../components/TransferOwnershipPanel';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useViewSpec from '../hooks/useViewSpec';
 
@@ -112,6 +113,8 @@ export default function Dashboard() {
   const [isOwnerDevice, setIsOwnerDevice] = useState(false);
   // iter158.6 — Panneau propriétaire : gestion des délégués Apprentice Creator.
   const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false);
+  // iter158.10 — P0.3 : Panneau transfert de propriété (owner only).
+  const [transferPanelOpen, setTransferPanelOpen] = useState(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -748,6 +751,7 @@ export default function Dashboard() {
       {visiting && <AccountVisitView target={visiting} onClose={() => setVisiting(null)} />}
       <ForceVisitorBanner />
       <OwnerDelegatesPanel open={delegatesPanelOpen} onClose={() => setDelegatesPanelOpen(false)} />
+      <TransferOwnershipPanel open={transferPanelOpen} onClose={() => setTransferPanelOpen(false)} />
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* iter67: on mobile, the sidebar becomes a fixed overlay drawer with
          a backdrop. On desktop (md+) it stays as a normal flex column that
@@ -1054,6 +1058,15 @@ export default function Dashboard() {
                     className="relative z-[5] text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-1 flex-shrink-0"
                   >
                     <UserPlus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setTransferPanelOpen(true)}
+                    data-testid="header-transfer-ownership-btn"
+                    title="Transfert de propriété (définitif — double signature)"
+                    aria-label="Transfert de propriété"
+                    className="relative z-[5] text-[#A1A1AA] hover:text-red-400 transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-1 flex-shrink-0"
+                  >
+                    <ArrowRightLeft className="w-4 h-4" />
                   </button>
                 </>
               )}

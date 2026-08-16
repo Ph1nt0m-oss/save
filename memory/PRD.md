@@ -1,6 +1,23 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.10 (Aug 2026) — P0.3 : Transfer Ownership UI
+**Status : COMPLETED (14 nouveaux tests + régression 107/107 iter158.2→.10 PASS + 157/157 hors sandbox + backend live vérifié).**
+Exposition UI du mécanisme backend `POST /ownership/transfer` (inchangé) :
+- Frontend `TransferOwnershipPanel.jsx` (nouveau) — state machine 4 étapes
+  (INTRO→CONFIRM→SIG2→DONE), auto-gaté `/ownership/status.is_owner`, double confirmation
+  par token littéral 'TRANSFERT', proof #1 auto via signNonce, proof #2 saisi manuellement
+  depuis le 2e appareil propriétaire, refus self-target + refus 2 sigs identiques.
+- Backend inchangé (spec P0.3 : « ne pas modifier la sécurité backend existante ») —
+  challenge + double signature ECDSA + écriture atomique owner_key_ids/owner_user_id.
+- Aucun mot de passe inventé : le CDC parle de « mot de passe » mais le backend utilise
+  2 signatures ECDSA de 2 appareils distincts (mécanisme cryptographique existant respecté).
+- 15 data-testids. Bouton `header-transfer-ownership-btn` (ArrowRightLeft rouge) dans
+  Dashboard header gaté `isOwnerDevice`.
+Fichiers modifiés/créés : `components/TransferOwnershipPanel.jsx` (nouveau),
+`pages/Dashboard.js`, `tests/test_iter158_10_transfer_ownership_ui.py` (nouveau).
+
+
 ## iter158.9 (Aug 2026) — P0.2 : Owner Notifications UI
 **Status : COMPLETED (10 nouveaux tests + régression 93/93 iter158.2→.9 PASS + 143/143 hors sandbox + backend live vérifié).**
 Exposition frontend des notifications secrètes owner (backend déjà en place iter158.3) :
