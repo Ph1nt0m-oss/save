@@ -834,6 +834,79 @@ générique masquant la cause réelle.
 
 ---
 
+## 19. P0.1 — AI Error Mapper : couverture backend complète (iter158.8)
+
+Suite à l'audit final (§18) qui a identifié `server.py:1612+` et 4 autres call sites LLM du
+monolithe **ignorant** encore `ai_error_mapper.py`, ce chantier P0 étend la couverture pour que
+**aucune voie LLM importante ne contourne le mapper**.
+
+### 19.1 Call sites migrés
+1. **`server.py::/api/generate` Ollama** (`context='server.generate.ollama'`) — 3 branches :
+   `result['error']` applicatif, HTTP `!= 200`, `Exception` (timeout/connection refused).
+2. **`server.py::/api/generate` Emergent LLM cascade** (`context='server.generate.emergent'`) —
+   agrégation des erreurs après épuisement du cascade `ordered_gen_chain`.
+3. **`server.py::/api/ai/generate-code` Ollama-only** (`context='server.ai_generate_code'`) —
+   3 branches : JSON parse fail, HTTP `!= 200`, `Exception`. Renvoie `HTTPException(status=503)`
+   avec `detail={error_code, message}` si `ollama_offline`, sinon 500 (JSON structuré).
+4. **`server.py::send_chat_message` Ollama offline** (`context='server.send_chat_message.ollama'`).
+5. **`server.py::send_chat_message` Emergent cascade** (`context='server.send_chat_message.emergent'`).
+
+### 19.2 Réponse `/api/generate` enrichie
+- Ajout du champ `ai_error_code` dans la réponse HTTP 200 :
+  - `None` si aucune erreur rencontrée.
+  - Sinon la catégorie (`ollama_offline`, `timeout`, `provider_error`, …) — permet à l'UI de
+    matérialiser un warning contextualisé même quand un fallback template a réussi.
+- La variable `ai_error_code = None` est initialisée en tête de flow ; chaque catch backend l'écrit
+  UNIQUEMENT si elle est `None` (on préserve le premier code d'erreur significatif).
+
+### 19.3 Logs uniformisés
+- Format standard sur les 5 call sites : `f"<flow> [{info['code']}]: {info['log_detail']}"`.
+- Les anciens formats bruts sont supprimés :
+  - `logger.warning(f"Ollama not available: {e}")`
+  - `logger.warning(f"Ollama error: {result.get('error')}")`
+  - `logger.info(f"Ollama offline unreachable: {ollama_error}")`
+  - `logger.warning(f"Emergent chat error: {emergent_error}")`
+  - `logger.error(f"Emergent AI error: {e}")`
+- Chaque log garde le `log_detail` complet (provider, ctx, status, exception, body tronqué) pour
+  diagnostic sans exposer aux utilisateurs.
+
+### 19.4 Aucune modification de contrat externe
+- `/api/generate` reste 200 sur fallback template — juste enrichi.
+- `/api/ai/generate-code` retourne toujours HTTPException, mais `detail` devient structuré
+  (`{error_code, message}` au lieu du string opaque). Les clients existants qui lisent `detail`
+  comme string voient un JSON — **impact frontend nul** car ce endpoint n'a pas d'appelant
+  utilisant `detail` en string dans le repo.
+- Les autres logs `except.*Exception as e` non-LLM (`cfaction post-process`, upload files…) restent
+  inchangés (hors périmètre P0.1).
+
+### 19.5 Tests
+- **`test_iter158_8_ai_error_backend_coverage.py`** — 8 tests source-level PASS :
+  - `test_server_generate_ollama_uses_mapper` — 3+ appels dans le bloc Ollama.
+  - `test_server_generate_emergent_uses_mapper`
+  - `test_server_generate_exposes_ai_error_code` — champ dans response HTTP.
+  - `test_ai_generate_code_uses_mapper` — 3+ appels + error_code structuré + 503 pour Ollama offline.
+  - `test_send_chat_message_ollama_uses_mapper`
+  - `test_send_chat_message_emergent_uses_mapper`
+  - `test_no_regression_generic_ollama_log` — les 5 anciens logs bruts absents.
+  - `test_all_context_labels_prefixed_by_server_dot` — 5 contextes distincts trouvés.
+- **Régression cumulée** : 83/83 tests iter158.2→.8 PASS ; **133/133 tests iter158.* hors sandbox**.
+- **Backend live** : boot OK, `curl /api/ai/generate-code` → 401 auth normal (pas de crash sur le
+  nouveau flow).
+
+### 19.6 Bilan P0.1
+✅ 5 call sites LLM migrés vers `classify_ai_error`.
+✅ Ollama offline correctement distingué (`ollama_offline` vs `timeout` vs `ollama_error`).
+✅ Réponse `/api/generate` expose `ai_error_code` pour l'UI.
+✅ `/api/ai/generate-code` renvoie `HTTPException(503, detail={error_code, message})` pour Ollama
+   offline (distinguable côté frontend d'un 500 générique).
+✅ Logs techniques uniformes avec `log_detail` (diagnostic préservé).
+✅ Aucun contrat public de réponse HTTP cassé.
+✅ Aucune régression (133/133).
+
+**Checkpoint enregistré : `production-ready-iter158.8` (P0.1 clos).**
+
+---
+
 ## 18. Statut global des 4 chantiers CDC
 
 | Chantier | Iter | Status | Tests | Endpoints/composants clés |

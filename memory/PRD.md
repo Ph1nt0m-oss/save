@@ -1,6 +1,19 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.8 (Aug 2026) — P0.1 : AI Error Mapper couverture backend complète
+**Status : COMPLETED (8 nouveaux tests + régression 83/83 iter158.2→.8 PASS + 133/133 hors sandbox + backend live vérifié).**
+Fait suite à l'audit final §18 (item H5) :
+- server.py:1612+ `/api/generate` Ollama → 3 branches classify_ai_error
+- server.py `/api/generate` Emergent cascade → classify
+- server.py `/api/ai/generate-code` → 3 branches + réponse HTTPException(503) structurée pour ollama_offline
+- server.py send_chat_message Ollama + Emergent → classify
+- Réponse `/api/generate` enrichie avec champ `ai_error_code`
+- 5 anciens logs génériques `Ollama not available: {e}` remplacés par format `[<code>]: <log_detail>`
+Aucune modification de contrat externe. Aucune régression.
+Fichiers modifiés : `server.py`, `tests/test_iter158_8_ai_error_backend_coverage.py` (nouveau).
+
+
 ## iter158.7 (Aug 2026) — Chantier 4 : AI Error Mapping
 **Status : COMPLETED (24 nouveaux tests + régression 75/75 iter158.2→.7 PASS + 125/125 hors sandbox + backend live vérifié).**
 Mappage canonique et différencié des erreurs IA :

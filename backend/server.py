@@ -1608,6 +1608,7 @@ IMPORTANT:
 
     ai_text = None
     ai_source = None
+    ai_error_code = None  # iter158.8 — P0.1 : catégorie d'erreur exposée à l'UI
     
     # Try Ollama first (for offline mode or if requested)
     if mode == 'offline':
@@ -1637,9 +1638,29 @@ IMPORTANT:
                         ai_source = 'ollama'
                         logger.info("Generation via Ollama successful")
                     else:
-                        logger.warning(f"Ollama error: {result.get('error')}")
+                        # iter158.8 — P0.1 : classify_ai_error pour Ollama applicatif
+                        from utils.ai_error_mapper import classify_ai_error
+                        info = classify_ai_error(
+                            raw_body=str(result.get('error') or ''),
+                            http_status=200, provider='ollama',
+                            context='server.generate.ollama',
+                        )
+                        ai_error_code = info['code']
+                        logger.warning(f"Ollama error [{info['code']}]: {info['log_detail']}")
+                else:
+                    from utils.ai_error_mapper import classify_ai_error
+                    info = classify_ai_error(
+                        raw_body=response.text[:800],
+                        http_status=response.status_code, provider='ollama',
+                        context='server.generate.ollama',
+                    )
+                    ai_error_code = info['code']
+                    logger.warning(f"Ollama HTTP error [{info['code']}]: {info['log_detail']}")
         except Exception as e:
-            logger.warning(f"Ollama not available: {e}")
+            from utils.ai_error_mapper import classify_ai_error
+            info = classify_ai_error(e, provider='ollama', context='server.generate.ollama')
+            ai_error_code = info['code']
+            logger.warning(f"Ollama not available [{info['code']}]: {info['log_detail']}")
     
     # Fallback to Emergent AI (GPT) for online mode or if Ollama failed
     if ai_text is None:
@@ -1741,7 +1762,12 @@ IMPORTANT:
             if ai_text is None:
                 raise RuntimeError(f"All generation models failed. Last error: {last_gen_error}")
         except Exception as e:
-            logger.error(f"Emergent AI error: {e}")
+            # iter158.8 — P0.1 : classify_ai_error côté Emergent LLM aussi
+            from utils.ai_error_mapper import classify_ai_error
+            info = classify_ai_error(e, provider='emergent', context='server.generate.emergent')
+            if ai_error_code is None:
+                ai_error_code = info['code']
+            logger.error(f"Emergent AI error [{info['code']}]: {info['log_detail']}")
             
             # Last resort: generate a basic template
             ai_text = generate_basic_template(description)
@@ -1846,7 +1872,11 @@ IMPORTANT:
             "explanation": generated.get('explanation', 'Application générée avec succès'),
             "project": {"id": project_id, "name": description[:50]},
             "preview_url": preview_url,
-            "ai_source": ai_source
+            "ai_source": ai_source,
+            # iter158.8 — P0.1 : expose la catégorie d'erreur au frontend
+            # (None si aucun problème rencontré) → permet à l'UI d'afficher un
+            # message adapté même quand un fallback template a réussi.
+            "ai_error_code": ai_error_code,
         }
     except Exception as e:
         logger.error(f"Error saving generated app: {e}")
@@ -2132,6 +2162,9 @@ async def _ai_generate_code_impl(prompt_data: dict):
     prompt = prompt_data.get('prompt', '')
     existing_files = prompt_data.get('existing_files', [])
     
+    # iter158.8 — P0.1 : classifier local pour cette route Ollama-only
+    from utils.ai_error_mapper import classify_ai_error
+
     try:
         ollama_url = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
         ollama_model = os.environ.get('OLLAMA_CODE_MODEL') or os.environ.get('OLLAMA_MODEL', 'deepseek-coder:6.7b')
@@ -2183,23 +2216,47 @@ Important: Code propre, commenté, et fonctionnel."""
                         return generated
                     else:
                         raise ValueError("No JSON found")
-                except (ValueError, json.JSONDecodeError):
-                    # If parsing fails, return raw response
+                except (ValueError, json.JSONDecodeError) as parse_err:
+                    # iter158.8 — P0.1 : le body n'est pas du JSON → json_invalid
+                    info = classify_ai_error(
+                        parse_err, provider='ollama',
+                        context='server.ai_generate_code.parse',
+                    )
+                    logger.warning(
+                        f"Ollama JSON parse fail [{info['code']}]: {info['log_detail']}"
+                    )
                     return {
-                        "files": [{
-                            "path": "output.txt",
-                            "content": ai_text
-                        }],
-                        "explanation": "Réponse de l'IA (format non-JSON détecté)"
+                        "files": [{"path": "output.txt", "content": ai_text}],
+                        "explanation": "Réponse de l'IA (format non-JSON détecté)",
+                        "ai_error_code": info["code"],
                     }
             else:
-                raise HTTPException(status_code=500, detail="Ollama API error")
+                # iter158.8 — P0.1 : classify avec status HTTP + body Ollama
+                info = classify_ai_error(
+                    raw_body=response.text[:800],
+                    http_status=response.status_code, provider='ollama',
+                    context='server.ai_generate_code',
+                )
+                logger.warning(
+                    f"Ollama /api/generate error [{info['code']}]: {info['log_detail']}"
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail={"error_code": info["code"],
+                            "message": info["message_fr"]},
+                )
                 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating code: {e}")
+        # iter158.8 — P0.1 : timeout, connection refused (11434), etc.
+        info = classify_ai_error(e, provider='ollama', context='server.ai_generate_code')
+        logger.error(
+            f"Error generating code [{info['code']}]: {info['log_detail']}"
+        )
         raise HTTPException(
-            status_code=500, 
-            detail="Installez Ollama pour une IA gratuite. Voir OLLAMA_SETUP.md"
+            status_code=503 if info['code'] == 'ollama_offline' else 500,
+            detail={"error_code": info["code"], "message": info["message_fr"]},
         )
 
 # ==================== CHAT ROUTES ====================
@@ -2382,7 +2439,15 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                         ai_source = f'ollama:{ollama_model}'
                         logger.info(f"✅ Ollama (offline) chat response via {ollama_model}")
             except Exception as ollama_error:
-                logger.info(f"Ollama offline unreachable: {ollama_error}")
+                # iter158.8 — P0.1 : classify_ai_error pour Ollama chat
+                from utils.ai_error_mapper import classify_ai_error
+                info = classify_ai_error(
+                    ollama_error, provider='ollama',
+                    context='server.send_chat_message.ollama',
+                )
+                logger.info(
+                    f"Ollama offline unreachable [{info['code']}]: {info['log_detail']}"
+                )
         else:
             # Online mode → Emergent GPT-4o.
             try:
@@ -2629,7 +2694,15 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                     # Whole cascade failed — let the outer fallback (offline msg) kick in.
                     logger.error(f"All cascade models failed. Last error: {last_error}")
             except Exception as emergent_error:
-                logger.warning(f"Emergent chat error: {emergent_error}")
+                # iter158.8 — P0.1 : classify_ai_error pour cascade Emergent
+                from utils.ai_error_mapper import classify_ai_error
+                info = classify_ai_error(
+                    emergent_error, provider='emergent',
+                    context='server.send_chat_message.emergent',
+                )
+                logger.warning(
+                    f"Emergent chat error [{info['code']}]: {info['log_detail']}"
+                )
 
         # Final fallback — short, friendly, localized "I'm having trouble" message.
         if not ai_response_text:
