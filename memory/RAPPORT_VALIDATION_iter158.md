@@ -625,3 +625,114 @@ symétrique à celle du Chantier 1, suppression du vidage historique.
 ✅ Aucune régression.
 
 **Checkpoint enregistré : `production-ready-iter158.5` (Chantier 2 clos).**
+
+---
+
+## 16. Chantier 3 — Apprentice Creator (iter158.6)
+
+Implémentation de la progression déléguée par le propriétaire avec **délégation temporaire**
+(expiration automatique) et **délégation permanente** (verrouillage définitif en véritable
+créateur). Aucune de ces opérations ne transfère la propriété — celle-ci reste inviolable.
+
+### 16.1 Backend `utils/ownership_guard.py`
+- **`CANONICAL_DELEGATE_PERMS`** — liste canonique des 13 perms qu'un apprenti peut acquérir :
+  `approve_key`, `promote_staff`, `manage_bots`, `manage_ideas`, `manage_exports`,
+  `manage_projects`, `manage_ai`, `manage_i18n`, `manage_tutorial`, `site_config`,
+  `switch_account` (spec CDC : « le bouton changement de compte apparaît quand cette possibilité
+  lui est déléguée »), `visit_account`, `rename_global`.
+- **`DELEGATE_PERMISSIONS`** — set élargi (validation d'entrée) incluant les anciens
+  (`manage_site`, `moderate`, etc.) + les canoniques + `full_control`.
+- **Helpers d'expiration** :
+  - `_parse_iso(iso_str)` — parse défensif ISO (avec ou sans `Z`).
+  - `_active_temp_perms(delegate)` — liste des perms temporaires non expirées.
+  - `_all_active_perms(delegate)` — union `perms` (permanentes) + `_active_temp_perms`.
+- **`has_delegate_perm(db, key_id, perm)`** — utilise `_all_active_perms` : une perm temporaire
+  expire automatiquement dès que son `expires_at < now()`.
+
+### 16.2 Backend `routes/ownership_routes.py` — 7 nouveaux endpoints owner-only
+- **`POST /ownership/delegate/list`** — liste des délégués avec `active_perms` (union),
+  `canonical_perms_missing`, `locked`, `history`. **Purge à la volée** les temp expirées.
+- **`POST /ownership/delegate/grant-temp`** — accorde `perm` temporaire pour `duration_minutes`
+  (bornée 1 min → 30 jours). Refuse si la perm est déjà permanente (409). Remplace toute
+  perm temp existante sur la même clé. Journalise `grant_temp` dans `history` + ownership_event.
+- **`POST /ownership/delegate/grant-permanent`** — accorde `perm` permanente (progressive
+  promotion). Si la même perm existait en temp, elle est **promue** (retirée de `temp_perms`,
+  ajoutée à `perms`). Idempotent.
+- **`POST /ownership/delegate/revoke-perm`** — révoque `perm` (permanent ET/OU temporaire).
+- **`POST /ownership/delegate/lock`** — verrouille le délégué en « véritable créateur ».
+  Exige que toutes les `CANONICAL_DELEGATE_PERMS` soient en permanent (ou que `full_control`
+  soit accordé). Répond 409 avec la liste des perms manquantes sinon.
+- **`POST /ownership/delegate/unlock`** — déverrouille (rend possible `/revoke`).
+- **`POST /ownership/delegate/history`** — historique complet d'un délégué (actions, acteurs,
+  timestamps, expirations).
+
+### 16.3 Modification `/ownership/delegate/revoke`
+- **Refuse (409 Conflict)** si le délégué est `locked=true` (spec CDC : « véritable créateur ne
+  peut pas être révoqué en un clic »). Le propriétaire doit passer par `/unlock` d'abord.
+
+### 16.4 Modèles Pydantic
+- `DelegateTempPermIn` — `delegate_key_id`, `perm`, `duration_minutes` (défaut 60).
+- `DelegatePermanentPermIn` — `delegate_key_id`, `perm`.
+- `DelegateLockIn` — `delegate_key_id`.
+
+### 16.5 Traçabilité
+- **`_log_delegate_history(delegate_kid, entry)`** — ajoute une entrée `{ts, action, actor, ...}`
+  à `delegates.$.history`. Persisté dans le document `ownership`.
+- Actions loggées : `grant_temp`, `grant_permanent`, `revoke_perm`, `lock`, `unlock`.
+- Chaque action déclenche AUSSI un `log_ownership_event` (audit global inter-propriétaires,
+  visible via `/ownership/audit`).
+- Cohérent avec la spec CDC : « les créateurs propriétaires ne doivent rien pouvoir se cacher
+  entre eux concernant ces décisions ».
+
+### 16.6 Frontend
+- **`components/OwnerDelegatesPanel.jsx`** (NOUVEAU) — panneau owner complet :
+  - Liste des délégués avec badge `apprenti` ou `véritable créateur`.
+  - Perms permanentes (badges verts, révocables via `×`).
+  - Perms temporaires (badges ambrés avec heure d'expiration, révocables).
+  - Dropdowns « + Perm permanente… » et « + Perm temp 60 min… » filtrés sur les perms
+    non-encore-accordées.
+  - Bouton `Lock`/`Unlock` (disabled tant que toutes les canoniques ne sont pas permanentes).
+  - Bouton `Historique` par délégué → modal avec toutes les actions triées récent-en-tête.
+  - Formulaire d'ajout rapide : `key_id` + perm initiale + durée en minutes → grant-temp.
+  - Data-testids : `owner-delegates-panel`, `owner-delegates-close`, `owner-delegates-empty`,
+    `delegate-add-keyid`, `delegate-add-perm`, `delegate-add-minutes`, `delegate-add-submit`,
+    `delegate-row-<key>`, `delegate-grant-perm-<key>`, `delegate-grant-temp-<key>`,
+    `delegate-history-<key>`, `delegate-toggle-lock-<key>`, `delegate-history-modal`.
+- **`pages/Dashboard.js`** — bouton `header-delegates-btn` (icône `UserPlus`) dans le header,
+  visible UNIQUEMENT si `isOwnerDevice=true` (même conditionnelle que `header-sandbox-btn`).
+  Ouvre le panneau `<OwnerDelegatesPanel />`.
+
+### 16.7 Tests
+- **`test_iter158_6_apprentice_creator.py`** — 13 tests source-level PASS :
+  - `test_guard_exposes_canonical_perms`
+  - `test_guard_temp_perm_helpers`
+  - `test_delegate_permissions_extended`
+  - `test_new_endpoints_exist`
+  - `test_revoke_refuses_locked_delegate`
+  - `test_grant_temp_has_duration_bounds`
+  - `test_grant_permanent_promotes_temp`
+  - `test_lock_requires_all_canonical_perms`
+  - `test_history_persisted_in_delegate_row`
+  - `test_delegate_list_purges_expired_temp`
+  - `test_frontend_owner_delegates_panel`
+  - `test_dashboard_mounts_delegates_panel`
+  - `test_ownership_events_logged`
+- **Régression cumulée** : 51/51 tests iter158.2/.3/.4/.5/.6 PASS ; 101/101 tests iter158.*
+  hors sandbox.
+- **Backend live vérifié** : 7 endpoints répondent 404 sans clé valide (enregistrés,
+  matrice `_require_owner` appliquée). Boot OK.
+
+### 16.8 Bilan Chantier 3
+✅ Délégation temporaire avec expiration auto (min 1 min, max 30 jours).
+✅ Délégation permanente (progressive promotion depuis temp).
+✅ Verrouillage « véritable créateur » quand toutes les canonical perms sont permanentes.
+✅ Révoke refuse un délégué verrouillé (protection).
+✅ Permissions précises par niveau (canonical list + `has_delegate_perm` centralisé).
+✅ Traçabilité complète (`history` dans `delegates.$` + `ownership_events` global).
+✅ Propriété jamais transférée (les 7 endpoints n'écrivent JAMAIS dans `owner_key_ids` ni
+   `owner_user_id`).
+✅ Protections propriétaire existantes (`assert_not_owner_target`, `is_privileges_active`)
+   inchangées.
+✅ Aucune régression.
+
+**Checkpoint enregistré : `production-ready-iter158.6` (Chantier 3 clos).**

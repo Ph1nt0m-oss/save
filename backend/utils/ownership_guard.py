@@ -31,12 +31,29 @@ from utils.founder_guard import get_founder_key_ids
 OWNERSHIP_ID = "root"
 
 # Permissions qu'un propriétaire peut déléguer à une Créa déléguée.
+# iter158.6 — Élargi à la liste canonique complète (Apprentice Creator).
+# Voir aussi `CANONICAL_DELEGATE_PERMS` — DELEGATE_PERMISSIONS reste utilisé
+# comme validation d'entrée (superset accepté).
 DELEGATE_PERMISSIONS = {
     "manage_site",        # config du site, annonces, sondages
-    "manage_staff",       # promouvoir/rétrograder modo/admin
+    "manage_staff",       # promouvoir/rétrograder modo/admin (= promote_staff)
     "moderate",           # actions de modération
-    "approve_exports",    # valider les demandes d'export
+    "approve_exports",    # valider les demandes d'export (= manage_exports)
     "manage_bots",        # gérer les bots/IA
+    # iter158.6 — canoniques Apprentice Creator :
+    "approve_key",
+    "promote_staff",
+    "manage_ideas",
+    "manage_exports",
+    "manage_projects",
+    "manage_ai",
+    "manage_i18n",
+    "manage_tutorial",
+    "site_config",
+    "switch_account",
+    "visit_account",
+    "rename_global",
+    "full_control",
 }
 
 # Actions critiques qui exigent une auth renforcée liée à l'action.
@@ -200,14 +217,68 @@ async def get_delegate(db, key_id: Optional[str]) -> Optional[Dict[str, Any]]:
     return None
 
 
+# iter158.6 — Liste canonique des permissions déléguables (Apprentice Creator).
+# Chacune correspond à une capacité d'un vrai créateur. Le propriétaire peut
+# les accorder progressivement (spec CDC : « progression progressive »).
+CANONICAL_DELEGATE_PERMS = [
+    "approve_key",        # approuver/refuser les demandes de clés
+    "promote_staff",      # nommer modo/admin
+    "manage_bots",        # gérer les bots communautaires + programmation
+    "manage_ideas",       # gérer les idées / feedback
+    "manage_exports",     # décider des exports (approuver/refuser)
+    "manage_projects",    # supprimer projets, valider
+    "manage_ai",          # personnaliser les IA (Mes IA / Programmation IA)
+    "manage_i18n",        # traductions
+    "manage_tutorial",    # tutoriel
+    "site_config",        # config du site (mode, thèmes, etc.)
+    "switch_account",     # spec CDC : « bouton changement de compte apparaît quand cette possibilité lui est déléguée »
+    "visit_account",      # visiter un compte (créa-only par défaut)
+    "rename_global",      # renommer globalement (créa-only par défaut)
+]
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_iso(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _active_temp_perms(delegate: Dict[str, Any]) -> List[str]:
+    """iter158.6 — Retourne la liste des perms temporaires encore valides
+    (expires_at > now)."""
+    out: List[str] = []
+    now = _now_utc()
+    for tp in delegate.get("temp_perms") or []:
+        exp = _parse_iso(tp.get("expires_at"))
+        if exp and exp > now:
+            out.append(tp.get("perm"))
+    return [p for p in out if p]
+
+
+def _all_active_perms(delegate: Dict[str, Any]) -> List[str]:
+    """iter158.6 — Union perms permanentes + perms temporaires actives."""
+    perm_perms = delegate.get("perms") or []
+    temp = _active_temp_perms(delegate)
+    return sorted(set(perm_perms + temp))
+
+
 async def has_delegate_perm(db, key_id: Optional[str], perm: str) -> bool:
+    """iter158.6 — Vérifie une permission (permanente OU temporaire non expirée).
+    'full_control' dans les perms permanentes accorde toujours tout."""
     if await is_owner_device(db, key_id):
         return True
     d = await get_delegate(db, key_id)
     if not d:
         return False
-    perms = d.get("perms") or []
-    return perm in perms or "full_control" in perms
+    active = _all_active_perms(d)
+    return perm in active or "full_control" in (d.get("perms") or [])
 
 
 async def assert_not_owner_target(db, target_key_id: Optional[str], actor_key_id: Optional[str], action: str = "action") -> None:

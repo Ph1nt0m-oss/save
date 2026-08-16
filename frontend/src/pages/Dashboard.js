@@ -9,7 +9,7 @@ import {
   Send, Plus, LogOut, Sparkles, 
   Code2, Smartphone, Monitor, Globe, 
   Download, Loader2, PanelLeftClose, PanelLeftOpen, ChevronRight,
-  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, GraduationCap, FlaskConical
+  Wand2, Wifi, WifiOff, Users, BookOpen, UserCog, Pencil, Trash2, MessageSquare, Eye, Brain, Link2, Copy, Share2, MessageCircleQuestion, Bot, Plug, GraduationCap, FlaskConical, UserPlus
 } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
@@ -43,6 +43,7 @@ import TranslatedProjectName from '../components/TranslatedProjectName';
 import BotsAdminPanel from '../components/BotsAdminPanel';
 import ForceVisitorBanner from '../components/ForceVisitorBanner';
 import OwnerPrivilegesToggle from '../components/OwnerPrivilegesToggle';
+import OwnerDelegatesPanel from '../components/OwnerDelegatesPanel';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 import useViewSpec from '../hooks/useViewSpec';
 
@@ -108,6 +109,8 @@ export default function Dashboard() {
   // en state local. Reste silencieux en cas d'erreur (le bouton reste
   // masqué par défaut).
   const [isOwnerDevice, setIsOwnerDevice] = useState(false);
+  // iter158.6 — Panneau propriétaire : gestion des délégués Apprentice Creator.
+  const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -743,6 +746,7 @@ export default function Dashboard() {
       }} />
       {visiting && <AccountVisitView target={visiting} onClose={() => setVisiting(null)} />}
       <ForceVisitorBanner />
+      <OwnerDelegatesPanel open={delegatesPanelOpen} onClose={() => setDelegatesPanelOpen(false)} />
       {/* Onboarding retiré du dashboard — l'utilisateur découvre l'interface par lui-même */}
       {/* iter67: on mobile, the sidebar becomes a fixed overlay drawer with
          a backdrop. On desktop (md+) it stays as a normal flex column that
@@ -1031,15 +1035,26 @@ export default function Dashboard() {
                 <GraduationCap className="w-4 h-4" />
               </button>
               {device.role === 'creator' && !device.viewMode && isOwnerDevice && (
-                <button
-                  onClick={() => navigate('/dev/sandbox')}
-                  data-testid="header-sandbox-btn"
-                  title="Environnement de test (Sandbox — propriétaire réel uniquement)"
-                  aria-label="Ouvrir le sandbox de test"
-                  className="relative z-[5] text-[#A1A1AA] hover:text-cyan-300 transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-1 flex-shrink-0"
-                >
-                  <FlaskConical className="w-4 h-4" />
-                </button>
+                <>
+                  <button
+                    onClick={() => navigate('/dev/sandbox')}
+                    data-testid="header-sandbox-btn"
+                    title="Environnement de test (Sandbox — propriétaire réel uniquement)"
+                    aria-label="Ouvrir le sandbox de test"
+                    className="relative z-[5] text-[#A1A1AA] hover:text-cyan-300 transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-1 flex-shrink-0"
+                  >
+                    <FlaskConical className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setDelegatesPanelOpen(true)}
+                    data-testid="header-delegates-btn"
+                    title="Gestion des délégués (Apprentice Creator)"
+                    aria-label="Gestion des délégués"
+                    className="relative z-[5] text-[#A1A1AA] hover:text-[#E4FF00] transition-colors p-1.5 rounded-sm hover:bg-white/[0.04] ml-1 flex-shrink-0"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                  </button>
+                </>
               )}
               <OwnerPrivilegesToggle />
               <div className="flex items-center gap-3 sm:gap-5 ml-3 sm:ml-2">

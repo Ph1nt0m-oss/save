@@ -1,6 +1,28 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.6 (Aug 2026) — Chantier 3 : Apprentice Creator
+**Status : COMPLETED (13 nouveaux tests + régression 51/51 iter158.2/.3/.4/.5/.6 PASS + 101/101 hors sandbox + backend live vérifié).**
+Progression déléguée par le propriétaire :
+- Backend guard : `CANONICAL_DELEGATE_PERMS` (13 perms canoniques) + helpers d'expiration
+  (`_active_temp_perms`, `_all_active_perms`). `has_delegate_perm` élargi pour lire
+  perms + temp_perms non-expirées.
+- Backend routes : 7 nouveaux endpoints owner-only :
+  `/ownership/delegate/list` (avec purge auto temp expirées),
+  `/grant-temp` (1 min → 30 j),
+  `/grant-permanent` (promotion progressive),
+  `/revoke-perm`, `/lock`, `/unlock`, `/history`.
+  Modif `/revoke` : refuse 409 si délégué verrouillé.
+- Modèles Pydantic module-level : `DelegateTempPermIn`, `DelegatePermanentPermIn`,
+  `DelegateLockIn`.
+- Traçabilité : `_log_delegate_history` + `log_ownership_event` (double journalisation).
+- Frontend : `OwnerDelegatesPanel.jsx` (nouveau, modal complet propriétaire) +
+  bouton `header-delegates-btn` (UserPlus) dans Dashboard.js gaté `isOwnerDevice`.
+- Aucune écriture sur `owner_key_ids` / `owner_user_id` (propriété inviolée).
+Fichiers modifiés : `utils/ownership_guard.py`, `routes/ownership_routes.py`,
+`components/OwnerDelegatesPanel.jsx` (nouveau), `pages/Dashboard.js`.
+
+
 ## iter158.5 (Aug 2026) — Chantier 2 : Autres comptes — Reorg
 **Status : COMPLETED (9 nouveaux tests + régression 38/38 iter158.2/.3/.4/.5 PASS + backend live vérifié).**
 Alignement gestion des comptes sur spec CDC Chantier 2 :

@@ -27,9 +27,10 @@ from pydantic import BaseModel, ConfigDict
 from device_auth import new_nonce, verify_signature
 from utils.ownership_guard import (
     CRITICAL_ACTIONS, DOUBLE_SIG_ACTIONS, DELEGATE_PERMISSIONS,
+    CANONICAL_DELEGATE_PERMS,
     ensure_ownership, gen_recovery_code, get_delegate, get_ownership,
     hash_recovery_code, is_owner_device, log_ownership_event, owner_key_ids,
-    verify_recovery_code,
+    verify_recovery_code, _all_active_perms, _active_temp_perms,
 )
 
 CHALLENGE_TTL_SEC = 180
@@ -68,6 +69,26 @@ class CriticalIn(BaseModel):
 class DelegateIn(_SignedIn):
     delegate_key_id: str
     perms: List[str] = []
+
+
+class DelegateTempPermIn(_SignedIn):
+    """iter158.6 — Grant/revoke une permission temporaire à un délégué."""
+    delegate_key_id: str
+    perm: str
+    duration_minutes: int = 60  # 1 min → 30 jours
+
+
+class DelegatePermanentPermIn(_SignedIn):
+    """iter158.6 — Grant/revoke une permission permanente à un délégué."""
+    delegate_key_id: str
+    perm: str
+
+
+class DelegateLockIn(_SignedIn):
+    """iter158.6 — Verrouille un délégué en « véritable créateur ».
+    Une fois verrouillé, il ne peut plus être révoqué en un clic ; le
+    propriétaire doit d'abord unlocker."""
+    delegate_key_id: str
 
 
 class RecoverIn(BaseModel):
@@ -305,6 +326,13 @@ def build_ownership_router(db, *, verify_signed) -> APIRouter:
     @router.post("/ownership/delegate/revoke")
     async def delegate_revoke(payload: DelegateIn):
         await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        # iter158.6 — refus si délégué verrouillé (véritable créateur)
+        existing = await get_delegate(db, payload.delegate_key_id)
+        if existing and existing.get("locked"):
+            raise HTTPException(
+                status_code=409,
+                detail="Ce délégué est verrouillé (véritable créateur). Utilise /ownership/delegate/unlock d'abord.",
+            )
         await db.ownership.update_one(
             {"_id": "root"},
             {"$pull": {"delegates": {"key_id": payload.delegate_key_id}},
@@ -316,6 +344,234 @@ def build_ownership_router(db, *, verify_signed) -> APIRouter:
         )
         await log_ownership_event(db, "delegate_revoke", payload.key_id, {"delegate": payload.delegate_key_id})
         return {"ok": True, "revoked": payload.delegate_key_id}
+
+    # ---------------- APPRENTICE CREATOR (iter158.6) ----------------
+    async def _ensure_delegate_row(delegate_kid: str, owner_kid: str) -> Dict[str, Any]:
+        """Assure qu'une entrée `delegates` existe pour ce délégué. Retourne la
+        ligne. Crée avec perms=[] + temp_perms=[] + locked=false si absente."""
+        existing = await get_delegate(db, delegate_kid)
+        if existing:
+            return existing
+        target = await _dev(delegate_kid)
+        if not target:
+            raise HTTPException(status_code=404, detail="Appareil délégué introuvable.")
+        if await is_owner_device(db, delegate_kid):
+            raise HTTPException(status_code=400, detail="Cet appareil est déjà propriétaire.")
+        row = {
+            "key_id": delegate_kid, "perms": [], "temp_perms": [],
+            "locked": False, "history": [],
+            "added_by": owner_kid, "added_at": _now().isoformat(),
+        }
+        await db.ownership.update_one(
+            {"_id": "root"}, {"$push": {"delegates": row}},
+        )
+        # Le device passe en Créa déléguée (visible 'creator' sans propriété).
+        await db.device_keys.update_one(
+            {"key_id": delegate_kid},
+            {"$set": {"role": "creator", "is_delegate_creator": True}},
+        )
+        return row
+
+    async def _log_delegate_history(delegate_kid: str, entry: Dict[str, Any]) -> None:
+        entry = {**entry, "ts": _now().isoformat()}
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": delegate_kid},
+            {"$push": {"delegates.$.history": entry},
+             "$set": {"updated_at": _now().isoformat()}},
+        )
+
+    @router.post("/ownership/delegate/grant-temp")
+    async def delegate_grant_temp(payload: DelegateTempPermIn):
+        """iter158.6 — Grant une permission temporaire avec expiration auto.
+
+        Durée : 1 min à 30 jours. Si la même perm existe déjà en temp, elle
+        est remplacée. Si la perm est déjà permanente, retourne 409.
+        """
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        if payload.perm not in DELEGATE_PERMISSIONS:
+            raise HTTPException(status_code=400, detail="Permission inconnue.")
+        minutes = max(1, min(int(payload.duration_minutes or 60), 60 * 24 * 30))
+        row = await _ensure_delegate_row(payload.delegate_key_id, payload.key_id)
+        if payload.perm in (row.get("perms") or []):
+            raise HTTPException(status_code=409,
+                                detail="Cette permission est déjà permanente.")
+        expires_at = (_now() + timedelta(minutes=minutes)).isoformat()
+        # Retire toute temp perm existante sur cette clé/perm
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": payload.delegate_key_id},
+            {"$pull": {"delegates.$.temp_perms": {"perm": payload.perm}}},
+        )
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": payload.delegate_key_id},
+            {"$push": {"delegates.$.temp_perms": {
+                "perm": payload.perm, "expires_at": expires_at,
+                "granted_by": payload.key_id, "granted_at": _now().isoformat()}},
+             "$set": {"updated_at": _now().isoformat()}},
+        )
+        await _log_delegate_history(payload.delegate_key_id, {
+            "action": "grant_temp", "perm": payload.perm,
+            "duration_minutes": minutes, "actor": payload.key_id,
+            "expires_at": expires_at,
+        })
+        await log_ownership_event(db, "delegate_grant_temp", payload.key_id, {
+            "delegate": payload.delegate_key_id, "perm": payload.perm,
+            "minutes": minutes, "expires_at": expires_at,
+        })
+        return {"ok": True, "perm": payload.perm, "expires_at": expires_at}
+
+    @router.post("/ownership/delegate/grant-permanent")
+    async def delegate_grant_permanent(payload: DelegatePermanentPermIn):
+        """iter158.6 — Grant une permission permanente (progressive promotion).
+
+        Si la même perm existait en temporaire, elle est promue en permanente
+        (retirée de temp_perms, ajoutée à perms).
+        """
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        if payload.perm not in DELEGATE_PERMISSIONS:
+            raise HTTPException(status_code=400, detail="Permission inconnue.")
+        row = await _ensure_delegate_row(payload.delegate_key_id, payload.key_id)
+        if payload.perm in (row.get("perms") or []):
+            return {"ok": True, "perm": payload.perm, "already_permanent": True}
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": payload.delegate_key_id},
+            {"$pull": {"delegates.$.temp_perms": {"perm": payload.perm}}},
+        )
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": payload.delegate_key_id},
+            {"$addToSet": {"delegates.$.perms": payload.perm},
+             "$set": {"updated_at": _now().isoformat()}},
+        )
+        await _log_delegate_history(payload.delegate_key_id, {
+            "action": "grant_permanent", "perm": payload.perm, "actor": payload.key_id,
+        })
+        await log_ownership_event(db, "delegate_grant_permanent", payload.key_id, {
+            "delegate": payload.delegate_key_id, "perm": payload.perm,
+        })
+        return {"ok": True, "perm": payload.perm}
+
+    @router.post("/ownership/delegate/revoke-perm")
+    async def delegate_revoke_perm(payload: DelegatePermanentPermIn):
+        """iter158.6 — Révoque une permission (permanente ET/OU temporaire)."""
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        row = await get_delegate(db, payload.delegate_key_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Délégué introuvable.")
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": payload.delegate_key_id},
+            {"$pull": {
+                "delegates.$.perms": payload.perm,
+                "delegates.$.temp_perms": {"perm": payload.perm},
+            }, "$set": {"updated_at": _now().isoformat()}},
+        )
+        await _log_delegate_history(payload.delegate_key_id, {
+            "action": "revoke_perm", "perm": payload.perm, "actor": payload.key_id,
+        })
+        await log_ownership_event(db, "delegate_revoke_perm", payload.key_id, {
+            "delegate": payload.delegate_key_id, "perm": payload.perm,
+        })
+        return {"ok": True, "perm": payload.perm}
+
+    @router.post("/ownership/delegate/lock")
+    async def delegate_lock(payload: DelegateLockIn):
+        """iter158.6 — Verrouille un délégué en « véritable créateur ».
+
+        Prérequis : le délégué doit posséder toutes les perms canoniques
+        Apprentice Creator en permanent (spec CDC : « verrouillé dans le
+        système une fois toutes les fonctionnalités nécessaires attribuées »).
+        Une fois verrouillé, /delegate/revoke est refusée. Le propriétaire
+        doit d'abord /delegate/unlock.
+        """
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        row = await get_delegate(db, payload.delegate_key_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Délégué introuvable.")
+        perms = set(row.get("perms") or [])
+        if "full_control" not in perms:
+            missing = [p for p in CANONICAL_DELEGATE_PERMS if p not in perms]
+            if missing:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Perms permanentes manquantes pour verrouiller : {missing}",
+                )
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": payload.delegate_key_id},
+            {"$set": {"delegates.$.locked": True,
+                      "delegates.$.locked_at": _now().isoformat(),
+                      "delegates.$.locked_by": payload.key_id,
+                      "updated_at": _now().isoformat()}},
+        )
+        await _log_delegate_history(payload.delegate_key_id, {
+            "action": "lock", "actor": payload.key_id,
+        })
+        await log_ownership_event(db, "delegate_lock", payload.key_id, {
+            "delegate": payload.delegate_key_id,
+        })
+        return {"ok": True, "locked": True}
+
+    @router.post("/ownership/delegate/unlock")
+    async def delegate_unlock(payload: DelegateLockIn):
+        """iter158.6 — Déverrouille un délégué (rend possible /revoke)."""
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        row = await get_delegate(db, payload.delegate_key_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Délégué introuvable.")
+        await db.ownership.update_one(
+            {"_id": "root", "delegates.key_id": payload.delegate_key_id},
+            {"$set": {"delegates.$.locked": False,
+                      "updated_at": _now().isoformat()},
+             "$unset": {"delegates.$.locked_at": "", "delegates.$.locked_by": ""}},
+        )
+        await _log_delegate_history(payload.delegate_key_id, {
+            "action": "unlock", "actor": payload.key_id,
+        })
+        await log_ownership_event(db, "delegate_unlock", payload.key_id, {
+            "delegate": payload.delegate_key_id,
+        })
+        return {"ok": True, "locked": False}
+
+    @router.post("/ownership/delegate/list")
+    async def delegate_list(payload: _SignedIn):
+        """iter158.6 — Liste des délégués avec perms actives (perm + temp non
+        expirées), locked status, historique. Owner-only."""
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        doc = await get_ownership(db)
+        delegates = doc.get("delegates") or []
+        # Purge automatique des temp expirées avant renvoi
+        cleaned: List[Dict[str, Any]] = []
+        now = _now()
+        for d in delegates:
+            fresh = []
+            for tp in d.get("temp_perms") or []:
+                try:
+                    exp = datetime.fromisoformat((tp.get("expires_at") or "").replace("Z", "+00:00"))
+                    if exp > now:
+                        fresh.append(tp)
+                except Exception:
+                    pass
+            if fresh != (d.get("temp_perms") or []):
+                # Persist cleanup
+                await db.ownership.update_one(
+                    {"_id": "root", "delegates.key_id": d["key_id"]},
+                    {"$set": {"delegates.$.temp_perms": fresh}},
+                )
+                d["temp_perms"] = fresh
+            d["active_perms"] = _all_active_perms(d)
+            d["canonical_perms_missing"] = [p for p in CANONICAL_DELEGATE_PERMS
+                                            if p not in (d.get("perms") or [])]
+            cleaned.append(d)
+        return {"delegates": cleaned, "canonical_perms": CANONICAL_DELEGATE_PERMS}
+
+    @router.post("/ownership/delegate/history")
+    async def delegate_history(payload: DelegateIn):
+        """iter158.6 — Historique complet des changements de délégation."""
+        await _require_owner(payload.key_id, payload.nonce, payload.signature)
+        row = await get_delegate(db, payload.delegate_key_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Délégué introuvable.")
+        return {"history": row.get("history") or [],
+                "perms": row.get("perms") or [],
+                "temp_perms": row.get("temp_perms") or [],
+                "locked": bool(row.get("locked"))}
 
     # ---------------- RECOVERY ----------------
     @router.post("/ownership/recover")
