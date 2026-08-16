@@ -115,20 +115,36 @@ export default function Dashboard() {
   const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false);
   // iter158.10 — P0.3 : Panneau transfert de propriété (owner only).
   const [transferPanelOpen, setTransferPanelOpen] = useState(false);
+  // iter158.11 — P0.4 : Gate `switch_account` pour délégations.
+  //  - Propriétaire réel OU utilisateur non-délégué → true (aucune restriction).
+  //  - Créa déléguée → true UNIQUEMENT si `switch_account` est dans les perms
+  //    actives (permanentes OU temporaires non expirées, fournies par le
+  //    backend via /ownership/status.delegate_perms — le backend est
+  //    l'autorité finale, le frontend ne fait qu'aligner l'affichage).
+  const [canSwitchAccount, setCanSwitchAccount] = useState(true);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (device.role !== 'creator' || device.viewMode) {
-        if (!cancelled) setIsOwnerDevice(false);
+        if (!cancelled) { setIsOwnerDevice(false); setCanSwitchAccount(true); }
         return;
       }
       try {
         const { withCreatorProof } = await import('../lib/deviceIdentity');
         const body = await withCreatorProof(API, axios, {});
         const r = await axios.post(`${API}/ownership/status`, body);
-        if (!cancelled) setIsOwnerDevice(!!r.data?.is_owner);
+        if (cancelled) return;
+        const isOwner = !!r.data?.is_owner;
+        const isDelegate = !!r.data?.is_delegate;
+        const delegatePerms = r.data?.delegate_perms || [];
+        setIsOwnerDevice(isOwner);
+        // Un propriétaire garde toujours l'accès. Un délégué n'a l'accès QUE
+        // si `switch_account` est dans ses perms actives.
+        setCanSwitchAccount(
+          isOwner || !isDelegate || delegatePerms.includes('switch_account'),
+        );
       } catch (_) {
-        if (!cancelled) setIsOwnerDevice(false);
+        if (!cancelled) { setIsOwnerDevice(false); setCanSwitchAccount(true); }
       }
     })();
     return () => { cancelled = true; };
@@ -977,14 +993,16 @@ export default function Dashboard() {
             <span>{t('sidebar_my_profile')}</span>
           </button>
 
-          <button
-            onClick={() => setSwitchAccountOpen(true)}
-            data-testid="sidebar-switch-account-btn"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-white/20 rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all text-sm font-['IBM_Plex_Sans']"
-          >
-            <Users className="w-4 h-4" />
-            <span>{t('dashSwitchAccount')}</span>
-          </button>
+          {canSwitchAccount && (
+            <button
+              onClick={() => setSwitchAccountOpen(true)}
+              data-testid="sidebar-switch-account-btn"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-white/20 rounded-sm hover:border-[#E4FF00] hover:text-[#E4FF00] transition-all text-sm font-['IBM_Plex_Sans']"
+            >
+              <Users className="w-4 h-4" />
+              <span>{t('dashSwitchAccount')}</span>
+            </button>
+          )}
 
           <button
             onClick={handleLogout}

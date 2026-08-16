@@ -1093,6 +1093,76 @@ reste l'autorité finale.
 
 ---
 
+## 22. P0.4 — Gate `switch_account` pour les délégations (iter158.11)
+
+Correction de **l'item D5** de l'audit final : le bouton `sidebar-switch-account-btn` était
+toujours affiché, y compris pour un délégué n'ayant pas la perm `switch_account`. Il doit
+maintenant respecter la matrice CDC (« Le bouton permettant ce changement de compte doit
+apparaître lorsque cette possibilité lui est déléguée »).
+
+### 22.1 Correction backend (minimale)
+- **`/ownership/status`** — champ `delegate_perms` corrigé pour renvoyer l'**union des perms
+  permanentes + temporaires non expirées** via `_all_active_perms(me_delegate)`.
+  L'ancien code renvoyait uniquement `(me_delegate or {}).get("perms")` qui **excluait les
+  délégations temporaires actives** — bug de cohérence avec `has_delegate_perm` côté serveur.
+- **Aucune autre modification serveur** : `has_delegate_perm`, `owner_key_ids`, mécanisme
+  de délégation Chantier 3 restent strictement inchangés.
+
+### 22.2 Frontend
+- **`Dashboard.js`** — nouveau state `canSwitchAccount` (défaut `true` — fail-open UX).
+  Le `useEffect` existant qui interroge `/ownership/status` calcule désormais la matrice :
+  ```
+  canSwitchAccount = isOwner || !isDelegate || delegatePerms.includes('switch_account')
+  ```
+  Cas gérés :
+  - Propriétaire réel → toujours `true`.
+  - Utilisateur non-délégué (role ≠ 'creator' ou role='creator' sans entrée `delegates`) → `true`.
+  - Délégué **avec** `switch_account` dans les perms actives → `true`.
+  - Délégué **sans** `switch_account` → **`false`** → bouton masqué.
+  - Perm temporaire expirée : filtrée serveur-side par `_active_temp_perms`, donc absente de
+    `delegate_perms` → bouton **masqué automatiquement à l'expiration**.
+- **Fail-open** : en cas d'erreur réseau/API, le bouton reste visible (`setCanSwitchAccount(true)`).
+  La sécurité n'est PAS perdue : toute action réelle passe par `has_delegate_perm` serveur.
+
+### 22.3 Sécurité — le frontend n'est PAS l'autorité
+- Le bouton masqué **empêche seulement l'accès UX** — un délégué qui forcerait le
+  `switchAccountOpen=true` en console verrait le modal, mais toute action réelle appellant
+  un endpoint protégé serait refusée par `has_delegate_perm(db, key_id, 'switch_account')`.
+- `has_delegate_perm` utilise `_all_active_perms` (cohérent avec `/ownership/status`).
+
+### 22.4 Tests
+- **`test_iter158_11_switch_account_gate.py`** — 11 tests source-level PASS :
+  - Backend : `/ownership/status` renvoie `_all_active_perms` (perm + temp non expirées).
+  - Backend : `_all_active_perms` + `_active_temp_perms` helpers existants.
+  - Backend : `_active_temp_perms` filtre par `expires_at > now`.
+  - Backend : `has_delegate_perm` reste inchangé et utilise `_all_active_perms`.
+  - Backend : `switch_account` ∈ `CANONICAL_DELEGATE_PERMS`.
+  - Frontend : `Dashboard.js` lit `is_delegate` + `delegate_perms` depuis `/ownership/status`.
+  - Frontend : state `canSwitchAccount` + `setCanSwitchAccount`, défaut `true`.
+  - Frontend : matrice exacte `isOwner || !isDelegate || perms.includes('switch_account')`.
+  - Frontend : bouton `sidebar-switch-account-btn` enveloppé dans `canSwitchAccount && (...)`.
+  - Frontend : early return non-créateur → `setCanSwitchAccount(true)` (aucune restriction).
+  - Frontend : fail-open sur erreur (2 occurrences setCanSwitchAccount(true)).
+- **Régression cumulée** : 118/118 tests iter158.2→.11 PASS ; **168/168 tests iter158.* hors sandbox**.
+- **Backend live** : `POST /ownership/status` → 404 sans clé valide (auth appliquée), aucun crash.
+
+### 22.5 Bilan P0.4
+✅ Propriétaire garde l'accès (aucune restriction).
+✅ Utilisateur non-délégué garde l'accès.
+✅ Délégué avec `switch_account` : accès accordé.
+✅ Délégué sans `switch_account` : bouton masqué.
+✅ Perm temporaire expirée : bouton masqué automatiquement (filtre serveur `_active_temp_perms`).
+✅ Cohérence avec `has_delegate_perm` (source unique côté serveur).
+✅ Frontend n'est PAS l'autorité de sécurité (fail-open UX + backend authoritatif).
+✅ `owner_key_ids` inchangé.
+✅ Mécanisme de délégation Chantier 3 inchangé (seul `/ownership/status` corrigé — bug de
+   cohérence pré-existant qui excluait les temp actives).
+✅ Aucune régression.
+
+**Checkpoint enregistré : `production-ready-iter158.11` (P0.4 clos — 4 chantiers P0 terminés).**
+
+---
+
 ## 18. Statut global des 4 chantiers CDC
 
 | Chantier | Iter | Status | Tests | Endpoints/composants clés |

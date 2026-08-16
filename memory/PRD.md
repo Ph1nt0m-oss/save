@@ -1,6 +1,22 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.11 (Aug 2026) — P0.4 : Gate switch_account pour délégations
+**Status : COMPLETED (11 nouveaux tests + régression 118/118 iter158.2→.11 PASS + 168/168 hors sandbox + backend live vérifié).**
+Correction D5 de l'audit :
+- Backend `/ownership/status` — champ `delegate_perms` corrigé pour renvoyer
+  `_all_active_perms(me_delegate)` (union permanentes + temp non-expirées).
+  Bug de cohérence pré-existant qui excluait les délégations temporaires actives.
+- Frontend `Dashboard.js` — nouveau state `canSwitchAccount` avec matrice
+  `isOwner || !isDelegate || perms.includes('switch_account')`. Bouton
+  `sidebar-switch-account-btn` masqué pour délégué sans la perm. Fail-open UX
+  (bouton reste visible sur erreur, sécurité serveur reste appliquée).
+- Aucune modif de `has_delegate_perm`, `owner_key_ids`, ni du mécanisme de
+  délégation Chantier 3 (seul `/ownership/status` corrigé).
+Fichiers modifiés : `routes/ownership_routes.py` (1 ligne),
+`pages/Dashboard.js`, `tests/test_iter158_11_switch_account_gate.py` (nouveau).
+
+
 ## iter158.10 (Aug 2026) — P0.3 : Transfer Ownership UI
 **Status : COMPLETED (14 nouveaux tests + régression 107/107 iter158.2→.10 PASS + 157/157 hors sandbox + backend live vérifié).**
 Exposition UI du mécanisme backend `POST /ownership/transfer` (inchangé) :

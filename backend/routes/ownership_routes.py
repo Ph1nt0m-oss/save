@@ -124,7 +124,9 @@ def build_ownership_router(db, *, verify_signed) -> APIRouter:
         out: Dict[str, Any] = {
             "is_owner": me_owner,
             "is_delegate": bool(me_delegate),
-            "delegate_perms": (me_delegate or {}).get("perms") or [],
+            # iter158.11 — P0.4 : union perms permanentes + temp non-expirées.
+            # `_all_active_perms` filtre `temp_perms` par `expires_at > now()`.
+            "delegate_perms": _all_active_perms(me_delegate) if me_delegate else [],
             "recovery_configured": bool(doc.get("recovery_code_hash")),
             "owner_device_count": len(set(await owner_key_ids(db))),
         }
