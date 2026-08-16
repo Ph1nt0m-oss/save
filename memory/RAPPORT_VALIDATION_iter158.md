@@ -1530,3 +1530,103 @@ Total : 12 étapes (7 historiques + 5 nouvelles).
 
 **Prochain chantier proposé** : P1.5 — Protéger l'action backend `self-remove`
 quand le créateur est marqué `locked=true`.
+
+---
+
+## 27. iter158.16 — P1.5 : Protection self-remove d'un créateur verrouillé
+
+### 27.1 Problème d'origine
+L'endpoint `/accounts/remove-creator` (iter56, ligne 584 de
+`routes/accounts_routes.py`) démottait n'importe quel créateur (`role='creator'
+→ 'approved'`), y compris via self-remove (`target_key_id == payload.key_id`),
+sans consulter le flag `locked` dans `ownership.delegates[]`.
+
+Or la spec CDC iter158.6 introduit la notion de « véritable créateur » :
+un délégué avec `locked=true` est verrouillé dans le système une fois toutes
+ses fonctions permanentes attribuées. Il ne peut être ni révoqué par le
+propriétaire (`/ownership/delegate/revoke` refuse déjà, ligne 333) NI SE
+RETIRER lui-même via `/accounts/remove-creator` — ce trou de sécurité était
+resté ouvert.
+
+### 27.2 Solution
+Guard ajouté dans `/accounts/remove-creator`, entre le check `role != creator`
+et l'update de démotion :
+
+```python
+from utils.ownership_guard import get_delegate as _get_delegate
+delegate_row = await _get_delegate(db, target_key_id)
+if delegate_row and delegate_row.get("locked"):
+    is_self_attempt = target_key_id == payload.key_id
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Créateur verrouillé (véritable créateur) — "
+            + ("retrait volontaire refusé. " if is_self_attempt else "retrait refusé. ")
+            + "Le propriétaire doit d'abord /ownership/delegate/unlock."
+        ),
+    )
+```
+
+**Cohérence** : même code 409 et même chemin d'unlock que
+`/ownership/delegate/revoke` (spec CDC iter158.6).
+
+### 27.3 Invariants respectés
+- **`owner_key_ids` intact** : `/accounts/remove-creator` ne l'a jamais touché
+  (l'endpoint agit uniquement sur `device_keys.role`) — validé par test dédié
+  `test_owner_key_ids_never_touched_by_remove_creator` qui combine deux
+  tentatives de refus et vérifie snapshot avant/après.
+- **`unlocked` inchangé** : self-remove d'un délégué non-locked réussit
+  nominalement (200, `success=True`, `self=True`, role démoté à 'approved').
+- **`plain_creator` inchangé** : un créateur non-délégué (aucune entrée
+  dans `ownership.delegates`) → `get_delegate()` retourne None → guard passé
+  proprement → comportement iter56 identique.
+- **Matrice permissions inchangée** : un non-créateur signant reçoit toujours
+  403 au niveau du `require_creator_signature` (avant même d'atteindre le
+  guard locked) — non-régression iter56.
+- **Wrong password** : reste bloqué par le check bcrypt existant (403 ou 409
+  selon l'ordre, jamais 200).
+
+### 27.4 Fichiers modifiés
+- `backend/routes/accounts_routes.py` — 15 lignes ajoutées (guard locked +
+  message contextualisé self/other).
+- `backend/tests/test_iter158_16_self_remove_locked.py` — nouveau, 8 tests.
+
+### 27.5 Tests
+- **`test_iter158_16_self_remove_locked.py`** — 8/8 PASS :
+  1. `test_self_remove_locked_creator_refused_409` — locked self-remove → 409
+     avec « verrouillé » dans le message, `role='creator'` intact.
+  2. `test_other_creator_removing_locked_refused_409` — un autre créateur qui
+     tente de retirer le locked → 409, même protection.
+  3. `test_self_remove_unlocked_delegate_nominal_success` — un délégué non-
+     locked se retire nominalement (200), `role='approved'`, `owner_key_ids`
+     intact.
+  4. `test_self_remove_plain_creator_nominal_success` — créateur non-délégué
+     (get_delegate → None) : comportement iter56 identique.
+  5. `test_locked_creator_wrong_password_still_403` — mauvais mot de passe
+     bloqué (403 ou 409), pas de démotion.
+  6. `test_non_creator_actor_still_403` — approved signant → 403 signature
+     gate (matrice iter56 intacte).
+  7. `test_owner_key_ids_never_touched_by_remove_creator` — invariant
+     `owner_key_ids` avant/après combinant deux refus.
+  8. `test_source_level_guard_present_and_uses_get_delegate` — défense en
+     profondeur : `get_delegate` utilisé + `raise 409` intervient AVANT la
+     démotion (ordre critique).
+- **Non-régression iter56 + iter57** : `test_iter56_remove_creator` +
+  `test_iter57_delete_accounts` → 19/19 PASS.
+- **Régression iter158 hors sandbox : 218 passed** (vs 210 avant), 1 skipped.
+  2 pré-existants inchangés (`test_expired_exclude_auto_lifted*`).
+
+### 27.6 Bilan P1.5
+✅ Trou CDC iter158.6 fermé : self-remove sur un créateur locked → 409.
+✅ Même protection pour un autre créateur ou un propriétaire (cohérence
+   avec `/ownership/delegate/revoke`).
+✅ Comportement nominal `locked=false` strictement préservé (200 success).
+✅ `owner_key_ids` invariant intact (vérifié explicitement).
+✅ Matrice permissions iter56 inchangée (403 signature gate).
+✅ Aucun autre endpoint modifié.
+
+**Checkpoint enregistré : `production-ready-iter158.16` (P1.5 clos).**
+
+**Prochain chantier proposé** : P1.6 — Audit anti-duplication entre
+`NotificationBell` et `AccountsButton` (empêcher que la même notification
+apparaisse deux fois côté UI).

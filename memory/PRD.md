@@ -1469,6 +1469,30 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.16 — P1.5 Protection self-remove d'un créateur verrouillé
+
+**✅ Livré :**
+- `routes/accounts_routes.py` : guard `locked` ajouté à `/accounts/remove-creator`
+  entre le check `role != creator` et l'update de démotion. Utilise
+  `get_delegate(db, target_key_id)` pour lire `ownership.delegates[].locked`.
+- Réponse 409 avec message contextualisé (self-remove vs autre acteur) et
+  suggestion `/ownership/delegate/unlock` (cohérent avec iter158.6).
+- 8 tests (`test_iter158_16_self_remove_locked.py`) : refus locked self/other,
+  succès unlocked/plain, wrong-pwd, non-créateur, `owner_key_ids` intact,
+  ordre du guard.
+
+**Invariants** : `owner_key_ids` intact, matrice iter56 inchangée, comportement
+`locked=false` strictement préservé (200 success + demote nominal).
+
+**Régression** : 218/218 iter158 hors sandbox PASS + 19/19 iter56/57 PASS.
+2 pré-existants sans lien.
+
+**Checkpoint** : `production-ready-iter158.16`. P1.6 non entamé.
+
+---
+
+
+
 ### 2026-02 — iter158.15 — P1.4 Tutoriel Owner Privileges + Apprentice + Force-visitor + AI errors + Notifs/Transfert
 
 **✅ Livré :**

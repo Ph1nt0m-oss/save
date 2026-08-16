@@ -600,6 +600,24 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
             raise HTTPException(status_code=404, detail="Compte introuvable.")
         if target.get("role") != "creator":
             raise HTTPException(status_code=400, detail="Ce compte n'est pas créateur.")
+        # iter158.16 (P1.5) — Protection self-remove d'un créateur verrouillé.
+        # Un véritable créateur (délégué avec `locked=true` dans ownership.delegates)
+        # ne peut PAS être retiré de son statut créa, ni par lui-même ni par un
+        # autre acteur. Cohérent avec /ownership/delegate/revoke (iter158.6).
+        # owner_key_ids n'est jamais touché par cet endpoint — la protection est
+        # spécifique au flag `locked` du délégué.
+        from utils.ownership_guard import get_delegate as _get_delegate
+        delegate_row = await _get_delegate(db, target_key_id)
+        if delegate_row and delegate_row.get("locked"):
+            is_self_attempt = target_key_id == payload.key_id
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Créateur verrouillé (véritable créateur) — "
+                    + ("retrait volontaire refusé. " if is_self_attempt else "retrait refusé. ")
+                    + "Le propriétaire doit d'abord /ownership/delegate/unlock."
+                ),
+            )
         await db.device_keys.update_one(
             {"key_id": target_key_id}, {"$set": {"role": "approved"}},
         )
