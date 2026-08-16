@@ -1,6 +1,24 @@
 # CodeForge AI — Product Requirements
 
 
+## iter158.7 (Aug 2026) — Chantier 4 : AI Error Mapping
+**Status : COMPLETED (24 nouveaux tests + régression 75/75 iter158.2→.7 PASS + 125/125 hors sandbox + backend live vérifié).**
+Mappage canonique et différencié des erreurs IA :
+- Backend `utils/ai_error_mapper.py` (nouveau) — `classify_ai_error()` avec 10 catégories :
+  cloudflare, ollama_offline, ollama_error, timeout, json_invalid, auth_error, rate_limit,
+  provider_error, network, unknown. Retourne code + i18n_key + message_fr + severity + log_detail.
+- Backend `agents/common.py` — `llm_json` et `stream_llm` utilisent le mapper (log précis
+  par catégorie + retour `_error_code`).
+- Frontend `lib/aiErrorMapper.js` (nouveau) — mirror JS avec priorité au `error_code` renvoyé
+  par le backend + détection ECONNABORTED/504/CF/Ollama/401/403/429/SyntaxError JSON/network.
+- Frontend `contexts/LanguageContext.js` — 10 clés `ai_err_*` (FR + EN) avec messages CDC
+  clairs par catégorie.
+- Frontend `pages/Chat.js` — utilise `classifyAiError`, message adapté par catégorie,
+  détail technique dans `console.warn`.
+Fichiers modifiés/créés : `utils/ai_error_mapper.py` (nouveau), `agents/common.py`,
+`lib/aiErrorMapper.js` (nouveau), `contexts/LanguageContext.js`, `pages/Chat.js`.
+
+
 ## iter158.6 (Aug 2026) — Chantier 3 : Apprentice Creator
 **Status : COMPLETED (13 nouveaux tests + régression 51/51 iter158.2/.3/.4/.5/.6 PASS + 101/101 hors sandbox + backend live vérifié).**
 Progression déléguée par le propriétaire :

@@ -736,3 +736,115 @@ créateur). Aucune de ces opérations ne transfère la propriété — celle-ci 
 ✅ Aucune régression.
 
 **Checkpoint enregistré : `production-ready-iter158.6` (Chantier 3 clos).**
+
+---
+
+## 17. Chantier 4 — AI Error Mapping (iter158.7)
+
+Mappage canonique et différencié des erreurs IA (backend + frontend) selon la spec CDC : chaque
+cause a son code, son message adapté et ses logs techniques préservés — plus jamais de message
+générique masquant la cause réelle.
+
+### 17.1 Backend
+- **`utils/ai_error_mapper.py`** (NOUVEAU) — module unique de classification.
+  - Fonction `classify_ai_error(exc=None, *, http_status=None, raw_body=None, provider=None, context=None)`.
+  - **10 catégories** : `cloudflare`, `ollama_offline`, `ollama_error`, `timeout`, `json_invalid`,
+    `auth_error`, `rate_limit`, `provider_error`, `network`, `unknown`.
+  - Retourne `{code, i18n_key, message_fr, severity, log_detail, http_status, provider}`.
+  - **Détection par exception** : `asyncio.TimeoutError`, `TimeoutError`, `JSONDecodeError`,
+    `ConnectionError`, plus détection par nom de classe (`*Timeout*`, `*JsonDecode*`).
+  - **Détection par body** : regex `_CF_RE` (cloudflare/cf-ray/html/bad gateway),
+    `_OLLAMA_OFFLINE_RE` (11434, connection refused, ollama not available),
+    `_OLLAMA_MODEL_MISSING_RE` (model not found, pull the model).
+  - **Détection par status HTTP** : 401/403 → auth_error, 429 → rate_limit, 504 → timeout,
+    5xx (hors CF) → provider_error, 4xx → provider_error.
+  - **`log_detail`** contient `provider=…`, `ctx=…`, `status=…`, `exc=<type>: <msg>`, `body=…`
+    (tronqué à 800 chars) — logs techniques utiles pour diagnostic.
+  - **Sévérité** : `auth_error` → `critical`, provider/network/unknown → `error`, autres →
+    `warning`.
+
+- **`agents/common.py`** — `llm_json` et `stream_llm` utilisent le mapper :
+  - Log `f"[{info['code']}]: {info['log_detail']}"` en warning (technique) au lieu du simple `{e}`.
+  - `llm_json` retourne `{"_error_code": <code>}` pour propager la catégorie à l'appelant.
+  - `stream_llm` ré-lève l'exception après log précis (pour que l'endpoint SSE la traduise).
+
+### 17.2 Frontend
+- **`lib/aiErrorMapper.js`** (NOUVEAU) — miroir JS de la logique backend :
+  - Export `classifyAiError(error, {provider?, context?})`.
+  - **Détection prioritaire** du backend `error_code` (si le backend a déjà classifié).
+  - Sinon détection par : `error.code === 'ECONNABORTED'`, message `/timeout/`, status 504,
+    body cloudflare, provider Ollama, 401/403, 429, `SyntaxError` JSON, `err_network`, 4xx/5xx.
+  - Retourne `{code, i18nKey, fallback}` avec les 10 mêmes catégories que le backend.
+- **`contexts/LanguageContext.js`** — 10 clés i18n `ai_err_*` (FR + EN) avec messages CDC clairs
+  (jamais génériques). Ex. :
+  - `ai_err_ollama_offline` : « Ollama n'est pas joignable (mode offline). Vérifie que l'application
+    locale Ollama est bien démarrée sur ta machine et que le modèle est installé. »
+  - `ai_err_timeout` : « La réponse de l'IA a mis trop de temps à arriver (timeout). Réessaie ;
+    si le problème persiste, allège ta demande. »
+  - `ai_err_json_invalid` : « L'IA a renvoyé une réponse dans un format inattendu. Réessaie —
+    le prompt sera re-soumis. »
+  - `ai_err_auth_error` : « Clé d'accès IA absente ou invalide côté serveur. Contacte le créateur
+    — aucune action de ton côté n'est nécessaire. »
+- **`pages/Chat.js`** — le bloc catch remplace l'ancien regex ad-hoc générique par
+  `classifyAiError(error, {provider: mode==='offline'?'ollama':undefined, context:'chat_send_text'})`.
+  Le message affiché à l'utilisateur = `t(errInfo.i18nKey) || errInfo.fallback`.
+  Le détail technique brut est loggué via `console.warn('[AI error]', code, {status, message, raw})`.
+  Chaque message d'erreur dans le chat garde `_error_code` pour identification/diagnostic UI ultérieur.
+
+### 17.3 Séparation logs / UI
+- **Logs serveur** conservent la trace brute complète via `log_detail` :
+  ex. `provider=anthropic | ctx=agents.stream_llm | status=502 | exc=HTTPStatusError: bad gateway | body=<html>...`.
+- **UI utilisateur** ne reçoit que : catégorie + message clair adapté à la cause. Aucun body
+  HTML/HTTP status ni stack trace exposé (spec CDC : « ne pas masquer une erreur réelle derrière
+  un message générique »).
+
+### 17.4 Tests
+- **`test_iter158_7_ai_error_mapping.py`** — 24 tests source-level PASS :
+  - Détection Cloudflare par body / cf-ray / bad gateway.
+  - Timeout via `asyncio.TimeoutError`, exception `*Timeout*`, HTTP 504.
+  - Ollama offline (body/port 11434), Ollama error (provider spécifié + model not found).
+  - JSON invalid via `JSONDecodeError` ET via body non-JSON avec status 200.
+  - Auth error 401/403 → severity `critical`.
+  - Rate limit 429, provider_error 500 non-CF.
+  - Network via `ConnectionError`.
+  - Fallback `unknown` si aucun signal.
+  - `log_detail` contient provider + context + status + exc.
+  - Chaque catégorie a i18n_key + message_fr + severity.
+  - Frontend mapper existe et cite les 10 catégories.
+  - i18n keys FR + EN présentes pour les 10 catégories.
+  - `Chat.js` utilise `classifyAiError` (plus de regex ad-hoc `looksLikeCloudflare`).
+  - `agents/common.py` utilise `classify_ai_error` + `_error_code`.
+  - Sévérité vérifiée : auth=critical, cloudflare=warning, timeout=warning.
+- **Régression cumulée** : 75/75 tests iter158.2→.7 PASS ; **125/125 tests iter158.* hors sandbox**.
+- **Backend live** : boot OK avec le nouveau module `utils/ai_error_mapper.py`.
+
+### 17.5 Bilan Chantier 4
+✅ Cloudflare distingué (par body OU status ambigus).
+✅ Ollama distingué (offline vs erreur applicative + détection port 11434).
+✅ Timeouts distingués (asyncio.TimeoutError, TimeoutError, exception `*Timeout*`, 504).
+✅ JSON invalid distingué (JSONDecodeError + body non-JSON en 200).
+✅ Cause réelle identifiée automatiquement (10 catégories mutuellement exclusives).
+✅ Message clair et adapté par catégorie (i18n FR + EN + fallback bilingue).
+✅ Infos techniques préservées dans logs (`log_detail` + `console.warn`).
+✅ Textes CDC respectés (« ne pas masquer une erreur réelle derrière un message générique »).
+✅ Tests par catégorie (24 tests couvrant les 10 codes + severity + log_detail).
+✅ Aucune régression.
+
+**Checkpoint enregistré : `production-ready-iter158.7` (Chantier 4 clos).**
+
+---
+
+## 18. Statut global des 4 chantiers CDC
+
+| Chantier | Iter | Status | Tests | Endpoints/composants clés |
+|---|---|---|---|---|
+| #1 Autres identifiants — Reorg | iter158.4 | ✅ | 8+ | `/devices/decisions[/*]`, `KeysHistoryTab` |
+| #2 Autres comptes — Reorg | iter158.5 | ✅ | 9+ | `/accounts/disconnect`, `/accounts/history[/*]`, `AccountsHistoryPanel` |
+| #3 Apprentice Creator | iter158.6 | ✅ | 13+ | `/ownership/delegate/*` (7 endpoints), `OwnerDelegatesPanel` |
+| #4 AI Error Mapping | iter158.7 | ✅ | 24+ | `utils/ai_error_mapper.py`, `lib/aiErrorMapper.js` |
+
+**Total tests source-level ajoutés sur cette phase : 54.
+Régression complète iter158.2/.3/.4/.5/.6/.7 : 125/125 PASS hors sandbox.**
+
+**Prochaine étape attendue** : audit complet CDC/PRD/code/tests/interactions avant toute déclaration
+de finalisation globale (demande explicite de l'utilisateur).
