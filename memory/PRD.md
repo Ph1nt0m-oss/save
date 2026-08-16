@@ -1469,6 +1469,28 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.15 — P1.4 Tutoriel Owner Privileges + Apprentice + Force-visitor + AI errors + Notifs/Transfert
+
+**✅ Livré :**
+- `pages/Tutorial.js` : 5 nouvelles étapes (Crown/UserCheck/Eye/AlertTriangle/Bell)
+  couvrant les fonctions livrées depuis iter158.3. Total = 12 étapes.
+- `contexts/LanguageContext.js` : 22 nouvelles clés `tut_*` en FR + EN (44 entrées).
+  Réutilise les 10 clés `ai_err_*` existantes (iter158.7).
+- 16 tests (`test_iter158_15_tutorial_update.py`) : présence clés FR+EN, FR≠EN,
+  cohérence avec comportement réel (`owner_key_ids`, 6 perms, grant-temp,
+  bannière, 10 codes AI, double signature ECDSA).
+
+**Contraintes respectées** : les 7 étapes historiques restent inchangées,
+aucune modification backend/ownership/sécurité (test dédié).
+
+**Régression** : 210/210 iter158 hors sandbox PASS. 2 pré-existants sans lien.
+
+**Checkpoint** : `production-ready-iter158.15`. P1.5 non entamé.
+
+---
+
+
+
 ### 2026-02 — iter158.14 — P1.3 effectiveView Owner Privileges OFF
 
 **✅ Livré :**

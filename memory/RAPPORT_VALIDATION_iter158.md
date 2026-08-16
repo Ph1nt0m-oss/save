@@ -1444,3 +1444,89 @@ Clamp UX-only dans les hooks (le backend reste 100 % autorité de sécurité —
 
 **Prochain chantier proposé** : P1.4 — Compléter la mise à jour du tutoriel
 (Owner Privileges, Apprentice Creator, Force-visitor banner, AI error mapping).
+
+---
+
+## 26. iter158.15 — P1.4 : Tutoriel mis à jour
+
+### 26.1 Problème d'origine
+Le tutoriel `pages/Tutorial.js` (iter148) contenait 7 étapes historiques
+(identité crypto, groupes, modération, prog IA, exports, intégrations, langues)
+mais ne couvrait AUCUNE des fonctionnalités livrées depuis iter158.3 :
+- Owner Privileges ON/OFF
+- Apprentice Creator (délégations)
+- Force-visitor & bannière
+- AI Error Mapping (10 catégories)
+- Notifications propriétaire & transfert de propriété
+
+Un nouveau propriétaire découvrant la plateforme ne pouvait donc pas apprendre
+ces fonctions clés via le tutoriel officiel.
+
+### 26.2 Solution
+5 nouvelles étapes ajoutées au tutoriel, toutes basées sur `useLanguage().t()`
+pour FR + EN cohérents. Les 7 étapes historiques restent inchangées (FR
+hardcodé — comportement iter148 préservé).
+
+Étape | Icône | Clés i18n | Concept clé
+------|-------|-----------|------------
+`owner-privileges`      | Crown          | `tut_owner_priv_*` (5)      | ON/OFF + invariant `owner_key_ids`
+`apprentice-creator`    | UserCheck      | `tut_apprentice_*` (5)      | perms + grant-temp + verrouillage
+`force-visitor`         | Eye            | `tut_force_visitor_*` (4)   | bannière + lecture seule + undo
+`ai-errors`             | AlertTriangle  | `tut_ai_errors_*` (4) + `ai_err_*` (10) | 10 catégories réutilisant iter158.7
+`owner-notifs-transfer` | Bell           | `tut_notif_transfer_*` (4)  | notifs secrètes + double signature ECDSA
+
+Total : 12 étapes (7 historiques + 5 nouvelles).
+
+### 26.3 Cohérence avec le comportement réel (vérifiée par tests)
+- Owner Privileges : le texte cite explicitement `owner_key_ids`, l'invariant
+  statut inviolable, les sanctions clean au retour ON, la notification secrète.
+- Apprentice : liste les 6 perms réelles (`moderate`, `edit_bots`, `edit_programming`,
+  `edit_integrations`, `switch_account`, `full_control`) + grant-temp + verrouillage
+  challenge propriétaire (test iter158.13 scenario 3).
+- Force-visitor : mentionne la bannière jaune, la lecture seule, l'annulabilité
+  via l'historique (matrice permissions).
+- AI errors : les 10 clés `ai_err_*` sont explicitement listées.
+- Transfert : mentionne la double signature ECDSA (spec iter158.1).
+
+### 26.4 FR + EN cohérents
+- Toutes les 22 nouvelles clés existent dans les blocs `fr:` ET `en:` de
+  `LanguageContext.js`.
+- Traductions distinctes (FR ≠ EN vérifié par test pour les phrases longues).
+- Concepts identiques (owner_key_ids, grant-temp, double signature) présents
+  dans les deux langues.
+
+### 26.5 Fichiers modifiés
+- `frontend/src/contexts/LanguageContext.js` (+22 clés FR, +22 clés EN, ~50 l.)
+- `frontend/src/pages/Tutorial.js` (5 nouveaux bodies + 5 nouvelles STEPS +
+  refactor STEPS→buildSteps(t), ~110 l.)
+- `backend/tests/test_iter158_15_tutorial_update.py` (nouveau, 16 tests)
+
+### 26.6 Tests
+- **`test_iter158_15_tutorial_update.py`** — 16/16 PASS :
+  - Présence clés FR (`test_all_new_keys_present_in_fr_block`)
+  - Présence clés EN (`test_all_new_keys_present_in_en_block`)
+  - FR ≠ EN + non-vides (`test_fr_and_en_translations_differ_and_non_empty`)
+  - Owner Privileges : owner_key_ids + sanctions + notif (`…owner_priv…`)
+  - Apprentice : 6 perms réelles + grant-temp (`…apprentice…perms/temp/locked`)
+  - Force-visitor : bannière + lecture seule + annulabilité (`…force_visitor…`)
+  - AI errors : intro classification FR + EN (`…ai_errors_intro…`)
+  - Transfer : double signature (`…notif_transfer_transfer`)
+  - Tutorial.js : imports (`useLanguage`, 5 icônes), 5 nouveaux id de step,
+    7 historiques préservés, titles branchés sur t(), 10 codes `ai_err_*`
+    listés, 12 étapes uniques.
+  - Non-régression backend : `ownership_guard.py` + `ownership_routes.py`
+    intacts (aucun endpoint sécurité touché par P1.4).
+- **Régression iter158 hors sandbox : 210 passed** (vs 194 avant P1.4), 1 skipped.
+  - 2 échecs pré-existants inchangés (`test_expired_exclude_auto_lifted*`).
+
+### 26.7 Bilan P1.4
+✅ Tutoriel étendu à 12 étapes couvrant TOUTES les fonctions livrées iter158.
+✅ FR + EN cohérents, traductions réelles, 22 clés × 2 langues = 44 entrées.
+✅ Étapes historiques (iter148) préservées à l'identique.
+✅ Aucune modification des mécanismes de sécurité/ownership.
+✅ Aucune régression backend (210 PASS iter158 hors sandbox).
+
+**Checkpoint enregistré : `production-ready-iter158.15` (P1.4 clos).**
+
+**Prochain chantier proposé** : P1.5 — Protéger l'action backend `self-remove`
+quand le créateur est marqué `locked=true`.

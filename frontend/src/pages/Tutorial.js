@@ -12,13 +12,93 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, Check, KeyRound, MessagesSquare, ShieldAlert,
-  Bot, Package, Plug, Sparkles, Languages,
+  Bot, Package, Plug, Sparkles, Languages, Crown, UserCheck, Eye, AlertTriangle, Bell,
 } from 'lucide-react';
 import LanguageToggle from '../components/LanguageToggle';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const STORAGE_KEY = 'codeforge_tutorial_step_v1';
 
-const STEPS = [
+// iter158.15 (P1.4) — Bloc réutilisable pour les nouvelles sections
+// (Owner Privileges, Apprentice, Force-visitor, AI errors, Notifs+Transfer).
+// Contenu tiré de LanguageContext.js (FR + EN cohérents).
+function OwnerPrivilegesBody() {
+  const { t } = useLanguage();
+  return (
+    <>
+      <p data-testid="tut-owner-priv-intro">{t('tut_owner_priv_intro')}</p>
+      <ul className="list-disc pl-5 space-y-1 text-white/85">
+        <li><b>ON</b> — {t('tut_owner_priv_on').replace(/^ON — /, '')}</li>
+        <li><b>OFF</b> — {t('tut_owner_priv_off').replace(/^OFF — /, '')}</li>
+      </ul>
+      <p className="text-white/70 text-xs">{t('tut_owner_priv_invariant')}</p>
+    </>
+  );
+}
+
+function ApprenticeBody() {
+  const { t } = useLanguage();
+  return (
+    <>
+      <p>{t('tut_apprentice_intro')}</p>
+      <ul className="list-disc pl-5 space-y-1 text-white/85">
+        <li>{t('tut_apprentice_perms')}</li>
+        <li>{t('tut_apprentice_temp')}</li>
+      </ul>
+      <p className="text-white/70 text-xs">{t('tut_apprentice_locked')}</p>
+    </>
+  );
+}
+
+function ForceVisitorBody() {
+  const { t } = useLanguage();
+  return (
+    <>
+      <p>{t('tut_force_visitor_intro')}</p>
+      <p>{t('tut_force_visitor_banner')}</p>
+      <p className="text-white/70 text-xs">{t('tut_force_visitor_scope')}</p>
+    </>
+  );
+}
+
+function AiErrorsBody() {
+  const { t } = useLanguage();
+  return (
+    <>
+      <p>{t('tut_ai_errors_intro')}</p>
+      <p className="text-white/80 text-xs">{t('tut_ai_errors_list_intro')}</p>
+      <ul className="list-disc pl-5 space-y-1 text-white/80 text-xs">
+        <li><b>Cloudflare</b> — {t('ai_err_cloudflare')}</li>
+        <li><b>Ollama offline</b> — {t('ai_err_ollama_offline')}</li>
+        <li><b>Ollama error</b> — {t('ai_err_ollama_error')}</li>
+        <li><b>Timeout</b> — {t('ai_err_timeout')}</li>
+        <li><b>JSON invalide</b> — {t('ai_err_json_invalid')}</li>
+        <li><b>Auth error</b> — {t('ai_err_auth_error')}</li>
+        <li><b>Rate limit</b> — {t('ai_err_rate_limit')}</li>
+        <li><b>Provider error</b> — {t('ai_err_provider_error')}</li>
+        <li><b>Network</b> — {t('ai_err_network')}</li>
+        <li><b>Unknown</b> — {t('ai_err_unknown')}</li>
+      </ul>
+      <p className="text-white/70 text-xs">{t('tut_ai_errors_outro')}</p>
+    </>
+  );
+}
+
+function OwnerNotifsTransferBody() {
+  const { t } = useLanguage();
+  return (
+    <>
+      <p>{t('tut_notif_transfer_intro')}</p>
+      <p>{t('tut_notif_transfer_details')}</p>
+      <p className="text-white/70 text-xs">{t('tut_notif_transfer_transfer')}</p>
+    </>
+  );
+}
+
+// STEPS est désormais une fonction reçevant t pour les nouveaux titres.
+// Les 7 étapes historiques restent en FR hardcodé (iter148) — inchangé.
+// 5 nouvelles étapes utilisent i18n (FR + EN).
+const buildSteps = (t) => [
   {
     id: 'identity',
     Icon: KeyRound,
@@ -141,17 +221,56 @@ const STEPS = [
       </>
     ),
   },
+  // iter158.15 (P1.4) — 5 nouvelles étapes couvrant les fonctions
+  // propriétaire livrées depuis iter158.3 (FR + EN cohérents via i18n).
+  {
+    id: 'owner-privileges',
+    Icon: Crown,
+    title: t('tut_owner_priv_title'),
+    body: <OwnerPrivilegesBody />,
+  },
+  {
+    id: 'apprentice-creator',
+    Icon: UserCheck,
+    title: t('tut_apprentice_title'),
+    body: <ApprenticeBody />,
+  },
+  {
+    id: 'force-visitor',
+    Icon: Eye,
+    title: t('tut_force_visitor_title'),
+    body: <ForceVisitorBody />,
+  },
+  {
+    id: 'ai-errors',
+    Icon: AlertTriangle,
+    title: t('tut_ai_errors_title'),
+    body: <AiErrorsBody />,
+  },
+  {
+    id: 'owner-notifs-transfer',
+    Icon: Bell,
+    title: t('tut_notif_transfer_title'),
+    body: <OwnerNotifsTransferBody />,
+  },
 ];
 
 
 export default function Tutorial() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
+  const STEPS = useMemo(() => buildSteps(t), [t]);
   const [step, setStep] = useState(() => {
     try {
       const s = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
-      return Math.max(0, Math.min(s, STEPS.length - 1));
+      return Math.max(0, Math.min(s, 100));  // borné par length après STEPS calc
     } catch (_e) { return 0; }
   });
+
+  // Borne le step au nombre réel d'étapes courant (peut varier selon i18n init).
+  useEffect(() => {
+    if (step >= STEPS.length) setStep(STEPS.length - 1);
+  }, [STEPS.length, step]);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, String(step)); } catch (_e) { /* ignore */ }
