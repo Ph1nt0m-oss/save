@@ -1469,6 +1469,37 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.17 — P1.6 Audit anti-duplication cloches/badges
+
+**✅ Livré :**
+- Audit exhaustif des 3 sources de notifications/badges (NotificationBell,
+  AccountsButton, OwnerNotificationsBell).
+- **AUCUNE duplication réelle détectée** : sources de vérité strictement
+  distinctes (3 collections, 3 endpoints, 3 audiences).
+- 12 tests (`test_iter158_17_bells_dedup_audit.py`) codifient l'invariant :
+  chaque composant consomme UNE source primaire, aucune collision data-testid,
+  isolation OwnerNotifications P0.2 confirmée.
+- Note d'audit : co-existence intentionnelle `staff_actions_log` +
+  `owner_notifications` sur owner OFF via `/staff/action` → audiences distinctes,
+  aucune duplication UI.
+
+**Cartographie sources** :
+| Composant | Endpoint | Collection | Audience |
+|-----------|----------|------------|----------|
+| NotificationBell | `/devices/pending-count` | device_keys(role=pending) | Créa |
+| AccountsButton badge | `/staff-decisions/list` | staff_decisions | Créa |
+| OwnerNotificationsBell | `/ownership/notifications` | owner_notifications | Owner-only |
+
+**Aucun fix appliqué** — statu quo confirmé conforme CDC.
+
+**Régression** : 230/230 iter158 hors sandbox PASS. 2 pré-existants sans lien.
+
+**Checkpoint** : `production-ready-iter158.17`. P2 non entamé.
+
+---
+
+
+
 ### 2026-02 — iter158.16 — P1.5 Protection self-remove d'un créateur verrouillé
 
 **✅ Livré :**

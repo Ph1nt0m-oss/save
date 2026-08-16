@@ -1630,3 +1630,94 @@ if delegate_row and delegate_row.get("locked"):
 **Prochain chantier proposé** : P1.6 — Audit anti-duplication entre
 `NotificationBell` et `AccountsButton` (empêcher que la même notification
 apparaisse deux fois côté UI).
+
+---
+
+## 28. iter158.17 — P1.6 : Audit anti-duplication cloches/badges
+
+### 28.1 Périmètre
+Les 3 composants qui affichent des notifications/badges à la Créa :
+  - `NotificationBell` (cloche générale)
+  - `AccountsButton` (badge « ⏳ N à valider » dans le panneau)
+  - `OwnerNotificationsBell` (cloche couronne, notifs secrètes)
+
+### 28.2 Cartographie des sources (résultat de l'audit)
+
+| Composant                | Endpoint principal                       | Collection Mongo        | Audience               | Action utilisateur           |
+|--------------------------|------------------------------------------|-------------------------|------------------------|------------------------------|
+| `NotificationBell`       | `/devices/pending-count` + SSE           | `device_keys` (pending) | Créa (via signature)   | Ouvre `DeviceManager` (approve/refuse) |
+| `AccountsButton` (badge) | `/staff-decisions/list`                  | `staff_decisions`       | Créa uniquement        | Valider / annuler décisions temporaires |
+| `OwnerNotificationsBell` | `/ownership/notifications` + `/mark-read`| `owner_notifications`   | Propriétaires uniquement (403 sinon, P0.2) | Marquer lues |
+
+**Conclusion audit** : **AUCUNE duplication injustifiée détectée**.
+- Sources de vérité STRICTEMENT distinctes : 3 collections MongoDB indépendantes,
+  3 endpoints distincts, aucune écriture croisée.
+- `owner_notifications` reste strictement isolé du système général (P0.2
+  respecté : filtre 403 par `_require_owner`, filtre par `owner_key_id` +
+  transparence inter-propriétaires uniquement).
+- Aucun composant ne consomme plus d'une source (défense en profondeur,
+  vérifiée par test source-level `test_no_component_reads_two_notification_sources_simultaneously`).
+- Aucune collision entre les data-testids des 3 composants.
+
+### 28.3 Cas d'écriture croisée volontaire (co-existence intentionnelle)
+Lorsqu'un staff non-créa (modo/admin) agit sur un **owner en OFF** via
+`/staff/action` (endpoint unifié iter144) :
+  - `staff_actions_log` reçoit 1 entrée (audit serveur, non-UI-visible).
+  - `owner_notifications` reçoit 1 entrée (alerte owner secrète).
+  → **Aucune duplication UI** : les 2 entrées ne s'affichent JAMAIS dans le
+    même composant côté frontend.
+
+**Note technique** (hors périmètre P1.6, à traiter si besoin en P2) : les
+endpoints legacy `/accounts/mute`, `/accounts/unmute`, `/accounts/exclude`,
+`/accounts/ban`, `/accounts/disconnect` n'invoquent PAS `assert_not_owner_target`
+et ne créent donc pas d'owner_notifications quand la cible est un owner OFF.
+Le chemin correct pour ce cas d'usage est `/staff/action`. C'est cohérent
+avec les CDC actuels — pas une régression P1.6.
+
+### 28.4 Fix appliqué
+**AUCUN**. L'audit n'a révélé aucun doublon réel côté UI. La séparation des
+sources était déjà correcte depuis iter158.9 (P0.2) ; P1.6 la codifie via
+tests d'invariant pour empêcher toute régression future.
+
+### 28.5 Fichiers modifiés
+- `backend/tests/test_iter158_17_bells_dedup_audit.py` — nouveau, 12 tests.
+
+### 28.6 Tests
+- **`test_iter158_17_bells_dedup_audit.py`** — 12/12 PASS :
+  1. `test_notification_bell_uses_only_pending_count_endpoint` — source unique.
+  2. `test_accounts_button_uses_accounts_list_and_staff_decisions_only` — pas de
+     lien vers `/ownership/notifications` ni `/devices/pending-count`.
+  3. `test_owner_notifications_bell_uses_ownership_endpoints_only` — pas de
+     lien vers `/staff-decisions` ni `/devices/pending-count` ni `/accounts/list`.
+  4. `test_three_bells_have_distinct_testids` — aucune collision data-testid.
+  5. `test_backend_sources_of_truth_are_distinct_collections` — chaque endpoint
+     ne lit qu'UNE collection primaire (regex sur code source).
+  6. `test_ownership_notifications_rejects_non_owners` — 403 pour admin/modo/user
+     (P0.2 non-régression).
+  7. `test_ownership_notifications_isolated_between_owners` — B ne voit pas
+     les notifs privées de A.
+  8. `test_staff_action_on_normal_user_no_owner_notification` — /accounts/mute
+     sur user normal → `staff_decisions=1`, `owner_notifications=0`.
+  9. `test_staff_action_on_owner_off_creates_owner_notification_via_unified_route`
+     — /staff/action sur owner OFF → `staff_actions_log=1` + `owner_notifications=1`,
+     mais aucune duplication UI (audiences distinctes).
+  10. `test_mark_read_owner_notifs_does_not_touch_staff_decisions` — les 2
+      collections sont totalement indépendantes.
+  11. `test_dashboard_mounts_all_three_bells_in_creator_view` — non-régression
+      montage.
+  12. `test_no_component_reads_two_notification_sources_simultaneously` — aucun
+      composant hors des 3 cloches ne mélange les sources.
+- **Régression iter158 hors sandbox : 230 passed** (vs 218 avant P1.6), 1 skipped.
+  2 pré-existants inchangés (`test_expired_exclude_auto_lifted*`).
+
+### 28.7 Bilan P1.6
+✅ Audit exhaustif effectué : aucune duplication réelle détectée.
+✅ Source de vérité par catégorie clairement définie et codifiée par tests.
+✅ Isolation OwnerNotifications (P0.2) confirmée par tests dédiés.
+✅ Aucun composant modifié — statu quo justifié.
+✅ Aucune régression backend/frontend.
+
+**Checkpoint enregistré : `production-ready-iter158.17` (P1.6 clos).**
+
+**Prochain chantier proposé** : P2.1 — `<select>` unifié pour statut vs barre
+d'icônes actuelle (décision produit requise avant implémentation).
