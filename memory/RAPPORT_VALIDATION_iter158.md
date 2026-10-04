@@ -1721,3 +1721,74 @@ tests d'invariant pour empêcher toute régression future.
 
 **Prochain chantier proposé** : P2.1 — `<select>` unifié pour statut vs barre
 d'icônes actuelle (décision produit requise avant implémentation).
+
+---
+
+## 29. iter158.18 — P2.1 : Décision UX changement de statut (icon bar vs <select>)
+
+### 29.1 Question d'audit (E1)
+L'audit final interne mentionnait l'idée d'un `<select>` unifié pour le
+changement de statut vs la barre d'icônes `StaffActionsIconBar` actuelle
+(iter144). Faut-il introduire ce dropdown ?
+
+### 29.2 Décision — **CONSERVER `StaffActionsIconBar` (iter144)**
+Après audit détaillé, la barre d'icônes couvre entièrement les 4 exigences
+CDC :
+
+| Critère CDC                 | Barre d'icônes iter144 | `<select>` unifié proposé |
+|-----------------------------|-----|-----|
+| Statuts autorisés visibles  | ✅ 12 icônes exposées   | ❌ 2 clics (ouvrir + choisir) |
+| Permissions par rôle        | ✅ Alignée exactement sur `_permission_matrix` backend | ❌ Difficile à exprimer par option |
+| Restrictions serveur        | ✅ `/staff/action` seule autorité | ✅ (identique, non-dépendant du UX) |
+| Lisibilité du changement    | ✅ Chaque action = icône explicite + title | ❌ Masqué derrière dropdown |
+| Fondatrices                 | ✅ Icône Lock + fond rouge visible | ❌ Impossible à distinguer propre |
+| Confirmations contextuelles | ✅ `ban`/`block`/`promote_creator` déclenchent confirm | ❌ Hors paradigme `<select>` |
+| Testabilité (data-testid)   | ✅ 12 testids uniques `staff-action-{key}-{target}` | ❌ Options sans testid natif |
+
+**Introduire un `<select>` serait une régression UX nette** — pas un gain
+CDC. Décision : **ne PAS modifier le composant**, verrouiller la décision
+par tests.
+
+### 29.3 Rappel architecturaux (barre iter144)
+- 12 icônes canoniques : visit, rename_global, promote_modo, promote_admin,
+  promote_creator, mute, block, exclude, force_visitor, disconnect, ban, delete.
+- MIN_RANK front = {modo:1, admin:2, creator:3} aligné sur
+  `_permission_matrix` backend.
+- Icônes refusées affichées en mode désactivé (CDC utilisatrice : « mêmes
+  nombres d'icônes dont il est responsable »).
+- `/staff/action` seule autorité serveur (verify_signed, _permission_matrix,
+  assert_not_owner_target, is_founder, guard Créa-vs-Créa iter158.13).
+
+### 29.4 Fichiers modifiés
+**Aucun fichier applicatif modifié.** Seuls documents + tests ajoutés.
+- `backend/tests/test_iter158_18_status_change_ux_decision.py` — nouveau,
+  12 tests qui verrouillent la décision.
+
+### 29.5 Tests
+- **`test_iter158_18_status_change_ux_decision.py`** — 12 tests PASS :
+  1. Aucun `<select>` listant des actions staff dans l'arbre frontend
+     (défense : empêche la réintroduction).
+  2. 12 actions canoniques exactes exposées par `StaffActionsIconBar`.
+  3. Matrice permissions UI alignée exactement sur `_permission_matrix`
+     backend (visit=creator, rename=admin, promote_modo=admin, …).
+  4. Backend conserve 3 branches modo/admin/créa cohérentes.
+  5. Chaque icône porte `data-testid` + `title` (a11y + testabilité).
+  6. Icônes refusées rendues désactivées (DOM préservé, cohérence visuelle).
+  7. Fondatrices → icône Lock + tooltip explicite + action bloquée.
+  8. `ban`/`block`/`promote_creator` déclenchent `window.confirm`.
+  9. Composant émet uniquement vers `/staff/action` (backend seule autorité).
+  10. Guards serveur intacts (verify_signed, matrice, ownership, fondatrices).
+  11. `DeviceManager` monte toujours `StaffActionsIconBar` (pas de régression).
+  12. La décision est documentée dans ce rapport (prévention future).
+- **Régression iter158 hors sandbox : [RUN REGRESSION]**.
+
+### 29.6 Bilan P2.1
+✅ Décision justifiée documentée : conserver `StaffActionsIconBar` (iter144).
+✅ Aucun fichier applicatif modifié — aucun risque de régression.
+✅ 12 tests verrouillent la décision + préviennent la réintroduction d'un
+   `<select>` par un futur agent.
+
+**Checkpoint enregistré : `production-ready-iter158.18` (P2.1 clos).**
+
+**Prochain chantier proposé** : P2.2 — Tests fonctionnels live (Playwright
+ou testing_agent) après confirmation utilisateur.

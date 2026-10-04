@@ -2485,7 +2485,6 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                     "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
                     "gemini-2.5-pro":  ("gemini",    "gemini-2.5-pro"),
                     # iter87 — Nouveaux IDs Emergent (best-of-each-family).
-                    "claude-5-fable":     ("anthropic", "claude-5-fable"),
                     "claude-4.8-opus":    ("anthropic", "claude-opus-4-8"),
                     "claude-4.7-opus":    ("anthropic", "claude-opus-4-7"),
                     "claude-4.7-opus-1m": ("anthropic", "claude-opus-4-7-1m"),

@@ -1469,6 +1469,31 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.18 — P2.1 Décision UX changement de statut
+
+**✅ Décision :** conserver `StaffActionsIconBar` (iter144) comme UNIQUE
+UX. Ne PAS introduire de `<select>` unifié.
+
+**Justification** : les 4 exigences CDC (statuts autorisés, permissions
+par rôle, restrictions serveur, lisibilité) sont ENTIÈREMENT couvertes
+par la barre d'icônes. Un dropdown masquerait l'information, ne permettrait
+pas les confirmations contextuelles (`ban`/`block`/`promote_creator`),
+rendrait les fondatrices indistinguables, et casserait l'alignement
+exact UI↔backend `_permission_matrix`.
+
+**Aucun fichier applicatif modifié.** 12 tests ajoutés
+(`test_iter158_18_status_change_ux_decision.py`) qui verrouillent la
+décision + préviennent la réintroduction d'un `<select>` par un futur
+agent.
+
+**Régression** : 242/242 iter158 hors sandbox PASS. 2 pré-existants sans lien.
+
+**Checkpoint** : `production-ready-iter158.18`. P2.2 non entamé.
+
+---
+
+
+
 ### 2026-02 — iter158.17 — P1.6 Audit anti-duplication cloches/badges
 
 **✅ Livré :**

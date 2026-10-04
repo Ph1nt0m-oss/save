@@ -411,7 +411,6 @@ def build_chat_exports_router(
         """iter79 — Exporte une conversation chat en .docx (Microsoft Word)."""
         from docx import Document
         from docx.shared import Pt, RGBColor
-        import io as _io
 
         user_id = await get_current_user(request)
         proj = await db.projects.find_one({"project_id": project_id, "user_id": user_id}, {"_id": 0})
