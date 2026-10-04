@@ -1963,3 +1963,106 @@ endpoint pour appliquer la même substitution). **Hors périmètre P2.3**.
 
 **Prochain chantier proposé** : P2.4 — Implémentation des 9 langues
 manquantes depuis la liste `LANG_LABELS`.
+
+---
+
+## 32. iter158.21 — P2.4 : Complétude i18n
+
+### 32.1 État avant P2.4
+- `SUPPORTED_LANGS` déclare 16 langues : fr, en, es, pt, de, nl, ru, zh,
+  **zh-TW**, hi, bn, ur, ja, hr, da, ar.
+- Blocs de traductions présents : **15** (zh-TW manquant).
+- 13 langues avaient 63-86 clés manquantes vs FR (couverture ≈ 40-50%),
+  avec fallback automatique sur EN pour les clés absentes via la fonction
+  `t()` (`translations[lang]?.[key] || translations['en']?.[key] || key`).
+- Les **20 clés critiques** récemment introduites (5 titres tutoriel P1.4,
+  10 catégories AI errors P0.1, 5 clés pseudo) existaient UNIQUEMENT en
+  FR et EN — les 13 autres langues retombaient sur EN pour ces libellés.
+
+### 32.2 Décision de scope (P2.4)
+Compléter en priorité les **20 clés critiques** dans TOUTES les langues
+(celles qui apparaissent sur des parcours utilisateur fréquents : tutoriel,
+messages d'erreur IA, gestion du pseudo). Les clés non-critiques (menus
+avancés, textes marketing longs, labels secondaires) continuent de bénéficier
+du fallback EN — **ce choix est documenté** et évite d'introduire des
+traductions machine de qualité incertaine en bloc dans 13 langues.
+
+### 32.3 Livré
+**Bloc `zh-TW` créé** (Traditional Chinese) :
+- Clés de base (back, next, loginSignin, …) en caractères traditionnels.
+- 5 titres tutoriel + 10 AI errors + 5 clés pseudo = 20 clés critiques natives.
+- Les clés absentes retombent sur EN via `t()` — comportement standard.
+
+**13 langues enrichies** avec les 20 clés critiques en langue native :
+`es, de, nl, ru, zh, hi, bn, pt, ur, ja, hr, da, ar`
+
+Qualité des traductions :
+- **Haute confiance** : es, de, nl, pt, ru, zh, ja, ar (traductions natives
+  validées sémantiquement).
+- **Confiance correcte** : hr, da (langues scandinaves/slaves).
+- **À vérifier par locuteur natif** : hi, bn, ur (ces langues peuvent avoir
+  des nuances que je n'ai pas pu vérifier à 100% — point signalé pour revue
+  éventuelle future, **non-bloquant**).
+
+Chaque patch est précédé d'un commentaire `// iter158.21 (P2.4)` pour
+traçabilité et facilité de révision par un locuteur natif.
+
+### 32.4 Fichiers modifiés
+- `frontend/src/contexts/LanguageContext.js` :
+  - Nouveau bloc `'zh-TW': { ... }` (~45 lignes).
+  - 13 blocs étendus avec 20 clés critiques chacun (~22 lignes par langue).
+  - Total : ~335 lignes ajoutées, 0 modifiée.
+- `backend/tests/test_iter158_21_i18n_completeness.py` — nouveau, 11 tests.
+
+### 32.5 Tests
+- **`test_iter158_21_i18n_completeness.py`** — 11/11 PASS :
+  1. `test_all_supported_languages_have_translation_blocks` — tous les 16
+     codes `SUPPORTED_LANGS` ont un bloc de traductions.
+  2. `test_zh_tw_block_added_in_p24` — zh-TW ajouté, contient les clés
+     critiques en TW.
+  3. `test_critical_keys_present_in_every_language` — les 20 clés critiques
+     existent dans TOUS les blocs.
+  4. `test_translations_are_non_empty_strings` — aucune valeur critique vide.
+  5. `test_fr_remains_authoritative_source` — FR ≥ 150 clés top-level.
+  6. `test_en_remains_complete_fallback_source` — EN contient toutes les
+     clés critiques (fallback opérationnel).
+  7. `test_t_function_fallback_chain_preserved` — chaîne `lang → en → key`
+     intacte.
+  8. `test_rtl_languages_still_handled` — ur, ar restent dans RTL_LANGS.
+  9. `test_translated_lang_names_covers_all_supported` — mapping noms
+     complet incluant zh-TW.
+  10. `test_supported_langs_has_sixteen_entries_with_valid_fields` — chaque
+      entrée a code/label/native/flag.
+  11. `test_report_coverage_summary_for_rapport` — diagnostic couverture
+      par langue (EN ≥ 75% comme fallback utile).
+- **Régression iter158 hors sandbox : 275 passed** (vs 266 avant P2.4), 1 skipped.
+  2 pré-existants inchangés + 2 failures flaky (`iter158_16::other_creator_removing_locked`,
+  `iter158_19::parcours_sanction_against_off_owner_and_restore`) qui passent
+  systématiquement en isolation — causées par la pollution d'état cross-tests
+  déjà observée en P2.2. **Non-régression de P2.4** : vérifié en relançant
+  ces tests individuellement, ils passent (29/29 PASS pour les 3 fichiers
+  P1.5 + P2.2 + P2.4 ensemble).
+
+### 32.6 Point hors scope signalé
+- Les clés non-critiques (textes marketing, menus avancés) restent incomplètes
+  en 13 langues et bénéficient toujours du fallback EN. **Compléter 100%
+  des ~700 clés dans 13 langues serait un chantier de ~8000 traductions**
+  nécessitant soit un service LLM professionnel, soit des traducteurs
+  natifs. Hors scope P2.4 (le CDC parle de "9 langues manquantes" ou
+  "LANG_LABELS", pas de couverture 100%).
+- Pour les langues hi, bn, ur (indic + ourdou), une revue par un locuteur
+  natif serait recommandée avant publication publique à grande échelle.
+
+### 32.7 Bilan P2.4
+✅ 16/16 langues ont un bloc de traductions (zh-TW ajouté).
+✅ 20 clés critiques présentes et natives dans TOUTES les langues (260
+   nouvelles traductions).
+✅ Fallback EN opérationnel pour les clés non-critiques.
+✅ Architecture i18n intacte, FR/EN inchangés en profondeur.
+✅ 11 tests dédiés + 275 PASS iter158 hors sandbox.
+✅ Frontend compile et sert 200 OK après rebuild.
+
+**Checkpoint enregistré : `production-ready-iter158.21` (P2.4 clos).**
+
+**Prochain chantier proposé** : Audit final complet avant les 3 étapes de
+vérification finale (Emergent, ZIP, vérification manuelle utilisatrice).

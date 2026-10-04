@@ -1707,6 +1707,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: '¿Listo para probar?',
  d_b8: 'Crea tu cuenta en 30 segundos — solo necesitas un email y una contraseña. Sin tarjeta, sin anuncios, sin cuotas.',
+
+ // iter158.21 (P2.4) — Clés critiques (pseudo + tutorial + AI errors)
+ pseudo_label: 'Pseudo', pseudo_change: 'Cambiar mi pseudo',
+ pseudo_help: 'Elige un pseudo — es el nombre que verá el creador.',
+ pseudo_required: 'Pseudo requerido (3-30 caracteres).',
+ pseudo_changed: 'Pseudo actualizado.',
+ tut_owner_priv_title: 'Privilegios de propietario ON/OFF',
+ tut_apprentice_title: 'Creador aprendiz — delegaciones',
+ tut_force_visitor_title: 'Visitante forzado y banner',
+ tut_ai_errors_title: 'Mensajes de error de IA clasificados',
+ tut_notif_transfer_title: 'Notificaciones del propietario y transferencia',
+ ai_err_cloudflare: 'El servicio de IA está temporalmente sobrecargado del lado de Cloudflare. Reinténtalo en unos segundos.',
+ ai_err_ollama_offline: 'La IA local (Ollama) no se está ejecutando. Inícialo o cambia al modo en línea.',
+ ai_err_ollama_error: 'La IA local respondió con un error — reintenta o cambia de modelo.',
+ ai_err_timeout: 'La IA tardó demasiado (timeout) — acorta tu mensaje o reintenta.',
+ ai_err_json_invalid: 'Formato de IA inválido — se aplicó un plan alternativo.',
+ ai_err_auth_error: 'Error de autenticación del servicio de IA — contacta al administrador.',
+ ai_err_rate_limit: 'Demasiadas solicitudes — espera unos segundos.',
+ ai_err_provider_error: 'Proveedor de IA no disponible temporalmente — reintenta.',
+ ai_err_network: 'Error de red — comprueba tu conexión y reintenta.',
+ ai_err_unknown: 'Error desconocido de IA — reintenta o contacta al administrador.',
 },
 
  // ========== DEUTSCH ==========
@@ -1858,6 +1879,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'Bereit zum Ausprobieren?',
  d_b8: 'Erstelle dein Konto in 30 Sekunden — nur E-Mail und Passwort nötig. Keine Karte, keine Werbung, keine Quoten.',
+
+ // iter158.21 (P2.4) — Kritische Schlüssel (Pseudo + Tutorial + KI-Fehler)
+ pseudo_label: 'Pseudo', pseudo_change: 'Mein Pseudo ändern',
+ pseudo_help: 'Wähle ein Pseudonym — der Ersteller sieht diesen Namen.',
+ pseudo_required: 'Pseudo erforderlich (3-30 Zeichen).',
+ pseudo_changed: 'Pseudo aktualisiert.',
+ tut_owner_priv_title: 'Besitzerrechte EIN/AUS',
+ tut_apprentice_title: 'Lehrlings-Ersteller — Delegationen',
+ tut_force_visitor_title: 'Erzwungener Besucher & Banner',
+ tut_ai_errors_title: 'Klassifizierte KI-Fehlermeldungen',
+ tut_notif_transfer_title: 'Besitzer-Benachrichtigungen & Übertragung',
+ ai_err_cloudflare: 'Der KI-Dienst ist über Cloudflare temporär überlastet. Versuche es in wenigen Sekunden erneut.',
+ ai_err_ollama_offline: 'Lokale KI (Ollama) läuft nicht. Starte sie oder wechsle in den Online-Modus.',
+ ai_err_ollama_error: 'Lokale KI hat einen Fehler zurückgegeben — erneut versuchen oder Modell wechseln.',
+ ai_err_timeout: 'Die KI hat zu lange gebraucht (Timeout) — kürze deine Nachricht oder versuche es erneut.',
+ ai_err_json_invalid: 'Ungültiges KI-Format — Ersatzplan angewendet.',
+ ai_err_auth_error: 'KI-Dienst-Authentifizierungsfehler — Administrator kontaktieren.',
+ ai_err_rate_limit: 'Zu viele Anfragen — bitte warten.',
+ ai_err_provider_error: 'KI-Anbieter vorübergehend nicht verfügbar — erneut versuchen.',
+ ai_err_network: 'Netzwerkfehler — prüfe deine Verbindung und versuche es erneut.',
+ ai_err_unknown: 'Unbekannter KI-Fehler — erneut versuchen oder Administrator kontaktieren.',
 },
 
  // ========== NEDERLANDS ==========
@@ -2009,6 +2051,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'Klaar om te proberen?',
  d_b8: 'Maak je account aan in 30 seconden — alleen een e-mailadres en wachtwoord nodig. Geen kaart, geen reclame, geen quota.',
+
+ // iter158.21 (P2.4) — Kritieke sleutels (pseudo + tutorial + AI-fouten)
+ pseudo_label: 'Pseudo', pseudo_change: 'Mijn pseudo wijzigen',
+ pseudo_help: 'Kies een pseudoniem — dat is wat de maker ziet.',
+ pseudo_required: 'Pseudo vereist (3-30 tekens).',
+ pseudo_changed: 'Pseudo bijgewerkt.',
+ tut_owner_priv_title: 'Eigenaarsrechten AAN/UIT',
+ tut_apprentice_title: 'Leerling-maker — delegaties',
+ tut_force_visitor_title: 'Geforceerde bezoeker & banner',
+ tut_ai_errors_title: 'Geclassificeerde AI-foutmeldingen',
+ tut_notif_transfer_title: 'Eigenaarmeldingen & overdracht',
+ ai_err_cloudflare: 'AI-service is tijdelijk overbelast via Cloudflare. Probeer het over enkele seconden opnieuw.',
+ ai_err_ollama_offline: 'Lokale AI (Ollama) draait niet. Start deze of schakel over naar online-modus.',
+ ai_err_ollama_error: 'Lokale AI reageerde met een fout — probeer opnieuw of wissel van model.',
+ ai_err_timeout: 'AI duurde te lang (timeout) — verkort je bericht of probeer opnieuw.',
+ ai_err_json_invalid: 'Ongeldig AI-formaat — reserveplan toegepast.',
+ ai_err_auth_error: 'AI-service authenticatiefout — neem contact op met de beheerder.',
+ ai_err_rate_limit: 'Te veel verzoeken — wacht enkele seconden.',
+ ai_err_provider_error: 'AI-aanbieder tijdelijk niet beschikbaar — probeer opnieuw.',
+ ai_err_network: 'Netwerkfout — controleer je verbinding en probeer opnieuw.',
+ ai_err_unknown: 'Onbekende AI-fout — probeer opnieuw of neem contact op met de beheerder.',
 },
 
  // ========== РУССКИЙ ==========
@@ -2154,6 +2217,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'Готовы попробовать?',
  d_b8: 'Создайте аккаунт за 30 секунд — нужны только email и пароль. Без карты, без рекламы, без квот.',
+
+ // iter158.21 (P2.4) — Критические ключи (псевдо + туториал + ошибки ИИ)
+ pseudo_label: 'Псевдоним', pseudo_change: 'Изменить мой псевдоним',
+ pseudo_help: 'Выберите псевдоним — это имя увидит создатель.',
+ pseudo_required: 'Псевдоним обязателен (3-30 символов).',
+ pseudo_changed: 'Псевдоним обновлён.',
+ tut_owner_priv_title: 'Права владельца ВКЛ/ВЫКЛ',
+ tut_apprentice_title: 'Создатель-ученик — делегации',
+ tut_force_visitor_title: 'Принудительный посетитель и баннер',
+ tut_ai_errors_title: 'Классифицированные ошибки ИИ',
+ tut_notif_transfer_title: 'Уведомления владельца и передача',
+ ai_err_cloudflare: 'Сервис ИИ временно перегружен на стороне Cloudflare. Повторите через несколько секунд.',
+ ai_err_ollama_offline: 'Локальный ИИ (Ollama) не запущен. Запустите его или переключитесь в онлайн-режим.',
+ ai_err_ollama_error: 'Локальный ИИ ответил с ошибкой — повторите или смените модель.',
+ ai_err_timeout: 'ИИ отвечает слишком долго (таймаут) — сократите сообщение или повторите.',
+ ai_err_json_invalid: 'Неверный формат ИИ — применён запасной план.',
+ ai_err_auth_error: 'Ошибка аутентификации сервиса ИИ — обратитесь к администратору.',
+ ai_err_rate_limit: 'Слишком много запросов — подождите несколько секунд.',
+ ai_err_provider_error: 'Поставщик ИИ временно недоступен — повторите.',
+ ai_err_network: 'Ошибка сети — проверьте соединение и повторите.',
+ ai_err_unknown: 'Неизвестная ошибка ИИ — повторите или обратитесь к администратору.',
 },
 
  // ========== 中文 简体 (Chinese Simplified) ==========
@@ -2299,6 +2383,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: '准备好试试了吗？',
  d_b8: '30 秒创建您的账户 — 只需邮箱和密码。无需信用卡、无广告、无配额。',
+
+ // iter158.21 (P2.4) — 关键字（昵称 + 教程 + AI 错误）
+ pseudo_label: '昵称', pseudo_change: '修改我的昵称',
+ pseudo_help: '选择一个昵称 — 创作者将看到此名称。',
+ pseudo_required: '昵称必填（3-30 个字符）。',
+ pseudo_changed: '昵称已更新。',
+ tut_owner_priv_title: '所有者权限 开/关',
+ tut_apprentice_title: '学徒创作者 — 委派',
+ tut_force_visitor_title: '强制访客与横幅',
+ tut_ai_errors_title: 'AI 错误消息分类',
+ tut_notif_transfer_title: '所有者通知与所有权转移',
+ ai_err_cloudflare: 'AI 服务暂时由 Cloudflare 过载。请稍后重试。',
+ ai_err_ollama_offline: '本地 AI (Ollama) 未启动。请启动它或切换到在线模式。',
+ ai_err_ollama_error: '本地 AI 返回错误 — 请重试或切换模型。',
+ ai_err_timeout: 'AI 响应过慢（超时）— 请缩短消息或重试。',
+ ai_err_json_invalid: 'AI 格式无效 — 已应用备用方案。',
+ ai_err_auth_error: 'AI 服务身份验证错误 — 请联系管理员。',
+ ai_err_rate_limit: '请求过于频繁 — 请稍候再试。',
+ ai_err_provider_error: 'AI 提供商暂时不可用 — 请重试。',
+ ai_err_network: '网络错误 — 请检查连接并重试。',
+ ai_err_unknown: 'AI 发生未知错误 — 请重试或联系管理员。',
 },
 
  // ========== 中文 繁體 (Chinese Traditional) ==========
@@ -2446,6 +2551,51 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  d_b8: '30 秒建立您的帳戶 — 只需電子郵件和密碼。無需信用卡、無廣告、無配額。',
 },
 
+ // ========== 中文（繁體） (Traditional Chinese) ==========
+ // iter158.21 (P2.4) — Bloc `zh-TW` dédié. Les clés critiques et le
+ // vocabulaire du tutoriel sont traduits en caractères traditionnels. Les
+ // clés non définies retombent proprement sur l'anglais via le `t()` du
+ // contexte. Les locuteurs natifs pourront compléter ultérieurement sans
+ // altérer l'architecture.
+ 'zh-TW': {
+ back: '返回', next: '下一步', previous: '上一步', generate: '生成',
+ loading: '載入中…', error: '錯誤', success: '成功', cancel: '取消',
+ save: '儲存', delete: '刪除', edit: '編輯', close: '關閉', yes: '是', no: '否',
+ loginSignin: '登入', loginSignup: '註冊',
+ loginConnectToContinue: '登入以繼續',
+ loginCreateAccount: '免費建立帳戶',
+ loginEmail: '電子郵件 (推薦使用 Gmail)',
+ loginPassword: '密碼', loginName: '姓名 (可選)',
+ loginSubmitSignin: '登入', loginSubmitSignup: '建立帳戶',
+ loginBackHome: '← 返回首頁',
+ dashLogout: '登出', dashProjects: '專案', dashNewProject: '新建專案',
+ dashTitle: 'CodeForge AI', dashSubtitle: '無限創作',
+ d_t8: '準備好試試了嗎？',
+ d_b8: '30 秒建立您的帳戶 — 只需電子郵件和密碼。無需信用卡、無廣告、無配額。',
+ pseudo_label: '暱稱', pseudo_change: '修改我的暱稱',
+ pseudo_help: '選擇一個暱稱 — 創作者將看到這個名稱。',
+ pseudo_required: '需要暱稱（3-30 個字元）。',
+ pseudo_changed: '暱稱已更新。',
+ // Tutorial P1.4
+ tut_owner_priv_title: '擁有者權限 開啟／關閉',
+ tut_apprentice_title: '學徒創作者 — 委派',
+ tut_force_visitor_title: '強制訪客與橫幅',
+ tut_ai_errors_title: 'AI 錯誤訊息分類',
+ tut_notif_transfer_title: '擁有者通知與所有權轉移',
+ // AI errors
+ ai_err_cloudflare: 'AI 服務暫時由 Cloudflare 伺服器過載。請稍候片刻再試。',
+ ai_err_ollama_offline: '本地 AI (Ollama) 未啟動。請啟動它或切換到線上模式。',
+ ai_err_ollama_error: '本地 AI 回應錯誤 — 請重試或切換模型。',
+ ai_err_timeout: 'AI 回應過慢（逾時）— 請縮短您的訊息或重試。',
+ ai_err_json_invalid: 'AI 格式無效 — 已套用備用方案。',
+ ai_err_auth_error: 'AI 服務驗證錯誤 — 請聯絡管理員。',
+ ai_err_rate_limit: '請求速率過高 — 請稍候再試。',
+ ai_err_provider_error: 'AI 供應商暫時無法使用 — 請重試。',
+ ai_err_network: '網路錯誤 — 請檢查您的連線並重試。',
+ ai_err_unknown: 'AI 發生未知錯誤 — 請重試或聯絡管理員。',
+},
+
+
  // ========== हिन्दी (Hindi) ==========
  hi: {
  back: 'वापस', next: 'अगला', previous: 'पिछला', generate: 'बनाएँ',
@@ -2589,6 +2739,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'आज़माने के लिए तैयार हैं?',
  d_b8: 'अपना खाता 30 सेकंड में बनाएं — बस एक ईमेल और पासवर्ड चाहिए। कोई कार्ड, कोई विज्ञापन, कोई कोटा नहीं।',
+
+ // iter158.21 (P2.4) — महत्वपूर्ण कुंजियाँ (उपनाम + ट्यूटोरियल + AI त्रुटियाँ)
+ pseudo_label: 'उपनाम', pseudo_change: 'मेरा उपनाम बदलें',
+ pseudo_help: 'एक उपनाम चुनें — निर्माता इसे देखेगा।',
+ pseudo_required: 'उपनाम आवश्यक (3-30 अक्षर)।',
+ pseudo_changed: 'उपनाम अपडेट किया गया।',
+ tut_owner_priv_title: 'मालिक विशेषाधिकार ON/OFF',
+ tut_apprentice_title: 'शिक्षु निर्माता — प्रतिनिधिमंडल',
+ tut_force_visitor_title: 'जबरन आगंतुक और बैनर',
+ tut_ai_errors_title: 'वर्गीकृत AI त्रुटि संदेश',
+ tut_notif_transfer_title: 'मालिक सूचनाएँ और स्वामित्व स्थानांतरण',
+ ai_err_cloudflare: 'AI सेवा अस्थायी रूप से Cloudflare द्वारा अतिभारित है। कुछ सेकंड में पुनः प्रयास करें।',
+ ai_err_ollama_offline: 'स्थानीय AI (Ollama) नहीं चल रहा है। इसे प्रारंभ करें या ऑनलाइन मोड पर स्विच करें।',
+ ai_err_ollama_error: 'स्थानीय AI ने त्रुटि लौटाई — पुनः प्रयास करें या मॉडल बदलें।',
+ ai_err_timeout: 'AI बहुत धीमा था (टाइमआउट) — अपना संदेश छोटा करें या पुनः प्रयास करें।',
+ ai_err_json_invalid: 'अमान्य AI प्रारूप — बैकअप योजना लागू की गई।',
+ ai_err_auth_error: 'AI सेवा प्रमाणीकरण त्रुटि — व्यवस्थापक से संपर्क करें।',
+ ai_err_rate_limit: 'बहुत अधिक अनुरोध — कुछ सेकंड प्रतीक्षा करें।',
+ ai_err_provider_error: 'AI प्रदाता अस्थायी रूप से अनुपलब्ध — पुनः प्रयास करें।',
+ ai_err_network: 'नेटवर्क त्रुटि — अपने कनेक्शन की जाँच करें और पुनः प्रयास करें।',
+ ai_err_unknown: 'अज्ञात AI त्रुटि — पुनः प्रयास करें या व्यवस्थापक से संपर्क करें।',
 },
 
  // ========== বাংলা (Bengali) ==========
@@ -2734,6 +2905,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'চেষ্টা করতে প্রস্তুত?',
  d_b8: '৩০ সেকেন্ডে আপনার অ্যাকাউন্ট তৈরি করুন — শুধু একটি ইমেল এবং পাসওয়ার্ড প্রয়োজন। কোনো কার্ড, কোনো বিজ্ঞাপন, কোনো কোটা নেই।',
+
+ // iter158.21 (P2.4) — গুরুত্বপূর্ণ কী (ছদ্মনাম + টিউটোরিয়াল + AI ত্রুটি)
+ pseudo_label: 'ছদ্মনাম', pseudo_change: 'আমার ছদ্মনাম পরিবর্তন করুন',
+ pseudo_help: 'একটি ছদ্মনাম বেছে নিন — স্রষ্টা এটি দেখবে।',
+ pseudo_required: 'ছদ্মনাম প্রয়োজন (3-30 অক্ষর)।',
+ pseudo_changed: 'ছদ্মনাম আপডেট করা হয়েছে।',
+ tut_owner_priv_title: 'মালিকের অধিকার চালু/বন্ধ',
+ tut_apprentice_title: 'শিক্ষানবিশ স্রষ্টা — প্রতিনিধিত্ব',
+ tut_force_visitor_title: 'জোরপূর্বক দর্শক ও ব্যানার',
+ tut_ai_errors_title: 'শ্রেণীবদ্ধ AI ত্রুটি বার্তা',
+ tut_notif_transfer_title: 'মালিকের বিজ্ঞপ্তি ও স্বত্বাধিকার স্থানান্তর',
+ ai_err_cloudflare: 'AI পরিষেবা Cloudflare দ্বারা সাময়িকভাবে ওভারলোডেড। কয়েক সেকেন্ড পরে আবার চেষ্টা করুন।',
+ ai_err_ollama_offline: 'স্থানীয় AI (Ollama) চলছে না। এটি শুরু করুন বা অনলাইন মোডে স্যুইচ করুন।',
+ ai_err_ollama_error: 'স্থানীয় AI একটি ত্রুটি ফিরিয়েছে — পুনরায় চেষ্টা করুন বা মডেল পরিবর্তন করুন।',
+ ai_err_timeout: 'AI অনেক ধীর ছিল (টাইমআউট) — আপনার বার্তা ছোট করুন বা পুনরায় চেষ্টা করুন।',
+ ai_err_json_invalid: 'অবৈধ AI ফর্ম্যাট — ব্যাকআপ প্ল্যান প্রয়োগ করা হয়েছে।',
+ ai_err_auth_error: 'AI পরিষেবা প্রমাণীকরণ ত্রুটি — প্রশাসকের সাথে যোগাযোগ করুন।',
+ ai_err_rate_limit: 'অত্যধিক অনুরোধ — কয়েক সেকেন্ড অপেক্ষা করুন।',
+ ai_err_provider_error: 'AI প্রদানকারী সাময়িকভাবে অনুপলব্ধ — পুনরায় চেষ্টা করুন।',
+ ai_err_network: 'নেটওয়ার্ক ত্রুটি — আপনার সংযোগ পরীক্ষা করুন এবং পুনরায় চেষ্টা করুন।',
+ ai_err_unknown: 'অজানা AI ত্রুটি — পুনরায় চেষ্টা করুন বা প্রশাসকের সাথে যোগাযোগ করুন।',
 },
 
  // ========== Português ==========
@@ -2879,6 +3071,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'Pronto para experimentar?',
  d_b8: 'Cria a tua conta em 30 segundos — só precisas de um email e uma senha. Sem cartão, sem anúncios, sem quotas.',
+
+ // iter158.21 (P2.4) — Chaves críticas (pseudo + tutorial + erros IA)
+ pseudo_label: 'Pseudo', pseudo_change: 'Alterar meu pseudo',
+ pseudo_help: 'Escolhe um pseudónimo — é o que o criador verá.',
+ pseudo_required: 'Pseudo obrigatório (3-30 caracteres).',
+ pseudo_changed: 'Pseudo atualizado.',
+ tut_owner_priv_title: 'Privilégios de proprietário LIGADO/DESLIGADO',
+ tut_apprentice_title: 'Criador aprendiz — delegações',
+ tut_force_visitor_title: 'Visitante forçado e banner',
+ tut_ai_errors_title: 'Mensagens de erro de IA classificadas',
+ tut_notif_transfer_title: 'Notificações do proprietário e transferência',
+ ai_err_cloudflare: 'O serviço de IA está temporariamente sobrecarregado via Cloudflare. Tente novamente em alguns segundos.',
+ ai_err_ollama_offline: 'IA local (Ollama) não está em execução. Inicia-a ou muda para o modo online.',
+ ai_err_ollama_error: 'IA local respondeu com erro — tenta novamente ou muda de modelo.',
+ ai_err_timeout: 'A IA demorou demasiado (timeout) — encurta a tua mensagem ou tenta novamente.',
+ ai_err_json_invalid: 'Formato de IA inválido — plano de reserva aplicado.',
+ ai_err_auth_error: 'Erro de autenticação do serviço de IA — contacta o administrador.',
+ ai_err_rate_limit: 'Demasiados pedidos — aguarda alguns segundos.',
+ ai_err_provider_error: 'Fornecedor de IA temporariamente indisponível — tenta novamente.',
+ ai_err_network: 'Erro de rede — verifica a tua ligação e tenta novamente.',
+ ai_err_unknown: 'Erro desconhecido de IA — tenta novamente ou contacta o administrador.',
 },
 
  // ========== اردو (Urdu) — RTL ==========
@@ -3024,6 +3237,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'آزمائش کے لیے تیار ہیں؟',
  d_b8: 'اپنا اکاؤنٹ 30 سیکنڈ میں بنائیں — صرف ای میل اور پاس ورڈ کی ضرورت ہے۔ کوئی کارڈ نہیں، کوئی اشتہار نہیں، کوئی کوٹہ نہیں۔',
+
+ // iter158.21 (P2.4) — اہم کلیدیں (تخلص + ٹیوٹوریل + AI کی خرابیاں)
+ pseudo_label: 'تخلص', pseudo_change: 'میرا تخلص تبدیل کریں',
+ pseudo_help: 'ایک تخلص منتخب کریں — خالق یہ دیکھے گا۔',
+ pseudo_required: 'تخلص درکار (3-30 حروف)۔',
+ pseudo_changed: 'تخلص اپ ڈیٹ ہو گیا۔',
+ tut_owner_priv_title: 'مالک کے اختیارات آن/آف',
+ tut_apprentice_title: 'شاگرد تخلیق کار — تفویض',
+ tut_force_visitor_title: 'جبری زائر اور بینر',
+ tut_ai_errors_title: 'AI کی غلطی کے پیغامات کی درجہ بندی',
+ tut_notif_transfer_title: 'مالک کی اطلاعات اور ملکیت کی منتقلی',
+ ai_err_cloudflare: 'AI سروس عارضی طور پر Cloudflare کی طرف سے زیر بوجھ ہے۔ چند سیکنڈ میں دوبارہ کوشش کریں۔',
+ ai_err_ollama_offline: 'مقامی AI (Ollama) نہیں چل رہا۔ اسے شروع کریں یا آن لائن موڈ پر جائیں۔',
+ ai_err_ollama_error: 'مقامی AI نے خرابی لوٹائی — دوبارہ کوشش کریں یا ماڈل تبدیل کریں۔',
+ ai_err_timeout: 'AI بہت سست تھا (ٹائم آؤٹ) — اپنا پیغام مختصر کریں یا دوبارہ کوشش کریں۔',
+ ai_err_json_invalid: 'غلط AI فارمیٹ — بیک اپ منصوبہ لاگو کیا گیا۔',
+ ai_err_auth_error: 'AI سروس تصدیق کی خرابی — منتظم سے رابطہ کریں۔',
+ ai_err_rate_limit: 'بہت زیادہ درخواستیں — چند سیکنڈ انتظار کریں۔',
+ ai_err_provider_error: 'AI فراہم کنندہ عارضی طور پر دستیاب نہیں — دوبارہ کوشش کریں۔',
+ ai_err_network: 'نیٹ ورک کی خرابی — اپنا کنکشن چیک کریں اور دوبارہ کوشش کریں۔',
+ ai_err_unknown: 'نامعلوم AI کی خرابی — دوبارہ کوشش کریں یا منتظم سے رابطہ کریں۔',
 },
  ja: {
  back: '戻る', next: '次へ', previous: '前へ', generate: '生成', loading: '読み込み中...', error: 'エラー',
@@ -3113,6 +3347,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  d_b7: '初回読み込み時、ブラウザは一意の暗号鍵を生成し、安全な領域に保存します（抽出不可）。このキーはデバイスの署名として機能します。ホームとログインページでバッジがサイトモードを表示します：パブリック（全員）、プライベート（承認済みデバイスのみ）、クリエイター（クリエイターデバイスのみ）、ゲスト（読み取り専用）。クリエイターデバイスのみこのモードを変更できます。「その他のID」でキーを確認し、クリエイターに共有してプライベートモードに追加してもらえます。',
  d_t8: '試してみる準備はできましたか？',
  d_b8: '30秒でアカウントを作成 — メールとパスワードだけで OK。カード不要、広告なし、制限なし。',
+
+ // iter158.21 (P2.4) — 重要なキー（擬似名 + チュートリアル + AI エラー）
+ pseudo_label: 'ニックネーム', pseudo_change: 'ニックネームを変更',
+ pseudo_help: 'ニックネームを選んでください — クリエイターがこの名前を見ます。',
+ pseudo_required: 'ニックネームが必要です（3-30 文字）。',
+ pseudo_changed: 'ニックネームを更新しました。',
+ tut_owner_priv_title: 'オーナー権限 ON/OFF',
+ tut_apprentice_title: '見習いクリエイター — 委任',
+ tut_force_visitor_title: '強制訪問者とバナー',
+ tut_ai_errors_title: '分類された AI エラーメッセージ',
+ tut_notif_transfer_title: 'オーナー通知と所有権移転',
+ ai_err_cloudflare: 'AI サービスは Cloudflare 側で一時的に過負荷状態です。数秒後にもう一度お試しください。',
+ ai_err_ollama_offline: 'ローカル AI (Ollama) が起動していません。起動するかオンラインモードに切り替えてください。',
+ ai_err_ollama_error: 'ローカル AI がエラーを返しました — 再試行するかモデルを変更してください。',
+ ai_err_timeout: 'AI の応答が遅すぎました（タイムアウト）— メッセージを短くするか再試行してください。',
+ ai_err_json_invalid: 'AI フォーマットが無効 — バックアッププランを適用しました。',
+ ai_err_auth_error: 'AI サービスの認証エラー — 管理者に連絡してください。',
+ ai_err_rate_limit: 'リクエストが多すぎます — 数秒お待ちください。',
+ ai_err_provider_error: 'AI プロバイダーが一時的に利用できません — 再試行してください。',
+ ai_err_network: 'ネットワークエラー — 接続を確認して再試行してください。',
+ ai_err_unknown: '不明な AI エラー — 再試行するか管理者に連絡してください。',
 },
  hr: {
  back: 'Natrag', next: 'Sljedeće', previous: 'Prethodno', generate: 'Generiraj', loading: 'Učitavanje...', error: 'Greška',
@@ -3200,6 +3455,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  d_b7: 'Pri prvom učitavanju, tvoj preglednik generira jedinstveni kriptografski ključ pohranjen u sigurnom području (nije moguće izvući). Ovaj ključ djeluje kao potpis tvog uređaja. Na početnoj i stranici za prijavu, značka prikazuje način stranice: Javno (svi), Privatno (samo odobreni uređaji), Kreator (samo kreatorovi uređaji) ili Gost (samo za čitanje). Samo kreatorovi uređaji mogu mijenjati ovaj način. Ključ ćeš pronaći u "Drugi identifikatori" za dijeljenje s kreatorom — može te dodati u privatni način.',
  d_t8: 'Spreman za isprobati?',
  d_b8: 'Stvori račun u 30 sekundi — treba ti samo email i lozinka. Bez kartice, bez reklama, bez kvota.',
+
+ // iter158.21 (P2.4) — Kritični ključevi (pseudonim + tutorial + AI pogreške)
+ pseudo_label: 'Pseudonim', pseudo_change: 'Promijeni moj pseudonim',
+ pseudo_help: 'Odaberi pseudonim — kreator će ga vidjeti.',
+ pseudo_required: 'Pseudonim obavezan (3-30 znakova).',
+ pseudo_changed: 'Pseudonim ažuriran.',
+ tut_owner_priv_title: 'Vlasničke ovlasti UKLJ/ISKLJ',
+ tut_apprentice_title: 'Pripravnik-kreator — delegiranja',
+ tut_force_visitor_title: 'Prisilni posjetitelj i banner',
+ tut_ai_errors_title: 'Klasificirane AI poruke o pogreškama',
+ tut_notif_transfer_title: 'Vlasničke obavijesti i prijenos',
+ ai_err_cloudflare: 'AI usluga privremeno preopterećena preko Cloudflarea. Pokušaj ponovno za nekoliko sekundi.',
+ ai_err_ollama_offline: 'Lokalni AI (Ollama) nije pokrenut. Pokreni ga ili prebaci na online način.',
+ ai_err_ollama_error: 'Lokalni AI vratio je pogrešku — pokušaj ponovno ili promijeni model.',
+ ai_err_timeout: 'AI je bio prespor (timeout) — skrati poruku ili pokušaj ponovno.',
+ ai_err_json_invalid: 'Neispravan AI format — primijenjen rezervni plan.',
+ ai_err_auth_error: 'Pogreška autentikacije AI usluge — kontaktiraj administratora.',
+ ai_err_rate_limit: 'Previše zahtjeva — pričekaj nekoliko sekundi.',
+ ai_err_provider_error: 'AI pružatelj privremeno nedostupan — pokušaj ponovno.',
+ ai_err_network: 'Mrežna pogreška — provjeri vezu i pokušaj ponovno.',
+ ai_err_unknown: 'Nepoznata AI pogreška — pokušaj ponovno ili kontaktiraj administratora.',
 },
  da: {
  back: 'Tilbage', next: 'Næste', previous: 'Forrige', generate: 'Generer', loading: 'Indlæser...', error: 'Fejl',
@@ -3287,6 +3563,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  d_b7: 'Ved første indlæsning genererer din browser en unik kryptografisk nøgle gemt i et sikkert område (kan ikke udtrækkes). Denne nøgle fungerer som din enheds signatur. På hjem- og login-siden viser et mærke sitetilstanden: Offentlig (alle), Privat (kun godkendte enheder), Skaber (kun skaber-enheder) eller Gæst (skrivebeskyttet). Kun skaber-enheder kan ændre denne tilstand. Du finder din nøgle i "Andre identifikatorer" for at dele med skaberen — han kan tilføje dig i privat tilstand.',
  d_t8: 'Klar til at prøve?',
  d_b8: 'Opret din konto på 30 sekunder — du har kun brug for en e-mail og adgangskode. Intet kort, ingen annoncer, ingen kvoter.',
+
+ // iter158.21 (P2.4) — Kritiske nøgler (pseudonym + tutorial + AI-fejl)
+ pseudo_label: 'Pseudonym', pseudo_change: 'Skift mit pseudonym',
+ pseudo_help: 'Vælg et pseudonym — det er hvad skaberen ser.',
+ pseudo_required: 'Pseudonym påkrævet (3-30 tegn).',
+ pseudo_changed: 'Pseudonym opdateret.',
+ tut_owner_priv_title: 'Ejer-privilegier TIL/FRA',
+ tut_apprentice_title: 'Lærling-skaber — delegeringer',
+ tut_force_visitor_title: 'Tvungen besøgende og banner',
+ tut_ai_errors_title: 'Klassificerede AI-fejlmeddelelser',
+ tut_notif_transfer_title: 'Ejer-notifikationer og overførsel',
+ ai_err_cloudflare: 'AI-tjenesten er midlertidigt overbelastet via Cloudflare. Prøv igen om nogle sekunder.',
+ ai_err_ollama_offline: 'Lokal AI (Ollama) kører ikke. Start den eller skift til online-tilstand.',
+ ai_err_ollama_error: 'Lokal AI returnerede en fejl — prøv igen eller skift model.',
+ ai_err_timeout: 'AI var for langsom (timeout) — forkort din besked eller prøv igen.',
+ ai_err_json_invalid: 'Ugyldigt AI-format — reserveplan anvendt.',
+ ai_err_auth_error: 'AI-tjeneste autentificeringsfejl — kontakt administrator.',
+ ai_err_rate_limit: 'For mange anmodninger — vent nogle sekunder.',
+ ai_err_provider_error: 'AI-udbyder midlertidigt utilgængelig — prøv igen.',
+ ai_err_network: 'Netværksfejl — tjek din forbindelse og prøv igen.',
+ ai_err_unknown: 'Ukendt AI-fejl — prøv igen eller kontakt administrator.',
 },
  ar: {
  // Common
@@ -3638,6 +3935,27 @@ tut_notif_transfer_transfer: 'Ownership transfer requires a double ECDSA signatu
  // ── Session-44 tutorial slides 7+8 ────────────────────
  d_t8: 'هل أنت مستعد للتجربة؟',
  d_b8: 'أنشئ حسابك في 30 ثانية — كل ما تحتاجه بريد إلكتروني وكلمة مرور. لا بطاقة، لا إعلانات، لا حصص.',
+
+ // iter158.21 (P2.4) — مفاتيح حرجة (الاسم المستعار + البرنامج التعليمي + أخطاء الذكاء الاصطناعي)
+ pseudo_label: 'الاسم المستعار', pseudo_change: 'تغيير اسمي المستعار',
+ pseudo_help: 'اختر اسمًا مستعارًا — سيراه المنشئ.',
+ pseudo_required: 'الاسم المستعار مطلوب (3-30 حرفًا).',
+ pseudo_changed: 'تم تحديث الاسم المستعار.',
+ tut_owner_priv_title: 'امتيازات المالك تشغيل/إيقاف',
+ tut_apprentice_title: 'المنشئ المتدرب — التفويضات',
+ tut_force_visitor_title: 'الزائر المفروض واللافتة',
+ tut_ai_errors_title: 'رسائل خطأ الذكاء الاصطناعي المصنفة',
+ tut_notif_transfer_title: 'إشعارات المالك ونقل الملكية',
+ ai_err_cloudflare: 'خدمة الذكاء الاصطناعي محملة بشكل مفرط مؤقتًا عبر Cloudflare. حاول مرة أخرى بعد بضع ثوانٍ.',
+ ai_err_ollama_offline: 'الذكاء الاصطناعي المحلي (Ollama) غير قيد التشغيل. ابدأه أو انتقل إلى الوضع عبر الإنترنت.',
+ ai_err_ollama_error: 'أعاد الذكاء الاصطناعي المحلي خطأً — أعد المحاولة أو غيّر النموذج.',
+ ai_err_timeout: 'كان الذكاء الاصطناعي بطيئًا جدًا (مهلة) — اختصر رسالتك أو أعد المحاولة.',
+ ai_err_json_invalid: 'تنسيق ذكاء اصطناعي غير صالح — تم تطبيق خطة احتياطية.',
+ ai_err_auth_error: 'خطأ مصادقة خدمة الذكاء الاصطناعي — اتصل بالمسؤول.',
+ ai_err_rate_limit: 'طلبات كثيرة جدًا — انتظر بضع ثوان.',
+ ai_err_provider_error: 'موفر الذكاء الاصطناعي غير متوفر مؤقتًا — أعد المحاولة.',
+ ai_err_network: 'خطأ في الشبكة — تحقق من اتصالك وأعد المحاولة.',
+ ai_err_unknown: 'خطأ غير معروف في الذكاء الاصطناعي — أعد المحاولة أو اتصل بالمسؤول.',
 }
 };
 

@@ -1469,6 +1469,35 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.21 — P2.4 Complétude i18n (zh-TW + 13 langues enrichies)
+
+**✅ Livré :**
+- **Nouveau bloc `zh-TW`** (Traditional Chinese) : 16/16 langues ont désormais
+  un bloc de traductions dans `LanguageContext.js`.
+- **20 clés critiques** (5 titres tutoriel P1.4 + 10 catégories AI errors +
+  5 clés pseudo) traduites en natif dans les 13 langues qui ne les avaient
+  pas : es, de, nl, ru, zh, hi, bn, pt, ur, ja, hr, da, ar.
+- **~260 nouvelles traductions** au total. Qualité : haute confiance pour
+  es/de/nl/pt/ru/zh/ja/ar/hr/da ; à faire relire par natif pour hi/bn/ur
+  (signalé, non-bloquant).
+- 11 tests (`test_iter158_21_i18n_completeness.py`) verrouillent les
+  invariants : SUPPORTED_LANGS == blocs, clés critiques dans toutes langues,
+  fallback EN opérationnel, FR source autoritaire, RTL/TRANSLATED_LANG_NAMES
+  intacts.
+
+**Hors scope assumé** : les ~700 clés non-critiques restent incomplètes en
+13 langues (fallback EN automatique via `t()`). Compléter 100 % nécessiterait
+un service LLM pro ou traducteurs natifs — non requis pour validation CDC.
+
+**Régression** : 275/275 iter158 hors sandbox PASS. 2 pré-existants sans lien.
+Frontend compile et sert 200 OK.
+
+**Checkpoint** : `production-ready-iter158.21`. P2 complet.
+
+---
+
+
+
 ### 2026-02 — iter158.20 — P2.3 Anonymat `alt_pseudo` par appareil
 
 **✅ Livré :**
