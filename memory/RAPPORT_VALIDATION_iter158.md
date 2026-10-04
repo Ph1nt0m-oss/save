@@ -1792,3 +1792,72 @@ par tests.
 
 **Prochain chantier proposé** : P2.2 — Tests fonctionnels live (Playwright
 ou testing_agent) après confirmation utilisateur.
+
+---
+
+## 30. iter158.19 — P2.2 : Tests fonctionnels live (parcours)
+
+### 30.1 Objectif
+Compléter les tests source-level par de VRAIS parcours end-to-end exécutés
+contre le backend en fonctionnement, chaînant les transitions comme un
+utilisateur le ferait.
+
+### 30.2 Approche
+Tests **live functional** (HTTP + ECDSA + DB verification) :
+- Chaque parcours exécute une séquence complète d'étapes dépendantes.
+- Vérification de l'état DB avant/après chaque transition.
+- Signatures ECDSA réelles côté client Python.
+- Backend/DB en mode production (`CODEFORGE_TEST_MODE=0`).
+
+**Note sur Playwright** : L'application est protégée par `site_mode=private`
+en production. Un parcours UI complet nécessiterait l'approbation d'un
+appareil par la Créa (flux manuel). Les tests ici exercent la couche
+métier backend qui est l'autorité CDC — c'est la même couche qu'une UI
+Playwright finirait par appeler. Le wiring frontend est validé par
+source analysis (iter158.12/14/15/17/18).
+
+### 30.3 5 Parcours exécutés
+| # | Parcours                                | Étapes                                                                                                                  |
+|---|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| 1 | **Owner Privileges cycle**              | ON → OFF → vérif invariant owner_key_ids + role → ON → égalité stricte avec départ                                      |
+| 2 | **Apprentice Creator lifecycle**        | add perm permanent → vérif perms → grant-temp → vérif + → forcer expiration → vérif - → revoke → is_delegate=False      |
+| 2b| **Apprentice locked**                   | locked=true → self-remove refusé 409 (lien iter158.16)                                                                   |
+| 3 | **Sanctions × Ownership**               | OFF → admin ban → notif créée (actor_role/staff_kind/handle) → ON → sanctions clean + role creator → protection ré-engagée (admin mute = 403) |
+| 4 | **AI Error Mapping contrat**            | Mapper backend classifie (timeout, cloudflare, …) → `/api/generate` expose ai_error_code → Chat.js préserve historique + libère isLoading → chat_messages persist 2 inserts (user+assistant) |
+| 5 | **Transfer Ownership double-sig**       | challenge → single sig refusée 403 → 2 sigs identiques refusées → sig non-owner refusée → 2 sigs distinctes légitimes → 200 + owner_key_ids étendu                        |
+| 5b| **Transfer wrong action**               | challenge pour `add_owner_device` NON réutilisable pour `/ownership/transfer`                                            |
+| 0 | **Live health**                         | /api/health 200 + 8 endpoints critiques montés (400/401/403/422 attendus, pas 404)                                       |
+
+### 30.4 Bugs réels détectés
+**Aucun**. Tous les parcours exécutent conformément au CDC.
+
+**Note** : lors d'une exécution complète combinée, un test iter158_ownership
+(`test_delegate_add_and_cannot_touch_owner`) a échoué par flakiness liée à
+l'ordre de collecte (collision éphémère sur `ownership.delegates`). Le test
+passe systématiquement en isolation ET lors du run suivant de la régression
+complète. Pas un bug applicatif.
+
+### 30.5 Fichiers modifiés
+- `backend/tests/test_iter158_19_p22_live_flows.py` — nouveau, 10 tests
+  (5 parcours + 2 variantes + 2 contrats AI + 1 health).
+
+### 30.6 Résultats
+- **P2.2 dédié : 10/10 PASS** (39 s pour les 10 parcours live).
+- **Régression iter158 hors sandbox : 252 passed** (vs 242 avant P2.2),
+  1 skipped. 2 pré-existants inchangés (`test_expired_exclude_auto_lifted*`).
+- **Frontend smoke** : app rendue sans crash (title='Emergent | Fullstack App',
+  React root OK, aucune erreur console), overlay `Site temporarily private`
+  attendu en mode prod.
+
+### 30.7 Bilan P2.2
+✅ 10 parcours fonctionnels live validés contre backend en cours.
+✅ Chaque flow critique couvert : owner priv cycle, apprentice lifecycle,
+   sanctions × ownership, AI error contrat, transfer double-sig.
+✅ Aucun bug réel découvert — comportement conforme CDC.
+✅ Régression stable (252 PASS, pré-existants inchangés).
+✅ Aucun code applicatif modifié.
+
+**Checkpoint enregistré : `production-ready-iter158.19` (P2.2 clos).**
+
+**Prochain chantier proposé** : P2.3 — Anonymat + `alt_pseudo` par appareil
+(propriétaire incognito).

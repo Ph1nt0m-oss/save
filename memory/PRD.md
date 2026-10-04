@@ -1469,6 +1469,29 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.19 — P2.2 Tests fonctionnels live (5 parcours)
+
+**✅ Livré :**
+- 10 tests fonctionnels live (`test_iter158_19_p22_live_flows.py`) exécutant
+  les 5 parcours critiques CDC contre le backend en cours (HTTP + ECDSA + DB) :
+  1. Owner Privileges cycle ON→OFF→ON (invariants `owner_key_ids` et role)
+  2. Apprentice Creator lifecycle (add perm → grant-temp → expir → revoke)
+     + variante locked (self-remove refusé 409)
+  3. Sanctions × Ownership (OFF→ban→notif→ON→restore→protection ré-engagée)
+  4. AI Error Mapping contrat (classifier, ai_error_code, historique Chat.js)
+  5. Transfer Ownership double-signature (single/identiques/non-owner refusés,
+     2 distinctes légitimes acceptées) + variante wrong-action
+
+**Aucun bug réel détecté** — comportement conforme CDC sur tous les parcours.
+
+**Régression** : 252/252 iter158 hors sandbox PASS. 2 pré-existants sans lien.
+
+**Checkpoint** : `production-ready-iter158.19`. P2.3 non entamé.
+
+---
+
+
+
 ### 2026-02 — iter158.18 — P2.1 Décision UX changement de statut
 
 **✅ Décision :** conserver `StaffActionsIconBar` (iter144) comme UNIQUE
