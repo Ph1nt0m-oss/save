@@ -202,6 +202,29 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
       return px.localeCompare(py, 'fr', { sensitivity: 'base' });
     });
 
+  // Chantier iter159 §5 — Rang unique (remplace les libellés de statut
+  // génériques). Mapping strictement dérivé du modèle existant (role +
+  // staff_kind + flags) — pas de nouvelle hiérarchie.
+  const computeRank = (a) => {
+    if (!a) return { key: 'user', label: t('rank_user') };
+    if (a.role === 'creator') return { key: 'creator', label: t('rank_creator'), tone: 'yellow' };
+    if (a.staff_kind === 'admin') return { key: 'admin', label: t('rank_admin'), tone: 'cyan' };
+    if (a.staff_kind === 'modo') return { key: 'modo', label: t('rank_modo'), tone: 'violet' };
+    if (a.force_visitor || a.role === 'guest') return { key: 'visitor', label: t('rank_visitor'), tone: 'orange' };
+    if (a.role === 'pending' || a.role === 'inactive') return { key: 'unapproved', label: t('rank_unapproved'), tone: 'amber' };
+    if (a.role === 'approved') return { key: 'user', label: t('rank_user'), tone: 'emerald' };
+    return { key: 'approved', label: t('rank_approved'), tone: 'zinc' };
+  };
+  const RANK_TONES = {
+    yellow:  'border-[#E4FF00]/60 text-[#E4FF00] bg-[#E4FF00]/10',
+    cyan:    'border-cyan-400/60 text-cyan-300 bg-cyan-400/10',
+    violet:  'border-violet-400/60 text-violet-300 bg-violet-400/10',
+    orange:  'border-orange-400/60 text-orange-300 bg-orange-400/10',
+    amber:   'border-amber-400/60 text-amber-300 bg-amber-400/10',
+    emerald: 'border-emerald-400/60 text-emerald-300 bg-emerald-400/10',
+    zinc:    'border-zinc-400/60 text-zinc-300 bg-zinc-400/10',
+  };
+
   return (
     <>
       <button
@@ -316,17 +339,29 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                         <span className="text-white">@{a.public_handle || '—'}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-wrap flex-shrink-0">
+                    <div className="flex items-center gap-1 flex-wrap flex-shrink-0" data-testid={`acc-badges-${a.key_id}`}>
                       {isDeleted && <span data-testid={`acc-deleted-${a.key_id}`} className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">{t('acc_deleted_badge')}</span>}
                       {isSelf && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">{t('acc_you')}</span>}
-                      {a.role === 'creator' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm inline-flex items-center gap-1"><Crown className="w-2.5 h-2.5" />creator</span>}
-                      {a.staff_kind === 'admin' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-cyan-400/40 text-cyan-300 bg-cyan-400/10 rounded-sm inline-flex items-center gap-1"><Shield className="w-2.5 h-2.5" />admin</span>}
-                      {a.staff_kind === 'modo' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-violet-400/40 text-violet-300 bg-violet-400/10 rounded-sm inline-flex items-center gap-1"><Star className="w-2.5 h-2.5" />modo</span>}
-                      {a.role === 'approved' && !a.staff_kind && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-emerald-400/40 text-emerald-300 bg-emerald-400/10 rounded-sm">approved</span>}
-                      {a.role === 'pending' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-amber-400/40 text-amber-300 bg-amber-400/10 rounded-sm">pending</span>}
-                      {a.role === 'blocked' && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-400/40 text-red-300 bg-red-400/10 rounded-sm">blocked</span>}
+                      {/* Chantier iter159 §5 — Badge Rang unique (prioritaire). */}
+                      {(() => {
+                        const r = computeRank(a);
+                        const tone = RANK_TONES[r.tone] || RANK_TONES.zinc;
+                        return (
+                          <span
+                            data-testid={`acc-rank-${a.key_id}`}
+                            data-rank={r.key}
+                            title={`${t('rank_label')} : ${r.label}`}
+                            className={`text-[9px] uppercase tracking-widest px-1.5 py-0.5 border rounded-sm inline-flex items-center gap-1 font-bold ${tone}`}
+                          >
+                            {r.key === 'creator' && <Crown className="w-2.5 h-2.5" />}
+                            {r.key === 'admin' && <Shield className="w-2.5 h-2.5" />}
+                            {r.key === 'modo' && <Star className="w-2.5 h-2.5" />}
+                            {r.label}
+                          </span>
+                        );
+                      })()}
+                      {/* Modificateurs d'état (toujours affichés en complément du Rang) */}
                       {a.is_inactive && !isDeleted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-zinc-400/40 text-zinc-300 bg-zinc-400/10 rounded-sm">inactif</span>}
-                      {a.force_visitor && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">visiteur forcé</span>}
                       {a.banned && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">banned</span>}
                       {a.excluded_until && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">excluded</span>}
                       {a.muted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-purple-400/40 text-purple-300 bg-purple-400/10 rounded-sm">muted</span>}
@@ -341,74 +376,137 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                       )}
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center gap-1 flex-wrap">
-                    {!isSelf && !actionsDisabled && canVisit && (
-                      <button title="Visiter le compte" data-testid={`acc-visit-${a.key_id}`} onClick={() => { setOpen(false); onVisitAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Eye className="w-3.5 h-3.5" /></button>
-                    )}
-                    {!isSelf && onMessageAccount && !actionsDisabled && (
-                      <button title="Message" data-testid={`acc-message-${a.key_id}`} onClick={() => { setOpen(false); onMessageAccount?.(a); }} className="p-1.5 border border-white/15 hover:border-[#00D4FF]/40 text-[#A1A1AA] hover:text-[#00D4FF] rounded-sm transition"><MessageCircle className="w-3.5 h-3.5" /></button>
-                    )}
-                    {!actionsDisabled && canRename && (
-                      <button title={t('acc_action_rename')} data-testid={`acc-rename-${a.key_id}`} onClick={() => renameContact(a)} className="p-1.5 border border-white/15 hover:border-[#E4FF00]/40 text-[#A1A1AA] hover:text-[#E4FF00] rounded-sm transition"><Edit3 className="w-3.5 h-3.5" /></button>
-                    )}
-                    {!isSelf && a.role === 'approved' && !actionsDisabled && canRename && (
-                      <>
-                        <button title={a.staff_kind === 'admin' ? 'Retirer admin' : 'Mettre admin'} data-testid={`acc-admin-${a.key_id}`} onClick={() => setStaffKind(a, a.staff_kind === 'admin' ? null : 'admin')} className={`p-1.5 border rounded-sm transition ${a.staff_kind === 'admin' ? 'border-cyan-400/60 text-cyan-300 bg-cyan-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-cyan-400/40 hover:text-cyan-300'}`}><Shield className="w-3.5 h-3.5" /></button>
-                        <button title={a.staff_kind === 'modo' ? 'Retirer modo' : 'Mettre modo'} data-testid={`acc-modo-${a.key_id}`} onClick={() => setStaffKind(a, a.staff_kind === 'modo' ? null : 'modo')} className={`p-1.5 border rounded-sm transition ${a.staff_kind === 'modo' ? 'border-violet-400/60 text-violet-300 bg-violet-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-violet-400/40 hover:text-violet-300'}`}><Star className="w-3.5 h-3.5" /></button>
-                      </>
-                    )}
-                    {!isSelf && a.role !== 'creator' && !actionsDisabled && canForceVisitor && (
-                      <button title={a.force_visitor ? 'Retirer mode visiteur' : 'Forcer mode visiteur'} data-testid={`acc-visitor-${a.key_id}`} onClick={() => setForceVisitor(a, !a.force_visitor)} className={`p-1.5 border rounded-sm transition ${a.force_visitor ? 'border-orange-400/60 text-orange-300 bg-orange-400/10' : 'border-white/15 text-[#A1A1AA] hover:border-orange-400/40 hover:text-orange-300'}`}><EyeOff className="w-3.5 h-3.5" /></button>
-                    )}
-                    {!isSelf && !actionsDisabled && (a.muted ? (
-                      <button title={t('acc_action_unmute')} data-testid={`acc-unmute-${a.key_id}`} onClick={() => doAction('/accounts/unmute', a.key_id)} className="p-1.5 border border-purple-400/40 text-purple-300 rounded-sm"><Bell className="w-3.5 h-3.5" /></button>
-                    ) : (
-                      <button title={t('acc_action_mute')} data-testid={`acc-mute-${a.key_id}`} onClick={() => doAction('/accounts/mute', a.key_id)} className="p-1.5 border border-white/15 hover:border-purple-400/40 text-[#A1A1AA] hover:text-purple-300 rounded-sm transition"><BellOff className="w-3.5 h-3.5" /></button>
-                    ))}
-                    {!isSelf && !actionsDisabled && (a.role === 'blocked' ? (
-                      <button title={t('acc_action_unblock')} data-testid={`acc-unblock-${a.key_id}`} onClick={() => doAction('/devices/unblock', a.key_id)} className="p-1.5 border border-emerald-400/40 text-emerald-300 rounded-sm"><ShieldCheck className="w-3.5 h-3.5" /></button>
-                    ) : (
-                      <button title={t('acc_action_block')} data-testid={`acc-block-${a.key_id}`} onClick={() => doAction('/devices/block', a.key_id)} className="p-1.5 border border-white/15 hover:border-red-400/40 text-[#A1A1AA] hover:text-red-400 rounded-sm transition"><Ban className="w-3.5 h-3.5" /></button>
-                    ))}
-                    {!isSelf && !actionsDisabled && canDisconnect && (
-                      <button
-                        title="Déconnecter temporairement"
-                        data-testid={`acc-disconnect-${a.key_id}`}
-                        onClick={() => doAction('/accounts/disconnect', a.key_id)}
-                        className="p-1.5 border border-white/15 hover:border-amber-400/60 text-[#A1A1AA] hover:text-amber-300 rounded-sm transition"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {!isSelf && !actionsDisabled && canExclude && (
-                      <button title={t('acc_action_exclude')} onClick={() => setExcluding({ a })} data-testid={`acc-exclude-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-orange-400/40 text-[#A1A1AA] hover:text-orange-300 rounded-sm transition"><Clock className="w-3.5 h-3.5" /></button>
-                    )}
-                    {!isSelf && !actionsDisabled && canBan && (a.banned ? (
-                      <button title={t('acc_action_unban')} data-testid={`acc-unban-${a.key_id}`} onClick={() => doAction('/accounts/unban', a.key_id)} className="p-1.5 border border-emerald-400/40 text-emerald-300 rounded-sm"><ShieldOff className="w-3.5 h-3.5" /></button>
-                    ) : (
-                      <button title={t('acc_action_ban')} onClick={() => ban(a)} data-testid={`acc-ban-${a.key_id}`} className="p-1.5 border border-white/15 hover:border-red-500/60 text-[#A1A1AA] hover:text-red-300 rounded-sm transition"><Skull className="w-3.5 h-3.5" /></button>
-                    ))}
-                    {a.role === 'creator' && !actionsDisabled && isCreator && (
-                      <button
-                        title={isSelf ? t('acc_remove_creator_btn') : t('acc_remove_creator_other_btn')}
-                        onClick={() => removeCreatorMode(a)}
-                        disabled={removing}
-                        data-testid={`acc-remove-creator-${a.key_id}`}
-                        className="p-1.5 border border-red-400/40 hover:border-red-500 text-red-300 hover:bg-red-500/10 rounded-sm transition disabled:opacity-50"
-                      >
-                        <ShieldOff className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {!isSelf && !isDeleted && canDelete && (
-                      <button
-                        title={t('acc_delete_btn')}
-                        onClick={() => deleteOne(a)}
-                        data-testid={`acc-delete-${a.key_id}`}
-                        className="p-1.5 border border-red-500/60 hover:bg-red-500/20 text-red-200 rounded-sm transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                  <div className="mt-2 flex items-center gap-1 flex-wrap" data-testid={`acc-actions-${a.key_id}`}>
+                    {/* Chantier iter159 §4 — Toutes les actions restent VISIBLES,
+                        leur état (applicable / déjà actif / indisponible) est
+                        reflété par la classe `opacity-30 cursor-not-allowed` +
+                        un tooltip explicatif. Le backend reste la seule
+                        autorité : un clic sur une action indisponible ne
+                        déclenche AUCUN appel API. */}
+                    {(() => {
+                      // Helpers par action : (enabled, reason, onClick, extraClass)
+                      const unavailable = t('action_unavailable');
+                      const alreadyActive = t('action_already_active');
+                      const makeBtn = ({ key, Icon, title, enabled, onClick, activeClass, hoverClass }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          title={enabled ? title : (title + ' — ' + unavailable)}
+                          disabled={!enabled}
+                          onClick={enabled ? onClick : undefined}
+                          data-testid={`acc-${key}-${a.key_id}`}
+                          data-enabled={enabled ? '1' : '0'}
+                          className={`p-1.5 border rounded-sm transition ${enabled ? (activeClass || `border-white/15 text-[#A1A1AA] ${hoverClass || 'hover:border-[#E4FF00]/40 hover:text-[#E4FF00]'}`) : 'border-white/10 text-white/30 cursor-not-allowed opacity-40'}`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                        </button>
+                      );
+                      const buttons = [];
+                      // Visite
+                      buttons.push(makeBtn({
+                        key: 'visit', Icon: Eye, title: 'Visiter le compte',
+                        enabled: !isSelf && !actionsDisabled && canVisit,
+                        onClick: () => { setOpen(false); onVisitAccount?.(a); },
+                      }));
+                      // Message
+                      if (onMessageAccount) buttons.push(makeBtn({
+                        key: 'message', Icon: MessageCircle, title: 'Envoyer un message',
+                        enabled: !isSelf && !actionsDisabled,
+                        onClick: () => { setOpen(false); onMessageAccount?.(a); },
+                        hoverClass: 'hover:border-[#00D4FF]/40 hover:text-[#00D4FF]',
+                      }));
+                      // Renommer
+                      buttons.push(makeBtn({
+                        key: 'rename', Icon: Edit3, title: t('acc_action_rename'),
+                        enabled: !actionsDisabled && canRename,
+                        onClick: () => renameContact(a),
+                      }));
+                      // Admin : toujours visible, grisé si Créa/déjà soi/non-approved. Toggle si déjà actif.
+                      const canToggleStaff = !isSelf && a.role === 'approved' && !actionsDisabled && canRename && a.role !== 'creator';
+                      buttons.push(makeBtn({
+                        key: 'admin', Icon: Shield,
+                        title: a.staff_kind === 'admin' ? `Retirer admin (${alreadyActive})` : 'Mettre admin',
+                        enabled: canToggleStaff,
+                        onClick: () => setStaffKind(a, a.staff_kind === 'admin' ? null : 'admin'),
+                        activeClass: a.staff_kind === 'admin' ? 'border-cyan-400/60 text-cyan-300 bg-cyan-400/10' : null,
+                        hoverClass: 'hover:border-cyan-400/40 hover:text-cyan-300',
+                      }));
+                      // Modo
+                      buttons.push(makeBtn({
+                        key: 'modo', Icon: Star,
+                        title: a.staff_kind === 'modo' ? `Retirer modo (${alreadyActive})` : 'Mettre modo',
+                        enabled: canToggleStaff,
+                        onClick: () => setStaffKind(a, a.staff_kind === 'modo' ? null : 'modo'),
+                        activeClass: a.staff_kind === 'modo' ? 'border-violet-400/60 text-violet-300 bg-violet-400/10' : null,
+                        hoverClass: 'hover:border-violet-400/40 hover:text-violet-300',
+                      }));
+                      // Force visitor
+                      buttons.push(makeBtn({
+                        key: 'visitor', Icon: EyeOff,
+                        title: a.force_visitor ? `Retirer mode visiteur (${alreadyActive})` : 'Forcer mode visiteur',
+                        enabled: !isSelf && a.role !== 'creator' && !actionsDisabled && canForceVisitor,
+                        onClick: () => setForceVisitor(a, !a.force_visitor),
+                        activeClass: a.force_visitor ? 'border-orange-400/60 text-orange-300 bg-orange-400/10' : null,
+                        hoverClass: 'hover:border-orange-400/40 hover:text-orange-300',
+                      }));
+                      // Mute / Unmute
+                      buttons.push(makeBtn({
+                        key: a.muted ? 'unmute' : 'mute', Icon: a.muted ? Bell : BellOff,
+                        title: a.muted ? `${t('acc_action_unmute')} (${alreadyActive})` : t('acc_action_mute'),
+                        enabled: !isSelf && !actionsDisabled,
+                        onClick: () => doAction(a.muted ? '/accounts/unmute' : '/accounts/mute', a.key_id),
+                        activeClass: a.muted ? 'border-purple-400/40 text-purple-300' : null,
+                        hoverClass: 'hover:border-purple-400/40 hover:text-purple-300',
+                      }));
+                      // Block / Unblock
+                      buttons.push(makeBtn({
+                        key: a.role === 'blocked' ? 'unblock' : 'block', Icon: a.role === 'blocked' ? ShieldCheck : Ban,
+                        title: a.role === 'blocked' ? `${t('acc_action_unblock')} (${alreadyActive})` : t('acc_action_block'),
+                        enabled: !isSelf && !actionsDisabled,
+                        onClick: () => doAction(a.role === 'blocked' ? '/devices/unblock' : '/devices/block', a.key_id),
+                        activeClass: a.role === 'blocked' ? 'border-emerald-400/40 text-emerald-300' : null,
+                        hoverClass: 'hover:border-red-400/40 hover:text-red-400',
+                      }));
+                      // Disconnect
+                      buttons.push(makeBtn({
+                        key: 'disconnect', Icon: LogOut, title: 'Déconnecter temporairement',
+                        enabled: !isSelf && !actionsDisabled && canDisconnect,
+                        onClick: () => doAction('/accounts/disconnect', a.key_id),
+                        hoverClass: 'hover:border-amber-400/60 hover:text-amber-300',
+                      }));
+                      // Exclude
+                      buttons.push(makeBtn({
+                        key: 'exclude', Icon: Clock, title: t('acc_action_exclude'),
+                        enabled: !isSelf && !actionsDisabled && canExclude,
+                        onClick: () => setExcluding({ a }),
+                        hoverClass: 'hover:border-orange-400/40 hover:text-orange-300',
+                      }));
+                      // Ban / Unban
+                      buttons.push(makeBtn({
+                        key: a.banned ? 'unban' : 'ban', Icon: a.banned ? ShieldOff : Skull,
+                        title: a.banned ? `${t('acc_action_unban')} (${alreadyActive})` : t('acc_action_ban'),
+                        enabled: !isSelf && !actionsDisabled && canBan,
+                        onClick: () => a.banned ? doAction('/accounts/unban', a.key_id) : ban(a),
+                        activeClass: a.banned ? 'border-emerald-400/40 text-emerald-300' : null,
+                        hoverClass: 'hover:border-red-500/60 hover:text-red-300',
+                      }));
+                      // Remove creator — visible uniquement si la cible EST creator
+                      if (a.role === 'creator') buttons.push(makeBtn({
+                        key: 'remove-creator', Icon: ShieldOff,
+                        title: isSelf ? t('acc_remove_creator_btn') : t('acc_remove_creator_other_btn'),
+                        enabled: !actionsDisabled && isCreator && !removing,
+                        onClick: () => removeCreatorMode(a),
+                        activeClass: 'border-red-400/40 text-red-300 hover:border-red-500 hover:bg-red-500/10',
+                      }));
+                      // Delete
+                      buttons.push(makeBtn({
+                        key: 'delete', Icon: Trash2, title: t('acc_delete_btn'),
+                        enabled: !isSelf && !isDeleted && canDelete,
+                        onClick: () => deleteOne(a),
+                        activeClass: 'border-red-500/60 text-red-200 hover:bg-red-500/20',
+                      }));
+                      return buttons;
+                    })()}
                   </div>
                 </div>
               )})}

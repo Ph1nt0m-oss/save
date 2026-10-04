@@ -63,20 +63,30 @@ def test_sandbox_page_denies_non_owner():
 # ─────────────────────────────────────────────────────────────────
 
 def test_promote_admin_modo_buttons_gated_by_canRename():
-    """Dans AccountsButton, les boutons `acc-admin-*` et `acc-modo-*` doivent
-    être gatés par `canRename` (= isAdminOrCreator). Un modérateur ne doit
-    PAS pouvoir voir ces boutons."""
+    """Dans AccountsButton, les boutons promote-admin et promote-modo doivent
+    rester gatés par `canRename` (= isAdminOrCreator). Un modérateur ne doit
+    PAS pouvoir déclencher ces actions.
+
+    Chantier iter159 §4 : les icônes restent VISIBLES (data-testid acc-admin-*
+    et acc-modo-* émis via helper `makeBtn`), mais leur état `enabled` est
+    pilote par `canToggleStaff` qui dépend lui-même de `canRename`.
+    """
     src = _read(FRONT / "components/AccountsButton.jsx")
-    # Trouve la ligne des boutons admin/modo (aliases identifiés par le
-    # data-testid `acc-admin-` juste après le `<>` fragment).
-    idx = src.find('data-testid={`acc-admin-')
-    assert idx > 0, "bouton acc-admin-* manquant"
-    # Contexte 400 chars avant.
-    context = src[max(0, idx - 400):idx]
-    assert "canRename" in context, (
-        "Les boutons promote-admin/modo doivent être gatés par canRename "
-        "(admin+créa uniquement). Trouvé contexte : " + context[-200:]
+    # Les data-testid sont générés dynamiquement : `acc-${key}-${a.key_id}`.
+    # On vérifie donc que les keys 'admin' et 'modo' sont bien enregistrées,
+    # et que `canToggleStaff` (gate commune) dépend de `canRename`.
+    assert "key: 'admin'" in src, "action key='admin' manquante"
+    assert "key: 'modo'" in src, "action key='modo' manquante"
+    # Gate commune
+    assert "canToggleStaff" in src, "canToggleStaff absent"
+    gate_line = next((l for l in src.splitlines() if "canToggleStaff =" in l), "")
+    assert "canRename" in gate_line, (
+        "canToggleStaff doit dépendre de canRename (admin+créa). "
+        f"Ligne trouvée : {gate_line!r}"
     )
+    # Les data-testid gardent bien le prefix acc-admin- / acc-modo-.
+    assert "data-testid={`acc-${key}-${a.key_id}`}" in src, \
+        "Format data-testid acc-${key}-${key_id} attendu"
 
 
 def test_useViewSpec_matrix():

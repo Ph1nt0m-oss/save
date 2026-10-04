@@ -93,7 +93,9 @@ def test_useViewSpec_can_disconnect():
 def test_accounts_button_disconnect_wired():
     src = _read(FRONT / "components/AccountsButton.jsx")
     assert "canDisconnect" in src
-    assert "acc-disconnect-" in src
+    # Chantier iter159 §4 : data-testid généré dynamiquement via `acc-${key}-...`.
+    # On vérifie la clé 'disconnect' + l'endpoint.
+    assert "key: 'disconnect'" in src
     assert "'/accounts/disconnect'" in src
     # Icon LogOut importé
     assert "LogOut" in src

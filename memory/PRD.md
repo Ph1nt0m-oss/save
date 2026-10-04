@@ -1,6 +1,99 @@
 # CodeForge AI — Product Requirements
 
 
+## iter159 (Oct 2026) — Chantier UX / Dashboard / IA / Autres comptes
+**Status : COMPLETED (5 tests backend + 14 tests frontend-static + régression 249/249 iter158+159 PASS).**
+
+Nouveau chantier post-P0→P2 traité comme un bloc unique à la demande utilisateur.
+
+### §1 — Dashboard 67 % de zoom (frontend/`Dashboard.js`)
+- Section centrale « Que souhaitez-vous faire ? » : `max-w-5xl` → `max-w-2xl`
+  (≈ moitié de largeur) pour libérer l'espace et éliminer les scrolls parasites.
+- Descriptions des 4 cartes (chat/create · online/offline) : `whitespace-nowrap`
+  + `overflow-hidden` + `text-ellipsis` → une seule ligne (confort Samsung S21 5G).
+- Header : `overflow-x-auto md:overflow-x-visible` → `overflow-x-auto lg:overflow-x-visible`
+  + `min-w-max md:min-w-0` → `min-w-max lg:min-w-0`, suppression du scroll
+  horizontal fantôme sur tablette.
+- Wrapper central : `flex items-center justify-center` → `flex-1 overflow-y-auto
+  overflow-x-hidden` + `min-h-full flex items-start`, supprime les scrolls
+  verticaux parasites tout en gardant la hauteur disponible.
+
+### §2 — États IA réels (frontend/`Chat.js`)
+- Nouveau state `aiRealState` strictement dérivé du vrai pipeline SSE :
+  `idle` → `sending` (requête envoyée, pas encore de delta) → `streaming`
+  (1ʳᵉ delta reçue) → `idle`/`error`. Aucun timer artificiel.
+- Loader bulle enrichi avec libellé textuel réel :
+  `data-testid="chat-ai-status-label"` + attribut `data-ai-state=…` →
+  « Envoi… » / « Génération en cours… » / « L'IA écrit… ».
+- Caly reste strictement assistant d'aide (prompt système inchangé —
+  interdit explicitement de « créer un projet ou un fichier »).
+
+### §3 — Renommage auto + manuel (backend + Chat/Dashboard)
+- Backend `Project` model : nouveau champ `title_manual: bool` (défaut `False`).
+- Backend `PUT /projects/{id}` : passe `title_manual=True` dès qu'un nom change
+  (verrou définitif contre tout rename auto ultérieur).
+- Backend nouveau `POST /projects/{id}/auto-title` :
+  - Court-circuit si `title_manual=True` → `{applied:false, source:"locked"}`.
+  - Court-circuit si aucun message user → `{applied:false, source:"empty"}`.
+  - LLM Emergent (`openai/gpt-4o-mini`) pour un titre 2-6 mots ≤ 48 chars.
+  - Fallback : truncation smart sur mot entier (jamais couper en plein milieu).
+- Frontend `Chat.js` : déclenche `POST /auto-title` en fire-and-forget après
+  le `done` SSE, puis émet `codeforge:project-renamed` → Dashboard met à jour
+  sa sidebar sans refresh global.
+- Verrou vérifié par test dédié — un titre renommé manuellement ne peut
+  JAMAIS être écrasé.
+
+### §4 — Autres comptes — toutes fonctions visibles (frontend/`AccountsButton.jsx`)
+- Toutes les icônes d'action (visit, rename, admin, modo, visitor, mute, block,
+  disconnect, exclude, ban, delete, remove-creator) rendues en permanence via
+  un helper `makeBtn` unique.
+- États visuels explicites : « applicable » (plein) / « déjà actif » (fond
+  teinté + tooltip `(déjà actif)`) / « indisponible » (`cursor-not-allowed`
+  + `opacity-40` + tooltip `… — Action indisponible pour ce compte`).
+- Backend reste la SEULE autorité : les clics sur actions désactivées
+  n'émettent aucun appel HTTP (`onClick={enabled ? onClick : undefined}`).
+
+### §5 — Statut → Rang (frontend/`AccountsButton.jsx` + `LanguageContext.js`)
+- Nouveau badge unique `data-testid="acc-rank-{key_id}"` avec `computeRank(a)` :
+  Créa > Admin > Modo > Visiteur > Non approuvé > Utilisateur > Approuvé.
+- Mapping strictement dérivé du modèle existant (role + staff_kind + flags) —
+  aucune nouvelle hiérarchie.
+- 7 libellés i18n ajoutés en FR et EN (`rank_creator`, `rank_admin`, `rank_modo`,
+  `rank_visitor`, `rank_user`, `rank_approved`, `rank_unapproved`).
+- Badges secondaires (muted/banned/excluded/pending_creator_review) conservés
+  comme modificateurs à côté du Rang principal.
+
+### Fichiers modifiés
+- `backend/server.py` (modèle Project)
+- `backend/routes/projects_routes.py` (PUT + nouveau /auto-title)
+- `frontend/src/pages/Dashboard.js` (§1 + listener project-renamed)
+- `frontend/src/pages/Chat.js` (§2 états réels + §3 trigger auto-title)
+- `frontend/src/components/AccountsButton.jsx` (§4 + §5)
+- `frontend/src/contexts/LanguageContext.js` (clés IA + Rang FR/EN)
+
+### Tests ajoutés
+- `backend/tests/test_iter159_01_chantier_ux.py` — 5 tests HTTP (title_manual
+  flag, 404, no-op empty, lock, truncation fallback).
+- `backend/tests/test_iter159_02_frontend_static.py` — 14 tests (grep source
+  pour vérifier wiring §1-§5 sans navigateur).
+- `backend/tests/test_iter158_2_ui_visibility.py` — migration test
+  `promote_admin_modo_buttons_gated_by_canRename` pour refléter la nouvelle
+  architecture always-visible (gate commune `canToggleStaff`).
+- `backend/tests/test_iter158_5_accounts_reorg.py` — migration
+  `test_accounts_button_disconnect_wired` (data-testid dynamique).
+
+### Régression hors sandbox
+- 249 passed sur iter158_2..21 + iter159_01-02 (0:01:03).
+- 2 pré-existants (expired_exclude_auto_lifted*) explicitement hors scope.
+
+### Points NON touchés (conforme contrainte stricte)
+- Backend d'autorité (ownership_guard, staff_actions, delegations) — aucune
+  modification des permissions.
+- Toutes les fonctionnalités P0 → P2 validées restent intactes.
+- HS-5 (ephemeral-upload-storage) non traité (hors scope).
+
+---
+
 ## iter158.11 (Aug 2026) — P0.4 : Gate switch_account pour délégations
 **Status : COMPLETED (11 nouveaux tests + régression 118/118 iter158.2→.11 PASS + 168/168 hors sandbox + backend live vérifié).**
 Correction D5 de l'audit :

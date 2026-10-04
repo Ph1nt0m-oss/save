@@ -422,6 +422,23 @@ export default function Dashboard() {
     loadProjects();
   }, [loadProjects]);
 
+  // Chantier iter159 §3 — Écoute le renommage auto déclenché par Chat.js
+  // et met à jour la sidebar/aperçu sans attendre un refresh global.
+  useEffect(() => {
+    const onRenamed = (e) => {
+      const { project_id, name } = e.detail || {};
+      if (!project_id || !name) return;
+      setProjects((prev) => prev.map((p) => (
+        p.project_id === project_id ? { ...p, name } : p
+      )));
+      setSelectedProject((s) => (
+        s && s.project_id === project_id ? { ...s, name } : s
+      ));
+    };
+    window.addEventListener('codeforge:project-renamed', onRenamed);
+    return () => window.removeEventListener('codeforge:project-renamed', onRenamed);
+  }, []);
+
   useEffect(() => {
     if (selectedProject) {
       loadChatHistory(selectedProject.project_id);
@@ -1019,8 +1036,8 @@ export default function Dashboard() {
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Header — [Sidebar toggle + Lang] · [CodeForge AI] · [Tutorial + Exports + UserMenu]
             iter106 — Spacings élargis pour que tous les labels soient visibles sans tronquer. */}
-        <header className="bg-[#0F0F13] border-b border-white/10 px-3 sm:px-6 py-3 sm:py-4 overflow-x-auto md:overflow-x-visible">
-          <div className="flex items-center justify-between gap-4 sm:gap-8 lg:gap-6 min-w-max md:min-w-0">
+        <header className="bg-[#0F0F13] border-b border-white/10 px-2 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 overflow-x-auto lg:overflow-x-visible">
+          <div className="flex items-center justify-between gap-2 sm:gap-4 lg:gap-6 min-w-max lg:min-w-0">
             {/* LEFT */}
             <div className="flex items-center gap-3 sm:gap-5 min-w-0">
               <button
@@ -1266,11 +1283,20 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 4 Main Buttons Center */}
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="max-w-5xl w-full">
-            <div className="text-center mb-8">
-              <h2 className="text-4xl font-['Chivo'] font-black mb-4">
+        {/* 4 Main Buttons Center
+            Chantier iter159 §1 — Confort à 67 % de zoom :
+            - Padding réduit, hauteur minimale au lieu de centrage absolu, pour
+              supprimer les scrolls verticaux parasites.
+            - Grille principale « Que faire ? » réduite à max-w-2xl (≈ moitié
+              de la largeur Desktop) libérant de l'espace à droite / gauche.
+            - Mobile (S21 5G 360) : padding 3, options 1 col, labels sur une
+              seule ligne grâce aux `whitespace-nowrap` + `truncate` ajoutés.
+        */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="min-h-full flex items-start justify-center p-4 sm:p-6">
+          <div className="max-w-2xl w-full py-4 sm:py-6">
+            <div className="text-center mb-6 sm:mb-8">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-['Chivo'] font-black mb-3 sm:mb-4">
                 {t('dashWhatToDo')}
               </h2>
               {projects.length === 0 && (
@@ -1355,7 +1381,7 @@ export default function Dashboard() {
             </motion.button>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 cf-export-blocked">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 cf-export-blocked" data-testid="main-actions-grid">
               {/* Bouton Chat (en ligne uniquement) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
@@ -1370,7 +1396,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashChat')}</h3>
-                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashChatDescOn')}</p>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA] whitespace-nowrap overflow-hidden text-ellipsis">{t('dashChatDescOn')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -1390,7 +1416,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashCreate')}</h3>
-                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashCreateDescOn')}</p>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA] whitespace-nowrap overflow-hidden text-ellipsis">{t('dashCreateDescOn')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -1409,7 +1435,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashChat')}</h3>
-                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashChatDescOff')}</p>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA] whitespace-nowrap overflow-hidden text-ellipsis">{t('dashChatDescOff')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -1428,7 +1454,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-lg sm:text-xl font-['Chivo'] font-bold mb-1">{t('dashCreate')}</h3>
-                    <p className="text-xs sm:text-sm text-[#A1A1AA]">{t('dashCreateDescOff')}</p>
+                    <p className="text-xs sm:text-sm text-[#A1A1AA] whitespace-nowrap overflow-hidden text-ellipsis">{t('dashCreateDescOff')}</p>
                   </div>
                 </div>
               </motion.button>
@@ -1510,6 +1536,7 @@ export default function Dashboard() {
                   de "Création accompagnée" pour éviter la confusion avec Programmation créa. */}
             </div>
             )}
+          </div>
           </div>
         </div>
       </div>

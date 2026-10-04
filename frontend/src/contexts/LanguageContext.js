@@ -176,6 +176,25 @@ const translations = {
  chatPlaceholder: 'Pose une question…',
  chatSend: 'Envoyer',
 
+ // Chantier iter159 §2 — États IA réels (reflètent le vrai backend)
+ ai_state_sending: 'Envoi…',
+ ai_state_generating: 'Génération en cours…',
+ ai_state_streaming: 'L\'IA écrit…',
+ ai_state_error: 'Erreur IA',
+ ai_state_cancelled: 'Annulé',
+ // Chantier iter159 §5 — Rangs (remplace les statuts génériques)
+ rank_label: 'Rang',
+ rank_creator: 'Créa',
+ rank_admin: 'Admin',
+ rank_modo: 'Modo',
+ rank_visitor: 'Visiteur',
+ rank_user: 'Utilisateur',
+ rank_approved: 'Approuvé',
+ rank_unapproved: 'Non approuvé',
+ // Chantier iter159 §4 — Actions non applicables
+ action_unavailable: 'Action indisponible pour ce compte',
+ action_already_active: 'Déjà actif',
+
  // Login page
  loginSignin: 'Connexion',
  loginSignup: 'Inscription',
@@ -955,6 +974,25 @@ tut_notif_transfer_transfer: 'Le transfert de propriété exige une double signa
  chatEmptyOffline: 'Chat with a local AI (requires a local AI engine).',
  chatPlaceholder: 'Ask a question…',
  chatSend: 'Send',
+
+ // Chantier iter159 §2 — Real AI states (reflect real backend)
+ ai_state_sending: 'Sending…',
+ ai_state_generating: 'Generating…',
+ ai_state_streaming: 'AI is writing…',
+ ai_state_error: 'AI error',
+ ai_state_cancelled: 'Cancelled',
+ // Chantier iter159 §5 — Rank labels
+ rank_label: 'Rank',
+ rank_creator: 'Creator',
+ rank_admin: 'Admin',
+ rank_modo: 'Mod',
+ rank_visitor: 'Visitor',
+ rank_user: 'User',
+ rank_approved: 'Approved',
+ rank_unapproved: 'Not approved',
+ // Chantier iter159 §4
+ action_unavailable: 'Action unavailable for this account',
+ action_already_active: 'Already active',
 
  // Login page
  loginSignin: 'Sign in',

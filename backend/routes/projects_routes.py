@@ -101,7 +101,12 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
 
     @router.put("/projects/{project_id}", response_model=Project)
     async def update_project(request: Request, project_id: str, input: ProjectUpdate):
-        """Update a project"""
+        """Update a project.
+
+        Chantier UX iter159 — Renommage manuel VERROUILLE le titre.
+        Tout changement explicite de `name` passe `title_manual=True` ; le
+        renommage automatique /auto-title n'écrasera plus ce titre.
+        """
         user_id = await get_current_user(request)
 
         project = await db.projects.find_one(
@@ -113,6 +118,10 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
 
         update_data = {k: v for k, v in input.model_dump().items() if v is not None}
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # Chantier iter159 §3 — Verrou titre manuel : si le nom change via PUT
+        # explicite, on marque le document pour empêcher tout renommage auto.
+        if "name" in update_data and (update_data["name"] or "").strip():
+            update_data["title_manual"] = True
 
         await db.projects.update_one({"project_id": project_id}, {"$set": update_data})
 
@@ -136,6 +145,108 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
 
         await db.chat_messages.delete_many({"project_id": project_id})
         return {"message": "Projet supprimé avec succès"}
+
+    @router.post("/projects/{project_id}/auto-title")
+    async def auto_title_project(request: Request, project_id: str):
+        """Chantier iter159 §3 — Renommage automatique du projet.
+
+        Génère un titre court (≤ 48 chars) via l'IA à partir du premier message
+        utilisateur, UNIQUEMENT si :
+          - le projet existe pour ce user,
+          - il y a au moins un message user,
+          - `title_manual` est falsy (jamais écraser un titre renommé par l'user).
+
+        Fallback hors-ligne / sans LLM : truncation intelligente du 1er message.
+        Retourne {title, source, applied}.
+        """
+        user_id = await get_current_user(request)
+        project = await db.projects.find_one(
+            {"project_id": project_id, "user_id": user_id}, {"_id": 0},
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail="Projet non trouvé")
+
+        if project.get("title_manual"):
+            return {
+                "title": project.get("name"),
+                "source": "locked",
+                "applied": False,
+                "reason": "title_manual",
+            }
+
+        # Récupère le 1er message USER (le titre doit refléter l'intention).
+        first_user = await db.chat_messages.find_one(
+            {"project_id": project_id, "user_id": user_id, "role": "user"},
+            {"_id": 0, "content": 1},
+            sort=[("timestamp", 1)],
+        )
+        if not first_user or not (first_user.get("content") or "").strip():
+            return {
+                "title": project.get("name"),
+                "source": "empty",
+                "applied": False,
+                "reason": "no_user_message",
+            }
+
+        raw = (first_user["content"] or "").strip().replace("\n", " ")
+
+        def _smart_trunc(txt: str, limit: int = 48) -> str:
+            words = txt.split()
+            out = ""
+            for w in words:
+                nxt = (out + " " + w).strip()
+                if len(nxt) > limit:
+                    break
+                out = nxt
+            if not out:
+                out = txt[:limit]
+            return out.rstrip(" ,.;:!?-—…").strip() or txt[:limit]
+
+        fallback_title = _smart_trunc(raw, 48)
+        llm_title = None
+
+        try:
+            key = os.environ.get("EMERGENT_LLM_KEY")
+            if key:
+                from emergentintegrations.llm.chat import LlmChat, UserMessage
+                sys_msg = (
+                    "Tu génères un TITRE court et pertinent pour une conversation "
+                    "avec une IA, à partir du premier message de l'utilisateur. "
+                    "RÈGLES STRICTES :\n"
+                    "- 2 à 6 mots maximum, 48 caractères max.\n"
+                    "- Résume le sujet réel, pas une reformulation du message.\n"
+                    "- Pas de ponctuation finale, pas de guillemets, pas d'emoji.\n"
+                    "- Pas de 'Discussion sur…' ni 'Chat à propos de…'.\n"
+                    "- Langue identique à celle du message.\n"
+                    "Réponds UNIQUEMENT par le titre, rien d'autre."
+                )
+                chat = LlmChat(
+                    api_key=key,
+                    session_id=f"title_{project_id[:8]}",
+                    system_message=sys_msg,
+                ).with_model("openai", "gpt-4o-mini")
+                reply = await chat.send_message(UserMessage(text=raw[:800]))
+                candidate = (str(reply) or "").strip().strip('"\'').strip()
+                candidate = candidate.split("\n")[0].strip()
+                if candidate and len(candidate) <= 60:
+                    llm_title = _smart_trunc(candidate, 48)
+        except Exception:
+            llm_title = None
+
+        chosen = llm_title or fallback_title
+        source = "llm" if llm_title else "truncation"
+
+        res = await db.projects.update_one(
+            {"project_id": project_id, "user_id": user_id,
+             "$or": [{"title_manual": {"$exists": False}}, {"title_manual": False}]},
+            {"$set": {"name": chosen,
+                      "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {
+            "title": chosen,
+            "source": source,
+            "applied": res.modified_count > 0,
+        }
 
     @router.post("/projects/{project_id}/duplicate")
     async def duplicate_project(request: Request, project_id: str):

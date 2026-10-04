@@ -62,6 +62,15 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Chantier iter159 §2 — État IA réel (reflète le vrai pipeline backend) :
+  //  - idle     : rien en cours ;
+  //  - sending  : requête envoyée, pas encore de premier token ;
+  //  - streaming: on reçoit des deltas (l'IA écrit) ;
+  //  - error    : échec réseau/pipeline ;
+  //  - cancelled: abandon utilisateur (futur).
+  // Ces états sont STRICTEMENT dérivés d'événements réels (fetch, SSE deltas,
+  // event `done`, exception). Aucun timer artificiel.
+  const [aiRealState, setAiRealState] = useState('idle');
   // iter128.6 — Persona créa-only (3 personas + toggles IA répond / visible).
   // Par défaut : id='ai', aiReplies=true, visible=true → comportement inchangé
   // pour tous les rôles non-créa et même créa tant qu'elle ne touche pas la barre.
@@ -301,6 +310,7 @@ export default function Chat() {
   const sendText = async (userMessage, opts = {}) => {
     if (!userMessage || isLoading) return;
     setIsLoading(true);
+    setAiRealState('sending');  // Chantier §2 — vrai état backend
     // iter131 — Créa persona : attache l'identité choisie sur le message user
     // (avatar/pseudo custom + flag "fantôme" si visible=false).
     const isCreatorSelfPosing =
@@ -395,6 +405,9 @@ export default function Chat() {
           let evt;
           try { evt = JSON.parse(line.slice(5).trim()); } catch { continue; }
           if (evt.delta) {
+            // Chantier §2 — Premier delta reçu : on bascule officiellement en
+            // mode « streaming / l'IA écrit ».
+            setAiRealState('streaming');
             // Concatène le delta au message en cours.
             setMessages(prev => prev.map(m =>
               m._streaming_id === placeholderId
@@ -470,7 +483,27 @@ export default function Chat() {
           }
         } catch { /* silent */ }
       }
+      // Chantier iter159 §3 — Déclenche le renommage automatique du projet
+      // UNE FOIS la 1ère réponse IA terminée. Le backend respecte le verrou
+      // title_manual et ne renomme JAMAIS si l'user a renommé à la main.
+      const pidForTitle = autoPid || project?.project_id;
+      if (pidForTitle) {
+        // Fire-and-forget : ne bloque pas l'UI.
+        axios.post(`${API}/projects/${pidForTitle}/auto-title`, {}, { withCredentials: true })
+          .then((r) => {
+            if (r?.data?.applied && r?.data?.title) {
+              // Notifie les autres onglets/pages (sidebar Dashboard) via event.
+              try {
+                window.dispatchEvent(new CustomEvent('codeforge:project-renamed', {
+                  detail: { project_id: pidForTitle, name: r.data.title },
+                }));
+              } catch (_) {}
+            }
+          })
+          .catch(() => { /* silent — titre tronqué déjà présent côté backend */ });
+      }
     } catch (error) {
+      setAiRealState('error');  // Chantier §2 — vrai état d'erreur
       // iter158.7 — Chantier 4 : mappage précis de la cause réelle (Cloudflare,
       // Ollama offline/erreur, timeout, JSON invalide, rate limit, provider…).
       // Les détails techniques restent dans console.warn pour le diagnostic ;
@@ -497,10 +530,11 @@ export default function Chat() {
       toast.error(cleanMsg);
     } finally {
       setIsLoading(false);
+      // Chantier §2 — Si on sortait d'une erreur, laisser 'error' visible 1
+      // instant via le toast + banner d'erreur ; sinon on repasse 'idle'.
+      setAiRealState((prev) => (prev === 'error' ? 'error' : 'idle'));
     }
   };
-
-  // Bridge between VoiceRecorder and the chat input/sender.
   const handleVoiceResult = (text, autoSend) => {
     if (autoSend) {
       sendText(text, { isVoice: true });
@@ -824,12 +858,21 @@ export default function Chat() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="flex items-start gap-2 sm:gap-3 justify-start"
+                data-testid="chat-ai-status"
+                data-ai-state={aiRealState}
               >
                 <div className="flex-shrink-0 w-9 h-9 rounded-full bg-[#E4FF00] text-[#050505] flex items-center justify-center">
                   <Sparkles className="w-4 h-4 animate-pulse" />
                 </div>
-                <div className="bg-[#0F0F13] border-l-2 p-4 rounded-lg" style={{ borderLeftColor: modeColor }}>
+                <div className="bg-[#0F0F13] border-l-2 p-4 rounded-lg flex items-center gap-3" style={{ borderLeftColor: modeColor }}>
                   <Loader2 className="w-5 h-5 animate-spin" style={{ color: modeColor }} />
+                  <span className="text-xs sm:text-sm text-[#E4E4E7] font-['IBM_Plex_Sans']" data-testid="chat-ai-status-label">
+                    {aiRealState === 'streaming'
+                      ? t('ai_state_streaming')
+                      : aiRealState === 'sending'
+                        ? t('ai_state_sending')
+                        : t('ai_state_generating')}
+                  </span>
                 </div>
               </motion.div>
             )}

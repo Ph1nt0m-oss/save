@@ -44,7 +44,11 @@ from cfaction_engine import (
 )
 
 # Directory for generated downloadable files (shared across the app).
-GENERATED_FILES_DIR = Path("/app/backend/generated_files")
+# iter159 — Path configurable via env (voir server.py). HS-5 post-launch :
+# migration vers Emergent Object Storage.
+GENERATED_FILES_DIR = Path(
+    os.environ.get("CODEFORGE_GENERATED_DIR") or "/app/backend/generated_files"
+)
 GENERATED_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 

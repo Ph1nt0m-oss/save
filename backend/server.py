@@ -348,6 +348,9 @@ class Project(BaseModel):
     # chat. Quand l'utilisateur génère une app depuis un chat existant, on lie
     # le projet généré au chat parent pour la sidebar nested et le picker d'export.
     parent_chat_id: Optional[str] = None
+    # Chantier iter159 §3 — Verrou de titre manuel : empêche le renommage auto
+    # LLM d'écraser un titre explicitement choisi par l'utilisateur.
+    title_manual: Optional[bool] = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -2850,7 +2853,13 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
 # ==================== CHAT FILE TOOLS (analyze / generate docx/pdf/image) ====================
 
 # Directory for generated downloadable files.
-GENERATED_FILES_DIR = Path("/app/backend/generated_files")
+# iter159 — Path configurable via env (défaut : workspace local du pod).
+# NOTE : stockage pod-local éphémère. HS-5 (post-launch) : migration vers
+# Emergent Object Storage pour la production. Pour l'instant, path externalisé
+# afin de ne pas hard-coder le chemin dans le dépôt (facilite la future bascule).
+GENERATED_FILES_DIR = Path(
+    os.environ.get("CODEFORGE_GENERATED_DIR") or "/app/backend/generated_files"
+)
 GENERATED_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
