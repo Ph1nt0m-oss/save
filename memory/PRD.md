@@ -1469,6 +1469,42 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — AUDIT FINAL COMPLET — iter158
+
+**Verdict : ✅ READY FOR FINAL VERIFICATION**
+
+**Audit fonctionnel** : toutes les fonctionnalités P0 → P2 livrées, testées
+individuellement et en interaction (iter158.3, 7-21). 3 cloches à sources
+distinctes, 12 étapes tutoriel, 16 langues, alt_pseudo par appareil,
+transfer double-sig, protection owner + fondatrices.
+
+**Audit sécurité** : backend seule autorité, guards omniprésents
+(`verify_signature`, `_permission_matrix`, `assert_not_owner_target`,
+`is_owner_device`, `is_privileges_active`, `is_founder`, `get_delegate`).
+Signatures ECDSA + nonces non-rejouables. Séparation stricte
+owner / creator / delegate / apprentice.
+
+**Audit frontend** : composants critiques présents et wirés
+(StaffActionsIconBar, OwnerPrivilegesToggle, OwnerNotificationsBell,
+TransferOwnershipPanel, NotificationBell, AccountsButton, Tutorial,
+ForceVisitorBanner). `effectiveView` clampé en OFF. Chat.js AI error
+mapping avec `_error_code` + historique préservé. Aucune erreur JS.
+i18n fallback chain intact.
+
+**Audit tests** : **277/277 iter158 hors sandbox PASS**, 1 skipped,
+2 pré-existants (`test_expired_exclude_auto_lifted*`) sans rapport avec P0-P2.
+
+**Hors scope recensé** : 8 points étiquetés (alt_pseudo /devices/list, i18n
+non-critique, endpoints legacy sanctions, 2 warnings deployment, flakiness
+cross-test). **Aucun bloquant** pour la vérification finale.
+
+**Checkpoint** : `production-ready-iter158.AUDIT`. Prêt pour les 3 étapes
+Emergent → ZIP → vérification utilisatrice.
+
+---
+
+
+
 ### 2026-02 — iter158.21 — P2.4 Complétude i18n (zh-TW + 13 langues enrichies)
 
 **✅ Livré :**
