@@ -342,7 +342,12 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                     <div className="flex items-center gap-1 flex-wrap flex-shrink-0" data-testid={`acc-badges-${a.key_id}`}>
                       {isDeleted && <span data-testid={`acc-deleted-${a.key_id}`} className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">{t('acc_deleted_badge')}</span>}
                       {isSelf && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-[#E4FF00]/40 text-[#E4FF00] bg-[#E4FF00]/10 rounded-sm">{t('acc_you')}</span>}
-                      {/* Chantier iter159 §5 — Badge Rang unique (prioritaire). */}
+                      {/* Chantier iter159.2 §2 — Badge Rang UNIQUE comme info de statut.
+                          Les badges modificateurs (inactif/banned/excluded/muted/
+                          pending) sont supprimés pour éviter les doublons de
+                          statut à la demande utilisateur. Le backend reste la
+                          source de vérité ; l'état réel est reflété par le Rang
+                          calculé via computeRank(). */}
                       {(() => {
                         const r = computeRank(a);
                         const tone = RANK_TONES[r.tone] || RANK_TONES.zinc;
@@ -360,152 +365,122 @@ export default function AccountsButton({ onVisitAccount, onMessageAccount }) {
                           </span>
                         );
                       })()}
-                      {/* Modificateurs d'état (toujours affichés en complément du Rang) */}
-                      {a.is_inactive && !isDeleted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-zinc-400/40 text-zinc-300 bg-zinc-400/10 rounded-sm">inactif</span>}
-                      {a.banned && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-red-500/60 text-red-200 bg-red-500/20 rounded-sm">banned</span>}
-                      {a.excluded_until && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-orange-400/40 text-orange-300 bg-orange-400/10 rounded-sm">excluded</span>}
-                      {a.muted && <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-purple-400/40 text-purple-300 bg-purple-400/10 rounded-sm">muted</span>}
-                      {a.pending_creator_review && (
-                        <span
-                          data-testid={`acc-pending-review-${a.key_id}`}
-                          title="Une décision modo/admin est en attente de ta validation"
-                          className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 border border-amber-400/60 text-amber-200 bg-amber-400/15 rounded-sm inline-flex items-center gap-1"
-                        >
-                          ⏳ Validation temporaire
-                        </span>
-                      )}
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-1 flex-wrap" data-testid={`acc-actions-${a.key_id}`}>
-                    {/* Chantier iter159 §4 — Toutes les actions restent VISIBLES,
-                        leur état (applicable / déjà actif / indisponible) est
-                        reflété par la classe `opacity-30 cursor-not-allowed` +
-                        un tooltip explicatif. Le backend reste la seule
-                        autorité : un clic sur une action indisponible ne
-                        déclenche AUCUN appel API. */}
+                    {/* Chantier iter159.2 §2 — Les 12 icônes d'action sont
+                        TOUJOURS rendues avec le MÊME rendu visuel pour chaque
+                        compte (aucun estompement, aucune disparition selon le
+                        rôle). Le click sur une action non applicable est un
+                        simple no-op silencieux : aucun appel HTTP, aucune
+                        modification visuelle. Le backend reste la seule
+                        autorité pour les permissions.
+
+                        Les 12 icônes exactes (dans l'ordre fixe) :
+                        1. Visiter · 2. Renommer · 3. Admin · 4. Modo
+                        · 5. Visiteur · 6. Muter · 7. Bloquer · 8. Déconnecter
+                        · 9. Exclure · 10. Bannir · 11. Retirer créa
+                        · 12. Supprimer. */}
                     {(() => {
-                      // Helpers par action : (enabled, reason, onClick, extraClass)
-                      const unavailable = t('action_unavailable');
-                      const alreadyActive = t('action_already_active');
-                      const makeBtn = ({ key, Icon, title, enabled, onClick, activeClass, hoverClass }) => (
-                        <button
-                          key={key}
-                          type="button"
-                          title={enabled ? title : (title + ' — ' + unavailable)}
-                          disabled={!enabled}
-                          onClick={enabled ? onClick : undefined}
-                          data-testid={`acc-${key}-${a.key_id}`}
-                          data-enabled={enabled ? '1' : '0'}
-                          className={`p-1.5 border rounded-sm transition ${enabled ? (activeClass || `border-white/15 text-[#A1A1AA] ${hoverClass || 'hover:border-[#E4FF00]/40 hover:text-[#E4FF00]'}`) : 'border-white/10 text-white/30 cursor-not-allowed opacity-40'}`}
-                        >
-                          <Icon className="w-3.5 h-3.5" />
-                        </button>
-                      );
-                      const buttons = [];
-                      // Visite
-                      buttons.push(makeBtn({
-                        key: 'visit', Icon: Eye, title: 'Visiter le compte',
-                        enabled: !isSelf && !actionsDisabled && canVisit,
-                        onClick: () => { setOpen(false); onVisitAccount?.(a); },
-                      }));
-                      // Message
-                      if (onMessageAccount) buttons.push(makeBtn({
-                        key: 'message', Icon: MessageCircle, title: 'Envoyer un message',
-                        enabled: !isSelf && !actionsDisabled,
-                        onClick: () => { setOpen(false); onMessageAccount?.(a); },
-                        hoverClass: 'hover:border-[#00D4FF]/40 hover:text-[#00D4FF]',
-                      }));
-                      // Renommer
-                      buttons.push(makeBtn({
-                        key: 'rename', Icon: Edit3, title: t('acc_action_rename'),
-                        enabled: !actionsDisabled && canRename,
-                        onClick: () => renameContact(a),
-                      }));
-                      // Admin : toujours visible, grisé si Créa/déjà soi/non-approved. Toggle si déjà actif.
+                      const makeBtn = ({ key, Icon, title, enabled, onClick, activeClass, hoverClass }) => {
+                        // Click handler : silencieux si non applicable.
+                        const safeClick = enabled ? (onClick || (() => {})) : (() => {});
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            title={title}
+                            // IMPORTANT : pas de `disabled` HTML — on garde le
+                            // bouton focusable/visible exactement comme les autres.
+                            onClick={safeClick}
+                            data-testid={`acc-${key}-${a.key_id}`}
+                            data-enabled={enabled ? '1' : '0'}
+                            className={`p-1.5 border rounded-sm transition ${activeClass || `border-white/15 text-[#A1A1AA] ${hoverClass || 'hover:border-[#E4FF00]/40 hover:text-[#E4FF00]'}`}`}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                          </button>
+                        );
+                      };
                       const canToggleStaff = !isSelf && a.role === 'approved' && !actionsDisabled && canRename && a.role !== 'creator';
-                      buttons.push(makeBtn({
-                        key: 'admin', Icon: Shield,
-                        title: a.staff_kind === 'admin' ? `Retirer admin (${alreadyActive})` : 'Mettre admin',
-                        enabled: canToggleStaff,
-                        onClick: () => setStaffKind(a, a.staff_kind === 'admin' ? null : 'admin'),
-                        activeClass: a.staff_kind === 'admin' ? 'border-cyan-400/60 text-cyan-300 bg-cyan-400/10' : null,
-                        hoverClass: 'hover:border-cyan-400/40 hover:text-cyan-300',
-                      }));
-                      // Modo
-                      buttons.push(makeBtn({
-                        key: 'modo', Icon: Star,
-                        title: a.staff_kind === 'modo' ? `Retirer modo (${alreadyActive})` : 'Mettre modo',
-                        enabled: canToggleStaff,
-                        onClick: () => setStaffKind(a, a.staff_kind === 'modo' ? null : 'modo'),
-                        activeClass: a.staff_kind === 'modo' ? 'border-violet-400/60 text-violet-300 bg-violet-400/10' : null,
-                        hoverClass: 'hover:border-violet-400/40 hover:text-violet-300',
-                      }));
-                      // Force visitor
-                      buttons.push(makeBtn({
-                        key: 'visitor', Icon: EyeOff,
-                        title: a.force_visitor ? `Retirer mode visiteur (${alreadyActive})` : 'Forcer mode visiteur',
-                        enabled: !isSelf && a.role !== 'creator' && !actionsDisabled && canForceVisitor,
-                        onClick: () => setForceVisitor(a, !a.force_visitor),
-                        activeClass: a.force_visitor ? 'border-orange-400/60 text-orange-300 bg-orange-400/10' : null,
-                        hoverClass: 'hover:border-orange-400/40 hover:text-orange-300',
-                      }));
-                      // Mute / Unmute
-                      buttons.push(makeBtn({
-                        key: a.muted ? 'unmute' : 'mute', Icon: a.muted ? Bell : BellOff,
-                        title: a.muted ? `${t('acc_action_unmute')} (${alreadyActive})` : t('acc_action_mute'),
-                        enabled: !isSelf && !actionsDisabled,
-                        onClick: () => doAction(a.muted ? '/accounts/unmute' : '/accounts/mute', a.key_id),
-                        activeClass: a.muted ? 'border-purple-400/40 text-purple-300' : null,
-                        hoverClass: 'hover:border-purple-400/40 hover:text-purple-300',
-                      }));
-                      // Block / Unblock
-                      buttons.push(makeBtn({
-                        key: a.role === 'blocked' ? 'unblock' : 'block', Icon: a.role === 'blocked' ? ShieldCheck : Ban,
-                        title: a.role === 'blocked' ? `${t('acc_action_unblock')} (${alreadyActive})` : t('acc_action_block'),
-                        enabled: !isSelf && !actionsDisabled,
-                        onClick: () => doAction(a.role === 'blocked' ? '/devices/unblock' : '/devices/block', a.key_id),
-                        activeClass: a.role === 'blocked' ? 'border-emerald-400/40 text-emerald-300' : null,
-                        hoverClass: 'hover:border-red-400/40 hover:text-red-400',
-                      }));
-                      // Disconnect
-                      buttons.push(makeBtn({
-                        key: 'disconnect', Icon: LogOut, title: 'Déconnecter temporairement',
-                        enabled: !isSelf && !actionsDisabled && canDisconnect,
-                        onClick: () => doAction('/accounts/disconnect', a.key_id),
-                        hoverClass: 'hover:border-amber-400/60 hover:text-amber-300',
-                      }));
-                      // Exclude
-                      buttons.push(makeBtn({
-                        key: 'exclude', Icon: Clock, title: t('acc_action_exclude'),
-                        enabled: !isSelf && !actionsDisabled && canExclude,
-                        onClick: () => setExcluding({ a }),
-                        hoverClass: 'hover:border-orange-400/40 hover:text-orange-300',
-                      }));
-                      // Ban / Unban
-                      buttons.push(makeBtn({
-                        key: a.banned ? 'unban' : 'ban', Icon: a.banned ? ShieldOff : Skull,
-                        title: a.banned ? `${t('acc_action_unban')} (${alreadyActive})` : t('acc_action_ban'),
-                        enabled: !isSelf && !actionsDisabled && canBan,
-                        onClick: () => a.banned ? doAction('/accounts/unban', a.key_id) : ban(a),
-                        activeClass: a.banned ? 'border-emerald-400/40 text-emerald-300' : null,
-                        hoverClass: 'hover:border-red-500/60 hover:text-red-300',
-                      }));
-                      // Remove creator — visible uniquement si la cible EST creator
-                      if (a.role === 'creator') buttons.push(makeBtn({
-                        key: 'remove-creator', Icon: ShieldOff,
-                        title: isSelf ? t('acc_remove_creator_btn') : t('acc_remove_creator_other_btn'),
-                        enabled: !actionsDisabled && isCreator && !removing,
-                        onClick: () => removeCreatorMode(a),
-                        activeClass: 'border-red-400/40 text-red-300 hover:border-red-500 hover:bg-red-500/10',
-                      }));
-                      // Delete
-                      buttons.push(makeBtn({
-                        key: 'delete', Icon: Trash2, title: t('acc_delete_btn'),
-                        enabled: !isSelf && !isDeleted && canDelete,
-                        onClick: () => deleteOne(a),
-                        activeClass: 'border-red-500/60 text-red-200 hover:bg-red-500/20',
-                      }));
-                      return buttons;
+                      return [
+                        makeBtn({
+                          key: 'visit', Icon: Eye, title: 'Visiter le compte',
+                          enabled: !isSelf && !actionsDisabled && canVisit,
+                          onClick: () => { setOpen(false); onVisitAccount?.(a); },
+                        }),
+                        makeBtn({
+                          key: 'rename', Icon: Edit3, title: t('acc_action_rename'),
+                          enabled: !actionsDisabled && canRename,
+                          onClick: () => renameContact(a),
+                        }),
+                        makeBtn({
+                          key: 'admin', Icon: Shield,
+                          title: a.staff_kind === 'admin' ? 'Retirer admin' : 'Mettre admin',
+                          enabled: canToggleStaff,
+                          onClick: () => setStaffKind(a, a.staff_kind === 'admin' ? null : 'admin'),
+                          hoverClass: 'hover:border-cyan-400/40 hover:text-cyan-300',
+                        }),
+                        makeBtn({
+                          key: 'modo', Icon: Star,
+                          title: a.staff_kind === 'modo' ? 'Retirer modo' : 'Mettre modo',
+                          enabled: canToggleStaff,
+                          onClick: () => setStaffKind(a, a.staff_kind === 'modo' ? null : 'modo'),
+                          hoverClass: 'hover:border-violet-400/40 hover:text-violet-300',
+                        }),
+                        makeBtn({
+                          key: 'visitor', Icon: EyeOff,
+                          title: a.force_visitor ? 'Retirer mode visiteur' : 'Forcer mode visiteur',
+                          enabled: !isSelf && a.role !== 'creator' && !actionsDisabled && canForceVisitor,
+                          onClick: () => setForceVisitor(a, !a.force_visitor),
+                          hoverClass: 'hover:border-orange-400/40 hover:text-orange-300',
+                        }),
+                        makeBtn({
+                          key: a.muted ? 'unmute' : 'mute', Icon: a.muted ? Bell : BellOff,
+                          title: a.muted ? t('acc_action_unmute') : t('acc_action_mute'),
+                          enabled: !isSelf && !actionsDisabled,
+                          onClick: () => doAction(a.muted ? '/accounts/unmute' : '/accounts/mute', a.key_id),
+                          hoverClass: 'hover:border-purple-400/40 hover:text-purple-300',
+                        }),
+                        makeBtn({
+                          key: a.role === 'blocked' ? 'unblock' : 'block', Icon: a.role === 'blocked' ? ShieldCheck : Ban,
+                          title: a.role === 'blocked' ? t('acc_action_unblock') : t('acc_action_block'),
+                          enabled: !isSelf && !actionsDisabled,
+                          onClick: () => doAction(a.role === 'blocked' ? '/devices/unblock' : '/devices/block', a.key_id),
+                          hoverClass: 'hover:border-red-400/40 hover:text-red-400',
+                        }),
+                        makeBtn({
+                          key: 'disconnect', Icon: LogOut, title: 'Déconnecter temporairement',
+                          enabled: !isSelf && !actionsDisabled && canDisconnect,
+                          onClick: () => doAction('/accounts/disconnect', a.key_id),
+                          hoverClass: 'hover:border-amber-400/60 hover:text-amber-300',
+                        }),
+                        makeBtn({
+                          key: 'exclude', Icon: Clock, title: t('acc_action_exclude'),
+                          enabled: !isSelf && !actionsDisabled && canExclude,
+                          onClick: () => setExcluding({ a }),
+                          hoverClass: 'hover:border-orange-400/40 hover:text-orange-300',
+                        }),
+                        makeBtn({
+                          key: a.banned ? 'unban' : 'ban', Icon: a.banned ? ShieldOff : Skull,
+                          title: a.banned ? t('acc_action_unban') : t('acc_action_ban'),
+                          enabled: !isSelf && !actionsDisabled && canBan,
+                          onClick: () => a.banned ? doAction('/accounts/unban', a.key_id) : ban(a),
+                          hoverClass: 'hover:border-red-500/60 hover:text-red-300',
+                        }),
+                        makeBtn({
+                          key: 'remove-creator', Icon: ShieldOff,
+                          title: isSelf ? t('acc_remove_creator_btn') : t('acc_remove_creator_other_btn'),
+                          enabled: a.role === 'creator' && !actionsDisabled && isCreator && !removing,
+                          onClick: () => removeCreatorMode(a),
+                          hoverClass: 'hover:border-red-400/50 hover:text-red-300',
+                        }),
+                        makeBtn({
+                          key: 'delete', Icon: Trash2, title: t('acc_delete_btn'),
+                          enabled: !isSelf && !isDeleted && canDelete,
+                          onClick: () => deleteOne(a),
+                          hoverClass: 'hover:border-red-500/60 hover:text-red-300',
+                        }),
+                      ];
                     })()}
                   </div>
                 </div>

@@ -1,6 +1,67 @@
 # CodeForge AI — Product Requirements
 
 
+## iter159.2 (Oct 2026) — Corrections post-vérification utilisateur (7 points)
+**Status : COMPLETED (35 tests iter159 + 264 régression iter158 PASS).**
+
+### §1 — Dashboard élargi (+50 %) et compressé en hauteur (−50 %)
+- Section centrale : `max-w-2xl` → **`max-w-4xl`** (≈ 896 px, 2× plus large).
+- Padding externe réduit (`py-4 sm:py-6` → `py-2 sm:py-3`), titre `text-2xl→text-xl`.
+- Cartes principales : `rounded-lg p-4 sm:p-5` → **`rounded-lg p-3 sm:p-3.5`** (−50 % de padding).
+- Gap grille : `gap-3 sm:gap-4` → **`gap-2 sm:gap-3`**.
+- Zero scroll parasite H/V préservé via `overflow-y-auto overflow-x-hidden`.
+
+### §2 — Autres comptes : 12 icônes identiques, pas d'estompement, pas de doublons
+- Les **12 icônes exactes** (visit, rename, admin, modo, visitor, mute, block, disconnect, exclude, ban, remove-creator, delete) sont **toujours rendues** avec le **même rendu visuel**, pour **chaque compte**.
+- Suppression de `opacity-40 cursor-not-allowed` et de l'attribut `disabled` HTML.
+- Click sur action non applicable = **no-op silencieux** via `safeClick = enabled ? onClick : () => {}`.
+- Suppression des badges de statut doublons (`inactif`, `banned`, `excluded`, `muted`, `pending_creator_review`) → **seul le badge Rang reste** comme info de statut.
+- Backend reste l'autorité finale (pas de contournement).
+
+### §3 — IA réelle (identité, prompt, indicateur)
+- **Backend `/chat/stream`** : prompt système entièrement réécrit en **model-neutral**. L'ancien « Tu es **Caly** » est supprimé. Le prompt dit explicitement : « Tu NE t'appelles PAS Caly — Caly est un assistant séparé. Si on te demande quel modèle tu es, réponds HONNÊTEMENT selon ton identité réelle (GPT-5.5, Claude Sonnet, Gemini Pro, Ollama, etc.) ».
+- Caly reste strictement limité au widget `/caly/*` (prompt séparé, inchangé).
+- **Frontend bulle de génération** affiche **le nom RÉEL du modèle sélectionné** (GPT-5.5, Claude Fable 5, Gemini 3 Pro, Ollama · Gemma, etc.) + « L'IA écrit » + **3 points animés** via `@keyframes cfdot` (CSS pur, aucun timer JS artificiel).
+
+### §4 — Titre auto respecte la langue UI
+- Endpoint `/projects/{id}/auto-title` accepte désormais un payload `{language: "fr|en|…"}`.
+- Prompt LLM : « Langue OBLIGATOIRE : **{lang_label}** — même si le premier message est dans une autre langue, le titre doit être en {lang_label}. »
+- Chat.js transmet la langue UI active (`language || 'fr'`).
+
+### §5 — Mode création : timeout + feedback actionnable
+- Create.js : **AbortController** avec timeout 180 s + `axios.timeout: 180000`.
+- Détection explicite `isTimeout` dans le catch → message actionnable : « ⏱️ La génération prend plus longtemps que prévu — elle continue en arrière-plan côté serveur, recharge le dashboard dans 1-2 min. »
+- Le backend persiste quand même via `_run_in_background` (fonctionnalité pré-existante).
+
+### §6 — Ollama : contrôle réel à chaque entrée
+- Endpoint `/system/ollama-status` enrichi : retourne désormais `recommended_available` (bool) + `recommended_model` (nom). Pas de cache serveur — chaque appel hit effectivement `/api/tags`.
+- Modèles recommandés : `gemma3:4b|2b`, `deepseek-r1:7b`, `llama3.2:*`.
+- Chat.js **et** Create.js re-contrôlent **à chaque entrée** (useEffect dep sur `mode`). Si Ollama absent ou modèle recommandé non pullé → **refus d'accès au tchat** + ouverture automatique du tutoriel natif `OfflineAIInstaller`.
+- `sendText` (Chat) et `generateApp` (Create) refusent explicitement l'envoi si offline + indisponible.
+
+### §7 — Tests ajoutés
+- `test_iter159_03_chantier_v2.py` — **16 tests** (dashboard largeur/hauteur, 12 icônes identiques, suppression doublons, no-greying, silent no-op, prompt neutre backend, nom modèle UI, points animés, langue titre, timeout création, Ollama recommended + check à chaque entrée).
+- Migration de 3 tests `iter159_02` pour refléter les décisions utilisateur (max-w-4xl, pas de cursor-not-allowed, points animés).
+
+### Fichiers modifiés
+- `backend/server.py` (prompt /chat/stream model-neutral)
+- `backend/routes/projects_routes.py` (auto-title accepte language)
+- `backend/routes/system_routes.py` (ollama-status + recommended_available)
+- `frontend/src/pages/Dashboard.js` (§1 largeur/padding/gap)
+- `frontend/src/pages/Chat.js` (§3 bulle avec modèle + points animés, §4 language dans payload, §6 check Ollama recommended)
+- `frontend/src/pages/Create.js` (§5 timeout 180s + §6 Ollama check + OfflineAIInstaller)
+- `frontend/src/components/AccountsButton.jsx` (§2 12 icônes identiques, suppression doublons)
+- `frontend/src/index.css` (@keyframes cfdot)
+- `backend/tests/test_iter159_02_frontend_static.py` (migration 3 tests)
+- `backend/tests/test_iter159_03_chantier_v2.py` (16 nouveaux tests)
+
+### Régression
+- **35 tests iter159 PASS** (01 + 02 + 03).
+- **264 tests iter158** régression PASS (sauf 2 pré-existants `expired_exclude_auto_lifted*` explicitement hors scope).
+- Aucune fonctionnalité P0 → P2 n'a été modifiée.
+
+---
+
 ## iter159 (Oct 2026) — Chantier UX / Dashboard / IA / Autres comptes
 **Status : COMPLETED (5 tests backend + 14 tests frontend-static + régression 249/249 iter158+159 PASS).**
 

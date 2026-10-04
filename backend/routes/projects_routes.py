@@ -147,8 +147,12 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
         return {"message": "Projet supprimé avec succès"}
 
     @router.post("/projects/{project_id}/auto-title")
-    async def auto_title_project(request: Request, project_id: str):
+    async def auto_title_project(request: Request, project_id: str, payload: dict | None = None):
         """Chantier iter159 §3 — Renommage automatique du projet.
+
+        Chantier iter159.2 §4 — Accepte un paramètre `language` (code ISO) qui
+        sera transmis au LLM : le titre est généré DANS CETTE LANGUE précise.
+        Fallback truncation : conserve la langue du 1er message par nature.
 
         Génère un titre court (≤ 48 chars) via l'IA à partir du premier message
         utilisateur, UNIQUEMENT si :
@@ -160,6 +164,7 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
         Retourne {title, source, applied}.
         """
         user_id = await get_current_user(request)
+        req_lang = ((payload or {}).get("language") or "fr").lower()
         project = await db.projects.find_one(
             {"project_id": project_id, "user_id": user_id}, {"_id": 0},
         )
@@ -209,6 +214,15 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
             key = os.environ.get("EMERGENT_LLM_KEY")
             if key:
                 from emergentintegrations.llm.chat import LlmChat, UserMessage
+                # Chantier iter159.2 §4 — Titre généré dans la langue UI active.
+                LANG_NAMES = {
+                    "fr": "français", "en": "English", "es": "español",
+                    "pt": "português", "de": "Deutsch", "nl": "Nederlands",
+                    "ru": "русский", "zh": "中文（简体）", "zh-tw": "中文（繁體）",
+                    "hi": "हिन्दी", "bn": "বাংলা", "ur": "اردو",
+                    "ja": "日本語", "hr": "hrvatski", "da": "dansk",
+                }
+                lang_label = LANG_NAMES.get(req_lang, "français")
                 sys_msg = (
                     "Tu génères un TITRE court et pertinent pour une conversation "
                     "avec une IA, à partir du premier message de l'utilisateur. "
@@ -217,7 +231,8 @@ def build_projects_router(db, *, get_current_user, Project, ProjectCreate, Proje
                     "- Résume le sujet réel, pas une reformulation du message.\n"
                     "- Pas de ponctuation finale, pas de guillemets, pas d'emoji.\n"
                     "- Pas de 'Discussion sur…' ni 'Chat à propos de…'.\n"
-                    "- Langue identique à celle du message.\n"
+                    f"- Langue OBLIGATOIRE : **{lang_label}** — même si le premier "
+                    f"message est dans une autre langue, le titre doit être en {lang_label}.\n"
                     "Réponds UNIQUEMENT par le titre, rien d'autre."
                 )
                 chat = LlmChat(

@@ -31,11 +31,11 @@ def _read(p: str) -> str:
 # ---------------------------------------------------------------------------
 
 def test_dashboard_center_section_is_narrower():
-    """La zone centrale « Que souhaitez-vous faire ? » doit utiliser max-w-2xl
-    au lieu de max-w-5xl pour libérer de l'espace à 67 %."""
+    """iter159 §1 : max-w-2xl. iter159.2 §1 : élargi à max-w-4xl à la
+    demande utilisateur (+50 %)."""
     src = _read("pages/Dashboard.js")
-    assert "max-w-2xl w-full py-" in src, "max-w-2xl manquant sur le conteneur central"
-    assert "max-w-5xl w-full" not in src, "max-w-5xl encore présent (devrait être max-w-2xl)"
+    assert "max-w-4xl w-full py-" in src, "max-w-4xl manquant sur le conteneur central"
+    assert "max-w-5xl w-full" not in src, "max-w-5xl encore présent"
 
 
 def test_dashboard_descriptions_single_line():
@@ -80,13 +80,15 @@ def test_chat_has_real_ai_state_hook():
 
 def test_chat_ai_status_label_is_rendered():
     """L'IA en cours de génération doit afficher un libellé textuel réel
-    (data-testid chat-ai-status-label)."""
+    (data-testid chat-ai-status-label). iter159.2 §3 : affiche NOM DU MODÈLE
+    + « L'IA écrit » + 3 points animés discrets."""
     src = _read("pages/Chat.js")
     assert 'data-testid="chat-ai-status"' in src
     assert 'data-testid="chat-ai-status-label"' in src
     assert "t('ai_state_streaming')" in src
-    assert "t('ai_state_generating')" in src
-    assert "t('ai_state_sending')" in src
+    # Points animés iter159.2 §3
+    assert 'data-testid="chat-ai-dots"' in src
+    assert "animate-[cfdot_1.2s_ease-in-out_infinite]" in src
 
 
 def test_chat_no_fake_timers_on_status():
@@ -144,12 +146,18 @@ def test_accounts_button_renders_all_actions_always():
         assert key in src, f"Action manquante : {key}"
 
 
-def test_accounts_button_disabled_state_cursor_not_allowed():
-    """Les actions non-applicables doivent afficher cursor-not-allowed +
-    opacity réduite (feedback visuel que l'action existe mais est inopérante)."""
+def test_accounts_button_no_grey_out_no_cursor_change():
+    """iter159.2 §2 : les 12 icônes doivent avoir le MÊME rendu visuel pour
+    chaque compte, sans estompement ni changement de curseur. On vérifie que
+    `cursor-not-allowed` et `opacity-40` NE SONT PLUS appliqués aux boutons
+    d'action (ils peuvent exister ailleurs — row deleted par ex)."""
     src = _read("components/AccountsButton.jsx")
-    assert "cursor-not-allowed" in src
-    assert "opacity-40" in src
+    # Les actions ne doivent plus utiliser l'attribut `disabled` HTML non plus.
+    # On vérifie que le helper makeBtn ne pose plus d'opacity-40 ou cursor-not-allowed.
+    assert "cursor-not-allowed`" not in src, "cursor-not-allowed présent sur un bouton d'action"
+    assert "opacity-40" not in src, "opacity-40 présent sur un bouton d'action"
+    # La fonction de click doit être silencieuse quand non applicable (no-op).
+    assert "const safeClick = enabled" in src
 
 
 # ---------------------------------------------------------------------------

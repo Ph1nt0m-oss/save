@@ -1284,19 +1284,18 @@ export default function Dashboard() {
         )}
 
         {/* 4 Main Buttons Center
-            Chantier iter159 §1 — Confort à 67 % de zoom :
-            - Padding réduit, hauteur minimale au lieu de centrage absolu, pour
-              supprimer les scrolls verticaux parasites.
-            - Grille principale « Que faire ? » réduite à max-w-2xl (≈ moitié
-              de la largeur Desktop) libérant de l'espace à droite / gauche.
-            - Mobile (S21 5G 360) : padding 3, options 1 col, labels sur une
-              seule ligne grâce aux `whitespace-nowrap` + `truncate` ajoutés.
+            Chantier iter159.2 §1 — Élargi (+50 %) + hauteur réduite (−50 %)
+            à la demande de l'utilisateur après vérif. On passe à `max-w-4xl`
+            (≈ 896 px) et on compresse les paddings/gaps pour une hauteur
+            minimale, tout en gardant mono-colonne mobile. Aucun scroll
+            parasite horizontal/vertical sur desktop 67 %, S21 5G 67 % ni
+            tablette (le wrapper reste overflow-y-auto overflow-x-hidden).
         */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="min-h-full flex items-start justify-center p-4 sm:p-6">
-          <div className="max-w-2xl w-full py-4 sm:py-6">
-            <div className="text-center mb-6 sm:mb-8">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-['Chivo'] font-black mb-3 sm:mb-4">
+          <div className="min-h-full flex items-start justify-center px-3 sm:px-4 lg:px-6 py-2 sm:py-3">
+          <div className="max-w-4xl w-full py-2 sm:py-3">
+            <div className="text-center mb-3 sm:mb-4">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-['Chivo'] font-black mb-1 sm:mb-2">
                 {t('dashWhatToDo')}
               </h2>
               {projects.length === 0 && (
@@ -1381,14 +1380,14 @@ export default function Dashboard() {
             </motion.button>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 cf-export-blocked" data-testid="main-actions-grid">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 cf-export-blocked" data-testid="main-actions-grid">
               {/* Bouton Chat (en ligne uniquement) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'online' } }); }}
                 data-testid="online-chat-btn"
-                className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-[#E4FF00] rounded-full flex items-center justify-center">
@@ -1408,7 +1407,7 @@ export default function Dashboard() {
                 onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'online' } }); }}
                 data-testid="online-create-btn"
                 data-tour="create"
-                className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-[#00FF66] rounded-full flex items-center justify-center">
@@ -1427,7 +1426,7 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'offline' } }); }}
                 data-testid="offline-chat-btn"
-                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-cyan-400 rounded-full flex items-center justify-center">
@@ -1446,7 +1445,7 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'offline' } }); }}
                 data-testid="offline-create-btn"
-                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-4 sm:p-5 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-purple-400 rounded-full flex items-center justify-center">

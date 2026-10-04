@@ -104,15 +104,24 @@ export default function Chat() {
   // ("c'est chiant de tjrs cliquer sur fermer"). Le widget et l'appel LLM
   // /chat/suggest-enhancements sont désactivés côté UI.
   // iter90 — Mode hors-ligne : auto-détecte Ollama + propose le tuto si absent.
+  // Chantier iter159.2 §6 — RE-CONTRÔLE à chaque entrée (pas de cache
+  // considéré définitif). On rejette aussi l'accès au tchat si un modèle
+  // chat recommandé n'est pas installé (sinon on affiche le tutoriel natif).
   const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
   const [ollamaAvailable, setOllamaAvailable] = useState(true);
   useEffect(() => {
     if (mode !== 'offline') return;
     let cancelled = false;
-    axios.get(`${API}/system/ollama-status`)
+    // Note : CHAQUE entrée dans Chat offline relance le check (useEffect dep
+    // sur `mode`). Pas de store global persistant.
+    axios.get(`${API}/system/ollama-status`, { withCredentials: false })
       .then(r => {
         if (cancelled) return;
-        const ok = !!r.data?.available;
+        const online = !!r.data?.available;
+        const recOk = !!r.data?.recommended_available;
+        // iter159.2 §6 — on considère "disponible pour le tchat" seulement si
+        // Ollama répond ET qu'un modèle recommandé est bien pullé.
+        const ok = online && recOk;
         setOllamaAvailable(ok);
         if (!ok) setShowOfflineInstaller(true);
       })
@@ -309,6 +318,14 @@ export default function Chat() {
   // Shared sender — used by the form, Enter key, and the voice "send" mic.
   const sendText = async (userMessage, opts = {}) => {
     if (!userMessage || isLoading) return;
+    // Chantier iter159.2 §6 — Refus d'envoi en offline si Ollama/modèle
+    // recommandé absents (check à chaque entrée via useEffect, aucun cache
+    // considéré définitif).
+    if (mode === 'offline' && !ollamaAvailable) {
+      setShowOfflineInstaller(true);
+      toast.error('IA locale non détectée. Installe Ollama + un modèle recommandé.');
+      return;
+    }
     setIsLoading(true);
     setAiRealState('sending');  // Chantier §2 — vrai état backend
     // iter131 — Créa persona : attache l'identité choisie sur le message user
@@ -486,13 +503,17 @@ export default function Chat() {
       // Chantier iter159 §3 — Déclenche le renommage automatique du projet
       // UNE FOIS la 1ère réponse IA terminée. Le backend respecte le verrou
       // title_manual et ne renomme JAMAIS si l'user a renommé à la main.
+      // Chantier iter159.2 §4 — On transmet la langue UI active pour que le
+      // titre soit généré DANS CETTE LANGUE (ex: UI en français → titre fr,
+      // même si le 1er message était en anglais).
       const pidForTitle = autoPid || project?.project_id;
       if (pidForTitle) {
         // Fire-and-forget : ne bloque pas l'UI.
-        axios.post(`${API}/projects/${pidForTitle}/auto-title`, {}, { withCredentials: true })
+        axios.post(`${API}/projects/${pidForTitle}/auto-title`,
+          { language: (language || 'fr') },
+          { withCredentials: true })
           .then((r) => {
             if (r?.data?.applied && r?.data?.title) {
-              // Notifie les autres onglets/pages (sidebar Dashboard) via event.
               try {
                 window.dispatchEvent(new CustomEvent('codeforge:project-renamed', {
                   detail: { project_id: pidForTitle, name: r.data.title },
@@ -864,14 +885,41 @@ export default function Chat() {
                 <div className="flex-shrink-0 w-9 h-9 rounded-full bg-[#E4FF00] text-[#050505] flex items-center justify-center">
                   <Sparkles className="w-4 h-4 animate-pulse" />
                 </div>
-                <div className="bg-[#0F0F13] border-l-2 p-4 rounded-lg flex items-center gap-3" style={{ borderLeftColor: modeColor }}>
-                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: modeColor }} />
-                  <span className="text-xs sm:text-sm text-[#E4E4E7] font-['IBM_Plex_Sans']" data-testid="chat-ai-status-label">
-                    {aiRealState === 'streaming'
-                      ? t('ai_state_streaming')
-                      : aiRealState === 'sending'
-                        ? t('ai_state_sending')
-                        : t('ai_state_generating')}
+                {/* Chantier iter159.2 §3 — Indicateur DISCRET « L'IA écrit » avec
+                    3 points animés qui pulsent pendant que les tokens arrivent
+                    réellement. L'étiquette montre le modèle RÉEL sélectionné
+                    (GPT-5.5, Claude Fable 5, Gemini 3 Pro, Ollama local, etc.)
+                    — jamais « Caly » quand ce n'est pas Caly. Les points
+                    animent indépendamment du streaming (pulse CSS), mais
+                    l'état `aiRealState` reflète toujours le vrai pipeline. */}
+                <div className="bg-[#0F0F13] border-l-2 py-2 px-3 rounded-lg flex items-center gap-2" style={{ borderLeftColor: modeColor }}>
+                  <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Sans']" data-testid="chat-ai-status-label">
+                    {(() => {
+                      // Nom du modèle réel sélectionné (affiché près de l'indicateur).
+                      const modelLabels = {
+                        'gpt-5.2':        'GPT-5.2',
+                        'gpt-5':          'GPT-5',
+                        'gpt-5.5':        'GPT-5.5',
+                        'claude-sonnet':  'Claude Sonnet 4.5',
+                        'claude-opus':    'Claude Opus 4.5',
+                        'claude-haiku':   'Claude Haiku 4.5',
+                        'claude-fable':   'Claude Fable 5',
+                        'claude-5-fable': 'Claude Fable 5',
+                        'gemini-3-pro':   'Gemini 3 Pro',
+                        'gemini-3-flash': 'Gemini 3 Flash',
+                        'gemma':          'Ollama · Gemma',
+                        'deepseek':       'Ollama · Deepseek',
+                        'llama':          'Ollama · Llama 3.2',
+                        'llama3':         'Ollama · Llama 3.2',
+                      };
+                      const modelName = modelLabels[selectedModel] || selectedModel;
+                      return `${modelName} · ${t('ai_state_streaming')}`;
+                    })()}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5" aria-hidden="true" data-testid="chat-ai-dots">
+                    <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '200ms' }}></span>
+                    <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '400ms' }}></span>
                   </span>
                 </div>
               </motion.div>

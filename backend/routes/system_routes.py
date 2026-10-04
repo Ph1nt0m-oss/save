@@ -38,16 +38,42 @@ def build_system_router(db, *, require_creator_signature, valid_audience_groups)
 
     @router.get("/system/ollama-status")
     async def ollama_status():
+        """Chantier iter159.2 §6 — Détection RÉELLE à chaque appel.
+
+        Jamais de cache serveur : chaque call hit effectivement /api/tags
+        d'Ollama. Enrichi avec `recommended_available` : vrai si au moins
+        un des modèles chat *recommandés* est pullé (gemma3:4b, deepseek-r1:7b,
+        llama3.2). Permet au frontend de refuser l'accès au tchat tant que
+        l'IA locale n'est pas vraiment prête.
+        """
         ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        # Modèles chat recommandés (ordre de préférence pour l'UX par défaut).
+        RECOMMENDED = {
+            "gemma3:4b", "gemma3:2b", "deepseek-r1:7b", "llama3.2", "llama3.2:3b", "llama3.2:8b",
+            # Variantes courantes tolérées
+            "gemma3:latest", "gemma:latest", "llama3:latest",
+        }
         try:
             async with httpx.AsyncClient(timeout=1.5) as client:
                 r = await client.get(f"{ollama_url}/api/tags")
                 if r.status_code == 200:
                     tags = r.json().get("models", []) or []
-                    return {"available": True, "models": [t.get("name") for t in tags][:30]}
+                    installed = [t.get("name") for t in tags if t.get("name")]
+                    rec_hit = next((m for m in installed if m in RECOMMENDED or any(m.startswith(x.split(':')[0] + ':') for x in RECOMMENDED)), None)
+                    return {
+                        "available": True,
+                        "models": installed[:30],
+                        "recommended_available": bool(rec_hit),
+                        "recommended_model": rec_hit,
+                    }
         except Exception:
             pass
-        return {"available": False, "models": []}
+        return {
+            "available": False,
+            "models": [],
+            "recommended_available": False,
+            "recommended_model": None,
+        }
 
     @router.post("/system/schedule-kick")
     async def system_schedule_kick(payload: ScheduleKickIn):

@@ -15,6 +15,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
 import VoiceRecorder from '../components/VoiceRecorder';
 import AttachMenu from '../components/AttachMenu';
+import OfflineAIInstaller from '../components/OfflineAIInstaller';
 import useDeviceIdentity from '../hooks/useDeviceIdentity';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -41,6 +42,25 @@ export default function Create() {
   const [selectedModel, setSelectedModel] = useState(mode === 'offline' ? 'gemma' : 'claude-sonnet');
   const messagesEndRef = useRef(null);
 
+  // Chantier iter159.2 §6 — Mode création hors-ligne : vérifie Ollama + modèle
+  // recommandé à CHAQUE entrée (useEffect sur `mode`). Si pas prêt, refus
+  // d'accès et affichage du tutoriel natif OfflineAIInstaller.
+  const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
+  const [ollamaAvailable, setOllamaAvailable] = useState(true);
+  useEffect(() => {
+    if (mode !== 'offline') return;
+    let cancelled = false;
+    axios.get(`${API}/system/ollama-status`)
+      .then(r => {
+        if (cancelled) return;
+        const ok = !!r.data?.available && !!r.data?.recommended_available;
+        setOllamaAvailable(ok);
+        if (!ok) setShowOfflineInstaller(true);
+      })
+      .catch(() => { if (!cancelled) { setOllamaAvailable(false); setShowOfflineInstaller(true); } });
+    return () => { cancelled = true; };
+  }, [mode]);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -56,6 +76,13 @@ export default function Create() {
       toast.error(t('ro_toast_generate'), { id: 'read-only' });
       return;
     }
+    // Chantier iter159.2 §6 — Refus d'accès au workflow si Ollama/modèle
+    // recommandé absent en mode hors-ligne.
+    if (mode === 'offline' && !ollamaAvailable) {
+      setShowOfflineInstaller(true);
+      toast.error('IA locale non détectée. Installe Ollama + un modèle recommandé.');
+      return;
+    }
 
     if (!overrideText) setInput('');
     setIsGenerating(true);
@@ -68,11 +95,25 @@ export default function Create() {
     }]);
 
     try {
-      const response = await axios.post(
-        `${API}/ai/generate-complete-app`,
-        { description: userMessage, mode, language, model: selectedModel },
-        { withCredentials: true }
-      );
+      // Chantier iter159.2 §5 — Timeout explicite + feedback actionnable.
+      // L'ancienne version attendait indéfiniment : si le pipeline backend
+      // dépasse le proxy edge (≈ 100s) l'UI restait bloquée sur « Génération
+      // en cours… ». Désormais : 180s max côté client avec `AbortController`,
+      // et message clair si c'est dépassé. Le backend persiste quand même via
+      // `_run_in_background`, l'utilisateur retrouve son projet dans la
+      // sidebar après rechargement.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort('client_timeout'), 180000);
+      let response;
+      try {
+        response = await axios.post(
+          `${API}/ai/generate-complete-app`,
+          { description: userMessage, mode, language, model: selectedModel },
+          { withCredentials: true, signal: controller.signal, timeout: 180000 }
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       setGeneratedCode(response.data.code);
       setCurrentProject(response.data.project);
@@ -118,6 +159,19 @@ export default function Create() {
 
       toast.success('Application générée !');
     } catch (error) {
+      // Chantier iter159.2 §5 — Détection explicite d'un timeout / abort client.
+      const isTimeout = error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED' || error?.message?.includes('timeout') || String(error?.code) === 'ECONNABORTED';
+      if (isTimeout) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '⏱️ **La génération prend plus longtemps que prévu** (> 3 min). Elle continue en arrière-plan côté serveur — recharge le dashboard dans 1-2 minutes, ton projet apparaîtra dans la sidebar. Tu peux aussi réessayer avec un modèle plus rapide (Gemini Flash, Claude Haiku).',
+          timestamp: new Date(),
+          _error: true,
+          _error_code: 'ai_timeout_client',
+        }]);
+        toast.error('Génération longue — elle continue en arrière-plan.');
+        return; // sort du catch sans classifier
+      }
       // iter158.12 — P1.1 : mappage précis via classifyAiError partagé.
       const { classifyAiError } = await import('../lib/aiErrorMapper');
       const errInfo = classifyAiError(error, {
@@ -472,6 +526,16 @@ export default function Create() {
           </div>
         </div>
       </div>
+      {/* Chantier iter159.2 §6 — Tutoriel natif OfflineAIInstaller monté
+          uniquement en mode offline, forcé si Ollama ou modèle recommandé
+          manquants. */}
+      {mode === 'offline' && (
+        <OfflineAIInstaller
+          open={showOfflineInstaller}
+          onClose={() => setShowOfflineInstaller(false)}
+          onInstalled={() => { setOllamaAvailable(true); setShowOfflineInstaller(false); }}
+        />
+      )}
     </div>
   );
 }

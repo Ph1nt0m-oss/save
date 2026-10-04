@@ -144,6 +144,22 @@ code {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Chantier iter159.2 §3 — Points animés « L'IA écrit ».
+   Chaque point pulse en opacité et se translate légèrement, créant un effet
+   de « vagues » discret pendant que l'IA génère réellement des tokens.
+   Les 3 points partagent la même keyframe, le délai d'animation est appliqué
+   via `style={{ animationDelay: '…ms' }}` inline. */
+@keyframes cfdot {
+    0%, 80%, 100% {
+        opacity: 0.25;
+        transform: translateY(0);
+    }
+    40% {
+        opacity: 1;
+        transform: translateY(-2px);
+    }
+}
+
 /* Selection color */
 ::selection {
     background-color: #E4FF00;
