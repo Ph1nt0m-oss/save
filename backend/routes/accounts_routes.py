@@ -148,7 +148,15 @@ def build_accounts_router(db, *, require_creator_signature, require_staff_signat
                 users[u["email"]] = u.get("pseudo")
                 handles[u["email"]] = u.get("public_handle") or ""
         for d in devices:
-            d["pseudo"] = users.get(d.get("email")) or d.get("pseudo") or d.get("label")
+            # iter158.20 (P2.3) — alt_pseudo prend le pas sur pseudo dans
+            # l'affichage public uniquement si défini. Les flux owner/
+            # ownership (/ownership/status, /ownership/notifications) ne
+            # passent PAS par cette liste et conservent l'identité réelle.
+            alt = (d.get("alt_pseudo") or "").strip() or None
+            real_pseudo = users.get(d.get("email")) or d.get("pseudo") or d.get("label")
+            d["pseudo"] = alt or real_pseudo
+            d["real_pseudo"] = real_pseudo  # visible créa pour anti-usurpation
+            d["has_alt_pseudo"] = bool(alt)
             d["public_handle"] = handles.get(d.get("email")) or d.get("public_handle") or ""
             d["muted"] = bool(d.get("muted"))
             d["banned"] = bool(d.get("banned"))

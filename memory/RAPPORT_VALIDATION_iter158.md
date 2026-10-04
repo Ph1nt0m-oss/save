@@ -1861,3 +1861,105 @@ complète. Pas un bug applicatif.
 
 **Prochain chantier proposé** : P2.3 — Anonymat + `alt_pseudo` par appareil
 (propriétaire incognito).
+
+---
+
+## 31. iter158.20 — P2.3 : Anonymat `alt_pseudo` par appareil (incognito owner)
+
+### 31.1 Objectif
+Permettre à chaque appareil de définir un pseudonyme alternatif qui prend
+le pas sur son `pseudo` réel dans l'affichage public (`/accounts/list`),
+tout en préservant intégralement l'identité cryptographique sous-jacente
+et les mécanismes d'ownership / sanctions / notifications.
+
+### 31.2 Fonctionnalités livrées
+**Backend** :
+- Nouveau champ optionnel `device_keys.alt_pseudo` (string ou absent).
+- Nouvel endpoint `POST /api/devices/alt-pseudo` :
+  - Signature ECDSA requise sur le key_id du signataire ; nonce consommé.
+  - `alt_pseudo` 3-30 caractères (invalides : < 3, > 30, `\n`/`\t`/`\r`).
+  - `null`, `""` ou whitespace → `$unset` du champ (clear).
+  - Un appareil ne peut toucher QUE SON PROPRE `alt_pseudo` (pas de
+    `target_key_id` dans le payload).
+- `/accounts/list` renvoie désormais :
+  - `pseudo` = `alt_pseudo` si défini, sinon `pseudo` réel (comportement
+    iter127 préservé pour les comptes sans alt_pseudo).
+  - `real_pseudo` = pseudo réel (visible à la Créa pour anti-usurpation).
+  - `has_alt_pseudo` = booléen explicite.
+
+### 31.3 Invariants vérifiés (tests)
+| Invariant | Vérification |
+|-----------|--------------|
+| `owner_key_ids` inchangé | Snapshot avant/après set + clear |
+| `role` / `staff_kind` inchangés | Lecture DB avant/après |
+| `pseudo` réel + `public_handle` inchangés en base | Idem |
+| `public_key_jwk` inchangé | Idem |
+| `is_owner` reste `true` après set | `/ownership/status` relu |
+| Alt_pseudo n'apparaît PAS dans `owner_notifications` | Scan récursif des valeurs string |
+| Édition croisée interdite | 2 devices distincts, chacun ne touche que le sien |
+| Signature invalide → 401 | Test dédié |
+| Isolation inter-appareils d'un MÊME owner | A/B set indépendants ; changer A n'affecte pas B |
+| Persistance à travers toggle Owner Privileges ON/OFF | Set + ON→OFF→ON → `alt_pseudo` toujours là |
+
+### 31.4 Portée strictement locale (anonymat)
+- `/accounts/list` : substitution appliquée. ✅
+- `/ownership/status` : NON concerné (owner garde son identité pour audit interne). ✅
+- `/ownership/notifications` : NON concerné (test anti-leak). ✅
+- `/ownership/transfer` et `/ownership/challenge` : NON concernés (identité cryptographique ECDSA). ✅
+- Mécanismes de sanctions (`/staff/action`) : NON concernés (clés only). ✅
+- Autres endpoints (`/devices/list`, `/devices/decisions`, etc.) : non modifiés — alt_pseudo n'y apparaît pas pour l'instant. **Point d'extension documenté** si l'utilisatrice souhaite étendre la couverture d'affichage.
+
+### 31.5 Fix réel appliqué
+**1 correction** côté implémentation initiale : premier essai utilisait
+`verify_signature(key_id, nonce, signature)` (API inexistante) → 500. Fix
+immédiat pour aligner sur le pattern canonique `device_by_key` + `consume_nonce` +
+`verify_signature(jwk, nonce, signature)` déjà utilisé par `/devices/verify`
+(ligne 690 de `devices_routes.py`). Détection par le premier run de tests
+qui a bien remonté le 500. 11 tests PASS puis après fix 14/14 PASS.
+
+### 31.6 Fichiers modifiés
+- `backend/routes/devices_routes.py` — nouveau modèle `AltPseudoIn` + endpoint
+  `/devices/alt-pseudo` (environ 55 lignes).
+- `backend/routes/accounts_routes.py` — enrichissement `/accounts/list`
+  avec substitution + `real_pseudo` + `has_alt_pseudo` (6 lignes modifiées).
+- `backend/tests/test_iter158_20_alt_pseudo.py` — nouveau, 14 tests.
+
+### 31.7 Tests
+- **`test_iter158_20_alt_pseudo.py`** — 14/14 PASS :
+  1. Set alt_pseudo persiste + override affichage public.
+  2. Clear (null) revient au pseudo réel.
+  3. Clear via empty/whitespace fonctionne aussi.
+  4. Isolation entre 2 appareils owner (A/B indépendants).
+  5. Owner rights (owner_key_ids, role, public_handle, public_key_jwk) intacts.
+  6. Édition croisée impossible (chaque device sign son propre alt_pseudo).
+  7. Signature invalide → 401.
+  8. Validation < 3 chars → 400.
+  9. Validation > 30 chars → 400.
+  10. Caractères spéciaux `\n` → 400.
+  11. Stabilité à travers Owner Privileges ON→OFF→ON.
+  12. Non-régression /accounts/list sans alt_pseudo (comportement iter127).
+  13. Anti-leak : alt_pseudo n'apparaît PAS dans owner_notifications.
+  14. Endpoint monté (smoke).
+- **Régression iter158 hors sandbox : 266 passed** (vs 252 avant P2.3),
+  1 skipped. 2 pré-existants inchangés (`test_expired_exclude_auto_lifted*`).
+
+### 31.8 Point hors scope signalé
+L'alt_pseudo est appliqué uniquement à `/accounts/list` pour P2.3. Les
+endpoints `/devices/list` (vue créa) et éventuelles vues bots/intégrations
+affichent toujours le `pseudo` réel. Si l'utilisatrice souhaite étendre
+l'anonymat à ces vues plus tard, c'est un chantier court (3-5 lignes par
+endpoint pour appliquer la même substitution). **Hors périmètre P2.3**.
+
+### 31.9 Bilan P2.3
+✅ Endpoint `POST /devices/alt-pseudo` opérationnel.
+✅ Anonymat strictement local à l'appareil (per-device).
+✅ Identité cryptographique + droits propriétaire + sanctions / notifications
+   totalement préservés (tests invariants).
+✅ Signature ECDSA du signataire = seule autorité ; pas d'édition croisée.
+✅ Validation stricte (3-30 chars, pas de contrôles spéciaux).
+✅ 14 tests dédiés + 266 PASS iter158 hors sandbox.
+
+**Checkpoint enregistré : `production-ready-iter158.20` (P2.3 clos).**
+
+**Prochain chantier proposé** : P2.4 — Implémentation des 9 langues
+manquantes depuis la liste `LANG_LABELS`.

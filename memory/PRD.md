@@ -1469,6 +1469,35 @@ Le sélecteur d'IA + le code source remplacent ces sections, l'écran est désor
 
 ## CHANGELOG
 
+### 2026-02 — iter158.20 — P2.3 Anonymat `alt_pseudo` par appareil
+
+**✅ Livré :**
+- Nouveau champ `device_keys.alt_pseudo` (optionnel) + endpoint
+  `POST /api/devices/alt-pseudo` (signature ECDSA du signataire ; 3-30 chars ;
+  null/empty → clear).
+- `/accounts/list` substitue `alt_pseudo` à `pseudo` quand défini + expose
+  `real_pseudo` + `has_alt_pseudo` (anti-usurpation côté Créa).
+- 14 tests (`test_iter158_20_alt_pseudo.py`) : set/clear/isolation/validation/
+  signature/toggle-stability/anti-leak-notifs/owner-rights-intacts/non-régression.
+
+**Invariants vérifiés** : `owner_key_ids`, `role`, `public_handle`,
+`public_key_jwk`, is_owner, ownership/sanctions/notifications TOUT préservés.
+Anonymat strictement local à l'appareil (per-device).
+
+**1 bug implementation détecté et corrigé** : premier essai mélangeait l'API
+`verify_signature` (prenait key_id au lieu du JWK) → 500. Fix immédiat.
+
+**Point hors scope** : `/devices/list` affiche toujours le pseudo réel.
+Extension optionnelle future (3-5 l. par endpoint) selon besoin utilisateur.
+
+**Régression** : 266/266 iter158 hors sandbox PASS. 2 pré-existants sans lien.
+
+**Checkpoint** : `production-ready-iter158.20`. P2.4 non entamé.
+
+---
+
+
+
 ### 2026-02 — iter158.19 — P2.2 Tests fonctionnels live (5 parcours)
 
 **✅ Livré :**

@@ -84,6 +84,12 @@ class SendToCreatorIn(SignedIn):
     pass
 
 
+class AltPseudoIn(SignedIn):
+    """iter158.20 (P2.3) — Set or clear the device-local alt_pseudo (incognito).
+    Pass alt_pseudo=null (or omit) to clear."""
+    alt_pseudo: Optional[str] = None
+
+
 def build_devices_router(
     db,
     *,
@@ -737,5 +743,53 @@ def build_devices_router(
             {"$set": {"role": "pending"}, "$unset": {"blocked_at": ""}},
         )
         return {"success": True}
+
+    # iter158.20 (P2.3) — Pseudo alternatif local à l'appareil (incognito owner).
+    # Permet au signataire de l'appareil de définir ou effacer son `alt_pseudo`,
+    # qui prend le pas sur `pseudo` dans les affichages publics (ex. accounts/list).
+    # Garanties (vérifiées par tests) :
+    #   - Signature ECDSA requise : seul le détenteur de la clé peut toucher
+    #     SON propre alt_pseudo. Pas d'édition croisée appareil↔appareil.
+    #   - owner_key_ids / role / public_handle / ownership / sanctions NON touchés.
+    #   - Validation stricte : 3-30 caractères, utilisé en display uniquement.
+    #   - Isolation : chaque appareil a son propre alt_pseudo, indépendamment
+    #     des autres appareils du même propriétaire.
+    @router.post("/devices/alt-pseudo")
+    async def devices_set_alt_pseudo(payload: AltPseudoIn):
+        """Set or clear the signer's local alt_pseudo (null to clear)."""
+        existing = await device_by_key(payload.key_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Appareil introuvable.")
+        if not await consume_nonce(payload.key_id, payload.nonce):
+            raise HTTPException(status_code=401, detail="Nonce invalide ou déjà consommé.")
+        if not verify_signature(
+            existing.get("public_key_jwk") or {}, payload.nonce, payload.signature
+        ):
+            raise HTTPException(status_code=401, detail="Signature invalide.")
+
+        new_val = (payload.alt_pseudo or "").strip() or None
+        if new_val is not None:
+            # Validation stricte : 3-30 caractères, pas d'espaces/tabulations.
+            if not (3 <= len(new_val) <= 30):
+                raise HTTPException(
+                    status_code=400,
+                    detail="alt_pseudo invalide (3-30 caractères).",
+                )
+            if any(c in new_val for c in ("\n", "\t", "\r")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="alt_pseudo contient des caractères invalides.",
+                )
+            await db.device_keys.update_one(
+                {"key_id": payload.key_id},
+                {"$set": {"alt_pseudo": new_val}},
+            )
+        else:
+            # Clear : $unset le champ (retour pseudo réel pour les affichages).
+            await db.device_keys.update_one(
+                {"key_id": payload.key_id},
+                {"$unset": {"alt_pseudo": ""}},
+            )
+        return {"success": True, "alt_pseudo": new_val}
 
     return router
