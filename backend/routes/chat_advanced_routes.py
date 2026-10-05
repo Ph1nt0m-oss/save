@@ -634,8 +634,8 @@ def build_chat_advanced_router(
         async def agent_stream_gen():
             from agents import run_pipeline
             from agents.common import AIModelUnavailable
+            import asyncio
             full_text = ""
-            idx = 0
             agent_info = None
             agent_events = []
 
@@ -643,14 +643,84 @@ def build_chat_advanced_router(
                 await _persist_event(evt, user_id=user_id, session_id=session_id,
                                      project_id=project_id_eff)
 
+            # iter161 §diag — Keepalive SSE : les proxies (ingress Kubernetes,
+            # Cloudflare) coupent les connexions SSE inactives au bout de ~60s.
+            # Pour des modèles lents (Claude Fable 5, GPT-5 sur prompt long)
+            # qui prennent 60-120s avant le premier token, cela produit une
+            # erreur Cloudflare côté client. On émet des commentaires SSE
+            # (lignes `: keepalive`) toutes les 15s tant qu'aucun delta
+            # n'est encore arrivé — invisibles pour le parser JS mais
+            # suffisants pour garder la connexion vivante.
+            out_queue: asyncio.Queue = asyncio.Queue()
+            done_sentinel = object()
+            state = {"got_first_delta": False, "error": None}
+
+            async def _producer():
+                try:
+                    async for item in run_pipeline(
+                        input.message, session_id=session_id,
+                        language=(input.language or "fr").lower(),
+                        project_id=project_id_eff, history=recent_history,
+                        model_pref=input.model, emit=persist,
+                    ):
+                        await out_queue.put(("item", item))
+                except AIModelUnavailable as model_err:
+                    err_detail = model_err.detail if isinstance(model_err.detail, dict) else {}
+                    state["error"] = {
+                        "code": err_detail.get("code", "ai_model_unavailable"),
+                        "requested_model": err_detail.get("requested_model") or input.model,
+                        "provider": err_detail.get("provider", "unknown"),
+                        "message": err_detail.get("message") or str(model_err.detail),
+                    }
+                except Exception as e:
+                    try:
+                        from utils.ai_error_mapper import classify_ai_error
+                        # iter161 §diag — Extraire tout texte disponible dans
+                        # l'exception pour détecter Cloudflare dans le body
+                        # (le mapper regarde raw_body + http_status).
+                        resp_body = None
+                        http_status_err = None
+                        resp_obj = getattr(e, "response", None)
+                        if resp_obj is not None:
+                            try:
+                                resp_body = getattr(resp_obj, "text", None) or getattr(resp_obj, "content", None)
+                                http_status_err = getattr(resp_obj, "status_code", None)
+                            except Exception:
+                                pass
+                        if resp_body is None:
+                            resp_body = str(e)
+                        info = classify_ai_error(e, provider=(agent_info or {}).get("provider"),
+                                                 context="chat_stream_pipeline",
+                                                 raw_body=resp_body, http_status=http_status_err)
+                    except Exception:
+                        info = {"code": "unknown", "message_fr": "Erreur inconnue",
+                                "http_status": None, "log_detail": str(e)[:300]}
+                    logger.warning(f"chat/stream pipeline failed [{info['code']}]: {info.get('log_detail') or e}")
+                    state["error"] = {
+                        "code": info["code"],
+                        "message": info.get("message_fr"),
+                        "http_status": info.get("http_status"),
+                        "provider": info.get("provider"),
+                    }
+                finally:
+                    await out_queue.put(done_sentinel)
+
+            producer_task = asyncio.create_task(_producer())
+            idx = 0
             try:
-                async for item in run_pipeline(
-                    input.message, session_id=session_id,
-                    language=(input.language or "fr").lower(),
-                    project_id=project_id_eff, history=recent_history,
-                    model_pref=input.model, emit=persist,
-                ):
+                while True:
+                    try:
+                        payload = await asyncio.wait_for(out_queue.get(), timeout=15)
+                    except asyncio.TimeoutError:
+                        # Pas de delta ni d'event depuis 15s → keepalive proxy.
+                        if not state["got_first_delta"]:
+                            yield ": keepalive\n\n"
+                        continue
+                    if payload is done_sentinel:
+                        break
+                    kind, item = payload
                     if "delta" in item:
+                        state["got_first_delta"] = True
                         full_text += item["delta"]
                         yield f"data: {json.dumps({'delta': item['delta'], 'index': idx}, ensure_ascii=False)}\n\n"
                         idx += 1
@@ -661,26 +731,21 @@ def build_chat_advanced_router(
                     elif "agent" in item:
                         agent_info = item["agent"]
                         yield f"data: {json.dumps({'agent': agent_info}, ensure_ascii=False)}\n\n"
-            except AIModelUnavailable as model_err:
-                # Chantier iter161 §P0.1 — Modèle sélectionné non disponible.
-                # Pas de fallback silencieux : erreur explicite via SSE.
-                err_detail = model_err.detail if isinstance(model_err.detail, dict) else {}
+            finally:
+                try:
+                    producer_task.cancel()
+                except Exception:
+                    pass
+
+            if state["error"] is not None:
+                # iter161 §diag — Erreur structurée (cloudflare, timeout,
+                # provider_error, auth, ai_integration_not_configured…).
+                # Le frontend décide d'afficher le message localisé en lieu
+                # et place du spinner, qui doit disparaître.
                 yield "data: " + json.dumps({
-                    "error": {
-                        "code": err_detail.get("code", "ai_model_unavailable"),
-                        "requested_model": err_detail.get("requested_model") or input.model,
-                        "provider": err_detail.get("provider", "unknown"),
-                        "message": err_detail.get("message") or str(model_err.detail),
-                    },
-                    "done": True,
+                    "error": state["error"], "done": True,
                 }, ensure_ascii=False) + "\n\n"
                 return
-            except Exception as e:
-                logger.warning(f"chat/stream agent pipeline failed: {e}; fallback message")
-                fallback_text = "Désolée, le service de chat est momentanément indisponible. Réessaie dans un instant."
-                if not full_text:
-                    full_text = fallback_text
-                    yield f"data: {json.dumps({'delta': fallback_text, 'index': idx})}\n\n"
 
             try:
                 await db.chat_messages.insert_one({

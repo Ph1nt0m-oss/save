@@ -516,11 +516,21 @@ export default function Chat() {
           // un message d'erreur clair avec le modèle concerné.
           if (evt.error) {
             const err = evt.error || {};
+            // iter161 §diag — Mapping des codes classifiés serveur (model
+            // unavailable, cloudflare, timeout, provider_error, auth, etc.).
+            // L'event error GARANTIT que le spinner s'arrête : done:true
+            // est émis simultanément côté backend.
             const errMsgMap = {
               ai_integration_not_configured: `Le modèle « ${err.requested_model || 'sélectionné'} » n'est pas branché côté serveur (provider ${err.provider}). Choisis un autre modèle (OpenAI, Anthropic, Gemini, ou Grok si configuré).`,
               ai_grok_key_missing: `Grok a été sélectionné mais la clé XAI_API_KEY est absente. Demande à l'admin d'ajouter la clé xAI, ou choisis un autre modèle.`,
               ai_model_unknown: `Le modèle « ${err.requested_model || '?'} » est inconnu. Choisis un modèle supporté.`,
               ai_model_unavailable: `Le modèle « ${err.requested_model || '?'} » est indisponible actuellement.`,
+              cloudflare: `Le service IA est momentanément surchargé (Cloudflare). Réessaie dans quelques instants — ta demande n'a pas été perdue.`,
+              timeout: `La réponse de l'IA a mis trop de temps à arriver (timeout). Réessaie, le modèle est peut-être en surcharge.`,
+              provider_error: `Le fournisseur IA (${err.provider || 'provider'}) a retourné une erreur (${err.http_status || '5xx'}). Réessaie ou change de modèle.`,
+              rate_limit: `Trop de requêtes vers le fournisseur IA. Attends quelques secondes avant de réessayer.`,
+              auth_error: `Clé d'authentification du fournisseur IA invalide ou expirée.`,
+              network: `Problème réseau en atteignant le fournisseur IA. Vérifie ta connexion et réessaie.`,
             };
             const prettyMsg = errMsgMap[err.code] || err.message || 'Erreur du modèle sélectionné.';
             setMessages(prev => prev.map(m =>
@@ -538,6 +548,7 @@ export default function Chat() {
             ));
             toast.error(prettyMsg);
             setIsLoading(false);
+            setAiRealState('error');
             return;
           }
           // iter129 — Événement du journal d'activité (moteur d'exécution visible).

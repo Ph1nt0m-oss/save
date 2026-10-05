@@ -1,8 +1,32 @@
 # CodeForge AI — Product Requirements
 
 
-## iter161 (Oct 2026) — Routage réel des IA online + Création réelle
-**Status : COMPLETED (26 tests iter161 PASS + 91 tests iter111/129/159/160/161 PASS).**
+## iter161 (Oct 2026) — Routage réel des IA online + Création réelle + Diagnostic SSE
+**Status : COMPLETED (31 tests iter161 PASS + 96 tests iter111/129/159/160/161 PASS).**
+
+### Correctif complémentaire (passe 3) — Diagnostic tâches complexes + arrêt sécurisé
+
+Feedback utilisateur : sur tâches complexes, spinner discret OK mais parfois erreur Cloudflare après longue attente. Diagnostic complet de la chaîne UI → `/chat/stream` → proxy ingress → provider IA → SSE → UI.
+
+**Causes racines identifiées** :
+1. **Pas de keepalive SSE** : les proxies (ingress Kubernetes, Cloudflare edge) coupent les connexions SSE inactives au bout de ~60s. Les modèles lents (Claude Fable 5, GPT-5 sur prompts complexes) peuvent prendre 60-120s avant le premier token → le proxy coupe → le client reçoit une erreur Cloudflare apparente alors que le pipeline continuait à travailler côté serveur.
+2. **Fallback delta générique** : en cas d'exception dans le pipeline (Cloudflare upstream, timeout, provider down), `/chat/stream` émettait un simple delta texte « Désolée, le service de chat est momentanément indisponible » au lieu d'un event SSE `error` structuré. Le frontend n'avait donc jamais la vraie classification de l'erreur (cloudflare/timeout/provider_error/auth…).
+
+**Corrections** :
+- **Backend `/chat/stream`** : refactor en producteur/consommateur avec queue asyncio. Un keepalive SSE (`: keepalive\n\n`, commentaire SSE invisible côté client JS) est émis toutes les 15s tant qu'aucun delta réel n'est arrivé. Dès le premier token, les keepalives s'arrêtent. En cas d'exception, `classify_ai_error` extrait la classification (code, http_status, provider) depuis `exc.response.text` ou `str(e)` et émet un event SSE `{error: {code, message, http_status, provider}, done:true}`.
+- **Frontend `Chat.js`** : mapping étendu pour les codes classifiés serveur (`cloudflare`, `timeout`, `provider_error`, `rate_limit`, `auth_error`, `network`) avec messages FR adaptés. L'event `error` arrête `isLoading` (fin du spinner) et passe `aiRealState` en `'error'`. Garantit : **spinner → premier contenu réel** OU **spinner → erreur explicite → fin**. Jamais spinner infini.
+
+**Comportement final garanti** :
+- Attente avant premier résultat → spinner discret (keepalive proxy transparent).
+- Travail réel de l'agent/outils → spinner discret.
+- Arrivée du premier contenu → disparition du spinner + streaming.
+- Erreur réelle (Cloudflare, timeout, provider down) → message FR adapté + fin du chargement.
+- Zéro timer artificiel, zéro trace interne (tool calls, chemins, commandes) visible à l'utilisateur.
+
+### Fichiers modifiés (passe 3)
+- `backend/routes/chat_advanced_routes.py` (producteur/consommateur asyncio + keepalive + classify_ai_error avec extraction response.text)
+- `frontend/src/pages/Chat.js` (mapping étendu cloudflare/timeout/provider_error/rate_limit/auth_error/network + setAiRealState('error'))
+- `backend/tests/test_iter161_02_sse_keepalive_errors.py` (nouveau, 5 tests)
 
 ### Correctif complémentaire (passe 2) — Comportement 100% naturel
 
