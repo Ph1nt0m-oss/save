@@ -1674,35 +1674,15 @@ IMPORTANT:
             if not emergent_key:
                 raise ValueError("EMERGENT_LLM_KEY not configured")
             
-            # Routing modèle pour la création — Claude Fable 5 (Mythos-class) priorité pour le code.
-            CREATE_MODEL_ROUTES = {
-                "gpt-5.2":         ("openai",    "gpt-5.2"),
-                "gpt-5":           ("openai",    "gpt-5"),
-                "gpt-5.5":         ("openai",    "gpt-5.5"),
-                "claude-fable":    ("anthropic", "claude-fable-5"),
-                "claude-fable-5":  ("anthropic", "claude-fable-5"),
-                "claude-5-fable":  ("anthropic", "claude-fable-5"),  # iter107 — id frontend
-                "claude-opus":     ("anthropic", "claude-opus-4-5-20251101"),
-                "claude-sonnet":   ("anthropic", "claude-sonnet-4-5-20250929"),
-                "claude-haiku":    ("anthropic", "claude-haiku-4-5-20251001"),
-                "gemini-3-pro":    ("gemini",    "gemini-3.1-pro-preview"),
-                "gemini-3-flash":  ("gemini",    "gemini-3-flash-preview"),
-            }
-            provider, model_id = CREATE_MODEL_ROUTES.get(requested_model, ("anthropic", "claude-fable-5"))
-
-            # Chantier iter160 §6 — SUPPRESSION du fallback silencieux en Création.
-            # Si l'IA sélectionnée n'a pas de handler réel ou échoue, erreur explicite.
-            UNSUPPORTED_PROVIDERS = {"emergent", "vexub", "lindy"}
-            if provider in UNSUPPORTED_PROVIDERS:
-                raise HTTPException(
-                    status_code=501,
-                    detail={
-                        "code": "ai_integration_not_configured",
-                        "requested_model": requested_model,
-                        "provider": provider,
-                        "message": f"Intégration {provider} non configurée pour la Création — ce modèle n'a pas de handler réel branché.",
-                    },
-                )
+            # Chantier iter161 §P0.1 — Utilisation du mapping EXACT centralisé
+            # dans agents.common. Même liste que /chat/stream, même règles
+            # d'exclusion (emergent/vexub/lindy → 501 explicite).
+            from agents.common import resolve_model, AIModelUnavailable
+            try:
+                provider, model_id = resolve_model(requested_model or "claude-5-fable")
+            except AIModelUnavailable:
+                # Re-lève tel quel : HTTPException 501 propagée côté client.
+                raise
             # Un seul essai : le modèle choisi, point final.
             ordered_gen_chain = [(provider, model_id)]
 
@@ -1762,6 +1742,11 @@ IMPORTANT:
                     continue
             if ai_text is None:
                 raise RuntimeError(f"All generation models failed. Last error: {last_gen_error}")
+        except HTTPException:
+            # Chantier iter161 §P0.1 — Erreur explicite modèle sélectionné :
+            # NE JAMAIS la swallow derrière un template. Elle doit remonter
+            # telle quelle (501) pour que l'UI affiche la vraie cause.
+            raise
         except Exception as e:
             # iter158.8 — P0.1 : classify_ai_error côté Emergent LLM aussi
             from utils.ai_error_mapper import classify_ai_error

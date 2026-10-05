@@ -42,3 +42,32 @@ async def route_message(message: str, history: Optional[List[Dict[str, Any]]] = 
     )
     agent = (decision.get("agent") or "chat").strip().lower()
     return agent if agent in ("chat", "dev", "planner") else "chat"
+
+
+# Chantier iter161 §P0.2 — Détection stricte « demande de création d'app ».
+# Utilisée par /chat/stream pour renvoyer un événement redirect_to_create
+# AVANT même d'invoquer un agent LLM (évite le bavardage de Forge).
+_CREATE_APP_PATTERN = re.compile(
+    r"\b("
+    # verbes de création explicite
+    r"(fais|crée|cree|creer|créer|génère|genere|generer|développe|developpe|developper|"
+    r"construis|construire|monte-moi|monte moi|peux[- ]tu me (faire|créer|cree|développer|developper)|"
+    r"tu peux me faire|tu peux me (créer|cree|développer|developper)|"
+    r"j'aimerais (une|un)|je veux (une|un)|je voudrais (une|un))"
+    r"[^.?!\n]{0,80}?"
+    # cible : application / site / jeu / outil
+    r"(appli(cation)?|site( web)?|web ?app|application mobile|logiciel|jeu|game|plateforme|platform|outil|dashboard|interface)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_create_app_request(text: str) -> bool:
+    """True si le message est une demande explicite de création d'app complète.
+
+    Permet au endpoint SSE de rediriger l'utilisateur vers le vrai pipeline
+    /ai/generate-complete-app au lieu de produire une réponse textuelle.
+    """
+    if not text or len(text.strip()) < 8:
+        return False
+    return bool(_CREATE_APP_PATTERN.search(text))

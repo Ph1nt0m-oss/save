@@ -108,10 +108,11 @@ def test_router_heuristics():
 # ----- Helpers ---------------------------------------------------------------
 
 def test_resolve_model_mapping():
-    assert resolve_model("claude-fable") == ("anthropic", "claude-sonnet-4-5-20250929")
-    assert resolve_model("gemini-3") == ("gemini", "gemini-3-flash-preview")
-    assert resolve_model("gpt-5.2") == ("openai", "gpt-4o-mini")
-    assert resolve_model(None) == ("openai", "gpt-4o-mini")
+    # iter161 — Mapping EXACT (plus de bascule silencieuse).
+    assert resolve_model("claude-fable") == ("anthropic", "claude-fable-5")
+    assert resolve_model("gemini-3-pro") == ("gemini", "gemini-3.1-pro-preview")
+    assert resolve_model("gpt-5.2") == ("openai", "gpt-5.2")
+    assert resolve_model(None) == ("anthropic", "claude-sonnet-4-5-20250929")
 
 
 def test_format_history_memory():

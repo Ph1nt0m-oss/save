@@ -1,6 +1,44 @@
 # CodeForge AI — Product Requirements
 
 
+## iter161 (Oct 2026) — Routage réel des IA online + Création réelle
+**Status : COMPLETED (25 tests iter161 PASS + 88 tests iter111/129/159/160/161 PASS).**
+
+### Problème résolu
+Les tests utilisateur ont révélé que, malgré la purge iter160 des fallbacks silencieux visibles, le pipeline `/chat/stream` écrasait silencieusement le modèle sélectionné via un `resolve_model()` buggé (`agents/common.py`) :
+- `claude-*` → **TOUJOURS** `claude-sonnet-4-5` (donc Fable 5, Opus 4.8, 4.7 1M, Sonnet 4.6 tous écrasés)
+- `gemini-*` → **TOUJOURS** `gemini-3-flash` (3.1 Pro downgradé)
+- Reste (GPT 5.5, 5.4, 5.3 Codex) → **`gpt-4o-mini`**
+- `emergent` non détecté → `gpt-4o-mini` silencieux (viole AI Truth)
+
+De plus, le `chat_agent` s'identifiait partout « Caly », faisant apparaître Caly dans les réponses d'Emergent/Claude/GPT.
+
+### Chantier
+- **P0.1 Routage EXACT** : `agents/common.resolve_model()` récrit avec mapping id→(provider, model_id) EXACT ; nouveau `AIModelUnavailable` (HTTPException 501) pour `emergent`/`vexub`/`lindy` sans handler + `grok-*` sans `XAI_API_KEY`. Backend `server.py` et `/chat/stream` utilisent désormais ce mapping centralisé.
+- **P0.2 Bascule Création depuis Chat** : nouveau `is_create_app_request()` (router_agent) détecte « fais-moi/crée-moi/peux-tu me faire une appli/site/jeu… » et renvoie `action=redirect_to_create` via SSE ; Chat.js navigue vers `/create` avec `prefillPrompt+prefillModel` pour autostart la vraie génération.
+- **P0.3 Visibilité génération** : `/create` affiche chrono temps réel `0:12`, nom du modèle en cours, message « 1 à 2 min selon la complexité » ; erreurs 501 explicites remontées au front (plus de « Génération en cours… » infini).
+- **P1.1 Caly réservé au widget** : `CHAT_AGENT_SYSTEM` neutralisé (plus « Tu es Caly ») ; `engine.run_pipeline()` yield un event `agent` avec `provider`/`model_id`/`model_label` (ex. « Claude 5 Fable ») ; Chat.js affiche ce label au-dessus de chaque message IA (jamais « Caly »).
+- **P1.2 Suppression bandeau « L'IA écrit »** : Chat.js masque la bulle `chat-ai-status` dès que `aiRealState === 'streaming'` ; les tokens qui apparaissent dans la bulle suffisent comme feedback visuel.
+- **Propagation erreur SSE** : `AIModelUnavailable` levée dans le pipeline → event SSE `{error: {code, requested_model, provider, message}, done:true}` ; UI affiche un message adapté par code (`ai_integration_not_configured`, `ai_grok_key_missing`, `ai_model_unknown`).
+
+### Fichiers modifiés
+- `backend/agents/common.py` (récrit)
+- `backend/agents/engine.py` (récrit — expose provider/model_id/model_label)
+- `backend/agents/registry.py` (CHAT_AGENT_SYSTEM neutralisé)
+- `backend/agents/router_agent.py` (ajout `is_create_app_request`)
+- `backend/routes/chat_advanced_routes.py` (shortcut redirect_to_create + propagation erreur SSE)
+- `backend/server.py` (/ai/generate-complete-app utilise `resolve_model` central, HTTPException re-raise)
+- `frontend/src/pages/Chat.js` (gestion `agent.provider/model_id/model_label`, `redirect_to_create`, `evt.error`, bandeau conditionnel)
+- `frontend/src/pages/Create.js` (prefillPrompt+autostart, chrono temps réel, erreur 501 explicite)
+- `backend/tests/test_iter161_01_real_routing.py` (nouveau, 25 tests)
+- `backend/tests/test_iter129_agents.py` (mapping updated)
+- `backend/tests/test_iter111_tiered_approval_streaming_parent.py` (chemin ChatStreamIn corrigé)
+
+### Tests
+- Tests pytest iter161 : 25/25 PASS (routing exact, 501 providers non branchés, détection create app, chat_agent sans Caly, badge model_label, redirect SSE réel, erreur SSE réelle, Chat.js/Create.js statics).
+- Regression iter111/129/159/160 : 88/88 PASS (0 régression sur le périmètre modifié).
+
+
 ## iter160 (Oct 2026) — Vérité du routage IA + détection Ollama côté user
 **Status : COMPLETED (16 tests iter160 PASS + 81 iter159/160 PASS + 52 iter158 PASS).**
 

@@ -29,17 +29,24 @@ export default function Create() {
   const device = useDeviceIdentity();
   const canWrite = device.canWrite;
   const mode = location.state?.mode || 'online';
+  // Chantier iter161 §P0.2 — Lorsque le Chat détecte une demande de création
+  // d'application, il redirige ici avec prefillPrompt (et éventuellement
+  // prefillModel). On lance alors la génération automatiquement.
+  const prefillPrompt = location.state?.prefillPrompt || '';
+  const prefillModel = location.state?.prefillModel || null;
   
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(prefillPrompt);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStartedAt, setGenerationStartedAt] = useState(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [currentProject, setCurrentProject] = useState(null);
   const [generatedCode, setGeneratedCode] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   // Modèle IA sélectionné pour la création — Claude Sonnet par défaut car
   // excellent en code, GPT-5.2 et Claude Opus en alternative.
-  const [selectedModel, setSelectedModel] = useState(mode === 'offline' ? 'gemma' : 'claude-sonnet');
+  const [selectedModel, setSelectedModel] = useState(prefillModel || (mode === 'offline' ? 'gemma' : 'claude-sonnet'));
   const messagesEndRef = useRef(null);
 
   // Chantier iter159.2 §6 — Mode création hors-ligne : vérifie Ollama + modèle
@@ -76,6 +83,32 @@ export default function Create() {
     scrollToBottom();
   }, [messages]);
 
+  // Chantier iter161 §P0.3 — Compteur de temps réel de génération.
+  // Affiche "⏳ Génération... 0:12" pour que l'user voie que ça avance.
+  useEffect(() => {
+    if (!isGenerating || !generationStartedAt) {
+      setElapsedSec(0);
+      return undefined;
+    }
+    const tick = () => setElapsedSec(Math.floor((Date.now() - generationStartedAt) / 1000));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [isGenerating, generationStartedAt]);
+
+  // Chantier iter161 §P0.2 — Autostart si on arrive avec un prefillPrompt
+  // depuis le Chat ("tu peux me faire une app de X" détecté).
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!prefillPrompt || autoStartedRef.current) return;
+    if (!user) return;
+    autoStartedRef.current = true;
+    // Petit délai pour laisser le DOM se stabiliser.
+    const timeoutId = setTimeout(() => generateApp(prefillPrompt), 300);
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillPrompt, user]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -98,6 +131,7 @@ export default function Create() {
 
     if (!overrideText) setInput('');
     setIsGenerating(true);
+    setGenerationStartedAt(Date.now());
 
     setMessages(prev => [...prev, {
       role: 'user',
@@ -184,6 +218,30 @@ export default function Create() {
         toast.error('Génération longue — elle continue en arrière-plan.');
         return; // sort du catch sans classifier
       }
+
+      // Chantier iter161 §P0.1 — Erreur explicite du backend sur modèle non
+      // branché (501 ai_integration_not_configured, ai_grok_key_missing,
+      // ai_model_unknown). On n'affiche PAS « erreur réseau » : on dit
+      // précisément quel modèle n'est pas disponible.
+      const backendDetail = error?.response?.data?.detail;
+      if (error?.response?.status === 501 && backendDetail && typeof backendDetail === 'object') {
+        const errMsgMap = {
+          ai_integration_not_configured: `Le modèle « ${backendDetail.requested_model || selectedModel} » n'est pas branché côté serveur (${backendDetail.provider || '?'}). Choisis un autre modèle (OpenAI, Anthropic ou Gemini).`,
+          ai_grok_key_missing: `Grok a été sélectionné mais la clé XAI_API_KEY est absente côté backend. Demande à l'admin d'ajouter la clé xAI.`,
+          ai_model_unknown: `Modèle « ${backendDetail.requested_model || selectedModel} » inconnu. Choisis un modèle supporté.`,
+        };
+        const prettyMsg = errMsgMap[backendDetail.code] || backendDetail.message || 'Modèle sélectionné non disponible.';
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `⚠️ ${prettyMsg}`,
+          timestamp: new Date(),
+          _error: true,
+          _error_code: backendDetail.code,
+        }]);
+        toast.error(prettyMsg);
+        return;
+      }
+
       // iter158.12 — P1.1 : mappage précis via classifyAiError partagé.
       const { classifyAiError } = await import('../lib/aiErrorMapper');
       const errInfo = classifyAiError(error, {
@@ -396,10 +454,22 @@ export default function Create() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className="flex justify-start"
+                    data-testid="create-generation-progress"
                   >
                     <div className="bg-[#050505] border border-white/10 p-4 rounded-lg flex items-center gap-3">
                       <Loader2 className="w-5 h-5 animate-spin text-[#E4FF00]" />
-                      <span>Génération en cours...</span>
+                      {/* Chantier iter161 §P0.3 — Compteur de temps réel + info
+                          utile sur le modèle en cours pour éviter la sensation
+                          de blocage. 1-2 min est NORMAL pour Claude 5 Fable
+                          sur une app complète ; on le dit explicitement. */}
+                      <div className="flex flex-col">
+                        <span className="font-semibold" data-testid="create-generation-timer">
+                          Génération en cours · {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')}
+                        </span>
+                        <span className="text-xs text-[#A1A1AA]">
+                          Modèle : {selectedModel} — compte 1 à 2 min selon la complexité.
+                        </span>
+                      </div>
                     </div>
                   </motion.div>
                 )}

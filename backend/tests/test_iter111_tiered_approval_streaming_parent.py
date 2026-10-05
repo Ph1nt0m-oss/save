@@ -119,15 +119,18 @@ def test_chat_stream_endpoint_alive():
 
 def test_chat_stream_input_accepts_model_attachments():
     """ChatStreamIn doit accepter model + attachments (iter111)."""
-    block = SERVER.split("class ChatStreamIn(BaseModel):")[1].split("@api_router")[0]
+    # iter161 — ChatStreamIn a été déplacé vers routes/chat_advanced_routes.py.
+    chat_adv = (ROOT / "backend" / "routes" / "chat_advanced_routes.py").read_text()
+    block = chat_adv.split("class ChatStreamIn(BaseModel):")[1].split("def build_chat_advanced_router")[0]
     assert "model:" in block
     assert "attachments:" in block
 
 
 def test_chat_stream_emits_done_with_project_id():
     """L'event 'done' SSE inclut project_id pour adoption frontend."""
-    block = SERVER.split("class ChatStreamIn(BaseModel):")[1].split("# Include the router")[0]
-    assert '"project_id": auto_pid' in block
+    # iter161 — Pipeline SSE est dans routes/chat_advanced_routes.py.
+    chat_adv = (ROOT / "backend" / "routes" / "chat_advanced_routes.py").read_text()
+    assert '"project_id": project_id_eff if auto_created else None' in chat_adv
 
 
 def test_chat_uses_streaming_endpoint():

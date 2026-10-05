@@ -474,12 +474,72 @@ export default function Chat() {
             ));
           }
           // iter129 — Décision du Router : quel agent spécialisé répond.
+          // Chantier iter161 §P1.1 — Le backend envoie désormais provider,
+          // model_id, model_label dans l'event agent pour afficher le vrai
+          // modèle au-dessus du message (ex: « Claude 5 Fable » plutôt que
+          // « Caly »).
           if (evt.agent) {
             setMessages(prev => prev.map(m =>
               m._streaming_id === placeholderId
-                ? { ...m, agent_id: evt.agent.id, agent_name: evt.agent.name }
+                ? {
+                    ...m,
+                    agent_id: evt.agent.id,
+                    agent_name: evt.agent.name,
+                    agent_provider: evt.agent.provider,
+                    agent_model_id: evt.agent.model_id,
+                    agent_model_label: evt.agent.model_label,
+                  }
                 : m
             ));
+          }
+          // Chantier iter161 §P0.2 — Backend détecte une demande de création
+          // d'application complète → on redirige vers /create avec le prompt
+          // préchargé pour utiliser le vrai pipeline, pas l'agent bavard.
+          if (evt.action === 'redirect_to_create') {
+            // Retire le placeholder streaming et le message user juste envoyé.
+            setMessages(prev => prev.filter(m =>
+              m._streaming_id !== placeholderId && m.content !== userMessage
+            ));
+            setIsLoading(false);
+            toast.info('Bascule vers le mode Création — ta demande est transférée.');
+            navigate('/create', {
+              state: {
+                mode: 'online',
+                prefillPrompt: evt.prompt || userMessage,
+                prefillModel: evt.model || selectedModel,
+              },
+            });
+            return;
+          }
+          // Chantier iter161 §P0.1 — Erreur de modèle explicite (501) :
+          // ai_integration_not_configured, ai_grok_key_missing, ai_model_unknown.
+          // Le message user reste visible, le placeholder streaming devient
+          // un message d'erreur clair avec le modèle concerné.
+          if (evt.error) {
+            const err = evt.error || {};
+            const errMsgMap = {
+              ai_integration_not_configured: `Le modèle « ${err.requested_model || 'sélectionné'} » n'est pas branché côté serveur (provider ${err.provider}). Choisis un autre modèle (OpenAI, Anthropic, Gemini, ou Grok si configuré).`,
+              ai_grok_key_missing: `Grok a été sélectionné mais la clé XAI_API_KEY est absente. Demande à l'admin d'ajouter la clé xAI, ou choisis un autre modèle.`,
+              ai_model_unknown: `Le modèle « ${err.requested_model || '?'} » est inconnu. Choisis un modèle supporté.`,
+              ai_model_unavailable: `Le modèle « ${err.requested_model || '?'} » est indisponible actuellement.`,
+            };
+            const prettyMsg = errMsgMap[err.code] || err.message || 'Erreur du modèle sélectionné.';
+            setMessages(prev => prev.map(m =>
+              m._streaming_id === placeholderId
+                ? {
+                    ...m,
+                    content: `⚠️ ${prettyMsg}`,
+                    _streaming: false,
+                    _error: true,
+                    _error_code: err.code,
+                    agent_name: null,
+                    agent_model_label: null,
+                  }
+                : m
+            ));
+            toast.error(prettyMsg);
+            setIsLoading(false);
+            return;
           }
           // iter129 — Événement du journal d'activité (moteur d'exécution visible).
           if (evt.event) {
@@ -837,8 +897,11 @@ export default function Chat() {
                       {!isUser && (
                         <MessageTTSButton text={displayContent} />
                       )}
-                      {/* iter129 — Badge de l'agent spécialisé ayant répondu */}
-                      {!isUser && msg.agent_name && (
+                      {/* iter129 — Badge de l'agent spécialisé ayant répondu.
+                          Chantier iter161 §P1.1 — N'affiche PAS l'agent "chat"
+                          (ce serait soit "Caly" soit le modèle en double avec
+                          msg-ai-badge). Garde Forge / Archi uniquement. */}
+                      {!isUser && msg.agent_name && msg.agent_id && msg.agent_id !== 'chat' && (
                         <span
                           data-testid="msg-agent-badge"
                           title={`Agent spécialisé : ${msg.agent_name}`}
@@ -847,20 +910,38 @@ export default function Chat() {
                           {msg.agent_name}
                         </span>
                       )}
-                      {!isUser && msg.ai_source && (() => {
+                      {/* Chantier iter161 §P1.1 — Badge du MODÈLE RÉEL
+                          (provider:model_id venu du backend). Caly n'apparaît
+                          JAMAIS ici — Caly est le widget flottant uniquement.
+                          On privilégie agent_model_label (iter161) puis on
+                          retombe sur un parsing de ai_source pour l'historique
+                          ancien. */}
+                      {!isUser && (msg.agent_model_label || msg.ai_source) && (() => {
+                        if (msg.agent_model_label) {
+                          return (
+                            <span
+                              data-testid="msg-ai-badge"
+                              title={`Modèle réellement utilisé : ${msg.agent_provider || '?'} / ${msg.agent_model_id || '?'}`}
+                              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-[#71717A] border border-white/10 rounded-sm px-1.5 py-0.5"
+                            >
+                              {msg.agent_model_label}
+                            </span>
+                          );
+                        }
                         const src = msg.ai_source || '';
-                        // Pretty label from ai_source 'emergent:openai:gpt-5.2' or 'ollama:gemma3:12b'
                         let label = src;
                         if (src.startsWith('emergent:')) {
                           const parts = src.split(':');
                           const prov = parts[1] || '';
                           const mdl = parts.slice(2).join(':') || '';
-                          if (prov === 'anthropic') label = mdl.includes('fable') ? 'Claude Fable 5' : mdl.includes('opus') ? 'Claude Opus 4.5' : mdl.includes('sonnet') ? 'Claude Sonnet 4.5' : 'Claude';
+                          if (prov === 'anthropic') label = mdl.includes('fable') ? 'Claude 5 Fable' : mdl.includes('opus') ? 'Claude Opus' : mdl.includes('sonnet') ? 'Claude Sonnet' : mdl.includes('haiku') ? 'Claude Haiku' : 'Claude';
                           else if (prov === 'gemini') label = mdl.includes('flash') ? 'Gemini 3 Flash' : 'Gemini 3 Pro';
-                          else if (prov === 'openai') label = 'Emergent (GPT-5.2)';
+                          else if (prov === 'openai') label = `GPT ${mdl.replace(/^gpt-?/, '')}`;
                           else label = `${prov} / ${mdl}`;
                         } else if (src.startsWith('ollama:')) {
                           label = `Ollama · ${src.split(':').slice(1).join(':')}`;
+                        } else if (src.startsWith('xai:')) {
+                          label = src.replace('xai:', 'Grok ');
                         }
                         return (
                           <span
@@ -915,7 +996,13 @@ export default function Chat() {
               );
             })}
 
-            {isLoading && (
+            {/* Chantier iter161 §P1.2 — Indicateur d'attente uniquement
+                tant que les tokens n'arrivent PAS encore. Dès que le
+                premier delta tombe (aiRealState === 'streaming'), on
+                masque le bandeau : la bulle qui se remplit token-par-token
+                suffit comme feedback visuel, pas besoin d'étiquette
+                supplémentaire. */}
+            {isLoading && aiRealState !== 'streaming' && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -926,37 +1013,7 @@ export default function Chat() {
                 <div className="flex-shrink-0 w-9 h-9 rounded-full bg-[#E4FF00] text-[#050505] flex items-center justify-center">
                   <Sparkles className="w-4 h-4 animate-pulse" />
                 </div>
-                {/* Chantier iter159.2 §3 — Indicateur DISCRET « L'IA écrit » avec
-                    3 points animés qui pulsent pendant que les tokens arrivent
-                    réellement. L'étiquette montre le modèle RÉEL sélectionné
-                    (GPT-5.5, Claude Fable 5, Gemini 3 Pro, Ollama local, etc.)
-                    — jamais « Caly » quand ce n'est pas Caly. Les points
-                    animent indépendamment du streaming (pulse CSS), mais
-                    l'état `aiRealState` reflète toujours le vrai pipeline. */}
                 <div className="bg-[#0F0F13] border-l-2 py-2 px-3 rounded-lg flex items-center gap-2" style={{ borderLeftColor: modeColor }}>
-                  <span className="text-xs text-[#A1A1AA] font-['IBM_Plex_Sans']" data-testid="chat-ai-status-label">
-                    {(() => {
-                      // Nom du modèle réel sélectionné (affiché près de l'indicateur).
-                      const modelLabels = {
-                        'gpt-5.2':        'GPT-5.2',
-                        'gpt-5':          'GPT-5',
-                        'gpt-5.5':        'GPT-5.5',
-                        'claude-sonnet':  'Claude Sonnet 4.5',
-                        'claude-opus':    'Claude Opus 4.5',
-                        'claude-haiku':   'Claude Haiku 4.5',
-                        'claude-fable':   'Claude Fable 5',
-                        'claude-5-fable': 'Claude Fable 5',
-                        'gemini-3-pro':   'Gemini 3 Pro',
-                        'gemini-3-flash': 'Gemini 3 Flash',
-                        'gemma':          'Ollama · Gemma',
-                        'deepseek':       'Ollama · Deepseek',
-                        'llama':          'Ollama · Llama 3.2',
-                        'llama3':         'Ollama · Llama 3.2',
-                      };
-                      const modelName = modelLabels[selectedModel] || selectedModel;
-                      return `${modelName} · ${t('ai_state_streaming')}`;
-                    })()}
-                  </span>
                   <span className="inline-flex items-center gap-0.5" aria-hidden="true" data-testid="chat-ai-dots">
                     <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '0ms' }}></span>
                     <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '200ms' }}></span>

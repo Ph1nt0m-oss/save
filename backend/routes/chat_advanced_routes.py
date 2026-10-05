@@ -544,6 +544,26 @@ def build_chat_advanced_router(
         # ---------- iter129 : PIPELINE MULTI-AGENTS (online, no attachments) ----------
         # Router → agent spécialisé (Caly chat / Forge dev / Archi planner).
         # Chaque agent stream ses événements d'exécution + sa réponse finale.
+        # Chantier iter161 §P0.2 — Détection d'une demande de CRÉATION D'APP
+        # complète : au lieu de laisser Forge bavarder, on renvoie un
+        # événement {action: "redirect_to_create"} que Chat.js intercepte
+        # pour rediriger vers /create avec le prompt préchargé.
+        from agents.router_agent import is_create_app_request
+        if is_create_app_request(input.message or ""):
+            async def redirect_gen():
+                import json as _j
+                yield "data: " + _j.dumps({
+                    "action": "redirect_to_create",
+                    "prompt": (input.message or "").strip(),
+                    "model": input.model,
+                    "reason": "create_app_request_detected",
+                    "done": True,
+                }) + "\n\n"
+            return StreamingResponse(redirect_gen(), media_type="text/event-stream", headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            })
+
         project_id_eff = input.project_id
         auto_created = False
         if not project_id_eff:
@@ -613,6 +633,7 @@ def build_chat_advanced_router(
 
         async def agent_stream_gen():
             from agents import run_pipeline
+            from agents.common import AIModelUnavailable
             full_text = ""
             idx = 0
             agent_info = None
@@ -640,6 +661,20 @@ def build_chat_advanced_router(
                     elif "agent" in item:
                         agent_info = item["agent"]
                         yield f"data: {json.dumps({'agent': agent_info}, ensure_ascii=False)}\n\n"
+            except AIModelUnavailable as model_err:
+                # Chantier iter161 §P0.1 — Modèle sélectionné non disponible.
+                # Pas de fallback silencieux : erreur explicite via SSE.
+                err_detail = model_err.detail if isinstance(model_err.detail, dict) else {}
+                yield "data: " + json.dumps({
+                    "error": {
+                        "code": err_detail.get("code", "ai_model_unavailable"),
+                        "requested_model": err_detail.get("requested_model") or input.model,
+                        "provider": err_detail.get("provider", "unknown"),
+                        "message": err_detail.get("message") or str(model_err.detail),
+                    },
+                    "done": True,
+                }, ensure_ascii=False) + "\n\n"
+                return
             except Exception as e:
                 logger.warning(f"chat/stream agent pipeline failed: {e}; fallback message")
                 fallback_text = "Désolée, le service de chat est momentanément indisponible. Réessaie dans un instant."
