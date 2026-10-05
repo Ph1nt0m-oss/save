@@ -1,6 +1,78 @@
 # CodeForge AI — Product Requirements
 
 
+## iter159.3 (Oct 2026) — Chantier final avant hiérarchie/design (8 points)
+**Status : COMPLETED (52 tests iter159 PASS + 96 régression iter158 PASS).**
+
+### §1 — Dashboard + sidebar + mobile
+- Cartes centrales élargies ×2 : `max-w-4xl → max-w-6xl` (≈ 1152 px).
+- Hauteur cartes ÷2 : padding `p-3 sm:p-3.5 → p-2 sm:p-2.5`, gap `gap-2 sm:gap-3 → gap-1.5 sm:gap-2`.
+- Sidebar items ÷ ~1.5 : padding `p-3 → p-1.5 sm:p-2`, spacing `space-y-2 → space-y-1`.
+- Titre central compacté : `text-2xl → text-xl`, `mb-3 sm:mb-4 → mb-2 sm:mb-3`.
+- Zero scroll parasite préservé (overflow-y-auto overflow-x-hidden).
+
+### §2 — IA réelle + streaming (déjà traité iter159.2 §3)
+- Prompt `/chat/stream` model-neutral maintenu (Caly scope garanti).
+- Bulle génération affiche le vrai nom du modèle + « L'IA écrit » + 3 dots animés CSS pur.
+- Caly reste strictement `/caly/*`.
+
+### §3 — Renommage normalisé
+- Backend `/chat/stream` création auto : nouvelle fonction `_snap_words()` qui coupe sur mot entier (max 40 chars, pas d'ellipsis finale).
+- Backend `/auto-title` (iter159 §3) toujours là avec LLM + verrou `title_manual`.
+- Frontend `startRename` : nettoie l'ellipsis finale (`.replace(/[…\u2026\s]+$/, '')`) pour que le champ reprenne exactement le titre affiché.
+
+### §4 — Autres comptes (déjà traité iter159.2 §2)
+- Les 12 icônes exactes, toujours visibles, aucun estompement, no-op silencieux via `safeClick`.
+- Backend seule autorité.
+
+### §5 — Rangs (déjà traité iter159 §5)
+- 7 libellés : Approuvé, Utilisateur, Visiteur, Modo, Créa, Non approuvé, Admin.
+
+### §6 — Type de site persistant (preferred-view)
+- Nouveau collection Mongo : `device_preferences { key_id, preferred_view, updated_at }`.
+- Nouveaux endpoints : `GET /api/system/preferred-view?key_id=…` + `PUT /api/system/preferred-view`.
+- Frontend `setStoredViewMode` : backup server-side fire-and-forget à chaque changement.
+- Frontend `useDeviceIdentity.refresh` : si localStorage vide + keyId présent, récupère la vue persistée serveur et la restaure dans localStorage.
+- Validation stricte : `preferred_view ∈ {creator, user, modo, admin, guest}` sinon 400.
+
+### §7 — Ollama polling + lock/unlock automatique
+- `useEffect` offline : check initial + **setInterval(check, 10 s)** pour auto-unlock.
+- Chaque check hit réellement `/system/ollama-status` — pas de cache, pas de faux état.
+- Entrée dans Chat offline **toujours possible**. Si non détecté : banner persistant non-bloquant + input/voice/send/attach **verrouillés** via `offlineLocked = mode === 'offline' && !ollamaAvailable`.
+- Fermeture du banner ne déverrouille **pas**. Dès que le polling détecte Ollama + modèle recommandé → auto-unlock + toast "IA locale détectée — le chat est maintenant déverrouillé".
+- `sendText` : refus silencieux (toast simple), **plus de modal forcé**.
+
+### §8 — Tutoriel adapté à l'appareil
+- Détection renforcée dans `OfflineAIInstaller.jsx` :
+  - `isIPhone` → parcours Private LLM (pas de Termux CMD).
+  - `isAndroidPhone` → nouveau parcours `android_phone` (Termux via F-Droid, pas de .exe, note explicite « PAS depuis une Invite de commandes Windows »).
+  - `isAndroidTablet` (largeur ≥ 600) → nouveau parcours `android_tablet` (modèle 4b si ≥ 6 GB RAM).
+  - `isIPad` (ua OR Mac + touch + ≤ 1366) → parcours `apple` (iPad).
+  - Fallback explicite : `else setOs('windows')` (desktop).
+- Les parcours mobile ne contiennent **jamais** d'`.exe` ni « PowerShell ».
+
+### §9 — Tests
+- **17 nouveaux tests `test_iter159_04_chantier_v3.py`** : dashboard sizing (3), titre normalisé (2), preferred-view (4), Ollama polling + lock (3), tutoriel adapté (3), régressions autres-comptes + rangs (2).
+- Migration de 3 tests iter159.2 → iter159.3 (max-w-6xl, p-2/2.5, gap-1.5/2).
+- Backend endpoints `/api/system/preferred-view` testés HTTP round-trip + Mongo + validation 400.
+
+### Fichiers modifiés
+- `backend/routes/chat_advanced_routes.py` (§3 _snap_words)
+- `backend/routes/system_routes.py` (§6 preferred-view endpoints)
+- `frontend/src/pages/Dashboard.js` (§1 sizing + §3 rename ellipsis)
+- `frontend/src/pages/Chat.js` (§7 polling 10 s + lock input/voice + banner non-bloquant)
+- `frontend/src/hooks/useDeviceIdentity.js` (§6 recovery server-side + backup)
+- `frontend/src/components/OfflineAIInstaller.jsx` (§8 device detection + android_phone + android_tablet)
+- `backend/tests/test_iter159_04_chantier_v3.py` (NEW 17 tests)
+- `backend/tests/test_iter159_02_frontend_static.py` + `test_iter159_03_chantier_v2.py` (migration)
+
+### Garanties
+- Backend d'autorité **inchangé** (ownership_guard, staff_actions, délégations).
+- Aucune fonctionnalité P0 → P2 modifiée.
+- 2 pré-existants `expired_exclude_auto_lifted*` restent hors scope.
+
+---
+
 ## iter159.2 (Oct 2026) — Corrections post-vérification utilisateur (7 points)
 **Status : COMPLETED (35 tests iter159 + 264 régression iter158 PASS).**
 

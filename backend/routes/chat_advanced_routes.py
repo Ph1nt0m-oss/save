@@ -547,8 +547,24 @@ def build_chat_advanced_router(
         project_id_eff = input.project_id
         auto_created = False
         if not project_id_eff:
-            short = (input.message or "Nouveau chat").strip().replace("\n", " ")
-            short = short[:40] + ("…" if len(short) > 40 else "")
+            # Chantier iter159.3 §3 — Normalisation : coupure sur mot entier,
+            # longueur plafonnée à 40 chars, pas d'ellipsis finale (le
+            # frontend se charge du rendu, l'affichage sidebar étant
+            # truncate CSS). Un bon titre LLM remplacera ensuite via
+            # /projects/{id}/auto-title (iter159 §3).
+            raw = (input.message or "Nouveau chat").strip().replace("\n", " ")
+            def _snap_words(txt: str, limit: int = 40) -> str:
+                words = txt.split()
+                out = ""
+                for w in words:
+                    nxt = (out + " " + w).strip()
+                    if len(nxt) > limit:
+                        break
+                    out = nxt
+                if not out:
+                    out = txt[:limit]
+                return out.rstrip(" ,.;:!?-—…").strip() or txt[:limit]
+            short = _snap_words(raw, 40)
             new_proj = {
                 "project_id": f"proj_{uuid.uuid4().hex[:12]}",
                 "user_id": user_id,
@@ -556,6 +572,7 @@ def build_chat_advanced_router(
                 "description": "",
                 "project_type": "chat",
                 "ai_mode": "online",
+                "title_manual": False,  # iter159 — flag initial pour auto-title
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
             await db.projects.insert_one(new_proj)

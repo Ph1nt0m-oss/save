@@ -213,7 +213,12 @@ export default function Dashboard() {
 
   const startRename = (project) => {
     setRenameTarget(project);
-    setRenameValue(project.name || '');
+    // Chantier iter159.3 §3 — Reprendre exactement le titre AFFICHÉ dans
+    // l'onglet (versions normalisée, sans ellipsis finale). L'utilisateur
+    // peut ensuite rallonger s'il le souhaite — le backend verrouille via
+    // title_manual.
+    const displayed = (project.name || '').replace(/[…\u2026\s]+$/, '').trim();
+    setRenameValue(displayed);
     setCtxMenu(null);
   };
 
@@ -869,7 +874,7 @@ export default function Dashboard() {
               </div>
             );
           })()}
-          <div className="space-y-2">
+          <div className="space-y-1">
             {(() => {
               // iter112 — Sidebar nested visuel : on regroupe les projets par chat parent.
               //   - Chats (project_type === 'chat') affichés au top-level.
@@ -941,7 +946,7 @@ export default function Dashboard() {
                   }}
                   onContextMenu={(e) => onProjectContextMenu(e, project)}
                   data-testid={`project-${project.project_id}`}
-                  className={`w-full text-left p-3 rounded-sm border transition-all ${
+                  className={`w-full text-left p-1.5 sm:p-2 rounded-sm border transition-all ${
                     selectedProject?.project_id === project.project_id
                       ? 'bg-[#E4FF00]/10 border-[#E4FF00]'
                       : 'bg-[#050505] border-white/10 hover:border-white/30'
@@ -1284,18 +1289,17 @@ export default function Dashboard() {
         )}
 
         {/* 4 Main Buttons Center
-            Chantier iter159.2 §1 — Élargi (+50 %) + hauteur réduite (−50 %)
-            à la demande de l'utilisateur après vérif. On passe à `max-w-4xl`
-            (≈ 896 px) et on compresse les paddings/gaps pour une hauteur
-            minimale, tout en gardant mono-colonne mobile. Aucun scroll
-            parasite horizontal/vertical sur desktop 67 %, S21 5G 67 % ni
-            tablette (le wrapper reste overflow-y-auto overflow-x-hidden).
+            Chantier iter159.3 §1 — Cartes élargies ×2, hauteur ÷2 à la
+            demande utilisateur. On passe `max-w-4xl` → `max-w-6xl` (soit
+            ~1152 px, double de la version précédente) ET on compresse encore
+            paddings cartes `p-3 sm:p-3.5` → `p-2 sm:p-2.5`. Zero scroll
+            parasite préservé via overflow-y-auto overflow-x-hidden parent.
         */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
           <div className="min-h-full flex items-start justify-center px-3 sm:px-4 lg:px-6 py-2 sm:py-3">
-          <div className="max-w-4xl w-full py-2 sm:py-3">
-            <div className="text-center mb-3 sm:mb-4">
-              <h2 className="text-xl sm:text-2xl lg:text-3xl font-['Chivo'] font-black mb-1 sm:mb-2">
+          <div className="max-w-6xl w-full py-2 sm:py-3">
+            <div className="text-center mb-2 sm:mb-3">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-['Chivo'] font-black mb-1">
                 {t('dashWhatToDo')}
               </h2>
               {projects.length === 0 && (
@@ -1380,14 +1384,14 @@ export default function Dashboard() {
             </motion.button>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 cf-export-blocked" data-testid="main-actions-grid">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 cf-export-blocked" data-testid="main-actions-grid">
               {/* Bouton Chat (en ligne uniquement) */}
               <motion.button
                 whileHover={{ y: -2, scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'online' } }); }}
                 data-testid="online-chat-btn"
-                className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-[#E4FF00]/30 rounded-lg p-2 sm:p-2.5 backdrop-blur-xl hover:border-[#E4FF00] hover:bg-[#E4FF00]/[0.06] hover:shadow-[0_8px_30px_rgba(228,255,0,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-[#E4FF00] rounded-full flex items-center justify-center">
@@ -1407,7 +1411,7 @@ export default function Dashboard() {
                 onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'online' } }); }}
                 data-testid="online-create-btn"
                 data-tour="create"
-                className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-[#00FF66]/30 rounded-lg p-2 sm:p-2.5 backdrop-blur-xl hover:border-[#00FF66] hover:bg-[#00FF66]/[0.06] hover:shadow-[0_8px_30px_rgba(0,255,102,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-[#00FF66] rounded-full flex items-center justify-center">
@@ -1426,7 +1430,7 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/chat', { state: { mode: 'offline' } }); }}
                 data-testid="offline-chat-btn"
-                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-cyan-400/30 rounded-lg p-2 sm:p-2.5 backdrop-blur-xl hover:border-cyan-400 hover:bg-cyan-400/[0.06] hover:shadow-[0_8px_30px_rgba(34,211,238,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-cyan-400 rounded-full flex items-center justify-center">
@@ -1445,7 +1449,7 @@ export default function Dashboard() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => { if (requireWrite()) navigate('/create', { state: { mode: 'offline' } }); }}
                 data-testid="offline-create-btn"
-                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-3 sm:p-3.5 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
+                className="group bg-white/[0.03] border border-purple-400/30 rounded-lg p-2 sm:p-2.5 backdrop-blur-xl hover:border-purple-400 hover:bg-purple-400/[0.06] hover:shadow-[0_8px_30px_rgba(192,132,252,0.2)] transition-all"
               >
                 <div className="flex flex-col items-center text-center space-y-2 sm:space-y-3">
                   <div className="w-11 h-11 sm:w-12 sm:h-12 bg-purple-400 rounded-full flex items-center justify-center">

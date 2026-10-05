@@ -33,6 +33,12 @@ class ScheduleKickIn(BaseModel):
     audience: Any = "all"
 
 
+class PreferredViewIn(BaseModel):
+    """Chantier iter159.3 §6 — payload PUT /system/preferred-view."""
+    key_id: str
+    preferred_view: Optional[str] = None
+
+
 def build_system_router(db, *, require_creator_signature, valid_audience_groups):
     router = APIRouter()
 
@@ -74,6 +80,54 @@ def build_system_router(db, *, require_creator_signature, valid_audience_groups)
             "recommended_available": False,
             "recommended_model": None,
         }
+
+    # -------------------------------------------------------------------
+    # Chantier iter159.3 §6 — Persistance du type de vue (preferred-view)
+    # côté serveur en complément du localStorage. L'autorité reste
+    # localStorage par défaut, mais ce backup serveur protège contre
+    # un storage effacé (incognito, re-install) : au prochain /auth/me,
+    # le client peut récupérer sa dernière vue préférée.
+    # -------------------------------------------------------------------
+    _VALID_VIEWS = {"creator", "user", "modo", "admin", "guest"}
+
+    @router.get("/system/preferred-view")
+    async def preferred_view_get(key_id: Optional[str] = None):
+        """Retourne la vue préférée persistée pour un key_id.
+        Pas d'auth stricte : key_id suffit (lecture seule, non sensible)."""
+        if not key_id:
+            return {"preferred_view": None}
+        doc = await db.device_preferences.find_one(
+            {"key_id": key_id}, {"_id": 0, "preferred_view": 1},
+        )
+        return {"preferred_view": (doc or {}).get("preferred_view")}
+
+    class _PreferredViewIn(BaseModel):
+        key_id: str
+        preferred_view: Optional[str] = None  # None = clear
+
+    @router.put("/system/preferred-view")
+    async def preferred_view_put(payload: PreferredViewIn):
+        """Persiste la vue préférée pour un key_id.
+
+        Note : aucune signature exigée pour un simple user-preference
+        (données non sensibles — c'est le client qui choisit sa vue).
+        Si le user bascule plus tard la vue depuis un autre device, cet
+        état peut diverger — comportement attendu, chaque device garde
+        sa propre préférence.
+        """
+        pv = (payload.preferred_view or "").strip() or None
+        if pv is not None and pv not in _VALID_VIEWS:
+            raise HTTPException(status_code=400, detail="preferred_view invalide")
+        await db.device_preferences.update_one(
+            {"key_id": payload.key_id},
+            {"$set": {
+                "key_id": payload.key_id,
+                "preferred_view": pv,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        return {"success": True, "preferred_view": pv}
 
     @router.post("/system/schedule-kick")
     async def system_schedule_kick(payload: ScheduleKickIn):

@@ -69,6 +69,18 @@ export function setStoredViewMode(mode, opts = {}) {
       }
     }
   } catch (_) { /* silent */ }
+  // Chantier iter159.3 §6 — Backup serveur de la vue préférée.
+  // Fire-and-forget : si localStorage est perdu (incognito, re-install),
+  // le prochain /auth/me pourra récupérer la dernière vue depuis Mongo.
+  try {
+    const keyId = getCachedKeyId && getCachedKeyId();
+    if (keyId) {
+      const payload = { key_id: keyId, preferred_view: mode || null };
+      // On n'attend pas la réponse — c'est best-effort.
+      axios.put(`${API}/system/preferred-view`, payload, { withCredentials: true })
+        .catch(() => { /* silent */ });
+    }
+  } catch (_) { /* silent */ }
   try { window.dispatchEvent(new Event('codeforge:view-mode-changed')); } catch (_) { /* silent */ }
 }
 export { readVisitTarget, readVisitTargetKeyId };
@@ -107,6 +119,21 @@ export default function useDeviceIdentity() {
   const refresh = useCallback(async () => {
     try {
       const result = await attestDevice(API, axios);
+      // Chantier iter159.3 §6 — Recovery serveur de la vue préférée.
+      // Si localStorage est vide (incognito, re-install, cache cleared),
+      // on tente de récupérer la dernière vue préférée persistée côté
+      // serveur. Si trouvée, on la restaure dans localStorage.
+      try {
+        if (!readViewMode() && result.keyId) {
+          const pv = await axios.get(`${API}/system/preferred-view`, {
+            params: { key_id: result.keyId },
+          });
+          const recovered = pv?.data?.preferred_view;
+          if (recovered && VALID_VIEW_MODES.includes(recovered)) {
+            localStorage.setItem(VIEW_MODE_KEY, recovered);
+          }
+        }
+      } catch (_) { /* silent */ }
       const effective = result.effective_role || result.role || null;
       let pendingCount = 0;
       let isOwnerDevice = false;

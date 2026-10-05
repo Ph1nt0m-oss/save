@@ -31,10 +31,9 @@ def _read(p: str) -> str:
 # ---------------------------------------------------------------------------
 
 def test_dashboard_center_section_is_narrower():
-    """iter159 §1 : max-w-2xl. iter159.2 §1 : élargi à max-w-4xl à la
-    demande utilisateur (+50 %)."""
+    """iter159 §1 : max-w-2xl → iter159.2 §1 : max-w-4xl → iter159.3 §1 : max-w-6xl."""
     src = _read("pages/Dashboard.js")
-    assert "max-w-4xl w-full py-" in src, "max-w-4xl manquant sur le conteneur central"
+    assert "max-w-6xl w-full py-" in src, "max-w-6xl manquant (iter159.3)"
     assert "max-w-5xl w-full" not in src, "max-w-5xl encore présent"
 
 

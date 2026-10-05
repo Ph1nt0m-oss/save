@@ -26,17 +26,16 @@ def _read(p: str) -> str:
 # ---------------------------------------------------------------------------
 
 def test_dashboard_main_grid_tighter_gap():
-    """Grille principale : gap-2 sm:gap-3 (réduit depuis gap-3 sm:gap-4)."""
+    """iter159.3 : gap réduit à gap-1.5 sm:gap-2 (vs gap-2 sm:gap-3)."""
     src = _read("pages/Dashboard.js")
-    assert 'grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 cf-export-blocked" data-testid="main-actions-grid"' in src
+    assert 'grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 cf-export-blocked" data-testid="main-actions-grid"' in src
 
 
 def test_dashboard_cards_padding_reduced():
-    """Les 4 cartes principales : p-3 sm:p-3.5 (hauteur réduite ~50 %)."""
+    """iter159.3 : cartes p-2 sm:p-2.5 (hauteur ÷2 vs p-3/3.5)."""
     src = _read("pages/Dashboard.js")
-    # Au moins 4 occurrences du nouveau padding compact.
-    hits = src.count("rounded-lg p-3 sm:p-3.5 backdrop-blur-xl")
-    assert hits >= 4, f"Attendu >=4 cartes à padding p-3/p-3.5, trouvé {hits}"
+    hits = src.count("rounded-lg p-2 sm:p-2.5 backdrop-blur-xl")
+    assert hits >= 4, f"Attendu >=4 cartes à padding p-2/p-2.5, trouvé {hits}"
 
 
 # ---------------------------------------------------------------------------

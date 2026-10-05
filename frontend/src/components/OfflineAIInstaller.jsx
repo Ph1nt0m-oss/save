@@ -25,15 +25,34 @@ export default function OfflineAIInstaller({ open, onClose, onInstalled }) {
 
   useEffect(() => {
     if (!open) return;
-    // Auto-detect OS de l'utilisateur
+    // Chantier iter159.3 §8 — Détection d'appareil renforcée pour un tutoriel
+    // réellement adapté. Priorités :
+    //   phone  = iPhone / Android smartphone (jamais de CMD/PowerShell)
+    //   tablet = iPad / Android tablet (parcours adapté, pas de commandes
+    //            inappropriées à son environnement)
+    //   desktop = Windows / macOS / Linux desktop (instructions complètes)
+    // Fallback = desktop si on ne peut rien conclure.
     const ua = navigator.userAgent.toLowerCase();
-    if (/iphone|ipod/.test(ua)) setOs('iphone');
-    else if (/ipad/.test(ua)) setOs('apple');
-    else if (/samsung/.test(ua)) setOs('samsung');
-    else if (/xiaomi|miui|redmi/.test(ua)) setOs('xiaomi');
+    const hasTouch = (typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 1);
+    const w = (typeof window !== 'undefined') ? window.innerWidth : 1024;
+    // iPad detection : UA ou (Mac + touch, cas iPadOS >= 13).
+    const isIPad = /ipad/.test(ua) || (ua.includes('mac') && hasTouch && w <= 1366);
+    const isIPhone = /iphone|ipod/.test(ua);
+    const isAndroid = /android/.test(ua);
+    const isAndroidTablet = isAndroid && w >= 600; // heuristique largeur
+    const isAndroidPhone = isAndroid && !isAndroidTablet;
+    if (isIPhone) setOs('iphone');
+    else if (isAndroidPhone) {
+      if (/samsung/.test(ua)) setOs('samsung');
+      else if (/xiaomi|miui|redmi/.test(ua)) setOs('xiaomi');
+      else setOs('android_phone');
+    }
+    else if (isIPad) setOs('apple');  // iPad : tutoriel « apple tablette »
+    else if (isAndroidTablet) setOs('android_tablet');
     else if (ua.includes('win')) setOs('windows');
     else if (ua.includes('mac')) setOs('mac');
-    else if (ua.includes('linux') || /android/.test(ua)) setOs('linux');
+    else if (ua.includes('linux')) setOs('linux');
+    else setOs('windows'); // Fallback desktop
     recheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -126,6 +145,34 @@ export default function OfflineAIInstaller({ open, onClose, onInstalled }) {
         { label: '4. Installer Ollama', kind: 'cmd', cmd: 'curl -fsSL https://ollama.com/install.sh | sh' },
         { label: '5. Lancer Ollama', kind: 'cmd', cmd: 'ollama serve &' },
         { label: '6. Modèle léger pour MIUI', kind: 'cmd', cmd: 'ollama pull gemma3:2b' },
+      ],
+    },
+    // Chantier iter159.3 §8 — Parcours spécifique Android smartphone générique
+    // (ni Samsung, ni Xiaomi). Pas de commandes CMD/PowerShell (jamais sur
+    // mobile). Instructions limitées à ce qui est techniquement possible.
+    android_phone: {
+      title: 'Smartphone Android',
+      steps: [
+        { label: '1. Installer l\'app « Termux » depuis F-Droid (évite le Play Store, obsolète)', kind: 'link', url: 'https://f-droid.org/packages/com.termux/', text: 'f-droid.org — Termux' },
+        { label: '2. Dans Termux, tape ces commandes (interface clavier mobile) — PAS depuis une « Invite de commandes » Windows', kind: 'note' },
+        { label: '3. Mettre à jour Termux', kind: 'cmd', cmd: 'pkg update && pkg upgrade -y' },
+        { label: '4. Installer Ollama', kind: 'cmd', cmd: 'curl -fsSL https://ollama.com/install.sh | sh' },
+        { label: '5. Démarrer Ollama en arrière-plan', kind: 'cmd', cmd: 'ollama serve &' },
+        { label: '6. Télécharger un modèle léger adapté au RAM d\'un smartphone (1-2 GB)', kind: 'cmd', cmd: 'ollama pull gemma3:2b' },
+        { label: '7. Attention : les smartphones Android bas de gamme (< 4 GB RAM) ne pourront pas faire tourner Ollama.', kind: 'note' },
+      ],
+    },
+    // Chantier iter159.3 §8 — Parcours Android tablette : variante avec
+    // plus de puissance disponible, modèle légèrement plus gros.
+    android_tablet: {
+      title: 'Tablette Android',
+      steps: [
+        { label: '1. Installer Termux depuis F-Droid', kind: 'link', url: 'https://f-droid.org/packages/com.termux/', text: 'f-droid.org — Termux' },
+        { label: '2. Mettre à jour Termux (dans Termux, pas une Invite Windows)', kind: 'cmd', cmd: 'pkg update && pkg upgrade -y' },
+        { label: '3. Installer Ollama', kind: 'cmd', cmd: 'curl -fsSL https://ollama.com/install.sh | sh' },
+        { label: '4. Démarrer Ollama', kind: 'cmd', cmd: 'ollama serve &' },
+        { label: '5. Télécharger un modèle adapté (si tablette avec ≥ 6 GB RAM)', kind: 'cmd', cmd: 'ollama pull gemma3:4b' },
+        { label: '6. Si tablette < 4 GB RAM, préférer le modèle léger', kind: 'cmd', cmd: 'ollama pull gemma3:2b' },
       ],
     },
   };

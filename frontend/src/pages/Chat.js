@@ -107,26 +107,41 @@ export default function Chat() {
   // Chantier iter159.2 §6 — RE-CONTRÔLE à chaque entrée (pas de cache
   // considéré définitif). On rejette aussi l'accès au tchat si un modèle
   // chat recommandé n'est pas installé (sinon on affiche le tutoriel natif).
+  // Chantier iter159.3 §7 — POLLING continu toutes les 10s en offline :
+  // le chat se déverrouille AUTOMATIQUEMENT dès qu'une détection réelle
+  // valide un modèle compatible, sans rechargement. Pas de « faux état »
+  // déverrouillant : chaque check hit effectivement `/system/ollama-status`.
   const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
-  const [ollamaAvailable, setOllamaAvailable] = useState(true);
+  const [ollamaAvailable, setOllamaAvailable] = useState(mode !== 'offline');
+  const [ollamaChecking, setOllamaChecking] = useState(mode === 'offline');
   useEffect(() => {
-    if (mode !== 'offline') return;
+    if (mode !== 'offline') { setOllamaAvailable(true); return; }
     let cancelled = false;
-    // Note : CHAQUE entrée dans Chat offline relance le check (useEffect dep
-    // sur `mode`). Pas de store global persistant.
-    axios.get(`${API}/system/ollama-status`, { withCredentials: false })
+    const check = () => axios.get(`${API}/system/ollama-status`, { withCredentials: false })
       .then(r => {
         if (cancelled) return;
         const online = !!r.data?.available;
         const recOk = !!r.data?.recommended_available;
-        // iter159.2 §6 — on considère "disponible pour le tchat" seulement si
-        // Ollama répond ET qu'un modèle recommandé est bien pullé.
         const ok = online && recOk;
-        setOllamaAvailable(ok);
-        if (!ok) setShowOfflineInstaller(true);
+        setOllamaAvailable((prev) => {
+          // Déverrouillage auto si on passe de false → true.
+          if (!prev && ok) {
+            try { toast.success('IA locale détectée — le chat est maintenant déverrouillé.'); } catch (_) {}
+          }
+          return ok;
+        });
+        setOllamaChecking(false);
       })
-      .catch(() => { if (!cancelled) { setOllamaAvailable(false); setShowOfflineInstaller(true); } });
-    return () => { cancelled = true; };
+      .catch(() => {
+        if (cancelled) return;
+        setOllamaAvailable(false);
+        setOllamaChecking(false);
+      });
+    check();
+    // Polling 10s pour auto-unlock. Pas de faux état : chaque tick hit
+    // réellement l'endpoint, pas de cache serveur, pas de valeur persistée.
+    const iv = setInterval(check, 10000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, [mode]);
 
   useEffect(() => {
@@ -318,12 +333,13 @@ export default function Chat() {
   // Shared sender — used by the form, Enter key, and the voice "send" mic.
   const sendText = async (userMessage, opts = {}) => {
     if (!userMessage || isLoading) return;
-    // Chantier iter159.2 §6 — Refus d'envoi en offline si Ollama/modèle
-    // recommandé absents (check à chaque entrée via useEffect, aucun cache
-    // considéré définitif).
+    // Chantier iter159.3 §7 — Refus silencieux d'envoi en offline si Ollama
+    // pas prêt (le verrou visuel du formulaire est le feedback principal).
+    // On n'ouvre PLUS automatiquement le tutoriel ici — c'est à l'utilisateur
+    // de cliquer "Voir le tutoriel" dans le banner. Le polling 10s déverrouille
+    // automatiquement dès qu'un modèle compatible est détecté.
     if (mode === 'offline' && !ollamaAvailable) {
-      setShowOfflineInstaller(true);
-      toast.error('IA locale non détectée. Installe Ollama + un modèle recommandé.');
+      toast.error('IA locale non détectée — l\'écriture est verrouillée.');
       return;
     }
     setIsLoading(true);
@@ -934,6 +950,29 @@ export default function Chat() {
               physique (le composant filtre lui-même). Aucun impact si non
               affichée. */}
           <CreatorChatPersonaBar value={creatorPersona} onChange={setCreatorPersona} className="mb-2" />
+          {/* Chantier iter159.3 §7 — Verrou visuel offline : non-bloquant.
+              Le user peut fermer le tutoriel, mais écriture + voix restent
+              verrouillées tant que la détection n'est pas valide. Dès que le
+              polling 10s détecte Ollama + modèle recommandé, auto-unlock. */}
+          {mode === 'offline' && !ollamaAvailable && (
+            <div
+              data-testid="chat-offline-lock-banner"
+              className="mb-2 px-3 py-2 bg-white/[0.04] border border-amber-400/40 rounded-sm text-xs text-amber-200 flex items-center gap-2"
+            >
+              <Lock className="w-3 h-3 flex-shrink-0" />
+              <span className="flex-1">
+                {ollamaChecking ? 'Détection IA locale en cours…' : 'IA locale non détectée. Fonctions d\'écriture et vocales verrouillées jusqu\'à détection réussie.'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowOfflineInstaller(true)}
+                data-testid="chat-offline-install-link"
+                className="text-amber-300 hover:text-amber-200 underline underline-offset-2"
+              >
+                Voir le tutoriel
+              </button>
+            </div>
+          )}
           {!canWrite && (
             <div
               data-testid="chat-readonly-banner"
@@ -970,33 +1009,46 @@ export default function Chat() {
             </div>
           )}
           <div className="flex gap-2 sm:gap-3 items-end">
-            <AttachMenu onResult={handleAttachment} disabled={isLoading || analyzingAtt || !canWrite} />
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={canWrite ? t('chatPlaceholder') : t('ro_chat_placeholder')}
-              disabled={isLoading || !canWrite}
-              rows={1}
-              data-testid="chat-input"
-              className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none disabled:opacity-50 resize-y min-h-[48px] max-h-[200px] font-['IBM_Plex_Sans']"
-              style={{ borderColor: input ? modeColor : undefined }}
-            />
-            <VoiceRecorder mode="dictate" onResult={handleVoiceResult} disabled={isLoading || !canWrite} language={language} />
-            <VoiceRecorder mode="send"    onResult={handleVoiceResult} disabled={isLoading || !canWrite} language={language} />
-            <Button
-              type="submit"
-              disabled={isLoading || !input.trim() || !canWrite}
-              size="lg"
-              data-testid="chat-send-btn"
-              className="px-4 sm:px-8 flex-shrink-0"
-              style={{ backgroundColor: modeColor, color: '#050505' }}
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
-            </Button>
+            {/* Chantier iter159.3 §7 — Verrouillage réel écriture + voix :
+                si mode=offline et IA locale non détectée, ces contrôles
+                sont désactivés jusqu'à auto-unlock par polling. */}
+            {(() => {
+              const offlineLocked = mode === 'offline' && !ollamaAvailable;
+              const writeDisabled = isLoading || !canWrite || offlineLocked;
+              const voiceDisabled = isLoading || !canWrite || offlineLocked;
+              return (
+                <>
+                  <AttachMenu onResult={handleAttachment} disabled={isLoading || analyzingAtt || !canWrite || offlineLocked} />
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={offlineLocked ? 'IA locale non détectée — écriture verrouillée' : (canWrite ? t('chatPlaceholder') : t('ro_chat_placeholder'))}
+                    disabled={writeDisabled}
+                    rows={1}
+                    data-testid="chat-input"
+                    data-offline-locked={offlineLocked ? '1' : '0'}
+                    className="flex-1 min-w-0 px-3 sm:px-4 py-3 bg-[#0F0F13] border border-white/20 rounded-lg focus:outline-none disabled:opacity-50 resize-y min-h-[48px] max-h-[200px] font-['IBM_Plex_Sans']"
+                    style={{ borderColor: input ? modeColor : undefined }}
+                  />
+                  <VoiceRecorder mode="dictate" onResult={handleVoiceResult} disabled={voiceDisabled} language={language} />
+                  <VoiceRecorder mode="send"    onResult={handleVoiceResult} disabled={voiceDisabled} language={language} />
+                  <Button
+                    type="submit"
+                    disabled={writeDisabled || !input.trim()}
+                    size="lg"
+                    data-testid="chat-send-btn"
+                    className="px-4 sm:px-8 flex-shrink-0"
+                    style={{ backgroundColor: modeColor, color: '#050505' }}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
+                  </Button>
+                </>
+              );
+            })()}
           </div>
         </form>
       </div>
