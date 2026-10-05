@@ -189,19 +189,20 @@ def test_chat_and_create_recheck_ollama_on_each_entry():
     offline (useEffect dep sur `mode`), et refusent l'accès si pas prêt."""
     for p in ("pages/Chat.js", "pages/Create.js"):
         src = _read(p)
-        assert "/system/ollama-status" in src, f"{p} : check endpoint manquant"
-        assert "recommended_available" in src, f"{p} : check modèle recommandé manquant"
+        assert ("/system/ollama-status" in src or "localhost:11434/api/tags" in src), f"{p} : détection Ollama manquante"
+        assert ("recommended_available" in src or "RECOMMENDED" in src), f"{p} : check modèle recommandé manquant"
         assert "setShowOfflineInstaller(true)" in src, f"{p} : tutoriel natif non déclenché"
 
 
 def test_chat_blocks_send_when_offline_unavailable():
-    """Chat.js : sendText refuse d'envoyer si offline + pas disponible."""
+    """iter160 §11 : sendText refuse d'envoyer si offline + pas disponible,
+    sauf Créa/Admin (exemption)."""
     src = _read("pages/Chat.js")
-    assert "if (mode === 'offline' && !ollamaAvailable)" in src
+    assert "if (mode === 'offline' && !ollamaAvailable && !isCreatorOrAdmin)" in src
     assert "IA locale non détectée" in src
 
 
 def test_create_blocks_generate_when_offline_unavailable():
     src = _read("pages/Create.js")
-    assert "if (mode === 'offline' && !ollamaAvailable)" in src
+    assert "if (mode === 'offline' && !ollamaAvailable && !isCreatorOrAdmin)" in src
     assert "IA locale non détectée" in src

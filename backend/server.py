@@ -1690,23 +1690,21 @@ IMPORTANT:
             }
             provider, model_id = CREATE_MODEL_ROUTES.get(requested_model, ("anthropic", "claude-fable-5"))
 
-            # Silent multi-model cascade — Claude Fable 5 en tête (meilleur pour le code).
-            generation_chain = [
-                (provider, model_id),
-                ("anthropic", "claude-fable-5"),
-                ("anthropic", "claude-sonnet-4-5-20250929"),
-                ("openai",    "gpt-5.2"),
-                ("gemini",    "gemini-3-flash-preview"),
-                ("anthropic", "claude-haiku-4-5-20251001"),
-                ("openai",    "gpt-5"),
-                ("anthropic", "claude-opus-4-5-20251101"),
-            ]
-            seen_gen = set()
-            ordered_gen_chain = []
-            for pair in generation_chain:
-                if pair not in seen_gen:
-                    seen_gen.add(pair)
-                    ordered_gen_chain.append(pair)
+            # Chantier iter160 §6 — SUPPRESSION du fallback silencieux en Création.
+            # Si l'IA sélectionnée n'a pas de handler réel ou échoue, erreur explicite.
+            UNSUPPORTED_PROVIDERS = {"emergent", "vexub", "lindy"}
+            if provider in UNSUPPORTED_PROVIDERS:
+                raise HTTPException(
+                    status_code=501,
+                    detail={
+                        "code": "ai_integration_not_configured",
+                        "requested_model": requested_model,
+                        "provider": provider,
+                        "message": f"Intégration {provider} non configurée pour la Création — ce modèle n'a pas de handler réel branché.",
+                    },
+                )
+            # Un seul essai : le modèle choisi, point final.
+            ordered_gen_chain = [(provider, model_id)]
 
             system_msg = (
                 "Tu es CodeForge AI Builder, un architecte logiciel + développeur full-stack senior + QA tester intégré, équivalent à un dev humain expérimenté. "
@@ -2575,25 +2573,26 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                 # ever surfacing the error to the user.
                 # -------------------------------------------------------------
                 primary = (provider, model_id)
-                # Build a deduplicated fallback chain: primary first, then a
-                # diversified mix across providers so a single budget cap on
-                # one provider never blocks the chat.
-                fallback_chain = [
-                    primary,
-                    ("anthropic", "claude-sonnet-4-5-20250929"),
-                    ("openai",    "gpt-5.2"),
-                    ("gemini",    "gemini-3-flash-preview"),
-                    ("anthropic", "claude-haiku-4-5-20251001"),
-                    ("gemini",    "gemini-2.5-pro"),
-                    ("openai",    "gpt-5"),
-                    ("anthropic", "claude-opus-4-5-20251101"),
-                ]
-                seen_pairs = set()
-                ordered_chain = []
-                for pair in fallback_chain:
-                    if pair not in seen_pairs:
-                        seen_pairs.add(pair)
-                        ordered_chain.append(pair)
+                # Chantier iter160 §3 — SUPPRESSION DU FALLBACK SILENCIEUX.
+                # L'utilisateur doit savoir ce qui s'est RÉELLEMENT passé.
+                # Le modèle sélectionné est appelé une et une seule fois.
+                # Si échec : erreur explicite remontée au frontend avec le
+                # modèle demandé, pas de bascule invisible vers Claude.
+                # Chantier iter160 §2 — IA SANS HANDLER RÉEL → erreur explicite.
+                UNSUPPORTED_PROVIDERS = {"emergent", "vexub", "lindy"}
+                if provider in UNSUPPORTED_PROVIDERS:
+                    # Pas de bascule : l'intégration réelle n'existe pas.
+                    raise HTTPException(
+                        status_code=501,
+                        detail={
+                            "code": "ai_integration_not_configured",
+                            "requested_model": model_choice,
+                            "provider": provider,
+                            "message": f"Intégration {provider} non configurée — ce modèle n'a pas de handler réel branché. "
+                                       f"Choisis un autre modèle (OpenAI, Anthropic, Gemini, ou Grok si XAI_API_KEY est définie).",
+                        },
+                    )
+                ordered_chain = [primary]
 
                 # iter149/156 — Identité registry + profil Créa (isolés par agent).
                 # Chaque modèle (gpt_5_5, claude_4_6_sonnet, claude_5_fable…) reçoit
@@ -2625,67 +2624,104 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
                 last_error = None
 
                 # iter91 — Si provider=="xai" et XAI_API_KEY dispo, appeler Grok directement.
-                # Sinon, la cascade emergentintegrations gère le fallback.
+                # Chantier iter160 §3 — Sans XAI_API_KEY, PAS de fallback cascade.
+                # Erreur explicite remontée.
                 if provider == "xai":
                     try:
                         from grok_integration import is_xai_available, grok_chat
-                        if is_xai_available():
-                            grok_response = await grok_chat(
-                                prompt=composed,
-                                model=model_id,
-                                system_message=system_prompt,
-                                timeout_sec=60,
+                        if not is_xai_available():
+                            raise HTTPException(
+                                status_code=501,
+                                detail={
+                                    "code": "ai_grok_key_missing",
+                                    "requested_model": model_choice,
+                                    "provider": "xai",
+                                    "message": "Grok (xAI) sélectionné mais XAI_API_KEY absente du backend. "
+                                               "Ajoute une clé xAI dans /app/backend/.env pour activer ce modèle.",
+                                },
                             )
-                            if grok_response and grok_response.strip():
-                                ai_response_text = grok_response.strip()
-                                ai_source = f"xai:{model_id}"
-                                logger.info(f"✅ Grok response via xAI API ({model_id})")
+                        grok_response = await grok_chat(
+                            prompt=composed,
+                            model=model_id,
+                            system_message=system_prompt,
+                            timeout_sec=60,
+                        )
+                        if grok_response and grok_response.strip():
+                            ai_response_text = grok_response.strip()
+                            ai_source = f"xai:{model_id}"
+                            logger.info(f"✅ Grok response via xAI API ({model_id})")
+                        else:
+                            # Grok a répondu vide — pas de fallback silencieux.
+                            raise HTTPException(
+                                status_code=502,
+                                detail={
+                                    "code": "ai_empty_response",
+                                    "requested_model": model_choice,
+                                    "provider": "xai",
+                                    "message": "Grok a renvoyé une réponse vide.",
+                                },
+                            )
+                    except HTTPException:
+                        raise
                     except Exception as exc:
-                        logger.warning(f"Grok xAI call failed → fallback cascade: {exc}")
-                        last_error = exc
+                        logger.warning(f"Grok xAI call failed: {exc}")
+                        raise HTTPException(
+                            status_code=502,
+                            detail={
+                                "code": "ai_provider_error",
+                                "requested_model": model_choice,
+                                "provider": "xai",
+                                "message": f"Appel Grok échoué : {str(exc)[:200]}",
+                            },
+                        )
 
                 # Si Grok n'a pas répondu (pas de clé ou erreur) → cascade Emergent normale.
+                # Chantier iter160 §3 — Plus de « cascade » : UN seul appel au
+                # modèle choisi. Si échec : erreur explicite remontée.
                 if not ai_response_text:
-                    for idx, (p, mid) in enumerate(ordered_chain):
-                        try:
-                            chat = LlmChat(
-                                api_key=emergent_key,
-                                session_id=session_id,
-                                system_message=system_prompt,
-                            ).with_model(p, mid)
-                            candidate = (await chat.send_message(user_message) or '').strip()
-                            if candidate:
-                                ai_response_text = candidate
-                                ai_source = f"emergent:{p}:{mid}"
-                                if idx == 0:
-                                    logger.info(f"✅ Chat response successful via {ai_source}")
-                                else:
-                                    logger.warning(
-                                        f"↪️  Silent fallback succeeded on attempt {idx + 1} "
-                                        f"via {ai_source} after error: {last_error}"
-                                    )
-                                break
-                            # Empty response → try next.
-                            last_error = "empty response"
-                            logger.warning(f"Empty response from {p}:{mid}, trying next in cascade")
-                            continue
-                        except Exception as model_err:
-                            last_error = str(model_err)[:300]
-                            if _is_recoverable(model_err):
-                                logger.warning(
-                                    f"⚠️  Recoverable error on {p}:{mid} "
-                                    f"(attempt {idx + 1}/{len(ordered_chain)}) → falling back silently: {last_error}"
-                                )
-                                continue
-                            # Non-recoverable: still try the next one — UX > strictness.
-                            logger.warning(
-                                f"⚠️  Unexpected error on {p}:{mid} → cascading anyway: {last_error}"
+                    p, mid = ordered_chain[0]
+                    try:
+                        chat = LlmChat(
+                            api_key=emergent_key,
+                            session_id=session_id,
+                            system_message=system_prompt,
+                        ).with_model(p, mid)
+                        candidate = (await chat.send_message(user_message) or '').strip()
+                        if candidate:
+                            ai_response_text = candidate
+                            ai_source = f"emergent:{p}:{mid}"
+                            logger.info(f"✅ Chat response successful via {ai_source}")
+                        else:
+                            raise HTTPException(
+                                status_code=502,
+                                detail={
+                                    "code": "ai_empty_response",
+                                    "requested_model": model_choice,
+                                    "provider": p,
+                                    "message": f"Le modèle {model_choice} a renvoyé une réponse vide.",
+                                },
                             )
-                            continue
+                    except HTTPException:
+                        raise
+                    except Exception as model_err:
+                        logger.error(f"Model {p}:{mid} failed: {model_err}")
+                        raise HTTPException(
+                            status_code=502,
+                            detail={
+                                "code": "ai_provider_error",
+                                "requested_model": model_choice,
+                                "provider": p,
+                                "message": f"Appel à {model_choice} échoué : {str(model_err)[:200]}",
+                            },
+                        )
 
                 if not ai_response_text:
                     # Whole cascade failed — let the outer fallback (offline msg) kick in.
                     logger.error(f"All cascade models failed. Last error: {last_error}")
+            except HTTPException:
+                # Chantier iter160 §3 — Erreur explicite modèle sélectionné :
+                # ne JAMAIS la swallow, elle doit remonter telle quelle au client.
+                raise
             except Exception as emergent_error:
                 # iter158.8 — P0.1 : classify_ai_error pour cascade Emergent
                 from utils.ai_error_mapper import classify_ai_error
@@ -2819,6 +2855,12 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
             "content": ai_response_text,
             "mode": input.mode,
             "ai_source": ai_source,
+            # Chantier iter160 §4 — Identité RÉELLE du modèle qui a répondu.
+            # `requested_model` = ce que l'utilisateur a choisi.
+            # `model_used`      = ce qui a RÉELLEMENT répondu (parsé de ai_source).
+            # Si les deux diffèrent, le frontend DOIT le rendre visible (pas de masquage).
+            "requested_model": (input.model or "gpt-5.2").lower(),
+            "model_used": ai_source,
             "download": download,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
@@ -2834,6 +2876,9 @@ async def _send_chat_message_impl(user_id: str, input: "ChatMessageInput"):
             "project_id": project_id_eff,  # so frontend can navigate back to this chat
         }
     
+    except HTTPException:
+        # iter160 §3 — Erreur explicite IA remontée avec son payload structuré.
+        raise
     except Exception as e:
         logger.error(f"Error in chat: {e}")
         raise HTTPException(status_code=500, detail=f"Erreur de chat: {str(e)}")

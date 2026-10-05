@@ -59,12 +59,19 @@ export default function OfflineAIInstaller({ open, onClose, onInstalled }) {
 
   const recheck = async () => {
     setChecking(true);
+    // Chantier iter160 §8 — Détection RÉELLE côté navigateur (localhost user).
     try {
-      const r = await axios.get(`${API}/system/ollama-status`);
-      const ok = !!r.data?.available;
+      const r = await fetch('http://localhost:11434/api/tags', {
+        method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(3000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const installed = (data.models || []).map((m) => m.name).filter(Boolean);
+      const RECOMMENDED = ['gemma3:4b','gemma3:2b','deepseek-r1:7b','llama3.2','llama3.2:3b','llama3.2:8b','gemma3:latest','gemma:latest','llama3:latest'];
+      const hit = installed.find((n) => RECOMMENDED.includes(n) || RECOMMENDED.some((x) => n.startsWith(x.split(':')[0] + ':')));
+      const ok = !!hit;
       setDetected(ok);
       if (ok) {
-        // Notifier le parent et fermer après 1s
         setTimeout(() => { onInstalled?.(); onClose?.(); }, 1200);
       }
     } catch {

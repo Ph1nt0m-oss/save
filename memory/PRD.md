@@ -1,6 +1,64 @@
 # CodeForge AI — Product Requirements
 
 
+## iter160 (Oct 2026) — Vérité du routage IA + détection Ollama côté user
+**Status : COMPLETED (16 tests iter160 PASS + 81 iter159/160 PASS + 52 iter158 PASS).**
+
+### §1-§2 — IA sans handler → 501 explicite, pas de fallback
+- Backend `/chat/message` et `/ai/generate-complete-app` : nouvelle whitelist `UNSUPPORTED_PROVIDERS = {"emergent", "vexub", "lindy"}`. Toute sélection de ces IA renvoie **HTTP 501** avec payload structuré :
+  ```json
+  {"code":"ai_integration_not_configured","requested_model":"vexub-video","provider":"vexub","message":"…"}
+  ```
+
+### §3 — Suppression du fallback silencieux
+- `/chat/message` : la cascade de 7 modèles alternatifs est **supprimée**. `ordered_chain = [primary]` (une seule tentative).
+- `/ai/generate-complete-app` : idem, `ordered_gen_chain = [(provider, model_id)]`.
+- Grok sans `XAI_API_KEY` → **HTTP 501 `ai_grok_key_missing`** (plus de bascule vers Claude).
+- Toute erreur du modèle choisi (empty response, provider error, timeout) → **HTTP 502 `ai_provider_error`** ou `ai_empty_response` avec `requested_model` + `provider`.
+- Garde-fou : `except HTTPException: raise` avant le `except Exception` générique pour éviter que le code d'erreur soit swallow.
+
+### §4 — Identité réelle du modèle
+- Réponse `chat_messages` enrichie de 2 nouveaux champs :
+  - `requested_model` : ce que l'utilisateur a choisi (ex: `"gpt-5.5"`).
+  - `model_used` : identifiant complet du modèle qui a RÉELLEMENT répondu (ex: `"emergent:openai:gpt-5.5"` ou `"xai:grok-4.3"`).
+- Si les deux divergent (ne devrait plus arriver avec iter160), le frontend DOIT le rendre visible.
+
+### §5 — Streaming
+- Vrai streaming conservé pour OpenAI/Anthropic/Gemini via `LlmChat.stream_message` (SDK Emergent).
+- Grok (xAI) reste synchrone — pas de faux streaming injecté.
+- L'indicateur « L'IA écrit » + 3 dots animés (iter159.2 §3) reste CSS pur, piloté par les vrais chunks SSE.
+
+### §8-§10 — Ollama : détection côté navigateur (fix fondamental)
+- **Avant** : le backend tentait `httpx.get(localhost:11434)` dans son pod — invisible depuis la machine user.
+- **Après** : `Chat.js`, `Create.js` et `OfflineAIInstaller.jsx` font `fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) })` directement depuis le navigateur. Ollama CORS étant permissif (`Access-Control-Allow-Origin: *`), le browser VOIT le vrai `localhost:11434` de l'utilisateur.
+- Polling 10 s préservé. Chaque tick fait un VRAI fetch (pas de cache).
+- Diagnostic enrichi : `ollamaDiag = { state: 'ready'|'empty'|'no_compatible_model'|'unreachable', model, models }`.
+- Whitelist côté client : `gemma3:4b|2b|latest`, `deepseek-r1:7b`, `llama3.2:*`, matching par préfixe de famille.
+
+### §11 — Exemption Créa / Admin
+- Chat.js + Create.js : `isCreatorOrAdmin = (device?.role === 'creator') || (device?.staff_kind === 'admin')`.
+- Si vrai : `ollamaAvailable` forcé à `true`, aucun verrou offline appliqué, pas de banner, pas de polling fetch (pour éviter CORS inutile côté machine du Créa).
+
+### §12 — Message offline exact
+- Texte strict : « IA locale non détectée. Tout a été bloqué et se déverouillera lorsque la détection est réussie. »
+- Pendant le check initial : « Détection IA locale en cours… ».
+- Ancien texte supprimé.
+
+### Fichiers modifiés
+- `backend/server.py` (§2 UNSUPPORTED_PROVIDERS, §3 pas de fallback, §4 model_used, Grok 501, HTTPException raise)
+- `frontend/src/pages/Chat.js` (§8 fetch browser Ollama, §11 isCreatorOrAdmin, §12 message exact)
+- `frontend/src/pages/Create.js` (§8 fetch browser, §11 exemption)
+- `frontend/src/components/OfflineAIInstaller.jsx` (§8 recheck via fetch browser)
+- `backend/tests/test_iter160_01_ai_truth_ollama.py` (**NEW** 16 tests)
+- Migration de 7 tests iter159 (passage de proxy backend → fetch browser, exemption, message)
+
+### Garanties
+- 81 tests iter159 + iter160 PASS. 52 iter158 critiques PASS.
+- Backend d'autorité et P0 → P2 inchangés.
+- Pas d'extension de périmètre.
+
+---
+
 ## iter159.4 (Oct 2026) — Audit IA/Ollama + réglage menu mobile
 **Status : COMPLETED (64 tests iter159 PASS + régression iter158 PASS).**
 

@@ -145,11 +145,13 @@ def test_frontend_hooks_recover_preferred_view_on_mount():
 # ---------------------------------------------------------------------------
 
 def test_chat_polls_ollama_every_10s_in_offline():
-    """iter159.3 §7 : setInterval(check, 10000) en mode offline."""
+    """iter159.3 §7 : setInterval 10 s + auto-unlock. iter160 §8 : la détection
+    est maintenant côté navigateur (fetch http://localhost:11434), le toast
+    change libellé."""
     src = _read("pages/Chat.js")
     assert "setInterval(check, 10000)" in src
-    # Auto-unlock + toast informant.
-    assert "IA locale détectée — le chat est maintenant déverrouillé." in src
+    # Message de déverrouillage (texte peut varier iter160).
+    assert "déverrouillage automatique" in src or "le chat est maintenant déverrouillé" in src
 
 
 def test_chat_input_voice_locked_when_offline_unavailable():

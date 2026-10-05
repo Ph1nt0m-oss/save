@@ -104,45 +104,74 @@ export default function Chat() {
   // ("c'est chiant de tjrs cliquer sur fermer"). Le widget et l'appel LLM
   // /chat/suggest-enhancements sont désactivés côté UI.
   // iter90 — Mode hors-ligne : auto-détecte Ollama + propose le tuto si absent.
-  // Chantier iter159.2 §6 — RE-CONTRÔLE à chaque entrée (pas de cache
-  // considéré définitif). On rejette aussi l'accès au tchat si un modèle
-  // chat recommandé n'est pas installé (sinon on affiche le tutoriel natif).
-  // Chantier iter159.3 §7 — POLLING continu toutes les 10s en offline :
-  // le chat se déverrouille AUTOMATIQUEMENT dès qu'une détection réelle
-  // valide un modèle compatible, sans rechargement. Pas de « faux état »
-  // déverrouillant : chaque check hit effectivement `/system/ollama-status`.
+  // Chantier iter160 §8 — DÉTECTION DÉPLACÉE CÔTÉ NAVIGATEUR.
+  // Le backend tourne dans un pod isolé, son `localhost:11434` ne voit PAS
+  // la machine de l'utilisateur. Le browser `fetch('http://localhost:11434')`
+  // teste bien l'Ollama LOCAL de l'utilisateur (CORS activé par Ollama).
+  // Chantier iter160 §11 — Exemption Créa / Créa propriétaire / Admin.
   const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
-  const [ollamaAvailable, setOllamaAvailable] = useState(mode !== 'offline');
-  const [ollamaChecking, setOllamaChecking] = useState(mode === 'offline');
+  // iter160 §11 — Un Créa/Admin n'est PAS verrouillé par l'absence d'Ollama.
+  const isCreatorOrAdmin = (() => {
+    const r = device?.role;
+    const sk = device?.staff_kind;
+    return r === 'creator' || sk === 'admin';
+  })();
+  const [ollamaAvailable, setOllamaAvailable] = useState(mode !== 'offline' || isCreatorOrAdmin);
+  const [ollamaChecking, setOllamaChecking] = useState(mode === 'offline' && !isCreatorOrAdmin);
+  const [ollamaDiag, setOllamaDiag] = useState(null); // {state, model, models}
   useEffect(() => {
-    if (mode !== 'offline') { setOllamaAvailable(true); return; }
+    // Créa/Admin : jamais de verrou offline.
+    if (mode !== 'offline' || isCreatorOrAdmin) {
+      setOllamaAvailable(true); setOllamaChecking(false); return;
+    }
     let cancelled = false;
-    const check = () => axios.get(`${API}/system/ollama-status`, { withCredentials: false })
-      .then(r => {
+    // Whitelist modèles chat compatibles (miroir côté backend).
+    const RECOMMENDED = [
+      'gemma3:4b', 'gemma3:2b', 'deepseek-r1:7b',
+      'llama3.2', 'llama3.2:3b', 'llama3.2:8b',
+      'gemma3:latest', 'gemma:latest', 'llama3:latest',
+    ];
+    const isRecommended = (name) => {
+      if (!name) return false;
+      if (RECOMMENDED.includes(name)) return true;
+      // Match par préfixe de famille (gemma3:anything compte comme gemma3).
+      return RECOMMENDED.some((x) => name.startsWith(x.split(':')[0] + ':'));
+    };
+    const check = async () => {
+      // Chantier iter160 §8 — Détection RÉELLE côté user agent.
+      // On tente directement http://localhost:11434/api/tags. CORS est
+      // autorisé par Ollama (il envoie Access-Control-Allow-Origin: *).
+      try {
+        const r = await fetch('http://localhost:11434/api/tags', {
+          method: 'GET',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        const installed = (data.models || []).map((m) => m.name).filter(Boolean);
+        const recHit = installed.find(isRecommended) || null;
         if (cancelled) return;
-        const online = !!r.data?.available;
-        const recOk = !!r.data?.recommended_available;
-        const ok = online && recOk;
+        const ok = !!recHit;
+        setOllamaDiag({ state: installed.length ? (ok ? 'ready' : 'no_compatible_model') : 'empty', model: recHit, models: installed });
         setOllamaAvailable((prev) => {
-          // Déverrouillage auto si on passe de false → true.
           if (!prev && ok) {
-            try { toast.success('IA locale détectée — le chat est maintenant déverrouillé.'); } catch (_) {}
+            try { toast.success('IA locale détectée — déverrouillage automatique.'); } catch (_) {}
           }
           return ok;
         });
         setOllamaChecking(false);
-      })
-      .catch(() => {
+      } catch (err) {
         if (cancelled) return;
+        setOllamaDiag({ state: 'unreachable', model: null, models: [] });
         setOllamaAvailable(false);
         setOllamaChecking(false);
-      });
+      }
+    };
     check();
-    // Polling 10s pour auto-unlock. Pas de faux état : chaque tick hit
-    // réellement l'endpoint, pas de cache serveur, pas de valeur persistée.
     const iv = setInterval(check, 10000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [mode]);
+  }, [mode, isCreatorOrAdmin]);
 
   useEffect(() => {
     scrollToBottom();
@@ -333,13 +362,9 @@ export default function Chat() {
   // Shared sender — used by the form, Enter key, and the voice "send" mic.
   const sendText = async (userMessage, opts = {}) => {
     if (!userMessage || isLoading) return;
-    // Chantier iter159.3 §7 — Refus silencieux d'envoi en offline si Ollama
-    // pas prêt (le verrou visuel du formulaire est le feedback principal).
-    // On n'ouvre PLUS automatiquement le tutoriel ici — c'est à l'utilisateur
-    // de cliquer "Voir le tutoriel" dans le banner. Le polling 10s déverrouille
-    // automatiquement dès qu'un modèle compatible est détecté.
-    if (mode === 'offline' && !ollamaAvailable) {
-      toast.error('IA locale non détectée — l\'écriture est verrouillée.');
+    // Chantier iter160 §11 — Créa/Admin : jamais de verrou offline.
+    if (mode === 'offline' && !ollamaAvailable && !isCreatorOrAdmin) {
+      toast.error('IA locale non détectée — tout est bloqué.');
       return;
     }
     setIsLoading(true);
@@ -950,18 +975,19 @@ export default function Chat() {
               physique (le composant filtre lui-même). Aucun impact si non
               affichée. */}
           <CreatorChatPersonaBar value={creatorPersona} onChange={setCreatorPersona} className="mb-2" />
-          {/* Chantier iter159.3 §7 — Verrou visuel offline : non-bloquant.
-              Le user peut fermer le tutoriel, mais écriture + voix restent
-              verrouillées tant que la détection n'est pas valide. Dès que le
-              polling 10s détecte Ollama + modèle recommandé, auto-unlock. */}
-          {mode === 'offline' && !ollamaAvailable && (
+          {/* Chantier iter160 §12 — Message offline EXACT demandé par l'user :
+              « IA locale non détectée. Tout a été bloqué et se déverouillera
+              lorsque la détection est réussie. » */}
+          {mode === 'offline' && !ollamaAvailable && !isCreatorOrAdmin && (
             <div
               data-testid="chat-offline-lock-banner"
               className="mb-2 px-3 py-2 bg-white/[0.04] border border-amber-400/40 rounded-sm text-xs text-amber-200 flex items-center gap-2"
             >
               <Lock className="w-3 h-3 flex-shrink-0" />
               <span className="flex-1">
-                {ollamaChecking ? 'Détection IA locale en cours…' : 'IA locale non détectée. Fonctions d\'écriture et vocales verrouillées jusqu\'à détection réussie.'}
+                {ollamaChecking
+                  ? 'Détection IA locale en cours…'
+                  : 'IA locale non détectée. Tout a été bloqué et se déverouillera lorsque la détection est réussie.'}
               </span>
               <button
                 type="button"
@@ -1011,9 +1037,10 @@ export default function Chat() {
           <div className="flex gap-2 sm:gap-3 items-end">
             {/* Chantier iter159.3 §7 — Verrouillage réel écriture + voix :
                 si mode=offline et IA locale non détectée, ces contrôles
-                sont désactivés jusqu'à auto-unlock par polling. */}
+                sont désactivés jusqu'à auto-unlock par polling.
+                Chantier iter160 §11 — Exemption Créa/Admin : jamais verrouillés. */}
             {(() => {
-              const offlineLocked = mode === 'offline' && !ollamaAvailable;
+              const offlineLocked = mode === 'offline' && !ollamaAvailable && !isCreatorOrAdmin;
               const writeDisabled = isLoading || !canWrite || offlineLocked;
               const voiceDisabled = isLoading || !canWrite || offlineLocked;
               return (

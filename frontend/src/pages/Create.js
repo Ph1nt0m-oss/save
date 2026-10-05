@@ -45,21 +45,32 @@ export default function Create() {
   // Chantier iter159.2 §6 — Mode création hors-ligne : vérifie Ollama + modèle
   // recommandé à CHAQUE entrée (useEffect sur `mode`). Si pas prêt, refus
   // d'accès et affichage du tutoriel natif OfflineAIInstaller.
+  // Chantier iter160 §8 — Détection RÉELLE côté navigateur.
+  // Chantier iter160 §11 — Exemption Créa/Admin.
+  const isCreatorOrAdmin = (device?.role === 'creator') || (device?.staff_kind === 'admin');
   const [showOfflineInstaller, setShowOfflineInstaller] = useState(false);
   const [ollamaAvailable, setOllamaAvailable] = useState(true);
   useEffect(() => {
-    if (mode !== 'offline') return;
+    if (mode !== 'offline' || isCreatorOrAdmin) { setOllamaAvailable(true); return; }
     let cancelled = false;
-    axios.get(`${API}/system/ollama-status`)
-      .then(r => {
+    const RECOMMENDED = ['gemma3:4b','gemma3:2b','deepseek-r1:7b','llama3.2','llama3.2:3b','llama3.2:8b','gemma3:latest','gemma:latest','llama3:latest'];
+    const check = async () => {
+      try {
+        const r = await fetch('http://localhost:11434/api/tags', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        const installed = (data.models || []).map((m) => m.name).filter(Boolean);
+        const hit = installed.find((n) => RECOMMENDED.includes(n) || RECOMMENDED.some((x) => n.startsWith(x.split(':')[0] + ':')));
         if (cancelled) return;
-        const ok = !!r.data?.available && !!r.data?.recommended_available;
-        setOllamaAvailable(ok);
-        if (!ok) setShowOfflineInstaller(true);
-      })
-      .catch(() => { if (!cancelled) { setOllamaAvailable(false); setShowOfflineInstaller(true); } });
-    return () => { cancelled = true; };
-  }, [mode]);
+        setOllamaAvailable(!!hit);
+      } catch {
+        if (!cancelled) setOllamaAvailable(false);
+      }
+    };
+    check();
+    const iv = setInterval(check, 10000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [mode, isCreatorOrAdmin]);
 
   useEffect(() => {
     scrollToBottom();
@@ -78,9 +89,10 @@ export default function Create() {
     }
     // Chantier iter159.2 §6 — Refus d'accès au workflow si Ollama/modèle
     // recommandé absent en mode hors-ligne.
-    if (mode === 'offline' && !ollamaAvailable) {
+    // Chantier iter160 §11 — Créa/Admin exempt du verrou.
+    if (mode === 'offline' && !ollamaAvailable && !isCreatorOrAdmin) {
       setShowOfflineInstaller(true);
-      toast.error('IA locale non détectée. Installe Ollama + un modèle recommandé.');
+      toast.error('IA locale non détectée — tout est bloqué.');
       return;
     }
 

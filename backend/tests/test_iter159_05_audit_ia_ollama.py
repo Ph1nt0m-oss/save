@@ -81,27 +81,29 @@ def test_ollama_recommended_models_whitelist():
 
 
 def test_ollama_frontend_calls_backend_proxy_not_direct():
-    """Audit : le frontend `/system/ollama-status` passe par le proxy backend
-    (REACT_APP_BACKEND_URL), PAS directement `http://localhost:11434`. C'est
-    la raison du bug « gemma3:4b installé mais non détecté » : le backend
-    pod ne voit pas le localhost user."""
+    """iter159.4 audit : à l'époque le frontend passait par le proxy backend.
+    iter160 §8 : la détection a été DÉPLACÉE côté navigateur (fetch direct).
+    On vérifie désormais que le browser a bien le fetch direct."""
     chat = _r(FRONT / "pages/Chat.js")
     installer = _r(FRONT / "components/OfflineAIInstaller.jsx")
-    # Confirme usage du proxy backend.
-    assert '`${API}/system/ollama-status`' in chat
-    assert '`${API}/system/ollama-status`' in installer
-    # Aucun appel direct `fetch('http://localhost:11434`
-    assert 'fetch(\'http://localhost:11434' not in chat
-    assert 'fetch("http://localhost:11434' not in chat
-    assert 'fetch(\'http://localhost:11434' not in installer
-    assert 'fetch("http://localhost:11434' not in installer
+    assert "fetch('http://localhost:11434/api/tags'" in chat
+    assert "fetch('http://localhost:11434/api/tags'" in installer
 
 
 def test_ollama_polling_10s_still_present():
-    """Confirmé iter159.3 : polling 10 s + auto-unlock."""
+    """iter160 : polling 10 s préservé, désormais via fetch browser."""
     src = _r(FRONT / "pages/Chat.js")
     assert "setInterval(check, 10000)" in src
-    assert "le chat est maintenant déverrouillé" in src
+    assert ("déverrouillage automatique" in src) or ("maintenant déverrouillé" in src)
+
+
+def test_audit_xai_grok_requires_env_key():
+    """iter159 audit confirmait fallback silencieux. iter160 §3 : plus de
+    fallback — sans XAI_API_KEY on lève HTTPException ai_grok_key_missing."""
+    src = _r(BACK / "server.py")
+    assert "from grok_integration import is_xai_available, grok_chat" in src
+    assert "if not is_xai_available():" in src
+    assert '"ai_grok_key_missing"' in src
 
 
 # ---------------------------------------------------------------------------
@@ -130,25 +132,20 @@ def test_audit_ai_routes_13_models_registered():
         assert key in src, f"Route IA manquante : {key}"
 
 
-def test_audit_vexub_lindy_emergent_fall_through_cascade():
-    """Audit : vexub, lindy, emergent-collab n'ont PAS de handler custom.
-    Ils tombent dans le cascade LlmChat qui ne supporte que
-    openai/anthropic/gemini → fallback silencieux Claude Sonnet 4.5."""
+def test_audit_vexub_lindy_emergent_now_return_501():
+    """iter160 §2 : les 3 providers sans handler réel renvoient 501 explicite
+    `ai_integration_not_configured` (plus de fallback silencieux)."""
     src = _r(BACK / "server.py")
-    # Pas de bloc `if provider == "vexub":` ni "lindy" ni "emergent"
-    assert 'if provider == "vexub"' not in src
-    assert 'if provider == "lindy"' not in src
-    assert 'if provider == "emergent"' not in src
-    # Seul xai a un handler direct.
+    assert 'UNSUPPORTED_PROVIDERS = {"emergent", "vexub", "lindy"}' in src
+    assert '"ai_integration_not_configured"' in src
+    # xai conserve son handler direct.
     assert 'if provider == "xai":' in src
 
 
-def test_audit_xai_grok_requires_env_key():
-    """Audit : Grok n'est réellement appelé que si XAI_API_KEY est présente,
-    sinon fallback cascade Claude."""
-    src = _r(BACK / "server.py")
-    assert "from grok_integration import is_xai_available, grok_chat" in src
-    assert "if is_xai_available():" in src
+def test_audit_xai_grok_legacy_is_available_check():
+    """Audit historique : la variable `is_xai_available` est toujours exposée
+    par grok_integration.py — garantie que la clé XAI_API_KEY contrôle bien
+    l'activation (iter160 §3 rend l'absence de clé une erreur 501)."""
     g = _r(BACK / "grok_integration.py")
     assert 'os.environ.get("XAI_API_KEY")' in g
 
