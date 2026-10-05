@@ -11,7 +11,6 @@ import AttachMenu from '../components/AttachMenu';
 import MessageContent from '../components/MessageContent';
 import ModelPicker from '../components/ModelPicker';
 import OrchestrationLog from '../components/OrchestrationLog';
-import AgentActivityLog from '../components/AgentActivityLog';
 import OfflineAIInstaller from '../components/OfflineAIInstaller';
 import LivePreviewPanel from '../components/LivePreviewPanel';
 import CreatorChatPersonaBar, { useCreatorChatPersona } from '../components/CreatorChatPersonaBar';
@@ -847,14 +846,12 @@ export default function Chat() {
                     <span style={{ fontSize: 0, lineHeight: 0, opacity: 0 }} aria-hidden="true" data-copy-prefix>
                       {isUser ? `${user?.name || user?.email?.split('@')[0] || 'Toi'} : ` : 'CodeForge : '}
                     </span>
-                    {/* iter129 — Journal d'activité de l'agent (moteur d'exécution visible) */}
-                    {!isUser && (msg.agent_events?.length > 0 || (msg._streaming && msg.agent_id && msg.agent_id !== 'chat')) && (
-                      <AgentActivityLog
-                        events={msg.agent_events || []}
-                        running={!!msg._streaming}
-                        agentName={msg.agent_name}
-                      />
-                    )}
+                    {/* iter161 §3 — Les événements internes de l'agent
+                        (grep, tail, chemins, commandes shell, "Agent attend")
+                        ne doivent JAMAIS apparaître à l'utilisateur. Ils
+                        sont uniquement collectés côté serveur pour trace
+                        technique. L'UI affiche uniquement la vraie réponse
+                        de l'IA et le résultat utile. */}
                     {/* iter98 — TypewriterEffect pour les messages IA récents (skip pour Emergent qui rend code par code). */}
                     {!isUser && msg._just_arrived && !(msg.ai_source || '').includes('emergent') ? (
                       <div data-testid="chat-typewriter">
@@ -996,32 +993,12 @@ export default function Chat() {
               );
             })}
 
-            {/* Chantier iter161 §P1.2 — Indicateur d'attente uniquement
-                tant que les tokens n'arrivent PAS encore. Dès que le
-                premier delta tombe (aiRealState === 'streaming'), on
-                masque le bandeau : la bulle qui se remplit token-par-token
-                suffit comme feedback visuel, pas besoin d'étiquette
-                supplémentaire. */}
-            {isLoading && aiRealState !== 'streaming' && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex items-start gap-2 sm:gap-3 justify-start"
-                data-testid="chat-ai-status"
-                data-ai-state={aiRealState}
-              >
-                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-[#E4FF00] text-[#050505] flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 animate-pulse" />
-                </div>
-                <div className="bg-[#0F0F13] border-l-2 py-2 px-3 rounded-lg flex items-center gap-2" style={{ borderLeftColor: modeColor }}>
-                  <span className="inline-flex items-center gap-0.5" aria-hidden="true" data-testid="chat-ai-dots">
-                    <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '0ms' }}></span>
-                    <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '200ms' }}></span>
-                    <span className="w-1 h-1 rounded-full bg-[#A1A1AA] animate-[cfdot_1.2s_ease-in-out_infinite]" style={{ animationDelay: '400ms' }}></span>
-                  </span>
-                </div>
-              </motion.div>
-            )}
+            {/* iter161 §1 — Aucun indicateur artificiel entre l'envoi
+                du message utilisateur et l'arrivée des premiers tokens.
+                Le comportement est naturel : on attend, puis les tokens
+                apparaissent progressivement dans la bulle de réponse.
+                Pas de bulle "L'IA écrit", pas de 3 points animés,
+                pas de faux timer, pas de simulation. */}
 
             <div ref={messagesEndRef} />
           </div>

@@ -38,8 +38,6 @@ export default function Create() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(prefillPrompt);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationStartedAt, setGenerationStartedAt] = useState(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
   const [currentProject, setCurrentProject] = useState(null);
   const [generatedCode, setGeneratedCode] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -83,19 +81,6 @@ export default function Create() {
     scrollToBottom();
   }, [messages]);
 
-  // Chantier iter161 §P0.3 — Compteur de temps réel de génération.
-  // Affiche "⏳ Génération... 0:12" pour que l'user voie que ça avance.
-  useEffect(() => {
-    if (!isGenerating || !generationStartedAt) {
-      setElapsedSec(0);
-      return undefined;
-    }
-    const tick = () => setElapsedSec(Math.floor((Date.now() - generationStartedAt) / 1000));
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, [isGenerating, generationStartedAt]);
-
   // Chantier iter161 §P0.2 — Autostart si on arrive avec un prefillPrompt
   // depuis le Chat ("tu peux me faire une app de X" détecté).
   const autoStartedRef = useRef(false);
@@ -131,7 +116,6 @@ export default function Create() {
 
     if (!overrideText) setInput('');
     setIsGenerating(true);
-    setGenerationStartedAt(Date.now());
 
     setMessages(prev => [...prev, {
       role: 'user',
@@ -456,20 +440,12 @@ export default function Create() {
                     className="flex justify-start"
                     data-testid="create-generation-progress"
                   >
-                    <div className="bg-[#050505] border border-white/10 p-4 rounded-lg flex items-center gap-3">
-                      <Loader2 className="w-5 h-5 animate-spin text-[#E4FF00]" />
-                      {/* Chantier iter161 §P0.3 — Compteur de temps réel + info
-                          utile sur le modèle en cours pour éviter la sensation
-                          de blocage. 1-2 min est NORMAL pour Claude 5 Fable
-                          sur une app complète ; on le dit explicitement. */}
-                      <div className="flex flex-col">
-                        <span className="font-semibold" data-testid="create-generation-timer">
-                          Génération en cours · {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')}
-                        </span>
-                        <span className="text-xs text-[#A1A1AA]">
-                          Modèle : {selectedModel} — compte 1 à 2 min selon la complexité.
-                        </span>
-                      </div>
+                    {/* iter161 §2 — Attente naturelle, PAS d'indicateur
+                        artificiel. Simple spinner discret. Pas de chrono,
+                        pas de texte de progression, pas de pseudo-ETA.
+                        L'utilisateur voit le résultat quand il arrive. */}
+                    <div className="bg-[#050505] border border-white/10 p-3 rounded-lg inline-flex items-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#E4FF00]" />
                     </div>
                   </motion.div>
                 )}

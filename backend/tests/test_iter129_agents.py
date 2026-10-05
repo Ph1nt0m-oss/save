@@ -139,7 +139,17 @@ def test_agents_registry_route_registered():
 
 
 def test_frontend_agent_activity_log_wired():
+    """iter161 §3 — AgentActivityLog EXISTE comme composant mais n'est
+    PLUS affiché dans Chat.js : les traces internes du pipeline (tool
+    calls, chemins, commandes shell) ne doivent jamais apparaître dans
+    l'UI utilisateur. On vérifie que Chat collecte toujours agent_events
+    (pour debug serveur-side via `evt.event`) sans les rendre."""
     log = Path("/app/frontend/src/components/AgentActivityLog.jsx").read_text(encoding="utf-8")
     assert "agent-activity-log" in log and "DiffView" in log
     chat = Path("/app/frontend/src/pages/Chat.js").read_text(encoding="utf-8")
-    assert "AgentActivityLog" in chat and "evt.agent" in chat and "agent_events" in chat
+    # Les events sont toujours écoutés via evt.event et stockés dans
+    # agent_events (collecte interne), mais plus rendus visuellement.
+    assert "evt.agent" in chat and "agent_events" in chat
+    assert "<AgentActivityLog" not in chat, (
+        "AgentActivityLog ne doit plus être rendu dans Chat.js (iter161 §3)."
+    )

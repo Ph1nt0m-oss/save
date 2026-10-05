@@ -2,9 +2,23 @@
 
 
 ## iter161 (Oct 2026) — Routage réel des IA online + Création réelle
-**Status : COMPLETED (25 tests iter161 PASS + 88 tests iter111/129/159/160/161 PASS).**
+**Status : COMPLETED (26 tests iter161 PASS + 91 tests iter111/129/159/160/161 PASS).**
 
-### Problème résolu
+### Correctif complémentaire (passe 2) — Comportement 100% naturel
+
+Suite au feedback utilisateur : zéro élément artificiel/simulé, et surtout **aucune fuite de traces internes** (tool calls, chemins `/app/...`, commandes shell, "Agent attend", logs de tests) dans l'UI :
+
+- **Interaction (`Chat.js`)** :
+  - SUPPRESSION TOTALE de la bulle `chat-ai-status` (3 points animés + étiquette) entre l'envoi du message et l'arrivée des tokens. L'utilisateur attend naturellement, puis les tokens apparaissent progressivement dans la bulle de réponse. **Rien d'artificiel entre les deux.**
+  - SUPPRESSION TOTALE du rendu `<AgentActivityLog>` dans Chat.js (traces internes du pipeline agent : `grep`, `tail`, chemins, commandes shell, "Agent attend"). Les events SSE `evt.event` restent collectés dans `agent_events` côté état React pour trace serveur-side mais **ne sont plus rendus visuellement**.
+  - L'identité du modèle réel (`agent.model_label`, ex. « Claude 5 Fable ») reste correctement associée à chaque message dès que le backend la connaît (event `agent` du pipeline).
+- **Création (`Create.js`)** :
+  - SUPPRESSION du chrono artificiel « Génération en cours · 0:05 » (state `elapsedSec`/`generationStartedAt` + `useEffect` retirés).
+  - SUPPRESSION du texte « Modèle : X — compte 1 à 2 min selon la complexité ».
+  - Remplacement par un **simple spinner discret** sans texte. L'utilisateur voit le résultat quand il arrive, pas de pseudo-ETA.
+- **Règle absolue** : les tool calls, logs, commandes shell, chemins fichiers, "Agent attend" restent strictement internes au pipeline Emergent/agent. L'UI utilisateur ne voit que l'interface normale + la vraie réponse de l'IA.
+
+### Problème résolu (passe 1 — synthèse)
 Les tests utilisateur ont révélé que, malgré la purge iter160 des fallbacks silencieux visibles, le pipeline `/chat/stream` écrasait silencieusement le modèle sélectionné via un `resolve_model()` buggé (`agents/common.py`) :
 - `claude-*` → **TOUJOURS** `claude-sonnet-4-5` (donc Fable 5, Opus 4.8, 4.7 1M, Sonnet 4.6 tous écrasés)
 - `gemini-*` → **TOUJOURS** `gemini-3-flash` (3.1 Pro downgradé)
@@ -16,9 +30,8 @@ De plus, le `chat_agent` s'identifiait partout « Caly », faisant apparaître C
 ### Chantier
 - **P0.1 Routage EXACT** : `agents/common.resolve_model()` récrit avec mapping id→(provider, model_id) EXACT ; nouveau `AIModelUnavailable` (HTTPException 501) pour `emergent`/`vexub`/`lindy` sans handler + `grok-*` sans `XAI_API_KEY`. Backend `server.py` et `/chat/stream` utilisent désormais ce mapping centralisé.
 - **P0.2 Bascule Création depuis Chat** : nouveau `is_create_app_request()` (router_agent) détecte « fais-moi/crée-moi/peux-tu me faire une appli/site/jeu… » et renvoie `action=redirect_to_create` via SSE ; Chat.js navigue vers `/create` avec `prefillPrompt+prefillModel` pour autostart la vraie génération.
-- **P0.3 Visibilité génération** : `/create` affiche chrono temps réel `0:12`, nom du modèle en cours, message « 1 à 2 min selon la complexité » ; erreurs 501 explicites remontées au front (plus de « Génération en cours… » infini).
 - **P1.1 Caly réservé au widget** : `CHAT_AGENT_SYSTEM` neutralisé (plus « Tu es Caly ») ; `engine.run_pipeline()` yield un event `agent` avec `provider`/`model_id`/`model_label` (ex. « Claude 5 Fable ») ; Chat.js affiche ce label au-dessus de chaque message IA (jamais « Caly »).
-- **P1.2 Suppression bandeau « L'IA écrit »** : Chat.js masque la bulle `chat-ai-status` dès que `aiRealState === 'streaming'` ; les tokens qui apparaissent dans la bulle suffisent comme feedback visuel.
+- **P1.2 (passe 2) Zéro indicateur artificiel** : bulle "L'IA écrit" et `AgentActivityLog` totalement retirés du rendu (voir correctif complémentaire ci-dessus).
 - **Propagation erreur SSE** : `AIModelUnavailable` levée dans le pipeline → event SSE `{error: {code, requested_model, provider, message}, done:true}` ; UI affiche un message adapté par code (`ai_integration_not_configured`, `ai_grok_key_missing`, `ai_model_unknown`).
 
 ### Fichiers modifiés
@@ -28,15 +41,15 @@ De plus, le `chat_agent` s'identifiait partout « Caly », faisant apparaître C
 - `backend/agents/router_agent.py` (ajout `is_create_app_request`)
 - `backend/routes/chat_advanced_routes.py` (shortcut redirect_to_create + propagation erreur SSE)
 - `backend/server.py` (/ai/generate-complete-app utilise `resolve_model` central, HTTPException re-raise)
-- `frontend/src/pages/Chat.js` (gestion `agent.provider/model_id/model_label`, `redirect_to_create`, `evt.error`, bandeau conditionnel)
-- `frontend/src/pages/Create.js` (prefillPrompt+autostart, chrono temps réel, erreur 501 explicite)
-- `backend/tests/test_iter161_01_real_routing.py` (nouveau, 25 tests)
-- `backend/tests/test_iter129_agents.py` (mapping updated)
+- `frontend/src/pages/Chat.js` (gestion `agent.provider/model_id/model_label`, `redirect_to_create`, `evt.error`, suppression totale bulle "L'IA écrit" + AgentActivityLog)
+- `frontend/src/pages/Create.js` (prefillPrompt+autostart, suppression chrono/texte artificiel, spinner discret)
+- `backend/tests/test_iter161_01_real_routing.py` (26 tests)
+- `backend/tests/test_iter129_agents.py` (mapping + AgentActivityLog retiré du rendu)
 - `backend/tests/test_iter111_tiered_approval_streaming_parent.py` (chemin ChatStreamIn corrigé)
 
 ### Tests
-- Tests pytest iter161 : 25/25 PASS (routing exact, 501 providers non branchés, détection create app, chat_agent sans Caly, badge model_label, redirect SSE réel, erreur SSE réelle, Chat.js/Create.js statics).
-- Regression iter111/129/159/160 : 88/88 PASS (0 régression sur le périmètre modifié).
+- Tests pytest iter161 : 26/26 PASS (routing exact, 501 providers non branchés, détection create app, chat_agent sans Caly, badge model_label, redirect SSE réel, erreur SSE réelle, suppression indicateurs artificiels, suppression AgentActivityLog du rendu).
+- Regression iter111/129/159/160 : 91/91 PASS (0 régression sur le périmètre modifié).
 
 
 ## iter160 (Oct 2026) — Vérité du routage IA + détection Ollama côté user

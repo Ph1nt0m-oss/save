@@ -314,19 +314,63 @@ def test_generate_complete_app_emergent_rejected(session):
 
 
 # ----------------------------------------------------------------------------
-# §P1.2 — Frontend : bandeau « L'IA écrit » caché pendant le streaming
+# §1 §2 §3 — Comportement naturel : aucun indicateur artificiel, aucune trace
+# interne (tool calls, chemins, commandes shell) visibles côté utilisateur.
 # ----------------------------------------------------------------------------
 
-def test_frontend_chat_hides_ai_typing_indicator_during_stream():
+def test_frontend_chat_removes_fake_ai_typing_indicator():
+    """iter161 §1 — Plus de bandeau 'L'IA écrit' / 3 points animés /
+    chat-ai-status entre l'envoi du message et l'arrivée des tokens."""
     src = Path("/app/frontend/src/pages/Chat.js").read_text(encoding="utf-8")
-    # L'indicateur doit être conditionné à aiRealState !== 'streaming'.
-    assert "aiRealState !== 'streaming'" in src, (
-        "Chat.js doit cacher la bulle quand les tokens arrivent."
+    # Plus aucun élément testid 'chat-ai-status' ni 'chat-ai-dots'.
+    assert 'data-testid="chat-ai-status"' not in src, (
+        "L'indicateur artificiel 'chat-ai-status' doit être totalement retiré."
     )
-    # Et il ne doit plus mentionner "chat-ai-status-label" (ancienne étiquette texte).
-    assert "chat-ai-status-label" not in src, (
-        "L'ancienne étiquette texte 'L'IA écrit' doit avoir disparu."
+    assert 'data-testid="chat-ai-dots"' not in src, (
+        "Les 3 points animés 'chat-ai-dots' doivent être totalement retirés."
     )
+    assert "chat-ai-status-label" not in src
+    # Plus de clé i18n 'ai_state_streaming' référencée.
+    assert "ai_state_streaming" not in src
+
+
+def test_frontend_chat_removes_agent_activity_log_display():
+    """iter161 §3 — AgentActivityLog ne doit PAS être rendu dans Chat.js
+    (les tool calls, 'grep', 'tail', chemins /app/..., 'Agent attend'
+    sont strictement internes)."""
+    src = Path("/app/frontend/src/pages/Chat.js").read_text(encoding="utf-8")
+    assert "import AgentActivityLog" not in src, (
+        "L'import AgentActivityLog doit avoir disparu."
+    )
+    assert "<AgentActivityLog" not in src, (
+        "La balise <AgentActivityLog .../> doit avoir disparu — les traces "
+        "internes du pipeline ne doivent jamais apparaître à l'utilisateur."
+    )
+
+
+def test_frontend_create_removes_fake_timer_and_model_text():
+    """iter161 §2 — Pas de chrono artificiel 'Génération en cours · 0:05'
+    ni de texte 'Modèle: ... compte 1 à 2 min' en Création."""
+    src = Path("/app/frontend/src/pages/Create.js").read_text(encoding="utf-8")
+    assert "elapsedSec" not in src, "Le state du chrono doit être supprimé."
+    assert "generationStartedAt" not in src, "Le state de départ du chrono doit être supprimé."
+    assert "create-generation-timer" not in src, (
+        "L'affichage du chrono doit avoir disparu."
+    )
+    assert "Génération en cours ·" not in src, (
+        "Le texte artificiel 'Génération en cours · 0:XX' doit avoir disparu."
+    )
+    assert "compte 1 à 2 min" not in src, (
+        "Le texte artificiel '1 à 2 min' doit avoir disparu."
+    )
+
+
+def test_frontend_create_still_shows_minimal_loader():
+    """Loader discret conservé pour montrer qu'il se passe quelque chose,
+    mais SANS texte artificiel."""
+    src = Path("/app/frontend/src/pages/Create.js").read_text(encoding="utf-8")
+    assert "animate-spin" in src, "Un simple spinner doit rester visible pendant la génération."
+    assert 'data-testid="create-generation-progress"' in src
 
 
 def test_frontend_chat_uses_model_label_from_backend():
@@ -346,4 +390,3 @@ def test_frontend_create_accepts_prefill_prompt():
     src = Path("/app/frontend/src/pages/Create.js").read_text(encoding="utf-8")
     assert "prefillPrompt" in src, "Create.js doit accepter prefillPrompt."
     assert "autoStartedRef" in src, "Create.js doit auto-lancer la génération quand prefill."
-    assert "elapsedSec" in src, "Create.js doit afficher un chrono pendant la génération."
