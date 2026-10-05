@@ -54,9 +54,10 @@ def test_dashboard_cards_half_height():
 
 
 def test_dashboard_sidebar_items_compressed():
-    """iter159.3 §1 : items sidebar p-1.5 sm:p-2 (hauteur ÷ ~1.5 vs p-3)."""
+    """iter159.3 §1 : items sidebar compactés avec px-1.5 py-1 sur mobile
+    (hauteur ÷ ~50 % vs p-3 initial), transition à p-2 à partir de sm."""
     src = _read("pages/Dashboard.js")
-    assert "w-full text-left p-1.5 sm:p-2 rounded-sm border" in src
+    assert "w-full text-left px-1.5 py-1 sm:px-2 sm:py-1.5 lg:p-2 rounded-sm border" in src
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,31 @@
 # CodeForge AI — Product Requirements
 
 
+## iter159.4 (Oct 2026) — Audit IA/Ollama + réglage menu mobile
+**Status : COMPLETED (64 tests iter159 PASS + régression iter158 PASS).**
+
+### §1 — Nouveau réglage menu latéral mobile (seul changement UX)
+- Items sidebar : padding `p-1.5 sm:p-2` → `px-1.5 py-1 sm:px-2 sm:py-1.5 lg:p-2` (hauteur ÷ 50 % sur mobile).
+- Texte titres sidebar : `text-sm` → `text-xs sm:text-sm leading-tight`.
+- Icônes projet : `w-4 h-4` → `w-3 h-3 sm:w-4 sm:h-4`.
+- Header sidebar : `p-4` → `px-2 py-2 sm:p-3 lg:p-4`, bouton Nouveau projet `size="sm"` + `py-1.5 sm:py-2`.
+- Pills filtres : `text-[11px] px-2 py-1` → `text-[10px] sm:text-[11px] px-1.5 py-0.5 sm:px-2 sm:py-1`.
+- Icône œil projet : `w-6 h-6` → `w-5 h-5 sm:w-6 sm:h-6`.
+- Toutes les options restent présentes. Pas de modif du reste du design.
+
+### §2-§4 — AUDIT TECHNIQUE (lecture seule — aucune modif architecture IA)
+
+**Fichier d'audit** : `backend/tests/test_iter159_05_audit_ia_ollama.py` (12 tests)
+
+Voir le bilan complet dans la section finale ci-dessous.
+
+### Fichiers modifiés
+- `frontend/src/pages/Dashboard.js` (§1 compactage sidebar mobile)
+- `backend/tests/test_iter159_05_audit_ia_ollama.py` (NEW 12 tests audit)
+- Migration `test_iter159_04` (sidebar items path mobile)
+
+---
+
 ## iter159.3 (Oct 2026) — Chantier final avant hiérarchie/design (8 points)
 **Status : COMPLETED (52 tests iter159 PASS + 96 régression iter158 PASS).**
 

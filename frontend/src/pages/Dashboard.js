@@ -808,25 +808,26 @@ export default function Dashboard() {
         animate={{ width: isSidebarOpen ? 280 : 0 }}
         className="bg-[#0F0F13] border-r border-white/10 flex flex-col overflow-hidden fixed inset-y-0 left-0 z-40 md:relative md:z-auto"
       >
-        <div className="p-4 border-b border-white/10 flex items-center">
+        <div className="px-2 py-2 sm:p-3 lg:p-4 border-b border-white/10 flex items-center">
           <div className="flex items-center space-x-2">
-            <Sparkles className="w-5 h-5 text-[#E4FF00]" />
-            <span className="font-['Chivo'] font-bold">{t('dashProjects')}</span>
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-[#E4FF00]" />
+            <span className="font-['Chivo'] font-bold text-sm sm:text-base">{t('dashProjects')}</span>
           </div>
         </div>
 
-        <div className="p-4">
+        <div className="px-2 py-1.5 sm:p-3 lg:p-4">
           <Button
             onClick={createNewProject}
             data-testid="create-project-btn"
-            className="w-full bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 font-['Chivo'] font-bold"
+            size="sm"
+            className="w-full bg-[#E4FF00] text-[#050505] hover:bg-[#E4FF00]/90 font-['Chivo'] font-bold text-xs sm:text-sm py-1.5 sm:py-2"
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             {t('dashNewProject')}
           </Button>
         </div>
 
-        <ScrollArea className="flex-1 px-4 cf-export-blocked">
+        <ScrollArea className="flex-1 px-2 sm:px-3 lg:px-4 cf-export-blocked">
           {/* Filtres rapides — catégories de projets */}
           {projects.length > 0 && (() => {
             const counts = {
@@ -847,7 +848,7 @@ export default function Dashboard() {
               { id: 'web-offline',  label: 'Création hors-ligne',   dot: 'bg-violet-400' },
             ];
             return (
-              <div className="flex flex-wrap gap-1 mb-2" data-testid="sidebar-filters">
+              <div className="flex flex-wrap gap-1 mb-1.5 sm:mb-2" data-testid="sidebar-filters">
                 {filters.map((f) => {
                   const active = sidebarFilter === f.id;
                   const count = counts[f.id] || 0;
@@ -859,13 +860,13 @@ export default function Dashboard() {
                       onClick={() => setSidebarFilter(f.id)}
                       data-testid={`sidebar-filter-${f.id}`}
                       title={`${f.label} (${count})`}
-                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-sm border transition-colors ${
+                      className={`inline-flex items-center gap-1 text-[10px] sm:text-[11px] px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-sm border transition-colors ${
                         active
                           ? 'bg-white/[0.08] border-white/30 text-white'
                           : 'bg-transparent border-white/10 text-[#A1A1AA] hover:bg-white/[0.04] hover:text-white'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${f.dot}`} />
+                      <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${f.dot}`} />
                       <span>{f.label}</span>
                       <span className="text-[10px] text-[#71717A]">{count}</span>
                     </button>
@@ -946,13 +947,13 @@ export default function Dashboard() {
                   }}
                   onContextMenu={(e) => onProjectContextMenu(e, project)}
                   data-testid={`project-${project.project_id}`}
-                  className={`w-full text-left p-1.5 sm:p-2 rounded-sm border transition-all ${
+                  className={`w-full text-left px-1.5 py-1 sm:px-2 sm:py-1.5 lg:p-2 rounded-sm border transition-all ${
                     selectedProject?.project_id === project.project_id
                       ? 'bg-[#E4FF00]/10 border-[#E4FF00]'
                       : 'bg-[#050505] border-white/10 hover:border-white/30'
-                  } ${project._depth ? 'ml-5 border-l-2 border-l-cyan-400/40 relative' : ''}`}
+                  } ${project._depth ? 'ml-4 border-l-2 border-l-cyan-400/40 relative' : ''}`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     {/* Type dot — couleur selon (project_type, ai_mode) */}
                     {(() => {
                       const t2 = project.project_type || 'web';
@@ -966,24 +967,24 @@ export default function Dashboard() {
                         <span
                           data-testid={`project-dot-${project.project_id}`}
                           title={title}
-                          className={`flex-shrink-0 w-2.5 h-2.5 rounded-full ${bg} shadow-[0_0_6px_rgba(255,255,255,0.15)]`}
+                          className={`flex-shrink-0 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${bg} shadow-[0_0_6px_rgba(255,255,255,0.15)]`}
                         />
                       );
                     })()}
-                    {project.project_type === 'web' && <Globe className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
-                    {project.project_type === 'mobile' && <Smartphone className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
-                    {project.project_type === 'desktop' && <Monitor className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
-                    {project.project_type === 'chat' && <MessageSquare className="w-4 h-4 text-[#A1A1AA] flex-shrink-0" />}
-                    <span className="font-['IBM_Plex_Sans'] font-medium truncate flex-1 min-w-0">
+                    {project.project_type === 'web' && <Globe className="w-3 h-3 sm:w-4 sm:h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    {project.project_type === 'mobile' && <Smartphone className="w-3 h-3 sm:w-4 sm:h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    {project.project_type === 'desktop' && <Monitor className="w-3 h-3 sm:w-4 sm:h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    {project.project_type === 'chat' && <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4 text-[#A1A1AA] flex-shrink-0" />}
+                    <span className="font-['IBM_Plex_Sans'] font-medium truncate flex-1 min-w-0 text-xs sm:text-sm leading-tight">
                       <TranslatedProjectName project={project} />
                     </span>
                     {selectedProject?.project_id === project.project_id && (
-                      <ChevronRight className="w-4 h-4 text-[#E4FF00] flex-shrink-0" />
+                      <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-[#E4FF00] flex-shrink-0" />
                     )}
                   </div>
                   {/* iter97 — Icône œil SOUS chaque projet de CRÉATION (pas pour les chats) */}
                   {project.project_type !== 'chat' && (
-                    <div className="flex items-center justify-end gap-1 mt-1.5">
+                    <div className="flex items-center justify-end gap-1 mt-0.5 sm:mt-1.5">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -993,9 +994,9 @@ export default function Dashboard() {
                         }}
                         data-testid={`project-eye-${project.project_id}`}
                         title="Voir l'aperçu interactif de cette création"
-                        className="inline-flex items-center justify-center w-6 h-6 rounded-sm text-[#A1A1AA] hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                        className="inline-flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-sm text-[#A1A1AA] hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
                       >
-                        <Eye className="w-3.5 h-3.5" />
+                        <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       </button>
                     </div>
                   )}
