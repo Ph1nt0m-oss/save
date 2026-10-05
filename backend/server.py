@@ -1929,8 +1929,13 @@ IMPORTANT:
         }
         await db.previews.insert_one(preview_doc)
 
-        backend_url = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001')
-        preview_url = f"{backend_url}/api/preview/{preview_id}"
+        # iter161 §diag preview — Retourner un CHEMIN RELATIF au lieu
+        # d'une URL absolue construite depuis une variable REACT_APP_BACKEND_URL
+        # qui n'existe PAS côté backend (c'est une variable frontend). Le défaut
+        # http://localhost:8001 était inutilisable depuis le navigateur de
+        # l'utilisateur. Le frontend concatène désormais ce chemin relatif
+        # avec son propre REACT_APP_BACKEND_URL (URL publique du site).
+        preview_url = f"/api/preview/{preview_id}"
 
         return {
             "code": generated,

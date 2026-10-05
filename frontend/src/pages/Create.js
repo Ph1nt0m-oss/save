@@ -177,10 +177,23 @@ export default function Create() {
 
       setGeneratedCode(response.data.code);
       setCurrentProject(response.data.project);
-      
+
+      // iter161 §diag preview — Résolution de l'URL preview côté frontend.
+      // Le backend renvoie maintenant un chemin RELATIF ("/api/preview/<id>")
+      // car il ne connaît pas sa propre URL publique. On préfixe avec le
+      // REACT_APP_BACKEND_URL du frontend (URL publique réelle du site).
+      const BACKEND_BASE = process.env.REACT_APP_BACKEND_URL || '';
+      const resolvePreviewUrl = (raw) => {
+        if (!raw) return null;
+        if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+        if (raw.startsWith('/')) return `${BACKEND_BASE}${raw}`;
+        return raw;
+      };
+      const resolvedPreview = resolvePreviewUrl(response.data.preview_url);
+
       // Set preview URL
-      if (response.data.preview_url) {
-        setPreviewUrl(response.data.preview_url);
+      if (resolvedPreview) {
+        setPreviewUrl(resolvedPreview);
       } else if (response.data.project?.id) {
         setPreviewUrl(`${API}/preview/project/${response.data.project.id}`);
       }
@@ -191,7 +204,7 @@ export default function Create() {
         timestamp: new Date(),
         hasCode: true,
         ai_source: response.data.ai_source || `emergent:${selectedModel}`,
-        previewUrl: response.data.preview_url || `${API}/preview/project/${response.data.project?.id}`
+        previewUrl: resolvedPreview || `${API}/preview/project/${response.data.project?.id}`
       }]);
 
       // Build & Test pattern (Emergent-like) — kick off automatic preview + lightweight test.
@@ -199,7 +212,7 @@ export default function Create() {
         const pid = response.data.project?.id || response.data.project?.project_id;
         if (pid) {
           // 1) Smoke test: GET the preview HTML. If 200 + body length OK, the build is up.
-          const previewUrlEff = response.data.preview_url || `${API}/preview/project/${pid}`;
+          const previewUrlEff = resolvedPreview || `${API}/preview/project/${pid}`;
           const r = await axios.get(previewUrlEff, { withCredentials: true, validateStatus: () => true });
           const ok = r.status === 200 && typeof r.data === 'string' && r.data.length > 200;
           const fileCount = response.data.code?.files ? Object.keys(response.data.code.files).length : 0;
