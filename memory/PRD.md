@@ -1,10 +1,48 @@
 # CodeForge AI — Product Requirements
 
 
-## iter161 (Oct 2026) — Routage réel des IA online + Création réelle + Diagnostic SSE
-**Status : COMPLETED (31 tests iter161 PASS + 96 tests iter111/129/159/160/161 PASS).**
+## iter161 (Oct 2026) — Routage réel IA + Création async + Cycle simulations
+**Status : COMPLETED (97 tests PASS, 2 bugs reproduits & corrigés avec preuves).**
 
-### Correctif complémentaire (passe 3) — Diagnostic tâches complexes + arrêt sécurisé
+### Correctif passe 4 — Diagnostic Création + cycle vues simulées
+
+**Point 1 — Cycle vues simulées** 
+Bug reproduit par lecture code : `ViewSimulationBanner.jsx` conditionnait la croix de sortie à `!isCreatorSelfView` et le click faisait `setStoredViewMode('creator')`. Résultat : 1re simulation → croix → viewMode=`'creator'` (truthy, bandeau reste affiché) → `isCreatorSelfView=true` → **croix cachée, impossible de sortir**. Fix : la croix est TOUJOURS présente, et son click fait `setStoredViewMode(null)` (mode écriture réel).
+
+**Point 2 — Création bloquée (diagnostic preuve-par-mesure)** 
+Diagnostic complet de la chaîne UI → `/ai/generate-complete-app` → backend → provider → UI :
+- ✅ Endpoint appelé correctement
+- ✅ Backend reçoit la requête
+- ✅ Provider `emergent:anthropic:claude-fable-5` (modèle demandé respecté)
+- ✅ Agent commence son travail
+- ✅ Appel LLM réussit en **~80 secondes**
+- ❌ **Cloudflare proxy coupe la connexion à ~60 secondes** → client reçoit **HTTP 502 Bad Gateway**
+
+Preuve directe : curl POST `/api/ai/generate-complete-app` → **502 Cloudflare à 62s** avec log HTML Cloudflare, puis log backend `Generation via emergent:anthropic:claude-fable-5 successful` à **t+81s**. La génération réussit mais le client voit du 502.
+
+**Fix** : refactor endpoint synchrone → **architecture async job + polling** :
+- POST `/ai/generate-complete-app` crée un `generation_jobs` doc, lance la vraie génération via `asyncio.create_task`, retourne immédiatement `{job_id, status:"pending"}` en <0.3s.
+- Nouveau GET `/ai/generate-job/{job_id}` : renvoie `{status, result?, error?}` (polling frontend).
+- Status: `pending` → `running` → `done` (avec `result`) ou `failed` (avec `error` structurée via `classify_ai_error`).
+- Frontend `Create.js` : POST reçoit `job_id` → `axios.get('/ai/generate-job/'+job_id)` toutes les 3s, max 180 polls (9 min max) → affiche résultat quand `done`, erreur classifiée quand `failed`. Chaque requête HTTP individuelle est courte → Cloudflare passe.
+
+**Preuves end-to-end** après fix :
+- POST emergent (sans handler) → `job_id` en **147 ms** → poll → `failed` avec `{code:ai_integration_not_configured, http_status:501, provider:emergent}` ✓
+- POST Claude 5 Fable → `job_id` en **0.3s** → polls → `done` avec `result` à **~120s** (sans aucun 502 Cloudflare) ✓
+
+### Fichiers modifiés (passe 4)
+- `backend/server.py` : POST `/ai/generate-complete-app` refactor async + nouveau GET `/ai/generate-job/{id}`.
+- `frontend/src/pages/Create.js` : polling toutes les 3s au lieu d'attente synchrone.
+- `frontend/src/components/ViewSimulationBanner.jsx` : croix persistante + `setStoredViewMode(null)`.
+- `backend/tests/test_iter161_01_real_routing.py` : test emergent adapté au nouveau flow async (polling jusqu'à `failed`), nouveau test « POST async <5s ».
+- `backend/tests/test_iter161_03_sim_cycle_creation_async.py` (nouveau, 5 tests).
+
+### Tests
+- 7/7 PASS sur `test_iter161_03_sim_cycle_creation_async.py` + endpoint emergent async.
+- **97/97 PASS** sur regression complète iter111/129/159/160/161. Zéro régression.
+- Preuves live : `job_id` retourné en 147ms, polling conclut `failed` en 4s, polling conclut `done` à ~120s sans 502.
+
+### Correctif passe 3 — Diagnostic tâches complexes + arrêt sécurisé
 
 Feedback utilisateur : sur tâches complexes, spinner discret OK mais parfois erreur Cloudflare après longue attente. Diagnostic complet de la chaîne UI → `/chat/stream` → proxy ingress → provider IA → SSE → UI.
 

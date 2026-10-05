@@ -1491,13 +1491,92 @@ async def metrics():
 
 @api_router.post("/ai/generate-complete-app")
 async def ai_generate_complete_app(request: Request, data: dict):
-    """Generate complete application like Emergent - React + Backend.
+    """Generate complete application — version async (job + polling).
 
-    Heavy LLM work is detached via `_run_in_background` so the generation
-    completes (and the project is persisted) even if the client disconnects.
+    Chantier iter161 §diag Création : l'ancienne version synchrone bloquait
+    jusqu'à 60-120s selon le modèle (Claude Fable 5), ce qui dépassait
+    systématiquement le timeout du proxy Cloudflare (~60s) → 502 côté
+    client, UI bloquée sur « Génération en cours… ».
+
+    Nouveau flow :
+      1. POST /ai/generate-complete-app → crée un job, lance le travail en
+         background via asyncio.create_task, retourne IMMÉDIATEMENT
+         {job_id, status: "pending"}.
+      2. GET /ai/generate-job/{job_id} → renvoie l'état courant :
+         {status: "pending"|"running"|"done"|"failed", result?, error?}
+      3. Le frontend poll l'endpoint toutes les 3s jusqu'à "done" ou
+         "failed". La requête HTTP n'est jamais longue → Cloudflare OK.
     """
     user_id = await get_current_user(request)
-    return await _run_in_background(_ai_generate_complete_app_impl(user_id, data))
+    job_id = f"job_{uuid.uuid4().hex[:20]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.generation_jobs.insert_one({
+        "job_id": job_id, "user_id": user_id,
+        "status": "pending", "created_at": now_iso, "updated_at": now_iso,
+    })
+
+    async def _runner():
+        await db.generation_jobs.update_one(
+            {"job_id": job_id},
+            {"$set": {"status": "running",
+                      "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        try:
+            result = await _ai_generate_complete_app_impl(user_id, data)
+            await db.generation_jobs.update_one(
+                {"job_id": job_id},
+                {"$set": {"status": "done", "result": result,
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        except HTTPException as http_err:
+            # Erreur HTTP explicite (501 ai_integration_not_configured, etc.)
+            err_detail = http_err.detail if isinstance(http_err.detail, dict) \
+                else {"message": str(http_err.detail)}
+            await db.generation_jobs.update_one(
+                {"job_id": job_id},
+                {"$set": {"status": "failed",
+                          "error": {"http_status": http_err.status_code, **err_detail},
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        except Exception as e:
+            # Classification de l'erreur réelle (Cloudflare upstream, timeout…).
+            try:
+                from utils.ai_error_mapper import classify_ai_error
+                info = classify_ai_error(e, provider="emergent",
+                                         context="ai.generate_complete_app.job")
+            except Exception:
+                info = {"code": "unknown", "message_fr": "Erreur inconnue"}
+            logger.warning(f"generate-complete-app job {job_id} failed [{info['code']}]: {e}")
+            await db.generation_jobs.update_one(
+                {"job_id": job_id},
+                {"$set": {"status": "failed",
+                          "error": {"code": info["code"],
+                                    "message": info.get("message_fr"),
+                                    "http_status": info.get("http_status")},
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+
+    asyncio.create_task(_runner())
+    return {"job_id": job_id, "status": "pending"}
+
+
+@api_router.get("/ai/generate-job/{job_id}")
+async def ai_generate_job_status(request: Request, job_id: str):
+    """iter161 §diag Création — Poll l'état d'un job de génération.
+
+    Retourne {status, result?, error?}. Le frontend poll cet endpoint
+    toutes les 3s depuis Create.js jusqu'à status='done' ou 'failed'.
+    """
+    user_id = await get_current_user(request)
+    job = await db.generation_jobs.find_one({"job_id": job_id, "user_id": user_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job introuvable ou expiré.")
+    out = {"job_id": job_id, "status": job.get("status", "pending")}
+    if job.get("result") is not None:
+        out["result"] = job["result"]
+    if job.get("error") is not None:
+        out["error"] = job["error"]
+    return out
 
 
 async def _ai_generate_complete_app_impl(user_id: str, data: dict):

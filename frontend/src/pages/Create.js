@@ -132,17 +132,47 @@ export default function Create() {
       // et message clair si c'est dépassé. Le backend persiste quand même via
       // `_run_in_background`, l'utilisateur retrouve son projet dans la
       // sidebar après rechargement.
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort('client_timeout'), 180000);
+      // iter161 §diag Création — Architecture asynchrone avec polling.
+      // Le POST retourne IMMÉDIATEMENT un job_id. On poll ensuite
+      // /ai/generate-job/{job_id} toutes les 3s jusqu'à done/failed.
+      // Évite le timeout Cloudflare 60s qui coupait l'ancienne version
+      // synchrone sur modèles lents (Claude Fable 5 = 60-120s).
       let response;
       try {
-        response = await axios.post(
+        const jobResp = await axios.post(
           `${API}/ai/generate-complete-app`,
           { description: userMessage, mode, language, model: selectedModel },
-          { withCredentials: true, signal: controller.signal, timeout: 180000 }
+          { withCredentials: true, timeout: 15000 }
         );
-      } finally {
-        clearTimeout(timeoutId);
+        const jobId = jobResp.data?.job_id;
+        if (!jobId) throw new Error("Job id manquant dans la réponse backend.");
+
+        // Polling toutes les 3s, max 180 tentatives (= 9 min).
+        const maxPolls = 180;
+        let pollCount = 0;
+        while (pollCount < maxPolls) {
+          await new Promise(res => setTimeout(res, 3000));
+          pollCount += 1;
+          const statusResp = await axios.get(
+            `${API}/ai/generate-job/${jobId}`,
+            { withCredentials: true, timeout: 15000 }
+          );
+          const st = statusResp.data?.status;
+          if (st === 'done') {
+            response = { data: statusResp.data.result };
+            break;
+          }
+          if (st === 'failed') {
+            // Rejoue une erreur similaire à l'ancien catch pour que la
+            // branche classifyAiError la traite proprement.
+            const err = new Error(statusResp.data.error?.message || 'Génération échouée.');
+            err.response = { data: { detail: statusResp.data.error }, status: statusResp.data.error?.http_status || 500 };
+            throw err;
+          }
+        }
+        if (!response) throw new Error('Timeout polling (job jamais terminé).');
+      } catch (postErr) {
+        throw postErr;
       }
 
       setGeneratedCode(response.data.code);

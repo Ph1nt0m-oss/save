@@ -298,19 +298,78 @@ def test_chat_stream_create_app_redirects(session):
 # ----------------------------------------------------------------------------
 
 def test_generate_complete_app_emergent_rejected(session):
-    """iter161 §P0.1 — Création avec model=emergent doit renvoyer 501
-    ai_integration_not_configured, pas un template silencieux."""
+    """iter161 §P0.1 — Création avec model=emergent doit renvoyer une
+    erreur ai_integration_not_configured.
+
+    Chantier iter161 §diag Création : l'endpoint est maintenant async
+    (job + polling). La réponse POST contient job_id immédiatement, et
+    le status final (polling) est 'failed' avec l'erreur structurée."""
     r = requests.post(
         f"{API}/ai/generate-complete-app",
         json={"description": "une app simple", "mode": "online",
               "language": "fr", "model": "emergent"},
         headers=session["headers"], timeout=15,
     )
-    assert r.status_code == 501, f"Attendu 501, got {r.status_code}: {r.text[:300]}"
+    assert r.status_code == 200, f"POST async retourne 200 immédiatement, got {r.status_code}: {r.text[:300]}"
     body = r.json()
-    detail = body.get("detail", {})
-    assert detail.get("code") == "ai_integration_not_configured"
-    assert detail.get("provider") == "emergent"
+    job_id = body.get("job_id")
+    assert job_id, f"Attendu job_id dans la réponse, got {body}"
+
+    # Poll jusqu'à failed (devrait être rapide pour emergent — pas d'appel LLM).
+    import time
+    final_status = None
+    final_body = None
+    for _ in range(20):
+        time.sleep(1)
+        s = requests.get(f"{API}/ai/generate-job/{job_id}",
+                         headers=session["headers"], timeout=10)
+        assert s.status_code == 200
+        sb = s.json()
+        if sb["status"] in ("done", "failed"):
+            final_status = sb["status"]
+            final_body = sb
+            break
+    assert final_status == "failed", f"Attendu failed pour emergent, got {final_status}"
+    err = final_body.get("error", {})
+    assert err.get("code") == "ai_integration_not_configured", f"got {err}"
+    assert err.get("provider") == "emergent"
+
+
+def test_generate_job_returns_pending_then_running():
+    """iter161 §diag Création — Le POST doit retourner job_id en <2s
+    (pas de blocage synchrone)."""
+    # Création session utilisateur locale pour isolation.
+    import time, uuid as _u, secrets as _s
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    cli = MongoClient(MONGO_URL)
+    db = cli[DB_NAME]
+    uid = f"TEST_u161_async_{_u.uuid4().hex[:6]}"
+    token = f"TEST_sess_{_s.token_urlsafe(24)}"
+    db.user_sessions.insert_one({
+        "user_id": uid, "session_token": token,
+        "expires_at": (_dt.now(_tz.utc) + _td(hours=1)).isoformat(),
+        "created_at": _dt.now(_tz.utc).isoformat(),
+    })
+    db.users.insert_one({"id": uid, "email": f"{uid}@t.l", "role": "approved",
+                         "created_at": _dt.now(_tz.utc).isoformat()})
+    try:
+        h = {"Authorization": f"Bearer {token}"}
+        t0 = time.time()
+        r = requests.post(
+            f"{API}/ai/generate-complete-app",
+            json={"description": "une app simple", "mode": "online",
+                  "language": "fr", "model": "claude-5-fable"},
+            headers=h, timeout=10,
+        )
+        dt = time.time() - t0
+        assert r.status_code == 200
+        assert r.json().get("job_id")
+        assert dt < 5, f"POST async doit répondre en <5s, pris {dt:.1f}s"
+    finally:
+        db.user_sessions.delete_many({"user_id": uid})
+        db.users.delete_many({"id": uid})
+        db.generation_jobs.delete_many({"user_id": uid})
+        cli.close()
 
 
 # ----------------------------------------------------------------------------

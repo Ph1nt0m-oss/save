@@ -71,17 +71,26 @@ export default function ViewSimulationBanner({ role, viewMode }) {
         <Lock className="w-3 h-3" />
         Lecture seule
       </span>
-      {!isCreatorSelfView && (
-        <button
-          type="button"
-          onClick={() => setStoredViewMode('creator')}
-          data-testid="view-simulation-revert"
-          className="ml-auto inline-flex items-center gap-1 text-amber-200 hover:text-white border border-amber-400/40 hover:bg-amber-500/20 px-2 py-0.5 rounded-sm"
-        >
-          <X className="w-3 h-3" />
-          <span>Quitter la simulation</span>
-        </button>
-      )}
+      {/* iter161 §simulation — La croix de sortie doit être présente sur
+          TOUTE vue simulée (y compris la vue créa en prévisualisation),
+          et elle doit ramener en mode écriture réel (viewMode = null),
+          pas en vue créa (viewMode = 'creator') qui est elle-même une
+          simulation sans issue. Bug observé par l'utilisateur :
+          1ère simulation → croix → vue créa (truthy) → bandeau reste
+          affiché sans croix → aucune sortie possible. */}
+      <button
+        type="button"
+        onClick={() => setStoredViewMode(null)}
+        data-testid="view-simulation-revert"
+        className={`ml-auto inline-flex items-center gap-1 border px-2 py-0.5 rounded-sm transition ${
+          isCreatorSelfView
+            ? 'text-cyan-100 hover:text-white border-cyan-400/40 hover:bg-cyan-500/20'
+            : 'text-amber-200 hover:text-white border-amber-400/40 hover:bg-amber-500/20'
+        }`}
+      >
+        <X className="w-3 h-3" />
+        <span>{isCreatorSelfView ? 'Désactiver la prévisualisation' : 'Quitter la simulation'}</span>
+      </button>
     </div>
   );
 }
